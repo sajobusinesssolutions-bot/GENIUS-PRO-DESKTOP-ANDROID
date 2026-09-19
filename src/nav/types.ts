@@ -80,7 +80,7 @@ export type RootStackParamList = {
 
   // Books
   Money: undefined;
-  AccountDetail: { accountId: string };
+  AccountDetail: { accountId: string; period?: string; from?: number; to?: number };
   PaymentDetail: { paymentId: string };
   PaymentNew: { direction?: 'in' | 'out'; partyId?: string } | undefined;
   EntryNew: { direction?: 'in' | 'out' } | undefined;

@@ -12,7 +12,7 @@
  *    code to the owner's account address (see PinResetSheet). Staff are told to
  *    ask the owner, who resets theirs under Staff & roles.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, Alert, ScrollView } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -29,7 +29,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export default function PinLockScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { db, login, updateUser } = useAppData();
+  const { db, login, updateUser, setWarehouse } = useAppData();
   const { account } = useAuth();
   const users = (db?.users || []).filter((u) => u.active);
   // one profile: nothing to choose. Several: ask, rather than assume the first.
@@ -42,6 +42,17 @@ export default function PinLockScreen({ navigation }: Props) {
   const user = users.find((u) => u.id === selected);
   const choosing = !!user && !user.pin;
   const ownerEmail = db?.ownerEmail || account?.email || '';
+  const branches = db?.warehouses || [];
+  const here = db?.session.warehouse;
+
+  // never unlock into a branch that has been disabled
+  useEffect(() => {
+    const cur = branches.find((w) => w.id === here);
+    if (cur && cur.active === false) {
+      const live = branches.find((w) => w.active !== false);
+      if (live) { try { setWarehouse(live.id); } catch { /* nothing live */ } }
+    }
+  }, [here, branches.length]);
 
   function fail(msg: string) {
     setErr(msg);
@@ -105,10 +116,37 @@ export default function PinLockScreen({ navigation }: Props) {
     </View>
   );
 
+  const branchRow = branches.length > 1 ? (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+      {branches.map((w) => {
+        const off = w.active === false;
+        const on = w.id === here && !off;
+        return (
+          <Pressable
+            key={w.id}
+            disabled={off}
+            onPress={() => { try { setWarehouse(w.id); } catch { /* refused */ } }}
+            style={{
+              paddingVertical: 8, paddingHorizontal: 13, borderRadius: 999, borderWidth: 1.4,
+              borderColor: on ? colors.accent : colors.line,
+              backgroundColor: off ? colors.sunk : on ? colors.accentSoft : colors.surface,
+              opacity: off ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: off ? colors.faint : on ? colors.accent : colors.soft, textDecorationLine: off ? 'line-through' : 'none' }}>
+              {w.name}{off ? ' · disabled' : ''}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  ) : null;
+
   if (!user) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingTop: 52 }}>
         {shopHead}
+        {branchRow}
         <View style={{ alignItems: 'center', paddingVertical: 26 }}>
           <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="lock" size={32} color={colors.accent} />
@@ -142,7 +180,7 @@ export default function PinLockScreen({ navigation }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 52 }}>{shopHead}</View>
+      <View style={{ paddingHorizontal: 16, paddingTop: 52 }}>{shopHead}{branchRow}</View>
       <View style={{ alignItems: 'center', paddingTop: 22 }}>
         <Avatar name={user.name} id={user.id} size={70} />
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 21, color: colors.ink, marginTop: 14 }}>{user.name}</Text>

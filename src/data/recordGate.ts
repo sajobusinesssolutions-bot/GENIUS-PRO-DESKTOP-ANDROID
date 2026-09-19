@@ -23,7 +23,7 @@
 import type { DB } from './types';
 import { licState } from './logic';
 
-export type RefusalCode = 'licence' | 'offline';
+export type RefusalCode = 'licence' | 'offline' | 'branch';
 
 export interface Refusal {
   code: RefusalCode;
@@ -98,6 +98,16 @@ const RECORDING_STATES = Object.keys(LICENCE_WHY).filter((k) => k !== 'none');
  * the network layer.
  */
 export function mayRecord(d: DB, online: boolean, now = new Date()): Refusal | null {
+  // A disabled branch is closed for everyone, the owner included: nothing new
+  // is recorded against it until it is enabled again under Branches.
+  const here = d?.session?.warehouse && (d.warehouses || []).find((w) => w.id === d.session.warehouse);
+  if (here && here.active === false) {
+    return {
+      code: 'branch', title: here.name + ' is disabled',
+      why: 'This branch has been disabled, so nothing can be recorded in it. Switch to another branch, or ask the owner to enable it again under Branches.',
+      route: 'Branches', action: 'Open branches',
+    };
+  }
   const state = licState(d, now);
   if (state !== 'active' && state !== 'trial' && RECORDING_STATES.indexOf(state) > -1) {
     const w = LICENCE_WHY[state];
