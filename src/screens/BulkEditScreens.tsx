@@ -386,10 +386,10 @@ function NamesEditorScreenBody() {
               <SectionLabel>Find and replace in names</SectionLabel>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Field label="Find" value={find} onChangeText={setFind} placeholder="e.g. 50kg" style={{ marginBottom: 0 }} />
+                  <Field label="Find" value={find} onChangeText={setFind} placeholder="Text to find" style={{ marginBottom: 0 }} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Field label="Replace with" value={replace} onChangeText={setReplace} placeholder="e.g. 50 kg" style={{ marginBottom: 0 }} />
+                  <Field label="Replace with" value={replace} onChangeText={setReplace} placeholder="Replace it with" style={{ marginBottom: 0 }} />
                 </View>
               </View>
               <View style={{ height: 12 }} />

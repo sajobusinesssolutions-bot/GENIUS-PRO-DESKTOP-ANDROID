@@ -360,11 +360,15 @@ export function emptyBook(o: { firmName?: string; ownerName?: string; branchName
   // on day one — but they start at nothing rather than at someone else's float.
   db.accounts = db.accounts.map((a) => ({ ...a, opening: 0 }));
 
-  db.users = db.users.slice(0, 1).map((u) => ({
-    ...u,
-    name: (o.ownerName || '').trim() || u.name,
+  // A fresh book gets its own owner rather than inheriting the demo's staff.
+  // Keeping users[0] meant a real shop opened with 'Ronald Okello' on the till.
+  db.users = [{
+    id: uid('usr'),
+    name: (o.ownerName || '').trim() || 'Owner',
     role: 'owner' as const,
-  }));
+    pin: '0000',
+    active: true,
+  }];
 
   db.sales = [];
   db.purchases = [];

@@ -58,7 +58,7 @@ beforeEach(() => {
 /** Fills the name and walks to the last step. */
 function walkToReview(name = 'Lakeside') {
   render(<NewBranchScreen />);
-  fireEvent.changeText(screen.getByPlaceholderText('e.g. Ntinda shop'), name);
+  fireEvent.changeText(screen.getByPlaceholderText('The name customers know it by'), name);
   for (let i = 0; i < 5; i += 1) fireEvent.press(screen.getByText('Next'));
 }
 
@@ -87,14 +87,14 @@ describe('the stages', () => {
 
   it('refuses a name another branch already has', () => {
     render(<NewBranchScreen />);
-    fireEvent.changeText(screen.getByPlaceholderText('e.g. Ntinda shop'), 'main shop');
+    fireEvent.changeText(screen.getByPlaceholderText('The name customers know it by'), 'main shop');
     fireEvent.press(screen.getByText('Next'));
     expect(mockError).toHaveBeenCalledWith('There is already a branch called main shop.');
   });
 
   it('moves on once it has one, and can come back', () => {
     render(<NewBranchScreen />);
-    fireEvent.changeText(screen.getByPlaceholderText('e.g. Ntinda shop'), 'Lakeside');
+    fireEvent.changeText(screen.getByPlaceholderText('The name customers know it by'), 'Lakeside');
     fireEvent.press(screen.getByText('Next'));
     expect(screen.getByText('2 of 6')).toBeTruthy();
     fireEvent.press(screen.getByText('Back'));
@@ -116,7 +116,7 @@ describe('the stages', () => {
 describe('nothing is written until the end', () => {
   it('writes nothing while stepping through', () => {
     render(<NewBranchScreen />);
-    fireEvent.changeText(screen.getByPlaceholderText('e.g. Ntinda shop'), 'Lakeside');
+    fireEvent.changeText(screen.getByPlaceholderText('The name customers know it by'), 'Lakeside');
     fireEvent.press(screen.getByText('Next'));
     fireEvent.press(screen.getByText('Next'));
     expect(mockOpenBranch).not.toHaveBeenCalled();

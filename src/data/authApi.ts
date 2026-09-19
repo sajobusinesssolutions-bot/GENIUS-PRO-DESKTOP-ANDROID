@@ -144,6 +144,17 @@ export function requestSignUpCode(email: string, name: string) {
   return request<{ sent: true }>('/v1/auth/otp/request', { email, name, purpose: 'signup' });
 }
 
+/**
+ * Checks a code without spending it.
+ *
+ * Lets the app refuse a wrong code the moment it is typed, rather than after
+ * somebody has chosen a password and only then been sent back three screens.
+ * The code is still consumed later, by register or reset.
+ */
+export function verifyCode(email: string, code: string, purpose: 'signup' | 'reset' = 'signup') {
+  return request<{ ok: true }>('/v1/auth/otp/verify', { email, code, purpose });
+}
+
 /** Confirms the address, then sets the password. One call, so a half-made account cannot exist. */
 export function completeSignUp(o: {
   email: string; name: string; phone?: string; code: string; password: string;

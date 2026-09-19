@@ -200,7 +200,7 @@ export default function NewBranchScreen() {
         {step.id === 'shop' ? (
           <>
             <Panel>
-              <Field icon="home" label="Branch name" value={name} onChangeText={setName} placeholder="e.g. Ntinda shop" error={name.trim() && clash ? 'There is already a branch with this name' : undefined} />
+              <Field icon="home" label="Branch name" value={name} onChangeText={setName} placeholder="The name customers know it by" error={name.trim() && clash ? 'There is already a branch with this name' : undefined} />
               <Field icon="doc" label="Address" value={address} onChangeText={setAddress} placeholder="Optional" multiline />
               <Field icon="phone" label="Phone" value={phone} onChangeText={setPhone} placeholder="Optional" />
             </Panel>
@@ -264,7 +264,7 @@ export default function NewBranchScreen() {
               <>
                 <View style={{ height: 10 }} />
                 <Panel>
-                  <Field icon="bank" label="Account name" value={extraName} onChangeText={setExtraName} placeholder="e.g. Stall MoMo" />
+                  <Field icon="bank" label="Account name" value={extraName} onChangeText={setExtraName} placeholder="What this account is called" />
                   <SelectField
                     icon="card" label="Kind" value={extraType}
                     options={[{ v: 'wallet' as const, l: 'Mobile money' }, { v: 'bank' as const, l: 'Bank' }]}

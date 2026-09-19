@@ -116,7 +116,7 @@ export default function OnboardingScreen({ navigation }: Props) {
         {step === 1 && (
           <>
             <SectionLabel>Store details</SectionLabel>
-            <Field icon="owner" label="Business name *" value={name} onChangeText={setName} placeholder="e.g. Saljoe Hardware" />
+            <Field icon="owner" label="Business name *" value={name} onChangeText={setName} placeholder="The name on your receipts" />
             <Field icon="phone" label="Phone number" value={phone} onChangeText={setPhone} placeholder="Optional" />
           </>
         )}

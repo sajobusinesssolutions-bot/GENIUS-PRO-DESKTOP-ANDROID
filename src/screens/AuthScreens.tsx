@@ -183,7 +183,13 @@ export function SignInScreen({ navigation }: SignInProps) {
     if (!codeLooksReal(code)) { error('The code is six digits.'); return; }
     const v = checkPassword(fresh, email);
     if (!v.ok) { error(v.why); return; }
+
+    // The code is checked on its own first, so a wrong one is reported as a
+    // wrong code rather than as a failed password change.
     setBusy(true);
+    const check = await api.verifyCode(email.trim(), code.trim(), 'reset');
+    if (!check.ok) { setBusy(false); error(check.error.message); return; }
+
     const r = await api.resetPassword(email.trim(), code.trim(), fresh);
     setBusy(false);
     if (!r.ok) { error(r.error.message); return; }
@@ -223,7 +229,7 @@ export function SignInScreen({ navigation }: SignInProps) {
             <Panel>
               <Field
                 icon="user" label="Owner email" value={email} onChangeText={setEmail}
-                placeholder="owner@example.com" autoCapitalize="none"
+                placeholder="Your email address" autoCapitalize="none"
               />
               <Field icon="lock" label="Password" value={password} onChangeText={setPassword} secure placeholder="Your password" />
             </Panel>
@@ -332,6 +338,13 @@ export function CreateAccountScreen({ navigation }: CreateProps) {
 
     if (which === 'Confirm') {
       if (!codeLooksReal(code)) { error('The code is six digits.'); return; }
+      // Checked here, not at the end. Discovering a mistyped digit only after
+      // choosing a password means being thrown back three screens for something
+      // that could have been said immediately.
+      setBusy(true);
+      const v = await api.verifyCode(email.trim(), code.trim(), 'signup');
+      setBusy(false);
+      if (!v.ok) { error(v.error.message); return; }
     }
 
     if (which === 'Password') {
@@ -393,7 +406,7 @@ export function CreateAccountScreen({ navigation }: CreateProps) {
         {steps[at] === 'You' ? (
           <>
             <Panel>
-              <Field icon="user" label="Your full name" value={name} onChangeText={setName} placeholder="e.g. Ada Nakato" />
+              <Field icon="user" label="Your full name" value={name} onChangeText={setName} placeholder="Your full name" />
               <Field icon="phone" label="Phone" value={phone} onChangeText={setPhone} placeholder="Optional" />
             </Panel>
             {!configured ? <><View style={{ height: 14 }} /><NoServerNote what="it cannot create your account online yet." /></> : null}
@@ -405,7 +418,7 @@ export function CreateAccountScreen({ navigation }: CreateProps) {
             <Panel>
               <Field
                 icon="doc" label="Owner email" value={email} onChangeText={(t) => { setEmail(t); setSent(false); }}
-                placeholder="owner@example.com" autoCapitalize="none"
+                placeholder="Your email address" autoCapitalize="none"
               />
             </Panel>
             <View style={{ height: 14 }} />

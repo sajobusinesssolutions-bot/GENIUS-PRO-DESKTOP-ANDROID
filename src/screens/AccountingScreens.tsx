@@ -197,8 +197,8 @@ function ChartOfAccountsScreenBody() {
         onClose={() => setAdding(false)}
         footer={<Button label="Add ledger" variant="pri" onPress={saveNew} />}
       >
-        <Field icon="doc" label="Code" value={code} onChangeText={setCode} placeholder="e.g. 6300" numeric />
-        <Field icon="tag" label="Ledger name" value={name} onChangeText={setName} placeholder="e.g. Transport" />
+        <Field icon="doc" label="Code" value={code} onChangeText={setCode} placeholder="A free code number" numeric />
+        <Field icon="tag" label="Ledger name" value={name} onChangeText={setName} placeholder="What this ledger is called" />
         <SelectField
           icon="chart"
           label="Type"
@@ -588,7 +588,7 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
             />
 
             <View style={{ height: 18 }} />
-            <Field icon="doc" label="Description" value={memo} onChangeText={setMemo} placeholder="e.g. Depreciation for the month" />
+            <Field icon="doc" label="Description" value={memo} onChangeText={setMemo} placeholder="What this entry is for" />
 
             <Pressable
               onPress={() => setPicking(true)}

@@ -314,7 +314,7 @@ function RoleEditor({ draft, onChange, onCancel, onSave, onDelete }: {
             label="Role name"
             value={draft.name}
             onChangeText={(v) => onChange({ ...draft, name: v })}
-            placeholder="e.g. Sales associate"
+            placeholder="What this role is called"
             readOnly={draft.builtin}
           />
           <Field

@@ -302,7 +302,7 @@ export default function CheckoutSheet({
           label="Terms"
           value={terms}
           onChangeText={onTermsChange}
-          placeholder="e.g. Due in 30 days"
+          placeholder="Payment terms, if any"
           style={{ marginBottom: 0 }}
         />
       </View>

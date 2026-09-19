@@ -139,6 +139,55 @@ export default async function authRoutes(app) {
     return { sent: true };
   });
 
+  /* --- check a code without spending it --------------------------------- */
+  /*
+   * So the app can say "that code is wrong" the moment it is typed, rather than
+   * after somebody has gone on to choose a password and only then been thrown
+   * back three screens.
+   *
+   * A wrong guess still counts against the attempt limit — otherwise this would
+   * be a way to brute-force six digits without the counter ever moving. A right
+   * one is left unspent, because register and reset are what consume it.
+   */
+  app.post('/v1/auth/otp/verify', async (req, reply) => {
+    const email = normalise(req.body?.email);
+    const purpose = req.body?.purpose === 'reset' ? 'reset' : 'signup';
+    const code = String(req.body?.code || '');
+    if (!/^[0-9]{6}$/.test(code)) {
+      return fail(reply, 400, 'badCode', 'The code is six digits.');
+    }
+
+    const { rows } = await q(
+      `select id, code_hash, tries, expires_at
+         from otps
+        where email = $1 and purpose = $2 and used_at is null
+        order by created_at desc limit 1`,
+      [email, purpose],
+    );
+    const otp = rows[0];
+    if (!otp) return fail(reply, 400, 'badCode', 'Ask for a new code.');
+    if (new Date(otp.expires_at) < new Date()) {
+      return fail(reply, 400, 'codeExpired', 'That code has expired. Ask for a new one.');
+    }
+    if (otp.tries >= MAX_OTP_TRIES) {
+      return fail(reply, 429, 'rateLimited', 'Too many attempts. Ask for a new code.');
+    }
+
+    const given = Buffer.from(hashCode(code), 'hex');
+    const held = Buffer.from(otp.code_hash, 'hex');
+    const ok = given.length === held.length && timingSafeEqual(given, held);
+
+    if (!ok) {
+      await q('update otps set tries = tries + 1 where id = $1', [otp.id]);
+      const left = MAX_OTP_TRIES - (otp.tries + 1);
+      return fail(reply, 400, 'badCode',
+        left > 0
+          ? 'That code is not right. ' + left + ' attempt' + (left === 1 ? '' : 's') + ' left.'
+          : 'That code is not right, and there are no attempts left. Ask for a new code.');
+    }
+    return { ok: true };
+  });
+
   /* --- create the account --------------------------------------------- */
   app.post('/v1/auth/register', async (req, reply) => {
     const email = normalise(req.body?.email);

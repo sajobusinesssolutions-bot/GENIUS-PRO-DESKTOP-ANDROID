@@ -22,11 +22,12 @@ jest.mock('../components/Toast', () => ({
   useToast: () => ({ error: mockError, success: mockSuccess, info: jest.fn(), show: jest.fn() }),
 }));
 
-const mockApi: any = { configured: false, signUpCode: jest.fn(), complete: jest.fn() };
+const mockApi: any = { configured: false, signUpCode: jest.fn(), complete: jest.fn(), verify: jest.fn() };
 jest.mock('../data/authApi', () => ({
   serverConfigured: () => mockApi.configured,
   requestSignUpCode: (...a: any[]) => mockApi.signUpCode(...a),
   completeSignUp: (...a: any[]) => mockApi.complete(...a),
+  verifyCode: (...a: any[]) => mockApi.verify(...a),
   signIn: jest.fn(),
   requestResetCode: jest.fn(),
   resetPassword: jest.fn(),
@@ -53,6 +54,7 @@ beforeEach(() => {
   nav.replace.mockClear();
   mockApi.configured = false;
   mockApi.signUpCode = jest.fn(async () => ({ ok: true, value: { sent: true } }));
+  mockApi.verify = jest.fn(async () => ({ ok: true, value: { ok: true } }));
   mockApi.complete = jest.fn(async () => ({
     ok: true,
     value: { accountId: 'acct_1', email: 'owner@example.com', name: 'Ada', access: 'a', refresh: 'r' },
@@ -82,17 +84,17 @@ describe('the stages', () => {
 
   it('moves to the email once it has one', async () => {
     open();
-    type('e.g. Ada Nakato', 'Ada Nakato');
+    type('Your full name', 'Ada Nakato');
     next();
     await waitFor(() => expect(screen.getByText('Your email address')).toBeTruthy());
   });
 
   it('catches a mistyped email rather than sending a code into the void', async () => {
     open();
-    type('e.g. Ada Nakato', 'Ada');
+    type('Your full name', 'Ada');
     next();
     await waitFor(() => screen.getByText('Your email address'));
-    type('owner@example.com', 'owner@example');
+    type('Your email address', 'owner@example');
     next();
     expect(mockError).toHaveBeenCalledWith('Check the email address.');
   });
@@ -106,10 +108,10 @@ describe('with no server configured', () => {
 
   it('skips the confirmation stage instead of faking a code', async () => {
     open();
-    type('e.g. Ada Nakato', 'Ada');
+    type('Your full name', 'Ada');
     next();
     await waitFor(() => screen.getByText('Your email address'));
-    type('owner@example.com', 'owner@example.com');
+    type('Your email address', 'owner@example.com');
     next();
     await waitFor(() => expect(screen.getByText('Choose a password')).toBeTruthy());
     expect(screen.queryByText('Confirm your email')).toBeNull();
@@ -118,10 +120,10 @@ describe('with no server configured', () => {
 
   it('records the account as unverified and local, and goes on to set the shop up', async () => {
     open();
-    type('e.g. Ada Nakato', 'Ada Nakato');
+    type('Your full name', 'Ada Nakato');
     next();
     await waitFor(() => screen.getByText('Your email address'));
-    type('owner@example.com', 'owner@example.com');
+    type('Your email address', 'owner@example.com');
     next();
     await waitFor(() => screen.getByText('Choose a password'));
     type('At least 8 characters', 'sugar and salt and rice');
@@ -139,10 +141,10 @@ describe('with no server configured', () => {
 
   it('refuses two passwords that do not match', async () => {
     open();
-    type('e.g. Ada Nakato', 'Ada');
+    type('Your full name', 'Ada');
     next();
     await waitFor(() => screen.getByText('Your email address'));
-    type('owner@example.com', 'owner@example.com');
+    type('Your email address', 'owner@example.com');
     next();
     await waitFor(() => screen.getByText('Choose a password'));
     type('At least 8 characters', 'sugar and salt and rice');
@@ -154,10 +156,10 @@ describe('with no server configured', () => {
 
   it('refuses a weak password and says which way to fix it', async () => {
     open();
-    type('e.g. Ada Nakato', 'Ada');
+    type('Your full name', 'Ada');
     next();
     await waitFor(() => screen.getByText('Your email address'));
-    type('owner@example.com', 'owner@example.com');
+    type('Your email address', 'owner@example.com');
     next();
     await waitFor(() => screen.getByText('Choose a password'));
     type('At least 8 characters', 'shopshop');
@@ -172,10 +174,10 @@ describe('with a server configured', () => {
 
   it('sends a code when the email is entered, and asks for it', async () => {
     open();
-    type('e.g. Ada Nakato', 'Ada');
+    type('Your full name', 'Ada');
     next();
     await waitFor(() => screen.getByText('Your email address'));
-    type('owner@example.com', 'owner@example.com');
+    type('Your email address', 'owner@example.com');
     next();
     await waitFor(() => expect(screen.getByText('Confirm your email')).toBeTruthy());
     expect(mockApi.signUpCode).toHaveBeenCalledWith('owner@example.com', 'Ada');
@@ -183,10 +185,10 @@ describe('with a server configured', () => {
 
   it('does not move past the code stage on a half-typed code', async () => {
     open();
-    type('e.g. Ada Nakato', 'Ada');
+    type('Your full name', 'Ada');
     next();
     await waitFor(() => screen.getByText('Your email address'));
-    type('owner@example.com', 'owner@example.com');
+    type('Your email address', 'owner@example.com');
     next();
     await waitFor(() => screen.getByText('Confirm your email'));
     type('000000', '1234');
@@ -199,10 +201,10 @@ describe('with a server configured', () => {
       ok: false, error: { failure: 'badCode', message: 'That code is not right.' },
     }));
     open();
-    type('e.g. Ada Nakato', 'Ada');
+    type('Your full name', 'Ada');
     next();
     await waitFor(() => screen.getByText('Your email address'));
-    type('owner@example.com', 'owner@example.com');
+    type('Your email address', 'owner@example.com');
     next();
     await waitFor(() => screen.getByText('Confirm your email'));
     type('000000', '123456');
@@ -219,10 +221,10 @@ describe('with a server configured', () => {
 
   it('records a verified, server-backed account when it all works', async () => {
     open();
-    type('e.g. Ada Nakato', 'Ada');
+    type('Your full name', 'Ada');
     next();
     await waitFor(() => screen.getByText('Your email address'));
-    type('owner@example.com', 'owner@example.com');
+    type('Your email address', 'owner@example.com');
     next();
     await waitFor(() => screen.getByText('Confirm your email'));
     type('000000', '123456');
@@ -234,5 +236,66 @@ describe('with a server configured', () => {
 
     await waitFor(() => expect(mockAdopt).toHaveBeenCalled());
     expect(mockAdopt.mock.calls[0][0]).toMatchObject({ verified: true, localOnly: false, id: 'acct_1' });
+  });
+});
+
+describe('the code is checked the moment it is entered', () => {
+  beforeEach(() => { mockApi.configured = true; });
+
+  /** Walks as far as the confirmation step. */
+  async function toConfirm() {
+    open();
+    type('Your full name', 'Ada');
+    next();
+    await waitFor(() => screen.getByText('Your email address'));
+    type('Your email address', 'owner@example.com');
+    next();
+    await waitFor(() => screen.getByText('Confirm your email'));
+  }
+
+  it('checks a code before moving on, not at the end', async () => {
+    await toConfirm();
+    type('000000', '123456');
+    next();
+    await waitFor(() => expect(mockApi.verify).toHaveBeenCalledWith('owner@example.com', '123456', 'signup'));
+  });
+
+  it('stops on the code step and says why when it is wrong', async () => {
+    mockApi.verify = jest.fn(async () => ({
+      ok: false, error: { failure: 'badCode', message: 'That code is not right. 4 attempts left.' },
+    }));
+    await toConfirm();
+    type('000000', '999999');
+    next();
+
+    await waitFor(() => expect(mockError).toHaveBeenCalledWith('That code is not right. 4 attempts left.'));
+    // still on the code step, rather than three screens further on
+    expect(screen.getByText('Confirm your email')).toBeTruthy();
+    expect(screen.queryByText('Choose a password')).toBeNull();
+  });
+
+  it('says so when the code has expired rather than blaming the code', async () => {
+    mockApi.verify = jest.fn(async () => ({
+      ok: false, error: { failure: 'codeExpired', message: 'That code has expired. Ask for a new one.' },
+    }));
+    await toConfirm();
+    type('000000', '123456');
+    next();
+    await waitFor(() => expect(mockError).toHaveBeenCalledWith('That code has expired. Ask for a new one.'));
+  });
+
+  it('moves on once the code is accepted', async () => {
+    await toConfirm();
+    type('000000', '123456');
+    next();
+    await waitFor(() => expect(screen.getByText('Choose a password')).toBeTruthy());
+  });
+
+  it('does not call the server for a half-typed code', async () => {
+    await toConfirm();
+    type('000000', '1234');
+    next();
+    expect(mockApi.verify).not.toHaveBeenCalled();
+    expect(mockError).toHaveBeenCalledWith('The code is six digits.');
   });
 });

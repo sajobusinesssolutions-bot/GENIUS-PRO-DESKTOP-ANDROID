@@ -69,7 +69,7 @@ export function OfferNewScreen({ navigation }: NativeStackScreenProps<RootStackP
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: 16 }}>
       <ScrollView>
         <Cap>Name</Cap>
-        <TextInput value={name} onChangeText={setName} placeholder="e.g. End of month sale" placeholderTextColor={colors.faint}
+        <TextInput value={name} onChangeText={setName} placeholder="What this offer is called" placeholderTextColor={colors.faint}
           style={{ height: 52, borderRadius: 13, borderWidth: 1.4, borderColor: colors.line, paddingHorizontal: 14, color: colors.ink, backgroundColor: colors.surface, fontFamily: fonts.ui, fontSize: 15, marginTop: 8, marginBottom: 14 }} />
         <Cap>Discount type</Cap>
         <View style={{ flexDirection: 'row', gap: 6, marginVertical: 8 }}>

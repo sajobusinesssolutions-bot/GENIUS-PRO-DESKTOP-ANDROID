@@ -115,3 +115,24 @@ describe('emptyBook', () => {
     expect(d.settings.defaultWarehouse).toBe(d.warehouses[0].id);
   });
 });
+
+describe('no invented person appears in a real shop', () => {
+  it('does not inherit the demo staff', () => {
+    const demoNames = seed().users.map((u) => u.name);
+    const d = emptyBook();
+    expect(demoNames).toContain('Ronald Okello');
+    expect(demoNames).not.toContain(d.users[0].name);
+  });
+
+  it('calls the owner what they said they were called', () => {
+    expect(emptyBook({ ownerName: 'Amar' }).users[0].name).toBe('Amar');
+  });
+
+  it('falls back to a job title, never to a name somebody made up', () => {
+    expect(emptyBook().users[0].name).toBe('Owner');
+  });
+
+  it('gives the shop a neutral name until one is chosen', () => {
+    expect(emptyBook().firm.name).toBe('My shop');
+  });
+});
