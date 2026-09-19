@@ -27,7 +27,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'NewSale'>;
 export default function NewSaleScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { db, money, stockOf, commitSale, addParty } = useAppData();
+  const { db, money, stockOf, commitSale, addParty, can } = useAppData();
   /** Owner and manager are trusted with prices and discounts; everyone else follows Settings. */
   const trusted = db?.session.role === 'owner' || db?.session.role === 'manager';
   const { success, error } = useToast();
@@ -468,8 +468,9 @@ export default function NewSaleScreen({ navigation }: Props) {
         money={money}
         product={editLine ? db?.products.find((x) => x.id === editLine.productId) : null}
         // The owner and managers are never limited; cashiers follow Settings.
-        canEditPrice={trusted || db?.settings.allowPriceEdit !== false}
-        maxDiscountPct={trusted ? 100 : Number(db?.settings.maxDiscountPct ?? 100)}
+        // role first ("Change prices at the till", "Give discounts"), then the till settings
+        canEditPrice={trusted || can('sales.price_edit') || db?.settings.allowPriceEdit === true}
+        maxDiscountPct={!can('sales.discount') ? 0 : trusted ? 100 : Number(db?.settings.maxDiscountPct ?? 100)}
         onSave={(patch) => {
           setCart((prev) => prev.map((l, i) => i === editIndex ? { ...l, ...patch } : l));
           setEditIndex(null);

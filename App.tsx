@@ -8,6 +8,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppDataProvider } from './src/data/AppDataContext';
 import { AuthProvider } from './src/data/AuthContext';
 import LicenceKeeper from './src/data/LicenceKeeper';
+import { installRefusalHandler } from './src/data/refusal';
+
+// a refusal nothing caught is shown to the person rather than crashing the app
+installRefusalHandler();
 import { ToastProvider } from './src/components/Toast';
 import RootNavigator from './src/nav/RootNavigator';
 

@@ -15,6 +15,7 @@ import { AuthGateScreen, SignInScreen, CreateAccountScreen } from '../screens/Au
 import GoogleSignInScreen from '../screens/GoogleSignInScreen';
 import { useAuth } from '../data/AuthContext';
 import KeyboardSafe from '../components/KeyboardSafe';
+import RouteGuard from './RouteGuard';
 import PinLockScreen from '../screens/PinLockScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import MainTabs from './MainTabs';
@@ -124,7 +125,12 @@ export default function RootNavigator() {
       <Stack.Navigator
         initialRouteName={initialRoute}
         /* every screen keeps its fields and its Save bar above the keyboard — see KeyboardSafe */
-        screenLayout={({ children }) => <KeyboardSafe>{children}</KeyboardSafe>}
+        /* every screen: fields stay above the keyboard, and the role is checked — see RouteGuard */
+        screenLayout={({ children, route }) => (
+          <KeyboardSafe>
+            <RouteGuard route={route.name} params={route.params}>{children}</RouteGuard>
+          </KeyboardSafe>
+        )}
         /* one shared header for every screen — reference render(), lines 1529-1536 */
         screenOptions={{ header: (props) => <NavHeader {...props} />, contentStyle: { backgroundColor: colors.bg } }}
       >

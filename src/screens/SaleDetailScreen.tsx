@@ -72,6 +72,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   }
 
   function onVoid() {
+    if (!can('sales.void')) return refuse('Your role cannot void a bill.');
     Alert.alert('Void ' + sale!.no + '?', 'This reverses stock and ledger entries.', [
       { text: 'Cancel', style: 'cancel' },
       {

@@ -10,6 +10,7 @@ import React, { useMemo, useState } from 'react';
 import { View, FlatList, Pressable, Text } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { canFor } from '../data/perms';
 import {
   Empty, Badge, StatGrid, Search, FilterChips, SectionLabel, FAB, SegTabs,
 } from '../components/ui';
@@ -63,7 +64,10 @@ export default function SalesListScreen({ navigation }: Props) {
     if (!db) return [];
     const out: Row[] = [];
 
+    // Without "See other staff's bills", a person sees the bills they raised.
+    const mineOnly = !canFor(db.session.role, 'sales.view_all');
     db.sales.forEach((s) => {
+      if (mineOnly && s.userId !== db.session.userId) return;
       const void_ = s.status === 'void';
       out.push({
         id: s.id, kind: 'sale', ts: s.ts,

@@ -15,6 +15,8 @@ import { uid, iso } from './uid';
 import * as logic from './logic';
 import { activeBranchId, branchJournal } from './branch';
 import { mayRecord, refusalMessage } from './recordGate';
+import { Refusal } from './refusal';
+import { refusalFor } from '../nav/routePerms';
 import { licenceFromToken, verifyLicenceSignature } from './licenceKey';
 import { fetchLicence } from './authApi';
 import NetInfo from '@react-native-community/netinfo';
@@ -285,7 +287,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const d = dbRef.current;
     if (!d) return;
     const refusal = mayRecord(d, onlineRef.current);
-    if (refusal) throw new Error(refusalMessage(refusal));
+    if (refusal) throw new Refusal(refusal.title, refusal.why);
+  }, []);
+
+  /**
+   * Refuses an action the signed-in role does not allow.
+   *
+   * The screens are guarded too (RouteGuard), but a screen someone may open can
+   * still hold a button they may not press — Void on a bill they can see — so
+   * the action that writes asks again. The owner always passes.
+   */
+  const requirePerm = useCallback((key: string) => {
+    const d = dbRef.current;
+    if (!d) return;
+    if (!canWith(d.roles, d.session.role, key)) throw new Refusal('Not allowed for your role', refusalFor(key));
   }, []);
 
   commitRef.current = commit;
@@ -384,7 +399,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       commit((d) => { sale = logic.commitSale(d, o); });
       return sale;
     },
-    voidSale: (saleId, reason) => { requireRecordable(); commit((d) => logic.voidSale(d, saleId, reason)); },
+    voidSale: (saleId, reason) => { requireRecordable(); requirePerm('sales.void'); commit((d) => logic.voidSale(d, saleId, reason)); },
     createPurchase: (partyId, lines, method, userId) => {
       requireRecordable();
       let pu!: Purchase;
@@ -392,13 +407,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return pu;
     },
     recordPayment: (o) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('finance.create');
       let pay!: Payment;
       commit((d) => { pay = logic.recordPayment(d, o); });
       return pay;
     },
     recordEntry: (o) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('expenses.create');
       let e!: Entry;
       commit((d) => {
         const when = new Date();
@@ -442,23 +457,27 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
       return e;
     },
-    updateProduct: (id, patch) => commit((d) => {
-      const i = d.products.findIndex((p) => p.id === id);
-      if (i >= 0) d.products[i] = { ...d.products[i], ...patch };
-    }),
+    updateProduct: (id, patch) => {
+      requirePerm('inventory.edit');
+      commit((d) => {
+        const i = d.products.findIndex((p) => p.id === id);
+        if (i >= 0) d.products[i] = { ...d.products[i], ...patch };
+      });
+    },
     adjustStock: (productId, warehouse, count, note, batchNo, userId) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('inventory.stock_adjustment');
       commit((d) => {
         logic.adjustStock(d, productId, warehouse, count, note || 'Stock adjustment', new Date(), batchNo, userId);
       });
     },
     transferStock: (productId, from, to, qty, note) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('inventory.transfer');
       commit((d) => {
         logic.transferStock(d, productId, from, to, qty, note || 'Stock transfer');
       });
     },
     addProduct: (p) => {
+      requirePerm('inventory.create');
       let np!: Product;
       commit((d) => { np = { ...p, id: uid('prd') }; d.products.push(np); });
       return np;
@@ -468,6 +487,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (i >= 0) d.parties[i] = { ...d.parties[i], ...patch };
     }),
     addParty: (p) => {
+      requirePerm(p.type === 'supplier' ? 'purchases.create' : 'customers.create');
       let np!: Party;
       commit((d) => { np = { ...p, id: uid('pty') }; d.parties.push(np); });
       return np;
@@ -560,7 +580,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Credit notes / returns ---
     createCreditNote: (o) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('sales.refund');
       let cn!: CreditNote;
       commit((d) => {
         d.counters.creditNote += 1;
@@ -660,7 +680,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const seen = line.batches!.filter((b) => b.counted != null);
       line.counted = seen.length ? line.batches!.reduce((s, b) => s + (b.counted ?? 0), 0) : null;
     }),
-    postStockTake: (stockTakeId, userId) => { requireRecordable(); commit((d) => logic.postStockTake(d, stockTakeId, new Date(), userId)); },
+    postStockTake: (stockTakeId, userId) => { requireRecordable(); requirePerm('inventory.stock_take'); commit((d) => logic.postStockTake(d, stockTakeId, new Date(), userId)); },
 
     // --- Purchase orders ---
     createPurchaseOrder: (o) => {
@@ -688,7 +708,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Production runs (BOM assembly) ---
     runProduction: (productId, qty) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('inventory.create');
       let run: ProductionRun | null = null;
       commit((d) => { run = logic.runProduction(d, productId, qty); });
       return run;
@@ -846,7 +866,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Audit log ---
     openBranch: (plan) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('branches.manage');
       let out!: import('./logic').BranchOpened;
       commit((d) => { out = logic.openBranch(d, plan); });
       return out;
@@ -895,7 +915,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       audit(d, 'Ledger changed', l.code + ' ' + l.name + (patch.active === false ? ' — deactivated' : ''));
     }),
     postJournal: (o) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('finance.manage_accounts');
       let ok = false;
       commit((d) => {
         const dr = o.lines.reduce((s, l) => s + (l.dr || 0), 0);

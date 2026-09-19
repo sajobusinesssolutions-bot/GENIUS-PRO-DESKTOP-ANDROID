@@ -17,11 +17,14 @@ export interface PermGroup { k: string; n: string; i: IconName; acts: [string, s
 export const PERM_MATRIX: PermGroup[] = [
   { k: 'sales', n: 'Sales', i: 'doc', acts: [
     ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'], ['refund', 'Refund'],
+    ['void', 'Void a bill'], ['discount', 'Give discounts'], ['price_edit', 'Change prices at the till'],
+    ['view_all', "See other staff's bills"],
     ['edit_offline', 'Edit offline'], ['delete_offline', 'Delete offline'], ['toggle_offline', 'Toggle offline'],
   ] },
   { k: 'inventory', n: 'Inventory', i: 'box', acts: [
     ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'],
-    ['stock_adjustment', 'Stock adjustment'], ['view_cost_price', 'View cost price'],
+    ['stock_adjustment', 'Stock adjustment'], ['transfer', 'Move stock between branches'],
+    ['stock_take', 'Count stock'], ['view_cost_price', 'View cost price'],
     ['view_profit', 'View profit'], ['view_selling_price', 'View selling price'],
   ] },
   { k: 'purchases', n: 'Purchases', i: 'box', acts: [
@@ -39,6 +42,11 @@ export const PERM_MATRIX: PermGroup[] = [
   { k: 'tasks', n: 'Tasks', i: 'check', acts: [
     ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'], ['manage', 'Manage'],
   ] },
+  { k: 'shifts', n: 'Till & shifts', i: 'till', acts: [
+    ['open', 'Open a shift'], ['close', 'Close a shift'], ['view_all', "See other staff's shifts"],
+  ] },
+  { k: 'reports', n: 'Reports', i: 'chart', acts: [['view', 'View'], ['money', 'See money reports']] },
+  { k: 'branches', n: 'Branches', i: 'home', acts: [['view', 'View'], ['manage', 'Open and manage']] },
   { k: 'exports', n: 'Exports (PDF & CSV)', i: 'print', acts: [['download', 'Download']] },
   { k: 'profiles', n: 'Profiles', i: 'user', acts: [['view', 'View'], ['manage', 'Manage']] },
   { k: 'settings', n: 'Settings', i: 'cog', acts: [['view', 'View'], ['manage', 'Manage']] },
@@ -69,7 +77,7 @@ export function groupOf(k: string): PermGroup | undefined {
 export const LEGACY_PERM: Record<string, string> = {
   sell: 'sales.create', sales: 'sales.view', discount: 'sales.edit',
   parties: 'customers.view', items: 'inventory.view', purchases: 'purchases.view',
-  money: 'finance.view', reports: 'dashboard.view', accounting: 'finance.manage_accounts',
+  money: 'finance.view', reports: 'reports.view', accounting: 'finance.manage_accounts',
   users: 'profiles.manage', settings: 'settings.manage',
 };
 
@@ -104,7 +112,8 @@ function setOf(list: string[] | true): PermSet {
 export function builtinRoles(): RoleDef[] {
   const manager = allPermKeys().filter((k) => k !== 'profiles.manage' && k !== 'settings.manage');
   const cashier = [
-    'sales.view', 'sales.create', 'sales.edit',
+    'sales.view', 'sales.create', 'sales.discount',
+    'shifts.open', 'shifts.close',
     'inventory.view', 'inventory.view_selling_price',
     'customers.view', 'customers.create', 'customers.edit',
     'tasks.view', 'tasks.create',
@@ -138,7 +147,17 @@ export function ensureRoles(d: { roles?: unknown }): RoleDef[] {
   const roles = anyD.roles as RoleDef[];
   roles.forEach((r) => {
     if (!r.perms) r.perms = {};
-    allPermKeys().forEach((k) => { if (r.perms[k] === undefined) r.perms[k] = false; });
+    const builtin = builtinRoles().find((b) => b.id === r.id);
+    allPermKeys().forEach((k) => {
+      if (r.perms[k] === undefined) r.perms[k] = builtin ? !!builtin.perms[k] : false;
+    });
+    // Once: take editing and deleting raised bills away from the built-in
+    // cashier, which had them. An owner who wants a cashier to edit can say so.
+    if (r.id === 'cashier' && !(r as any).permsReviewed) {
+      r.perms['sales.edit'] = false;
+      r.perms['sales.delete'] = false;
+      (r as any).permsReviewed = true;
+    }
   });
   // the owner can never be stripped — reference `if(r.id==='owner') return true` in can()
   const owner = roles.find((r) => r.id === 'owner');
