@@ -108,7 +108,13 @@ export function useDocBuilder() {
       footer: db?.firm.footer,
       partyName: pt?.name,
       partyPhone: pt?.phone,
-      lines: [{ name: p.note || (p.direction === 'in' ? 'Amount received' : 'Amount paid'), qty: 1, price: p.amount }],
+      // the printed receipt names each invoice it paid, so the customer's copy traces too
+      lines: p.allocations && p.allocations.length
+        ? [
+          ...p.allocations.map((a) => ({ name: (p.direction === 'in' ? 'Invoice ' : 'Bill ') + a.no, qty: 1, price: a.amount })),
+          ...(p.unapplied ? [{ name: 'Advance on account', qty: 1, price: p.unapplied }] : []),
+        ]
+        : [{ name: p.note || (p.direction === 'in' ? 'Amount received' : 'Amount paid'), qty: 1, price: p.amount }],
       subtotal: p.amount,
       total: p.amount,
       paid: p.amount,
