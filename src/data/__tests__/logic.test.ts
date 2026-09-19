@@ -676,3 +676,67 @@ describe('cents', () => {
     expect(logic.cents(100 / 3)).toBe(33.33);
   });
 });
+
+describe('a credit sale with a part-payment', () => {
+  const line = { productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty: 2, price: 200, cost: 100, taxRate: 0 };
+
+  it('stays a credit sale when the part is paid by mobile money', () => {
+    const d = makeDb();
+    const s = logic.commitSale(d, { lines: [line], partyId: 'c1', method: 'credit', discount: 0, received: 150, receivedVia: 'momo' });
+    expect(s.method).toBe('credit');
+    expect(s.due).toBe(250);
+    expect(s.receivedVia).toBe('momo');
+  });
+
+  it('puts the part-payment in the account it was paid into, not the drawer', () => {
+    const d = makeDb();
+    logic.commitSale(d, { lines: [line], partyId: 'c1', method: 'credit', discount: 0, received: 150, receivedVia: 'momo' });
+    const last = d.journal.find((e: any) => e.memo.startsWith('Sale '))!;
+    expect(last.lines.find((l: any) => l.acc === 'acc_momo')?.dr).toBe(150);
+    expect(last.lines.find((l: any) => l.acc === 'acc_cash')).toBeUndefined();
+    expect(last.balanced).toBe(true);
+  });
+
+  it('still treats an unspecified part-payment as cash, as before', () => {
+    const d = makeDb();
+    logic.commitSale(d, { lines: [line], partyId: 'c1', method: 'credit', discount: 0, received: 100 });
+    const last = d.journal.find((e: any) => e.memo.startsWith('Sale '))!;
+    expect(last.lines.find((l: any) => l.acc === 'acc_cash')?.dr).toBe(100);
+  });
+});
+
+describe('selling in a second unit', () => {
+  it('moves only the fraction of a main unit that a piece is', () => {
+    const d = makeDb();
+    const before = d.products.find((p: any) => p.id === 'p_a')!.stock.w1;
+    // four pieces of an item sold in 24-piece cartons
+    logic.commitSale(d, {
+      lines: [{ productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty: 4, price: 20, cost: 10, taxRate: 0, unitFactor: 1 / 24 }],
+      partyId: null, method: 'cash', discount: 0,
+    });
+    const after = d.products.find((p: any) => p.id === 'p_a')!.stock.w1;
+    expect(before - after).toBeCloseTo(4 / 24, 6);
+  });
+
+  it('judges stock in the main unit, so pieces can be sold from one carton', () => {
+    const d = makeDb();
+    d.settings.blockNegativeStock = true;
+    d.settings.allowNegativeStock = false;
+    d.products.find((p: any) => p.id === 'p_a')!.stock.w1 = 1;
+    expect(() => logic.commitSale(d, {
+      lines: [{ productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty: 20, price: 20, cost: 10, taxRate: 0, unitFactor: 1 / 24 }],
+      partyId: null, method: 'cash', discount: 0,
+    })).not.toThrow();
+  });
+
+  it('gives the stock back in the same measure when the sale is voided', () => {
+    const d = makeDb();
+    const before = d.products.find((p: any) => p.id === 'p_a')!.stock.w1;
+    const s = logic.commitSale(d, {
+      lines: [{ productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty: 6, price: 20, cost: 10, taxRate: 0, unitFactor: 1 / 24 }],
+      partyId: null, method: 'cash', discount: 0,
+    });
+    logic.voidSale(d, s.id, 'test');
+    expect(d.products.find((p: any) => p.id === 'p_a')!.stock.w1).toBeCloseTo(before, 6);
+  });
+});

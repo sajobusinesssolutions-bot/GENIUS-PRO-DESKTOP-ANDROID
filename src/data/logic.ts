@@ -116,12 +116,17 @@ export function audit(d: DB, action: string, details = '') {
  * `ref` is the record's id. The sync client finds records by id; queuing a
  * document number instead made every sale and purchase quietly unfindable.
  */
+/** How much of the item's main stock unit a line uses. */
+export function stockQty(l: { qty: number; unitFactor?: number }): number {
+  return l.qty * (l.unitFactor && l.unitFactor > 0 ? l.unitFactor : 1);
+}
+
 export function enqueue(d: DB, kind: string, ref: string) {
   if (d.session.online && !d.sync?.on) return;
   d.queue.push({ id: uid('q'), ts: iso(new Date()), kind, ref });
 }
 
-export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; userId?: string }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
+export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; userId?: string }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
   if (!canWith(ensureRoles(d), d.session.role, 'sales.create')) {
     throw new Error('Permission denied: sales.create');
   }
@@ -153,7 +158,7 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
   // checking each line on its own would let an oversell through.
   const needed = new Map<string, number>();
   o.lines.forEach((l) => {
-    needed.set(l.productId, (needed.get(l.productId) || 0) + l.qty);
+    needed.set(l.productId, (needed.get(l.productId) || 0) + stockQty(l));
   });
   needed.forEach((required, productId) => {
     const prod = d.products.find((p) => p.id === productId);
@@ -179,13 +184,15 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     partyId: o.partyId, userId: o.userId || d.session.userId, till: d.session.till, warehouse: wh,
     lines: taxable, discount: t.discount, redeemed, gross: t.gross, tax: t.tax, total: finalTotal, cogs: t.cost,
     additionalCharges: charges, terms: o.terms, note: o.description,
-    method: o.method, paid: finalPaidNow + redeemed, paidAtSale: finalPaidNow + redeemed, due: finalTotal - finalPaidNow - redeemed,
+    method: o.method,
+    ...(o.method === 'credit' && finalPaidNow > 0 ? { receivedVia: o.receivedVia || 'cash' } : {}),
+    paid: finalPaidNow + redeemed, paidAtSale: finalPaidNow + redeemed, due: finalTotal - finalPaidNow - redeemed,
     ...(useSplitTender && { methods: o.methods }),
     status: 'complete', synced: d.session.online, fiscal: d.settings.efris ? (d.session.online ? 'sent' : 'pending') : 'off',
     fdn: d.settings.efris && d.session.online ? String(9000000000 + Math.floor(Math.random() * 8999999)) : null,
   };
   d.sales.push(sale);
-  sale.lines.forEach((l) => move(d, l.productId, wh, -l.qty, 'sale', sale.no, when, l.batchNo));
+  sale.lines.forEach((l) => move(d, l.productId, wh, -stockQty(l), 'sale', sale.no, when, l.batchNo));
   const jl: JournalLine[] = [];
   if (useSplitTender && o.methods) {
     o.methods.forEach((m) => {
@@ -193,8 +200,11 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
       if (m.amount > 0 && acc) jl.push({ acc, dr: m.amount });
     });
   } else {
-    // A credit sale can still take money over the counter; that part lands in cash.
-    const acc = o.method === 'cash' ? 'acc_cash' : o.method === 'momo' ? 'acc_momo' : o.method === 'bank' ? 'acc_bank' : 'acc_cash';
+    // A credit sale can still take money over the counter. It lands in whichever
+    // account it was actually received into — a part-payment by mobile money is
+    // not cash in the drawer — and the sale itself stays a credit sale.
+    const via = o.method === 'credit' ? (o.receivedVia || 'cash') : o.method;
+    const acc = via === 'momo' ? 'acc_momo' : via === 'bank' ? 'acc_bank' : 'acc_cash';
     if (finalPaidNow > 0) jl.push({ acc, dr: finalPaidNow });
   }
   if (redeemed > 0) jl.push({ acc: 'n_loyalty', dr: redeemed });
@@ -232,7 +242,7 @@ export function voidSale(d: DB, saleId: string, reason?: string, when = new Date
   const s = d.sales.find((x) => x.id === saleId);
   if (!s || s.status === 'void') return;
   s.status = 'void'; s.voidedAt = iso(when); s.voidReason = reason || '';
-  s.lines.forEach((l) => move(d, l.productId, s.warehouse, l.qty, 'void', s.no, when, l.batchNo));
+  s.lines.forEach((l) => move(d, l.productId, s.warehouse, stockQty(l), 'void', s.no, when, l.batchNo));
   const jl: JournalLine[] = [];
   const paidNow = s.paid - (s.redeemed || 0);
   if (s.methods && s.methods.length > 1) {

@@ -435,7 +435,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           options={[{ v: '', l: '— none —' }].concat(units.map((u) => ({ v: u, l: u })))}
           onChange={setSecondaryUnit}
         />
-        <Field label={'How many in one ' + (unit || 'unit')} value={conversionRate} onChangeText={setConversionRate} numeric placeholder="Months, if any" />
+        <Field label={'How many in one ' + (unit || 'unit')} value={conversionRate} onChangeText={setConversionRate} numeric placeholder="A number, such as 24" />
       </Grid>
       {secondaryUnit && num(conversionRate) > 0 ? (
         <>

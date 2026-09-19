@@ -91,6 +91,13 @@ export interface SaleLine {
   productId: string; name: string; sku: string; unit: string;
   qty: number; price: number; cost: number; taxRate: number;
   batchNo?: string; serialNo?: string;
+  /**
+   * Stock units used by one of this line's unit. 1 for the item's main unit;
+   * 1/24 for a piece of a 24-piece carton. Stock is always counted in the main
+   * unit, so a line sold in the second unit moves this fraction per piece.
+   * Price and cost on the line are already per the line's own unit.
+   */
+  unitFactor?: number;
   /** List price before the line discount; `price` always holds the net price charged. */
   listPrice?: number; discountPct?: number;
 }
@@ -101,6 +108,8 @@ export interface Sale {
   discount: number; redeemed: number; gross: number; tax: number; total: number; cogs: number;
   additionalCharges?: number; terms?: string;
   method: PayMethod; paid: number; paidAtSale: number; due: number;
+  /** On a credit sale, how the part taken at the counter was paid. */
+  receivedVia?: 'cash' | 'momo' | 'bank';
   /** Split tender: multiple payment methods in one sale. If present, overrides method. */
   methods?: PaymentAllocation[];
   status: 'complete' | 'void'; voidedAt?: string; voidReason?: string;

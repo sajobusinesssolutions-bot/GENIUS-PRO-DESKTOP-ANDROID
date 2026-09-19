@@ -27,6 +27,8 @@ export default function NewSaleScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { db, money, stockOf, commitSale, addParty } = useAppData();
+  /** Owner and manager are trusted with prices and discounts; everyone else follows Settings. */
+  const trusted = db?.session.role === 'owner' || db?.session.role === 'manager';
   const { success, error } = useToast();
   const who = useWho('Who served this sale?');
 
@@ -41,6 +43,7 @@ export default function NewSaleScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   /** What the customer actually hands over on a credit sale. */
   const [received, setReceived] = useState(0);
+  const [receivedVia, setReceivedVia] = useState<'cash' | 'momo' | 'bank'>('cash');
 
   const defaultInvoiceNo = 'INV-' + String(100000 + (db?.counters?.sale || 0) + 1).slice(1);
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -151,6 +154,7 @@ export default function NewSaleScreen({ navigation }: Props) {
         lines: cart, partyId, method, discount, additionalCharges, description, terms,
         methods: splitMethods, no: invoiceNo.trim() || undefined, ts: invoiceAt.toISOString(),
         received: method === 'credit' ? received : undefined,
+        receivedVia: method === 'credit' ? receivedVia : undefined,
         userId,
       });
       success(sale.no + ' saved by ' + userName);
@@ -164,6 +168,7 @@ export default function NewSaleScreen({ navigation }: Props) {
       setInvoiceNo('');
       setInvoiceAt(new Date());
       setReceived(0);
+      setReceivedVia('cash');
       setCheckoutVisible(false);
       navigation.replace('Receipt', { saleId: sale.id });
     } catch (e: any) {
@@ -405,6 +410,10 @@ export default function NewSaleScreen({ navigation }: Props) {
         line={editLine}
         maxStock={editLine ? stockForLine(editLine) : 0}
         money={money}
+        product={editLine ? db?.products.find((x) => x.id === editLine.productId) : null}
+        // The owner and managers are never limited; cashiers follow Settings.
+        canEditPrice={trusted || db?.settings.allowPriceEdit !== false}
+        maxDiscountPct={trusted ? 100 : Number(db?.settings.maxDiscountPct ?? 100)}
         onSave={(patch) => {
           setCart((prev) => prev.map((l, i) => i === editIndex ? { ...l, ...patch } : l));
           setEditIndex(null);
@@ -521,6 +530,8 @@ export default function NewSaleScreen({ navigation }: Props) {
           parties={customers}
           received={received}
           onReceivedChange={setReceived}
+          receivedVia={receivedVia}
+          onReceivedViaChange={setReceivedVia}
           onCheckout={checkout}
           loading={loading}
           canCheckout={cart.length > 0 && (method !== 'credit' || !!partyId)}

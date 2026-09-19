@@ -4,38 +4,86 @@ import { useTheme, fonts } from '../theme';
 import { Button } from './ui';
 import { Icon } from './icons';
 import Sheet from './Sheet';
-import type { SaleLine } from '../data/types';
+import type { SaleLine, Product } from '../data/types';
 
-export default function LineEditSheet({ visible, line, maxStock, money, onSave, onRemove, onClose }: {
+/** One unit an item can be sold in, with what it costs and how much stock it uses. */
+export interface UnitChoice { unit: string; factor: number; price: number; cost: number }
+
+/**
+ * The units a product can be sold in: its main one, and a second where it has
+ * one. The second unit's price is the one set on the item; failing that, the
+ * main price divided down, so a piece never sells for the price of a carton.
+ */
+export function unitsFor(p?: Product | null): UnitChoice[] {
+  if (!p) return [];
+  const out: UnitChoice[] = [{ unit: p.unit, factor: 1, price: p.price, cost: p.cost }];
+  const rate = Number(p.conversionRate) || 0;
+  if (p.secondaryUnit && rate > 0) {
+    out.push({
+      unit: p.secondaryUnit,
+      factor: 1 / rate,
+      price: Number(p.secondaryPrice) > 0 ? Number(p.secondaryPrice) : p.price / rate,
+      cost: p.cost / rate,
+    });
+  }
+  return out;
+}
+
+export default function LineEditSheet({
+  visible, line, maxStock, money, onSave, onRemove, onClose, product, canEditPrice = true, maxDiscountPct = 100,
+}: {
   visible: boolean;
   line: SaleLine | null;
+  /** In the item's main stock unit. */
   maxStock: number;
   money: (n: number) => string;
-  onSave: (patch: { qty: number; price: number; discountPct: number; listPrice: number }) => void;
+  onSave: (patch: {
+    qty: number; price: number; discountPct: number; listPrice: number;
+    unit: string; unitFactor: number; cost: number;
+  }) => void;
   onRemove: () => void;
   onClose: () => void;
+  /** The product, so its second unit can be offered. */
+  product?: Product | null;
+  /** Settings: "Let staff change the price at the till". */
+  canEditPrice?: boolean;
+  /** Settings: "Biggest discount a cashier may give". */
+  maxDiscountPct?: number;
 }) {
   const { colors } = useTheme();
   const [qty, setQty] = useState('1');
   const [listPrice, setListPrice] = useState('0');
   const [discountPct, setDiscountPct] = useState('0');
+  const [unit, setUnit] = useState('');
 
   useEffect(() => {
     if (visible && line) {
       setQty(String(line.qty));
       setListPrice(String(line.listPrice ?? line.price));
       setDiscountPct(String(line.discountPct ?? 0));
+      setUnit(line.unit);
     }
   }, [visible, line]);
 
   if (!line) return null;
 
+  const units = unitsFor(product);
+  const chosen = units.find((u) => u.unit === unit) || { unit: line.unit, factor: line.unitFactor || 1, price: line.price, cost: line.cost };
+
   const qtyNum = Math.max(0, Number(qty) || 0);
   const listNum = Math.max(0, Number(listPrice) || 0);
-  const discNum = Math.min(100, Math.max(0, Number(discountPct) || 0));
+  const discRaw = Math.min(100, Math.max(0, Number(discountPct) || 0));
+  const discNum = Math.min(discRaw, maxDiscountPct);
   const netPrice = listNum * (1 - discNum / 100);
   const lineTotal = qtyNum * netPrice;
-  const overStock = qtyNum > maxStock;
+  // stock is counted in the main unit, so what is available is shown in the chosen one
+  const availableHere = chosen.factor > 0 ? maxStock / chosen.factor : maxStock;
+  const overStock = qtyNum * chosen.factor > maxStock + 1e-9;
+
+  function pickUnit(u: UnitChoice) {
+    setUnit(u.unit);
+    setListPrice(String(Math.round(u.price * 100) / 100));
+  }
 
   function step(by: number) {
     setQty(String(Math.max(0, qtyNum + by)));
@@ -56,7 +104,10 @@ export default function LineEditSheet({ visible, line, maxStock, money, onSave, 
               label={'Save · ' + money(lineTotal)}
               variant="pri"
               disabled={qtyNum <= 0 || overStock}
-              onPress={() => onSave({ qty: qtyNum, price: netPrice, discountPct: discNum, listPrice: listNum })}
+              onPress={() => onSave({
+                qty: qtyNum, price: netPrice, discountPct: discNum, listPrice: listNum,
+                unit: chosen.unit, unitFactor: chosen.factor, cost: chosen.cost,
+              })}
             />
           </View>
         </View>
@@ -66,9 +117,34 @@ export default function LineEditSheet({ visible, line, maxStock, money, onSave, 
         <View>
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>{line.name}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
-            {line.sku}{line.batchNo ? ' · Batch ' + line.batchNo : ''} · {maxStock} {line.unit} available
+            {line.sku}{line.batchNo ? ' · Batch ' + line.batchNo : ''} · {Math.floor(availableHere * 100) / 100} {chosen.unit} available
           </Text>
         </View>
+
+        {units.length > 1 ? (
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, letterSpacing: 0.3 }}>SELL BY</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {units.map((u) => {
+                const on = u.unit === chosen.unit;
+                return (
+                  <Pressable
+                    key={u.unit}
+                    onPress={() => pickUnit(u)}
+                    style={{
+                      flex: 1, paddingVertical: 11, borderRadius: 12, borderWidth: 1.4, alignItems: 'center',
+                      borderColor: on ? colors.accent : colors.line,
+                      backgroundColor: on ? colors.accentSoft : colors.surface,
+                    }}
+                  >
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accent : colors.ink }}>{u.unit}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{money(u.price)}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
 
         <View style={{ gap: 6 }}>
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, letterSpacing: 0.3 }}>QUANTITY</Text>
@@ -87,7 +163,7 @@ export default function LineEditSheet({ visible, line, maxStock, money, onSave, 
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 22, color: colors.ink }}>+</Text>
             </Pressable>
           </View>
-          {overStock ? <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.danger }}>Only {maxStock} {line.unit} in stock.</Text> : null}
+          {overStock ? <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.danger }}>Only {Math.floor(availableHere * 100) / 100} {chosen.unit} in stock.</Text> : null}
         </View>
 
         <View style={{ flexDirection: 'row', gap: 12 }}>
@@ -96,6 +172,7 @@ export default function LineEditSheet({ visible, line, maxStock, money, onSave, 
             <TextInput
               value={listPrice}
               onChangeText={setListPrice}
+              editable={canEditPrice}
               keyboardType="numeric"
               selectTextOnFocus
               style={{ height: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, paddingHorizontal: 12, color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 15 }}
@@ -106,12 +183,24 @@ export default function LineEditSheet({ visible, line, maxStock, money, onSave, 
             <TextInput
               value={discountPct}
               onChangeText={setDiscountPct}
+              editable={maxDiscountPct > 0}
               keyboardType="numeric"
               selectTextOnFocus
               style={{ height: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, paddingHorizontal: 12, color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 15 }}
             />
           </View>
         </View>
+
+        {!canEditPrice ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>
+            The price is fixed here. Changing it at the till is switched off in Settings.
+          </Text>
+        ) : null}
+        {discRaw > maxDiscountPct ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.danger }}>
+            The most you can give is {maxDiscountPct}%, so {maxDiscountPct}% is applied.
+          </Text>
+        ) : null}
 
         <View style={{ backgroundColor: colors.sunk, borderRadius: 14, padding: 14, gap: 8 }}>
           <Row label={'Net price × ' + qtyNum} value={money(netPrice)} colors={colors} />

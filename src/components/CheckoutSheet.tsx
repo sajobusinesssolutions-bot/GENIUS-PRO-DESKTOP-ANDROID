@@ -29,13 +29,16 @@ export interface CheckoutSheetProps {
   /** Part payment taken against a credit sale. */
   received?: number;
   onReceivedChange?: (n: number) => void;
+  /** How the part taken against a credit sale was paid. */
+  receivedVia?: 'cash' | 'momo' | 'bank';
+  onReceivedViaChange?: (m: 'cash' | 'momo' | 'bank') => void;
 }
 
 export default function CheckoutSheet({
   total, money, method, onMethodChange, methods, onMethodsChange, discount, onDiscountChange,
   additionalCharges, onAdditionalChargesChange, description, onDescriptionChange, terms, onTermsChange,
   partyId, onPartyChange, parties, onCheckout, loading, canCheckout,
-  received = 0, onReceivedChange,
+  received = 0, onReceivedChange, receivedVia = 'cash', onReceivedViaChange,
 }: CheckoutSheetProps) {
   const { colors } = useTheme();
   const [discountText, setDiscountText] = useState(String(discount));
@@ -109,6 +112,36 @@ export default function CheckoutSheet({
         />
       </View>
 
+      {/*
+        Two separate questions. Is this bill paid now, or does it go on the
+        customer's account? And, for whatever money changes hands, how was it
+        paid? Credit used to be the fourth payment method, so choosing mobile
+        money for a part-payment silently turned a credit sale into a paid one.
+      */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+        {[
+          { v: 'now', l: 'Paid now', i: 'cash' as const },
+          { v: 'credit', l: 'On credit', i: 'clock' as const },
+        ].map((o) => {
+          const on = o.v === 'credit' ? method === 'credit' : method !== 'credit';
+          return (
+            <Pressable
+              key={o.v}
+              onPress={() => onMethodChange(o.v === 'credit' ? 'credit' : (method === 'credit' ? 'cash' : method))}
+              style={{
+                flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+                height: 48, borderRadius: 12, borderWidth: 1.4,
+                borderColor: on ? colors.accent : colors.line,
+                backgroundColor: on ? colors.accent : colors.surface,
+              }}
+            >
+              <Icon name={o.i} size={16} color={on ? colors.accentInk : colors.soft} />
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accentInk : colors.soft }}>{o.l}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       {/* part payment against a credit sale */}
       {method === 'credit' && onReceivedChange ? (
         <View>
@@ -154,6 +187,30 @@ export default function CheckoutSheet({
               last
             />
           </Panel>
+          {received > 0 && onReceivedViaChange ? (
+            <View style={{ marginTop: 14 }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint, marginBottom: 8 }}>
+                The {money(received)} was paid by
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {(['cash', 'momo', 'bank'] as const).map((m) => (
+                  <Pressable
+                    key={m}
+                    onPress={() => onReceivedViaChange(m)}
+                    style={{
+                      flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 12, borderWidth: 1.4,
+                      borderColor: receivedVia === m ? colors.accent : colors.line,
+                      backgroundColor: receivedVia === m ? colors.accentSoft : colors.surface,
+                    }}
+                  >
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: receivedVia === m ? colors.accent : colors.soft }}>
+                      {m === 'momo' ? 'Mobile money' : m === 'bank' ? 'Bank' : 'Cash'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
           {netTotal - received > 0 ? (
             <View style={{ marginTop: 12 }}>
               <InfoBanner
@@ -165,7 +222,7 @@ export default function CheckoutSheet({
         </View>
       ) : null}
 
-      {!splitMode ? (
+      {method === 'credit' ? null : !splitMode ? (
         <View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint }}>Payment method</Text>
@@ -174,7 +231,7 @@ export default function CheckoutSheet({
             </Pressable>
           </View>
           <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' }}>
-            {(['cash', 'momo', 'bank', 'credit'] as PayMethod[]).map((m) => (
+            {(['cash', 'momo', 'bank'] as PayMethod[]).map((m) => (
               <Pressable
                 key={m}
                 onPress={() => onMethodChange(m)}
