@@ -151,7 +151,7 @@ export function requestSignUpCode(email: string, name: string) {
  * somebody has chosen a password and only then been sent back three screens.
  * The code is still consumed later, by register or reset.
  */
-export function verifyCode(email: string, code: string, purpose: 'signup' | 'reset' = 'signup') {
+export function verifyCode(email: string, code: string, purpose: 'signup' | 'reset' | 'pin' = 'signup') {
   return request<{ ok: true }>('/v1/auth/otp/verify', { email, code, purpose });
 }
 
@@ -169,6 +169,16 @@ export function signIn(email: string, password: string) {
 /** Sends a code to sign in with, for someone who has forgotten the password. */
 export function requestResetCode(email: string) {
   return request<{ sent: true }>('/v1/auth/otp/request', { email, purpose: 'reset' });
+}
+
+/** Emails the owner a code for resetting the owner PIN. */
+export function requestPinCode(email: string) {
+  return request<{ sent: true }>('/v1/auth/otp/request', { email, purpose: 'pin' });
+}
+
+/** Spends that code. On success the app lets the owner choose a new PIN. */
+export function confirmPinCode(email: string, code: string) {
+  return request<{ ok: true }>('/v1/auth/pin/reset', { email, code });
 }
 
 export function resetPassword(email: string, code: string, password: string) {
