@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppDataProvider } from './src/data/AppDataContext';
 import { AuthProvider } from './src/data/AuthContext';
 import LicenceKeeper from './src/data/LicenceKeeper';
+import SyncKeeper from './src/data/SyncKeeper';
 import { installRefusalHandler } from './src/data/refusal';
 
 // a refusal nothing caught is shown to the person rather than crashing the app
@@ -35,6 +36,7 @@ export default function App() {
         <AppDataProvider>
           <ToastProvider>
             <LicenceKeeper />
+            <SyncKeeper />
             <RootNavigator />
             <StatusBar style="auto" />
           </ToastProvider>

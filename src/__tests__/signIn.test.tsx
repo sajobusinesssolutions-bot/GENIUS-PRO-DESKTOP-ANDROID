@@ -87,15 +87,16 @@ describe('a successful sign-in', () => {
     await waitFor(() => expect(mockGoReset).toHaveBeenCalled());
   });
 
-  it('goes to the PIN screen when the shop is already set up', async () => {
+  // business first, then the person, then the PIN
+  it('goes to the list of businesses on the account', async () => {
     signIn();
-    await waitFor(() => expect(mockGoReset).toHaveBeenCalledWith('PinLock'));
+    await waitFor(() => expect(mockGoReset).toHaveBeenCalledWith('Businesses'));
   });
 
-  it('goes to setup when the shop has not been set up', async () => {
+  it('goes to the list even when the shop has not been set up — it may be on the account', async () => {
     mockState.onboarded = false;
     signIn();
-    await waitFor(() => expect(mockGoReset).toHaveBeenCalledWith('Onboarding'));
+    await waitFor(() => expect(mockGoReset).toHaveBeenCalledWith('Businesses'));
   });
 
   it('claims the books for whoever signed in', async () => {
@@ -103,10 +104,10 @@ describe('a successful sign-in', () => {
     await waitFor(() => expect(mockClaim).toHaveBeenCalledWith('owner@example.com'));
   });
 
-  it('says so when the books belonged to somebody else, and goes to setup', async () => {
+  it('says so when the books belonged to somebody else, and goes to the list', async () => {
     mockState.replaced = true;
     signIn();
-    await waitFor(() => expect(mockGoReset).toHaveBeenCalledWith('Onboarding'));
+    await waitFor(() => expect(mockGoReset).toHaveBeenCalledWith('Businesses'));
     expect(mockSuccess.mock.calls[0][0]).toMatch(/starting fresh books/);
   });
 });

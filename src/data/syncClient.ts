@@ -89,7 +89,12 @@ export async function ensureWiring(d: DB, access: string): Promise<Result<Wiring
   );
   if (!biz.ok) return biz;
 
-  let businessId = biz.value.businesses?.[0]?.id;
+  const list = biz.value.businesses || [];
+  // a business chosen from the list (see BusinessesScreen) is kept; otherwise
+  // the one these books were first sent as, matched by the shop's own id
+  let businessId = (d.sync?.businessId && list.find((b) => b.id === d.sync.businessId)?.id)
+    || list.find((b) => b.local_id === d.firm.id)?.id
+    || (list.length === 1 && !list[0].local_id ? list[0].id : undefined);
   if (!businessId) {
     const made = await call<{ id: string }>('/v1/businesses', access, {
       name: d.firm.name, tin: d.firm.tin, localId: d.firm.id,
@@ -109,6 +114,38 @@ export async function ensureWiring(d: DB, access: string): Promise<Result<Wiring
 }
 
 /* ---------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------- */
+
+export interface RemoteBusiness {
+  id: string;
+  name: string;
+  tin: string | null;
+  created_at: string;
+  snapshot_at: string | null;
+  snapshot_bytes: number | null;
+}
+
+/** The businesses on this account, as the server knows them. */
+export async function listBusinesses(access: string): Promise<Result<RemoteBusiness[]>> {
+  const r = await call<{ businesses: RemoteBusiness[] }>('/v1/businesses', access, undefined, 'GET');
+  return r.ok ? { ok: true, value: r.value.businesses || [] } : r;
+}
+
+/**
+ * Sends a whole copy of the books, so this business can be opened on another
+ * phone. The queue is left out — it is this phone's unsent work, not the books.
+ */
+export async function uploadSnapshot(d: DB, access: string, wiring: Wiring): Promise<Result<{ bytes: number }>> {
+  const data = { ...d, sync: { ...d.sync, pending: [], log: [] } };
+  return call<{ bytes: number }>('/v1/businesses/' + wiring.businessId + '/snapshot', access,
+    { data, device: wiring.deviceId }, 'PUT');
+}
+
+/** The last copy of a business's books that any phone sent up. */
+export async function downloadSnapshot(access: string, businessId: string): Promise<Result<{ data: DB; updatedAt: string }>> {
+  return call<{ data: DB; updatedAt: string }>('/v1/businesses/' + businessId + '/snapshot', access, undefined, 'GET');
+}
 
 /** What kind of operation a queued record becomes. */
 const KIND_OF: Record<string, OpKind> = {

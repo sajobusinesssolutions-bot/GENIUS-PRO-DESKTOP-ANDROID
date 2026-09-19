@@ -19,6 +19,7 @@
 import { useCallback } from 'react';
 import { useAppData } from '../data/AppDataContext';
 import { useGoReset } from './navigate';
+import { serverConfigured } from '../data/authApi';
 
 export function useAfterSignIn() {
   const { db, claimBooksFor } = useAppData();
@@ -28,6 +29,10 @@ export function useAfterSignIn() {
     const replacedBooks = claimBooksFor(email);
     // `replacedBooks` means the books were wiped for a different owner, so the
     // shop is unset by definition and setup is where they belong.
+    // With an account server, the owner picks which business first — it may
+    // be one this phone has never held. The picker itself goes on to setup
+    // when the account has no business at all.
+    if (serverConfigured()) { goReset('Businesses'); return { replacedBooks }; }
     const needsSetup = replacedBooks || !db?.onboarded;
     goReset(needsSetup ? 'Onboarding' : 'PinLock');
     return { replacedBooks };

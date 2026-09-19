@@ -26,7 +26,8 @@ import { Icon, IconName } from '../components/icons';
 import { useGo } from '../nav/navigate';
 import { plural, fmtDate } from '../data/helpers';
 import * as api from '../data/authApi';
-import { ensureWiring, pushQueue, serverState } from '../data/syncClient';
+import { serverState } from '../data/syncClient';
+import { useSyncRun } from '../data/useSyncRun';
 
 /* ---------------------------------------------------------------- */
 
@@ -87,6 +88,7 @@ export default function SyncScreen() {
   const { db, setSync, logAudit, dropQueued } = useAppData();
   const { account } = useAuth();
   const { success, error } = useToast();
+  const { run: runSync } = useSyncRun();
 
   const [busy, setBusy] = useState(false);
   const [access, setAccess] = useState<string | null>(null);
@@ -145,53 +147,16 @@ export default function SyncScreen() {
   /* ------------------------------------------------------------ */
 
   async function sendNow() {
-    const s = db!.sync;
-    if (!s.on) { error('Turn sync on first.'); return; }
-    if (!account) { error('Sign in to your account first.'); return; }
-    if (!online) { error('This phone has no internet right now.'); return; }
-
     setBusy(true);
     try {
+      const r = await runSync('manual');
+      if (!r.ok) { error(r.message); return; }
       const token = access || await getAccess();
-      if (!token) { error('Your session has expired. Sign out and in again.'); return; }
-
-      const wiring = await ensureWiring(db!, token);
-      if (!wiring.ok) { error(wiring.error.message); return; }
-      setSync({ businessId: wiring.value.businessId, deviceId: wiring.value.deviceId });
-
-      const r = await pushQueue(db!, token, wiring.value);
-      if (!r.ok) { error(r.error.message); return; }
-
-      const done = new Set(r.value.done);
-      setSync({
-        lastPush: new Date().toISOString(),
-        lastAt: new Date().toISOString(),
-        cursor: r.value.seq,
-        lamport: (s.lamport || 0) + r.value.sent,
-        pending: [],
-        log: [
-          ...(s.log || []).slice(-49),
-          {
-            id: 'sy_' + Date.now(), ts: new Date().toISOString(), how: 'manual',
-            up: r.value.sent, down: 0,
-            by: db!.users.find((u) => u.id === db!.session.userId)?.name || '',
-            ok: true,
-            note: r.value.sent
-              ? plural(r.value.sent, 'change') + ' sent up'
-              : 'Nothing was waiting',
-          },
-        ],
-      });
-      // only what the server confirmed is dropped from the queue
-      dropQueued([...done]);
-
-      const st = await serverState(token);
-      if (st.ok) { setServer(st.value); setSync({ serverOps: st.value.ops }); }
-
-      logAudit('Cloud sync', plural(r.value.sent, 'change') + ' sent up');
-      success(r.value.sent
-        ? plural(r.value.sent, 'change') + ' sent to your account'
-        : 'Nothing was waiting — everything is already up');
+      if (token) {
+        const st = await serverState(token);
+        if (st.ok) { setServer(st.value); setSync({ serverOps: st.value.ops }); }
+      }
+      success(r.message);
     } finally {
       setBusy(false);
     }

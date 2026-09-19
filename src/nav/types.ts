@@ -4,6 +4,7 @@ export type RootStackParamList = {
   Welcome: undefined;
   PinLock: { userId?: string } | undefined;
   Onboarding: undefined;
+  Businesses: undefined;
   Main: { screen?: keyof TabParamList } | undefined;
 
   MenuGroup: { groupId: string };
