@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Button, Panel, ActionGrid, StickyBar, SectionLabel } from '../components/ui';
 import { Icon } from '../components/icons';
 import { DocActions, useDocBuilder } from '../components/DocActions';
+import { printDoc } from '../data/docPrint';
+import { printOptsFor, docKindOf } from '../data/printSetup';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
@@ -15,6 +17,17 @@ export default function ReceiptScreen({ route, navigation }: Props) {
   const { db, money, party, product } = useAppData();
   const { saleDoc } = useDocBuilder();
   const sale = db?.sales.find((s) => s.id === route.params.saleId);
+
+  // Settings, Printing → "Print automatically after a sale". Saved, and never
+  // acted on; now the receipt goes to the default printer as this screen opens.
+  const printed = useRef(false);
+  useEffect(() => {
+    if (printed.current || !sale || !db?.printer?.autoPrint) return;
+    printed.current = true;
+    const d = saleDoc(sale);
+    printDoc(d, money, printOptsFor(db, d.docKind || docKindOf(d.kind))).catch(() => { /* the buttons are still there */ });
+  }, [sale?.id]);
+
   if (!sale) return null;
   const pt = sale.partyId ? party(sale.partyId) : null;
 
