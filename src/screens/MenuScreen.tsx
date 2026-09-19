@@ -43,6 +43,7 @@ export default function MenuScreen() {
   const [q, setQ] = useState('');
 
   const role = db?.session.role;
+  const isOwner = role === 'owner';
 
   const groups = useMemo(() => MENU_GROUPS.filter((g) => {
     if (g.perm && !canFor(role, g.perm)) return false;
@@ -92,8 +93,15 @@ export default function MenuScreen() {
 
             <View style={{ height: 1, backgroundColor: colors.line }} />
 
+            {/*
+              Only the owner can open the branch panel, so only the owner is
+              offered it. Everyone else sees which branch they are working in —
+              which changes what every other screen says, and is worth knowing —
+              as a plain line rather than a button onto a locked door.
+            */}
             <Pressable
-              onPress={() => go('Branches')}
+              onPress={isOwner ? () => go('Branches') : undefined}
+              disabled={!isOwner}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 12, paddingHorizontal: 15 }}
             >
               <View style={{
@@ -107,11 +115,11 @@ export default function MenuScreen() {
                   {branch?.name || 'No branch chosen'}
                 </Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
-                  Working branch · own stock and own books
+                  {isOwner ? 'Working branch · own stock and own books' : 'The branch you are working in'}
                 </Text>
               </View>
               <Badge tone={online ? 'good' : 'warn'} label={online ? 'Online' : db.queue.length + ' queued'} />
-              <Icon name="chev" size={14} color={colors.faint} />
+              {isOwner ? <Icon name="chev" size={14} color={colors.faint} /> : null}
             </Pressable>
           </Card>
         </View>

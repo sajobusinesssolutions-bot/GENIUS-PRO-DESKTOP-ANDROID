@@ -24,6 +24,14 @@ export interface DocMeta {
   firmName: string;
   firmAddress?: string;
   firmTin?: string;
+  firmPhone?: string;
+  firmEmail?: string;
+  /** One line under the shop name saying what the business does. */
+  firmDescription?: string;
+  /** A local file URI. Printed at the top; simply absent when there is none. */
+  logo?: string;
+  /** A local file URI, printed above the signature line. */
+  signature?: string;
   partyName?: string;
   partyPhone?: string;
   partyAddress?: string;
@@ -99,9 +107,21 @@ export function docHtml(d: DocMeta, money: (n: number) => string): string {
   .meta { font-size: 11px; color: #444; }
   .meta div { display: flex; justify-content: space-between; padding: 2px 0; }
   .foot { text-align: center; color: #666; font-size: 10.5px; margin-top: 14px; }
+  /* Receipt printers are 80mm and monochrome, so the logo is capped narrow and
+     left to scale by height — a wide one would otherwise run off the paper. */
+  .logo { text-align: center; margin-bottom: 6px; }
+  .logo img { max-width: 58mm; max-height: 22mm; }
+  .sign { margin-top: 18px; text-align: right; }
+  .sign img { max-width: 44mm; max-height: 16mm; }
+  .signline { border-top: 1px solid #999; width: 46mm; margin-left: auto; margin-top: 2px; padding-top: 3px;
+              text-align: center; color: #666; font-size: 10px; }
 </style></head><body><div class="doc">
+  ${d.logo ? `<div class="logo"><img src="${esc(d.logo)}" /></div>` : ''}
   <h1>${esc(d.firmName)}</h1>
+  ${d.firmDescription ? `<div class="muted">${esc(d.firmDescription)}</div>` : ''}
   ${d.firmAddress ? `<div class="muted">${esc(d.firmAddress)}</div>` : ''}
+  ${d.firmPhone ? `<div class="muted">${esc(d.firmPhone)}</div>` : ''}
+  ${d.firmEmail ? `<div class="muted">${esc(d.firmEmail)}</div>` : ''}
   ${d.firmTin ? `<div class="muted">TIN ${esc(d.firmTin)}</div>` : ''}
 
   <div class="kind">${esc(d.kind)}</div>
@@ -124,6 +144,7 @@ export function docHtml(d: DocMeta, money: (n: number) => string): string {
 
   ${d.note ? `<div class="foot">Note: ${esc(d.note)}</div>` : ''}
   ${d.terms ? `<div class="foot">Terms: ${esc(d.terms)}</div>` : ''}
+  ${d.signature ? `<div class="sign"><img src="${esc(d.signature)}" /><div class="signline">Authorised signature</div></div>` : ''}
   <div class="foot">${esc(d.footer || 'Thank you for your business')}</div>
 </div></body></html>`;
 }

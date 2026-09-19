@@ -197,6 +197,11 @@ export function redeemGoogleTicket(ticket: string) {
   return request<Session>('/v1/auth/google/redeem', { ticket });
 }
 
+/** Trades the stored refresh token for a fresh fifteen-minute access token. */
+export function refreshSession(refresh: string) {
+  return request<{ access: string }>('/v1/auth/refresh', { refresh });
+}
+
 /** Claims a device seat. Refused with `seatsFull` when the licence has none left. */
 export function registerDevice(access: string, o: { name: string; kind: string; platform: string }) {
   return request<{ deviceId: string; token: string }>('/v1/devices', o, access);

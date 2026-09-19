@@ -11,7 +11,7 @@ import { View, FlatList, Pressable, Text } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
-  Empty, Badge, StatGrid, Search, FilterChips, SectionLabel, FAB, TopTabs,
+  Empty, Badge, StatGrid, Search, FilterChips, SectionLabel, FAB, SegTabs,
 } from '../components/ui';
 import { AppBar, IconBtn } from '../components/AppBar';
 import { Icon, IconName } from '../components/icons';
@@ -179,7 +179,8 @@ export default function SalesListScreen({ navigation }: Props) {
         right={<IconBtn name="plus" size={22} color={colors.accent} onPress={() => navigation.navigate('NewSale')} />}
       />
 
-      <TopTabs
+      {/* one row, two equal buttons — TopTabs sized each to its own label */}
+      <SegTabs
         value={tab}
         onChange={setTab}
         options={[

@@ -105,8 +105,19 @@ export function audit(d: DB, action: string, details = '') {
   if (d.auditLog.length > AUDIT_KEEP) d.auditLog.length = AUDIT_KEEP;
 }
 
+/**
+ * Notes a record that has to go up to the account.
+ *
+ * With sync on, everything is queued whether or not the phone is online —
+ * the queue is what the sync client sends, so skipping it while connected
+ * meant a connected phone never sent anything new. With sync off, only work
+ * done offline is kept, as before.
+ *
+ * `ref` is the record's id. The sync client finds records by id; queuing a
+ * document number instead made every sale and purchase quietly unfindable.
+ */
 export function enqueue(d: DB, kind: string, ref: string) {
-  if (d.session.online) return;
+  if (d.session.online && !d.sync?.on) return;
   d.queue.push({ id: uid('q'), ts: iso(new Date()), kind, ref });
 }
 
@@ -206,7 +217,7 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
       d.warranties.push({ id: uid('wty'), saleId: sale.id, saleNo: sale.no, productId: prod.id, partyId: sale.partyId, soldAt: iso(when), months: prod.warrantyMonths, status: 'active' });
     }
   });
-  enqueue(d, 'sale', sale.no);
+  enqueue(d, 'sale', sale.id);
   audit(
     d,
     'Sale created',
@@ -276,7 +287,7 @@ export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], me
   if (method === 'credit') jl.push({ acc: 'n_ap', cr: total });
   else jl.push({ acc: method === 'bank' ? 'acc_bank' : method === 'momo' ? 'acc_momo' : 'acc_cash', cr: total });
   journal(d, when, 'Purchase ' + pu.no, pu.no, jl);
-  enqueue(d, 'purchase', pu.no);
+  enqueue(d, 'purchase', pu.id);
   audit(d, 'Purchase recorded', pu.no + ' — total ' + Math.round(total));
   touch(d, pu, 'Created', 'purchases');
   return pu;

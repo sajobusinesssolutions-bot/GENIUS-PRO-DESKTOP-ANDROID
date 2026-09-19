@@ -335,7 +335,7 @@ export {
 export {
   Panel, SectionLabel, AccentHead, Tile as IconTileSoft, ListRow, DetailRow, Badge,
   StatCard, StatGrid, FilterChips, SegPill, TopTabs, OptionTiles, InfoBanner,
-  Empty as EmptyBlock, FAB, ActionGrid, StickyBar, Search, SquareBtn, useTone, DocCard,
+  Empty as EmptyBlock, FAB, ActionGrid, StickyBar, Search, SquareBtn, useTone, DocCard, SegTabs,
 } from './kit';
 
 export const gStyles = StyleSheet.create({

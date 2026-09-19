@@ -10,7 +10,7 @@ import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
 import {
-  EmptyState, Button, Search, FilterChips, StatGrid, SectionLabel, Badge, ListRow, InfoBanner,
+  EmptyState, Button, Search, FilterChips, StatGrid, SectionLabel, Badge, ListRow, InfoBanner, FAB,
 } from '../components/ui';
 import { AppBar, IconBtn } from '../components/AppBar';
 import { Sheet } from '../components/Sheet';
@@ -63,8 +63,14 @@ export default function ItemsScreen() {
 
   const right = (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <IconBtn name="plus" size={20} color={colors.accent} onPress={() => go('ProductDetail', {})} />
-      <IconBtn name="dots" size={20} color={colors.faint} onPress={() => setBulk(true)} />
+      {/*
+        The plus has moved to a floating button: adding an item is the most
+        common thing on this screen and the top-right corner is the hardest
+        place on a phone to reach one-handed. What is left is the overflow,
+        sized so it can actually be hit — 20px of icon in a small tap target
+        was a miss as often as a hit.
+      */}
+      <IconBtn name="dots" size={26} color={colors.soft} onPress={() => setBulk(true)} />
     </View>
   );
 
@@ -234,6 +240,10 @@ export default function ItemsScreen() {
           />
         ))}
       </Sheet>
+
+      {canFor(role, 'inventory.create') ? (
+        <FAB label="Add item" icon="plus" tone="accent" onPress={() => go('ProductDetail', {})} />
+      ) : null}
     </View>
   );
 }

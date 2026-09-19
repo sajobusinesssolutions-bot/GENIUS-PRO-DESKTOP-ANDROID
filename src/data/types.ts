@@ -263,6 +263,14 @@ export interface SyncCfg {
   devices: SyncDevice[]; lastAt: string;
   /** "Online mode" (reference SCREENS.online, 22755) shares this switch. */
   strict: boolean; lastPush: string; lastPull: string; cursor: number;
+  /** The tenant on the server, found once and then remembered. */
+  businessId?: string;
+  /** This phone's seat on the account. */
+  deviceId?: string;
+  /** Per-device counter, so operations keep their causal order across restarts. */
+  lamport?: number;
+  /** How many operations the server holds for this business. */
+  serverOps?: number;
 }
 
 // --- Updates — reference updCfg() at 23027 ---
@@ -320,7 +328,25 @@ export type NumberingKey =
   | 'sale' | 'estimate' | 'challan' | 'credit' | 'purchase' | 'po' | 'stocktake' | 'journal';
 export interface LoyaltyRules { enabled: boolean; earnPer: number; pointValue: number; redeemMin: number; }
 export interface Session { userId: string; role: Role; online: boolean; till: string; warehouse: string; }
-export interface Firm { id: string; name: string; tin: string; address: string; phone: string; businessType?: string; }
+export interface Firm {
+  id: string; name: string; tin: string; address: string; phone: string;
+  businessType?: string;
+  email?: string;
+  /** A second number — most shops here have one for calls and one for money. */
+  phone2?: string;
+  /** A line under the shop name on a receipt: what the business does. */
+  description?: string;
+  /**
+   * A local file URI for the shop's logo, printed at the top of every receipt
+   * and invoice. Copied into permanent storage when chosen, because the
+   * picker hands back a cache path the system is free to delete.
+   */
+  logo?: string;
+  /** Printed above the signature line on an invoice. Same storage rule. */
+  signature?: string;
+  /** Words printed at the bottom of every document — terms, thanks, a slogan. */
+  footer?: string;
+}
 
 // --- Estimates / quotations ---
 export interface Estimate {

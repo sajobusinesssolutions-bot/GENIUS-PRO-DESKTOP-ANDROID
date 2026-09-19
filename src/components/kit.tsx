@@ -521,3 +521,57 @@ export function DocCard({ icon, tone = 'accent', title, subtitle, amount, amount
     </Comp>
   );
 }
+
+/**
+ * Two or three equal buttons filling a row.
+ *
+ * `TopTabs` sizes each tab to its own label, so a pair like "Transactions" and
+ * "Party details" came out lopsided and neither looked like something to press.
+ * These share the width evenly and read as buttons, which is what a two-way
+ * switch at the top of a screen should be.
+ */
+export function SegTabs<T extends string>({ value, options, onChange }: {
+  value: T; options: Array<{ v: T; l: string; i?: IconName }>; onChange: (v: T) => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={{
+      flexDirection: 'row', gap: 8,
+      paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1, borderBottomColor: colors.line,
+    }}>
+      {options.map((o) => {
+        const on = o.v === value;
+        return (
+          <Pressable
+            key={o.v}
+            onPress={() => onChange(o.v)}
+            style={{
+              flex: 1,
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+              // tall enough to be a comfortable target, not a line of text
+              height: control.button,
+              borderRadius: radius.md,
+              backgroundColor: on ? colors.accent : colors.sunk,
+              borderWidth: 1,
+              borderColor: on ? colors.accent : colors.line,
+            }}
+          >
+            {o.i ? <Icon name={o.i} size={16} color={on ? colors.accentInk : colors.soft} /> : null}
+            <Text
+              numberOfLines={1}
+              style={{
+                fontFamily: on ? fonts.uiBold : fonts.uiSemi,
+                fontSize: 13.5,
+                color: on ? colors.accentInk : colors.soft,
+              }}
+            >
+              {o.l}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}

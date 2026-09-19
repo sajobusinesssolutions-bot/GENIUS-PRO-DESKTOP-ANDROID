@@ -16,6 +16,10 @@
  *     with Stock rather than carrying a near-empty card of its own.
  *   · "Staff performance" was filed under Business while "Reports" sat under
  *     Books, so the same question was answered in two places.
+ *   · "Compare branches" was listed here as well as on the branch panel. It
+ *     puts every branch's money side by side, which is the owner's business
+ *     and nobody else's, so it is reachable only from the owner-gated branch
+ *     screen now rather than from a report anyone with reports can open.
  *
  * Cash register and Day close are deliberately kept as separate rows: they open
  * the same screen in different states and were asked for as separate buttons.
@@ -127,7 +131,6 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     items: [
       { route: 'Reports', i: 'chart', n: 'All reports', b: () => plural(REPORT_COUNT, 'report') + ' · sales, stock, money', alt: 'sales stock profit debtors batch movement' },
       { route: 'StaffReport', i: 'user', n: 'Staff performance', b: () => 'Who sold and who posted what', perm: 'settings', alt: 'accountability who sold' },
-      { route: 'BranchAnalysis', i: 'home', n: 'Compare branches', b: (c) => plural(c.db.warehouses.filter((w) => w.active !== false).length, 'branch', 'branches') + ' side by side', perm: 'settings', alt: 'branches stores grand total' },
       {
         route: 'AuditLog', i: 'shield', n: 'Audit log', perm: 'settings', alt: 'history changes trail',
         b: (c) => {
@@ -138,7 +141,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     ],
   },
   {
-    id: 'admin', n: 'Business', i: 'cog', tone: 'soft', perm: null,
+    id: 'admin', n: 'Settings', i: 'cog', tone: 'soft', perm: null,
     b: (c) => plural(c.db.warehouses.filter((w) => w.active !== false).length, 'branch', 'branches') + ' · settings',
     items: [
       { route: 'Branches', i: 'home', n: 'Branches', b: (c) => plural(c.db.warehouses.filter((w) => w.active !== false).length, 'open branch', 'open branches'), perm: 'settings', alt: 'stores shops outlets new branch' },

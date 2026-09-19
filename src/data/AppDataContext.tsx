@@ -194,6 +194,8 @@ interface Ctx {
   setSubscription: (patch: Partial<Subscription>) => void;
   setLicence: (patch: Partial<Licence>) => void;
   setSync: (patch: Partial<SyncCfg>) => void;
+  /** Drops queue entries the server has confirmed it holds. */
+  dropQueued: (ids: string[]) => void;
   setUpdateCfg: (patch: Partial<UpdateCfg>) => void;
   setNumbering: (mode: 'auto' | 'tag' | 'plain') => void;
   revisionsFor: (id: string) => Revision[];
@@ -1029,6 +1031,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         }
       });
     },
+    // Only ids the server acknowledged are removed; anything it did not confirm stays queued.
+    dropQueued: (ids) => commit((d) => { const gone = new Set(ids); d.queue = d.queue.filter((q) => !gone.has(q.id)); }),
     setUpdateCfg: (patch) => commit((d) => { d.update = { ...d.update, ...patch }; }),
     setNumbering: (mode) => commit((d) => { d.numberSafe = { mode }; }),
     revisionsFor: (id) => { const d = dbRef.current; return d ? logic.revisionsFor(d, id) : []; },

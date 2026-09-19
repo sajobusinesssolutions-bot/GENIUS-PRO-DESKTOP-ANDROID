@@ -5,6 +5,11 @@
  * deliberately omitted from this port.
  *
  * Each action carries the destination route it opens in the app.
+ *
+ * This is the one list most people reach for, so anything the app can create
+ * belongs in it. It had fallen behind the app itself — journal entries, price
+ * tags, the bulk editors and several others existed as screens with no way in
+ * from here.
  */
 import type { IconName } from '../components/icons';
 import type { PermKey } from './perms';
@@ -37,6 +42,7 @@ export const QUICK: QuickGroup[] = [
       { n: 'Recurring bill', i: 'calendar', route: 'RecurringNew' },
       { n: 'Instalment plan', i: 'coins', route: 'PlanNew' },
       { n: 'New offer', i: 'tag', route: 'OfferNew' },
+      { n: 'Price tags', i: 'tag', route: 'PriceTags' },
     ],
   },
   {
@@ -47,6 +53,9 @@ export const QUICK: QuickGroup[] = [
       { n: 'Record expense', i: 'arrow', route: 'EntryNew', params: { direction: 'out' } },
       { n: 'Move money', i: 'swap', route: 'Transfer' },
       { n: 'Drawer cash', i: 'card', route: 'Shift' },
+      { n: 'Journal entry', i: 'pencil', route: 'JournalEntry', perm: 'accounting' },
+      { n: 'Cash & bank', i: 'bank', route: 'Money' },
+      { n: 'Day close', i: 'lock', route: 'Shift', params: { close: true }, perm: 'sell' },
     ],
   },
   {
@@ -59,6 +68,10 @@ export const QUICK: QuickGroup[] = [
       { n: 'Receive a purchase', i: 'box', route: 'PurchaseNew' },
       { n: 'Purchase order', i: 'doc', route: 'PurchaseOrderNew' },
       { n: 'Make stock', i: 'factory', route: 'Production' },
+      { n: 'Price list', i: 'coins', route: 'PriceList' },
+      { n: 'Names & descriptions', i: 'pencil', route: 'NamesEditor' },
+      { n: 'On sale / off sale', i: 'check', route: 'ActivateItems' },
+      { n: 'Units & categories', i: 'tag', route: 'UnitsCategories' },
     ],
   },
   {
@@ -68,6 +81,7 @@ export const QUICK: QuickGroup[] = [
       { n: 'Add staff', i: 'user', route: 'UsersRoles', perm: 'users' },
       { n: 'Switch user', i: 'swap', route: 'PinLock' },
       { n: 'Loyalty rules', i: 'gift', route: 'Loyalty' },
+      { n: 'Warranty claim', i: 'shield', route: 'Warranties' },
     ],
   },
   {
@@ -77,6 +91,8 @@ export const QUICK: QuickGroup[] = [
       { n: 'Z report', i: 'receipt', route: 'Reports', params: { id: 'day-close' } },
       { n: 'X report', i: 'receipt', route: 'Reports', params: { id: 'x-report' } },
       { n: 'Backup now', i: 'cloud', route: 'DataTools', params: { backup: true } },
+      { n: 'Reports', i: 'chart', route: 'Reports', perm: 'reports' },
+      { n: 'Branches', i: 'home', route: 'Branches', perm: 'settings' },
     ],
   },
 ];
