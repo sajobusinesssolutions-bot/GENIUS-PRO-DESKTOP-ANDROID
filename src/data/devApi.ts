@@ -86,6 +86,10 @@ export const listBackups = (a: string) => call<{ backups: Backup[]; dir: string;
 export const runBackup = (a: string) => call<{ ok: true; backup: Backup & { ms: number } }>('/v1/admin/backups', a, {});
 
 /** `days: null` grants a lifetime licence. */
+/** Adds an owner by email with a subscription, and emails them how to get in. */
+export const addOwner = (a: string, o: { email: string; name?: string; plan: string; days: number | null; seats: number; invite: boolean }) =>
+  call<{ ok: true; id: string; created: boolean; invited: boolean; inviteError: string | null }>('/v1/admin/owners', a, o);
+
 export const grantLicence = (a: string, ownerId: string, o: { plan: string; days: number | null; seats: number }) =>
   call<{ ok: true }>('/v1/admin/owners/' + ownerId + '/licence', a, o);
 

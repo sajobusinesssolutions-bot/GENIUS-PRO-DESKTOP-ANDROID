@@ -22,6 +22,7 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { q } from './db.js';
 import { readAccess } from './tokens.js';
 import { effectiveStatus } from './sync.js';
+import { sendInvite } from './mail.js';
 
 const BACKUP_DIR = process.env.BACKUP_DIR || '/var/backups/genius';
 const KEEP_BACKUPS = Number(process.env.KEEP_BACKUPS || 14);
@@ -182,6 +183,37 @@ export function runBackup() {
    Routes
    ================================================================ */
 
+/** Reads plan, period and seats from a request, or refuses with the reason. */
+function licenceTerms(body, reply) {
+  const plan = ['trial', 'starter', 'pro'].includes(body?.plan) ? body.plan : null;
+  if (!plan) { fail(reply, 400, 'malformed', 'Choose trial, starter or pro.'); return null; }
+  const days = body?.days === null ? null : Number(body?.days);
+  if (days !== null && (!Number.isFinite(days) || days < 1 || days > 3660)) {
+    fail(reply, 400, 'malformed', 'Choose a period between one day and ten years, or lifetime.');
+    return null;
+  }
+  const seats = Math.max(1, Math.min(100, Number(body?.seats) || 1));
+  const term = days === null ? 'lifetime' : days >= 360 ? 'yearly' : days >= 28 ? 'monthly' : 'days';
+  return { plan, days, seats, term };
+}
+
+/**
+ * Grants a licence. A new row each time rather than an edit, so the history
+ * of what an owner has held — and who granted it — survives.
+ * Returns when it runs out, or null for lifetime.
+ */
+async function grant(accountId, t, by) {
+  const status = t.plan === 'trial' ? 'trial' : 'active';
+  const { rows } = await q(
+    `insert into licences (account_id, plan, term, seats, status, expires_at, issued_by)
+     values ($1, $2, $3, $4, $5,
+             case when $6::int is null then null else now() + ($6::int * interval '1 day') end, $7)
+     returning expires_at`,
+    [accountId, t.plan, t.term, t.seats, status, t.days, by],
+  );
+  return rows[0]?.expires_at || null;
+}
+
 export default async function adminRoutes(app) {
   /** Whether the signed-in account may use the console. Safe for anyone to ask. */
   app.get('/v1/admin/me', async (req) => {
@@ -226,40 +258,56 @@ export default async function adminRoutes(app) {
     };
   });
 
-  /**
-   * Grants a licence. A new row each time rather than an edit, so the history
-   * of what an owner has held — and who granted it — survives.
-   */
+  /** Grants an existing owner a licence (see grant). */
   app.post('/v1/admin/owners/:id/licence', async (req, reply) => {
     const dev = await developer(req, reply);
     if (!dev) return;
-    const plan = ['trial', 'starter', 'pro'].includes(req.body?.plan) ? req.body.plan : null;
-    if (!plan) return fail(reply, 400, 'malformed', 'Choose trial, starter or pro.');
-    const days = req.body?.days === null ? null : Number(req.body?.days);
-    if (days !== null && (!Number.isFinite(days) || days < 1 || days > 3660)) {
-      return fail(reply, 400, 'malformed', 'Choose a period between one day and ten years, or lifetime.');
-    }
-    const seats = Math.max(1, Math.min(100, Number(req.body?.seats) || 1));
-    const term = days === null ? 'lifetime' : days >= 360 ? 'yearly' : days >= 28 ? 'monthly' : 'days';
-
+    const terms = licenceTerms(req.body, reply);
+    if (!terms) return;
     const { rows } = await q('select id from accounts where id = $1', [req.params.id]);
     if (!rows[0]) return fail(reply, 404, 'server', 'No such owner.');
-
-    const status = plan === 'trial' ? 'trial' : 'active';
-    if (days === null) {
-      await q(
-        `insert into licences (account_id, plan, term, seats, status, expires_at, issued_by)
-         values ($1, $2, $3, $4, $5, null, $6)`,
-        [req.params.id, plan, term, seats, status, dev.email],
-      );
-    } else {
-      await q(
-        `insert into licences (account_id, plan, term, seats, status, expires_at, issued_by)
-         values ($1, $2, $3, $4, $5, now() + ($6 || ' days')::interval, $7)`,
-        [req.params.id, plan, term, seats, status, String(days), dev.email],
-      );
-    }
+    await grant(req.params.id, terms, dev.email);
     return { ok: true };
+  });
+
+  /**
+   * Adds an owner by email and gives them a subscription in one step — for a
+   * shop that has paid before ever opening the app. The account has no
+   * password: they get in with Google, or set one with "Forgot password".
+   * An address that already has an account just gets the subscription.
+   */
+  app.post('/v1/admin/owners', async (req, reply) => {
+    const dev = await developer(req, reply);
+    if (!dev) return;
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return fail(reply, 400, 'malformed', 'That email address does not look right.');
+    }
+    const terms = licenceTerms(req.body, reply);
+    if (!terms) return;
+    const name = String(req.body?.name || '').trim().slice(0, 120) || email.split('@')[0];
+
+    let created = false;
+    let { rows } = await q('select id from accounts where email = $1', [email]);
+    if (!rows[0]) {
+      ({ rows } = await q(
+        'insert into accounts (email, name, email_verified) values ($1, $2, false) returning id',
+        [email, name],
+      ));
+      created = true;
+    }
+    const id = rows[0].id;
+    const until = await grant(id, terms, dev.email);
+
+    let invited = false;
+    let inviteError = null;
+    if (req.body?.invite !== false) {
+      try { await sendInvite(email, { plan: terms.plan, until }); invited = true; } catch (e) {
+        inviteError = e.message === 'mail_not_configured' ? 'Email is not set up on the server.' : 'The invitation email could not be sent.';
+        req.log.error({ err: e.message }, 'invite failed');
+      }
+    }
+    return { ok: true, id, created, invited, inviteError };
   });
 
   /** Blocks or unblocks an owner. Blocking ends their sessions straight away. */
