@@ -35,8 +35,9 @@ jest.mock('../data/authApi', () => ({
 }));
 
 const mockDb: any = { settings: { theme: 'light' } };
+const mockFresh = jest.fn((o: any) => {});
 jest.mock('../data/AppDataContext', () => ({
-  useAppData: () => ({ db: mockDb }),
+  useAppData: () => ({ db: mockDb, startFreshBook: (o: any) => mockFresh(o), claimBooksFor: () => false }),
   useAppDataSafe: () => ({ db: mockDb }),
 }));
 
@@ -46,6 +47,7 @@ const nav: any = { replace: jest.fn(), goBack: jest.fn(), navigate: jest.fn() };
 
 beforeEach(() => {
   mockAdopt.mockClear();
+  mockFresh.mockClear();
   mockError.mockClear();
   mockSuccess.mockClear();
   nav.replace.mockClear();
@@ -131,6 +133,8 @@ describe('with no server configured', () => {
       email: 'owner@example.com', name: 'Ada Nakato', verified: false, localOnly: true,
     });
     expect(nav.replace).toHaveBeenCalledWith('Onboarding');
+    // and the shop opens on empty books, not on the demo the app ships with
+    expect(mockFresh).toHaveBeenCalledWith({ ownerName: 'Ada Nakato', ownerEmail: 'owner@example.com' });
   });
 
   it('refuses two passwords that do not match', async () => {

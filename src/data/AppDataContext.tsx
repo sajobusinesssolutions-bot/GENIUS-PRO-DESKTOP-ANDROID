@@ -8,7 +8,7 @@ import {
   Subscription, Licence, SyncCfg, UpdateCfg, Revision, RoleDef, NumberingKey, Shift,
 } from './types';
 import { ensureRoles, setRoleRegistry, canWith, builtinRoles, allPermKeys, permCount } from './perms';
-import { seed } from './seed';
+import { seed, emptyBook } from './seed';
 import { loadDB, saveDB, clearDB, scheduleSave, flushSave } from './storage';
 import { uid, iso } from './uid';
 import * as logic from './logic';
@@ -33,6 +33,10 @@ interface Ctx {
   accountBalance: (id: string, branch?: string | null) => number;
   login: (userId: string, pin: string) => boolean;
   logout: () => void;
+  /** Replaces the books with an empty set, for a newly created account. */
+  startFreshBook: (o?: { firmName?: string; ownerName?: string; ownerEmail?: string }) => void;
+  /** Empties the books if they belong to a different owner than the one signing in. */
+  claimBooksFor: (email: string) => boolean;
   commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; userId?: string }) => Sale;
   voidSale: (saleId: string, reason?: string) => void;
   createPurchase: (partyId: string, lines: PurchaseLine[], method: PayMethod, userId?: string) => Purchase;
@@ -325,6 +329,38 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return true;
     },
     logout: () => {},
+    /**
+     * Makes sure the books on this phone belong to whoever just signed in.
+     *
+     * Two people using one phone is ordinary in a shop. Without this, signing
+     * out and signing in as somebody else would hand the second person the
+     * first one's stock, customers and takings.
+     *
+     * Books with no owner recorded are adopted rather than destroyed: they were
+     * made before this existed, and throwing away a real shop's trading to
+     * enforce a new rule would be the worse mistake.
+     */
+    claimBooksFor: (email) => {
+      const want = String(email || '').trim().toLowerCase();
+      const d = dbRef.current;
+      if (!d || !want) return false;
+      if (!d.ownerEmail) { commit((db2) => { db2.ownerEmail = want; }); return false; }
+      if (d.ownerEmail === want) return false;
+      const fresh = emptyBook({ ownerEmail: want });
+      dbRef.current = fresh;
+      setRoleRegistry(fresh.roles);
+      setDb(fresh);
+      scheduleSave(fresh);
+      return true;
+    },
+    startFreshBook: (o) => {
+      const fresh = emptyBook(o || {});
+      dbRef.current = fresh;
+      setRoleRegistry(fresh.roles);
+      setDb(fresh);
+      void flushSave();
+      scheduleSave(fresh);
+    },
     commitSale: (o) => {
       requireRecordable();
       let sale!: Sale;

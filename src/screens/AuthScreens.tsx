@@ -23,6 +23,7 @@ import {
 } from '../components/ui';
 import { Icon, IconName } from '../components/icons';
 import { useAuth } from '../data/AuthContext';
+import { useAppData } from '../data/AppDataContext';
 import {
   emailLooksReal, checkPassword, codeLooksReal,
 } from '../data/account';
@@ -122,6 +123,7 @@ type SignInProps = NativeStackScreenProps<RootStackParamList, 'SignIn'>;
 export function SignInScreen({ navigation }: SignInProps) {
   const { colors } = useTheme();
   const { adopt } = useAuth();
+  const { claimBooksFor } = useAppData();
   const { error, success } = useToast();
 
   const [email, setEmail] = useState('');
@@ -147,7 +149,10 @@ export function SignInScreen({ navigation }: SignInProps) {
       email: r.value.email, name: r.value.name, method: 'password',
       verified: true, localOnly: false, id: r.value.accountId, refresh: r.value.refresh,
     });
-    success('Signed in as ' + r.value.email);
+    const replaced = claimBooksFor(r.value.email);
+    success(replaced
+      ? 'Signed in as ' + r.value.email + ' — starting fresh books for this account'
+      : 'Signed in as ' + r.value.email);
   }
 
   async function doGoogle() {
@@ -186,6 +191,7 @@ export function SignInScreen({ navigation }: SignInProps) {
       email: r.value.email, name: r.value.name, method: 'otp',
       verified: true, localOnly: false, id: r.value.accountId, refresh: r.value.refresh,
     });
+    claimBooksFor(r.value.email);
     success('Password changed, and you are signed in');
   }
 
@@ -281,6 +287,7 @@ type CreateProps = NativeStackScreenProps<RootStackParamList, 'CreateAccount'>;
 export function CreateAccountScreen({ navigation }: CreateProps) {
   const { colors } = useTheme();
   const { adopt } = useAuth();
+  const { startFreshBook } = useAppData();
   const { error, success } = useToast();
 
   const [at, setAt] = useState(0);
@@ -357,6 +364,11 @@ export function CreateAccountScreen({ navigation }: CreateProps) {
         method: 'password', verified: false, localOnly: true,
       });
     }
+    // A new account opens on empty books. The demo shop the app ships with is
+    // useful for looking around and wrong for somebody who has just signed up:
+    // they would have to find and delete a stranger's stock and five million
+    // shillings of opening balances before any figure could be trusted.
+    startFreshBook({ ownerName: name.trim(), ownerEmail: email.trim() });
     navigation.replace('Onboarding');
   }
 

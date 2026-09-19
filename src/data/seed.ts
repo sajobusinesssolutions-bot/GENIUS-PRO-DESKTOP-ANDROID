@@ -7,6 +7,7 @@ import {
   defaultSettings, defaultNumbering, defaultUnits, defaultCategories,
 } from './defaults';
 import { builtinRoles } from './perms';
+import { ensureCoa } from './coa';
 
 function p(sku: string, name: string, unit: string, cat: string, cost: number, price: number,
   stock: Record<string, number>, reorder: number, warranty = 0, emoji = '📦'): Product {
@@ -320,4 +321,84 @@ function seedPlans(db: DB) {
 
     db.instalmentPlans.push(pl);
   });
+}
+
+/**
+ * A genuinely empty set of books, for a shop that has just signed up.
+ *
+ * `seed()` builds a demo: twelve products, a few customers and about five
+ * million shillings of opening balances belonging to "Sample Traders". That is
+ * useful for looking around, and wrong for somebody who has just created an
+ * account — they would have to find and delete a stranger's stock and money
+ * before they could trust a single figure the app showed them.
+ *
+ * So this shares the seed's defaults and none of its contents. `onboarded` is
+ * false, because the next thing that should happen is the business setup.
+ */
+export function emptyBook(o: { firmName?: string; ownerName?: string; branchName?: string; ownerEmail?: string } = {}): DB {
+  const db = seed();
+
+  const firm = {
+    id: uid('frm'),
+    name: (o.firmName || '').trim() || 'My shop',
+    tin: '',
+    address: '',
+    phone: '',
+    businessType: '',
+  };
+
+  db.firm = firm;
+  db.firms = [firm];
+  db.activeFirmId = firm.id;
+
+  db.warehouses = [{ id: 'w1', name: (o.branchName || '').trim() || 'Main shop', active: true }];
+
+  db.products = [];
+  db.parties = [];
+
+  // The drawer and the bank still exist — a shop needs somewhere to put money
+  // on day one — but they start at nothing rather than at someone else's float.
+  db.accounts = db.accounts.map((a) => ({ ...a, opening: 0 }));
+
+  db.users = db.users.slice(0, 1).map((u) => ({
+    ...u,
+    name: (o.ownerName || '').trim() || u.name,
+    role: 'owner' as const,
+  }));
+
+  db.sales = [];
+  db.purchases = [];
+  db.payments = [];
+  db.entries = [];
+  db.journal = [];
+  db.movements = [];
+  db.shifts = [];
+  db.warranties = [];
+  db.claims = [];
+  db.estimates = [];
+  db.challans = [];
+  db.creditNotes = [];
+  db.offers = [];
+  db.stockTakes = [];
+  db.purchaseOrders = [];
+  db.productionRuns = [];
+  db.recurringInvoices = [];
+  db.instalmentPlans = [];
+  db.auditLog = [];
+  db.queue = [];
+  db.revisions = [];
+
+  db.counters = { sale: 0, purchase: 0, estimate: 0, challan: 0, creditNote: 0, po: 0, plan: 0 };
+  db.session = {
+    userId: db.users[0].id, role: 'owner', online: true, till: 'Till 1', warehouse: 'w1',
+  };
+  db.settings = { ...db.settings, defaultWarehouse: 'w1' };
+
+  // the chart of accounts is rebuilt so it holds the ledgers and nothing posted
+  db.coa = undefined;
+  ensureCoa(db);
+
+  db.onboarded = false;
+  db.ownerEmail = (o.ownerEmail || '').trim().toLowerCase() || undefined;
+  return db;
 }

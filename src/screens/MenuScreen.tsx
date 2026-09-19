@@ -27,15 +27,18 @@ import {
 } from '../components/ui';
 import { AppBar } from '../components/AppBar';
 import { Icon } from '../components/icons';
-import { useGo } from '../nav/navigate';
+import { useGo, useGoReset } from '../nav/navigate';
 import { useToneColor } from '../components/Quick';
+import { useAuth } from '../data/AuthContext';
 
 export const BUILD = '1.0.0';
 
 export default function MenuScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, me, logout, dueRecurring, activeShift } = useAppData();
+  const goReset = useGoReset();
+  const { db, me, dueRecurring, activeShift } = useAppData();
+  const { account, signOut } = useAuth();
   const tone = useToneColor();
   const [q, setQ] = useState('');
 
@@ -200,20 +203,44 @@ export default function MenuScreen() {
 
             {/* one quiet footer line, rather than a panel repeating the Business card */}
             <View style={{ paddingHorizontal: 16, paddingTop: 20 }}>
+              {/*
+                Two different ways out, and they were conflated.
+
+                "Lock the till" is for handing the phone to the next person on
+                the counter — it asks for a PIN and the shop stays signed in.
+                "Sign out" leaves the account itself, and the next thing anyone
+                sees is the sign-in page. Logging out and being asked only for a
+                PIN is not logging out.
+              */}
+              <Button
+                label="Lock the till"
+                icon={<Icon name="lock" size={17} color={colors.ink} />}
+                onPress={() => go('PinLock')}
+              />
+              <View style={{ height: 10 }} />
               <Button
                 variant="dngr"
-                label="Log out"
+                label="Sign out"
                 icon={<Icon name="arrow" size={17} color={colors.danger} />}
-                onPress={() => Alert.alert('Log out', 'Lock the till and sign out?', [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Log out', style: 'destructive', onPress: () => { logout(); go('PinLock'); } },
-                ])}
+                onPress={() => Alert.alert(
+                  'Sign out of ' + (account?.email || 'this account') + '?',
+                  'You will need the account email and password to get back in. '
+                  + 'The shop\'s books stay on this phone.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Sign out',
+                      style: 'destructive',
+                      onPress: async () => { await signOut(); goReset('AuthGate'); },
+                    },
+                  ],
+                )}
               />
               <Text style={{
                 fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint,
                 textAlign: 'center', marginTop: 14,
               }}>
-                Genius POS {BUILD} · till {db.session.till}
+                {account?.email ? account.email + ' · ' : ''}Genius POS {BUILD} · till {db.session.till}
               </Text>
             </View>
           </>

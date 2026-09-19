@@ -438,6 +438,14 @@ export interface DB {
   session: Session;
   counters: { sale: number; purchase: number; estimate: number; challan: number; creditNote: number; po: number; plan: number };
   onboarded: boolean;
+  /**
+   * The owner account these books belong to.
+   *
+   * Signing out and signing in as somebody else on the same phone must not
+   * hand the second person the first one's stock, customers and takings, so
+   * the books say whose they are and are replaced when that stops matching.
+   */
+  ownerEmail?: string;
 
   // --- Instalments (reference DB.plans; renamed so it does not collide with
   //     the subscription price list this port already keeps in `plans`) ---
