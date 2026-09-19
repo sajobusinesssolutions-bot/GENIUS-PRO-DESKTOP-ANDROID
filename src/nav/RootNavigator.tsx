@@ -25,6 +25,7 @@ import { BranchesScreen, BranchAnalysisScreen } from '../screens/BranchScreens';
 import { PriceListScreen, NamesEditorScreen, ActivateScreen } from '../screens/BulkEditScreens';
 import PriceTagScreen from '../screens/PriceTagScreen';
 import NewBranchScreen from '../screens/NewBranchScreen';
+import DeveloperScreen from '../screens/DeveloperScreen';
 import {
   AccountingHubScreen, ChartOfAccountsScreen, LedgerDetailScreen, JournalEntryScreen, TrialBalanceScreen,
 } from '../screens/AccountingScreens';
@@ -178,6 +179,7 @@ export default function RootNavigator() {
         <Stack.Screen name="ActivateItems" component={ActivateScreen} options={{ title: 'On sale / off sale' }} />
         <Stack.Screen name="PriceTags" component={PriceTagScreen} options={{ title: 'Price tags' }} />
         <Stack.Screen name="Branches" component={BranchesScreen} options={{ title: 'Branches' }} />
+        <Stack.Screen name="Developer" component={DeveloperScreen} options={{ title: "Developer console" }} />
         <Stack.Screen name="NewBranch" component={NewBranchScreen} options={{ title: "Open a branch" }} />
         <Stack.Screen name="BranchAnalysis" component={BranchAnalysisScreen} options={{ title: 'Branch analysis' }} />
         <Stack.Screen name="AccountingHub" component={AccountingHubScreen} options={{ title: 'Accounting' }} />

@@ -91,6 +91,8 @@ export function seed(): DB {
     session: { userId: users[0].id, role: 'owner', online: true, till: 'Till 1', warehouse: 'w1' },
     counters: { sale: 0, purchase: 0, estimate: 0, challan: 0, creditNote: 0, po: 0, plan: 0 },
     onboarded: true,
+    // marked, so signing in can tell a demo from a real shop that predates owners
+    demo: true,
 
     instalmentPlans: [],
 
@@ -406,6 +408,7 @@ export function emptyBook(o: { firmName?: string; ownerName?: string; branchName
   ensureCoa(db);
 
   db.onboarded = false;
+  db.demo = false;
   db.ownerEmail = (o.ownerEmail || '').trim().toLowerCase() || undefined;
   return db;
 }

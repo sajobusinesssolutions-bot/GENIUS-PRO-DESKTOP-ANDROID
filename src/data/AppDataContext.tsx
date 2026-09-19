@@ -346,7 +346,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const want = String(email || '').trim().toLowerCase();
       const d = dbRef.current;
       if (!d || !want) return false;
-      if (!d.ownerEmail) { commit((db2) => { db2.ownerEmail = want; }); return false; }
+      // The demo shop the app opens on before anyone signs in is never adopted:
+      // signing in on a fresh phone used to keep it as the real shop's books.
+      // Books made before owners were recorded *are* adopted — they are real.
+      const isDemo = d.demo === true || (!d.ownerEmail && d.firm?.name === 'Sample Traders');
+      if (!d.ownerEmail && !isDemo) { commit((db2) => { db2.ownerEmail = want; }); return false; }
       if (d.ownerEmail === want) return false;
       const fresh = emptyBook({ ownerEmail: want });
       dbRef.current = fresh;

@@ -46,6 +46,7 @@ async function issueSession(account, sessionName = 'unknown') {
      values ($1, $2, $3, now())`,
     [account.id, sessionName, hashRefresh(refresh)],
   );
+  await q('update accounts set last_login_at = now(), last_seen_at = now() where id = $1', [account.id]);
   return {
     accountId: account.id,
     email: account.email,
@@ -306,6 +307,7 @@ export default async function authRoutes(app) {
       return fail(reply, 401, 'badCredentials', 'Please sign in again.');
     }
     await q('update sessions set last_seen = now() where id = $1', [row.session_id]);
+    await q('update accounts set last_seen_at = now() where id = $1', [row.id]);
     return { access: await issueAccess({ id: row.id, email: row.email }) };
   });
 }

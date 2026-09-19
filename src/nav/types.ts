@@ -56,6 +56,7 @@ export type RootStackParamList = {
   ActivateItems: undefined;
   PriceTags: undefined;
   AuthGate: undefined;
+  Developer: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
   GoogleSignIn: undefined;

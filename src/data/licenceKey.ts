@@ -135,13 +135,19 @@ export function licenceFromToken(
     };
   }
 
-  const expires = new Date(claims.exp * 1000);
-  const daysLeft = Math.ceil((expires.getTime() - now.getTime()) / 86400000);
+  // the subscription's own end, when the server said; the token's otherwise
+  const expires = claims.until ? new Date(claims.until) : new Date(claims.exp * 1000);
+  const lifetime = claims.until === null && claims.term === 'lifetime';
+  const daysLeft = lifetime ? null : Math.ceil((expires.getTime() - now.getTime()) / 86400000);
 
   // 'stale' is kept as-is: the app treats it as "an old answer is still an
   // answer, for a while", which is what a shop out of signal needs.
+  // What the server says wins over what the dates imply: a blocked or revoked
+  // licence stops the till even while the token is still in date.
+  const said = claims.status;
   const status: import('./types').LicStatus =
-    verdict === 'active' ? 'active'
+    said === 'blocked' || said === 'revoked' || said === 'expired' ? said
+    : verdict === 'active' ? 'active'
       : verdict === 'trial' ? 'trial'
         : verdict === 'stale' ? 'stale'
           : verdict === 'unbound' ? 'unbound' : 'expired';
@@ -158,7 +164,7 @@ export function licenceFromToken(
       plan: claims.plan,
       planName: claims.plan === 'pro' ? 'Pro' : claims.plan === 'trial' ? 'Free trial' : 'Starter',
       term: claims.term,
-      expiresAt: expires.toISOString(),
+      expiresAt: lifetime ? '' : expires.toISOString(),
       daysLeft,
       devices: claims.seats,
       limits: { devices: claims.seats },

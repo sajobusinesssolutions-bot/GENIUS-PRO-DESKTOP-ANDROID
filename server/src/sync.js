@@ -19,6 +19,21 @@ import { readAccess, issueLicence } from './tokens.js';
 
 const fail = (reply, status, error, message) => reply.code(status).send({ error, message });
 
+/**
+ * What a licence really is right now, as opposed to what its row was last set to.
+ *
+ * A blocked account is blocked whatever its licence says; a licence past its
+ * expiry is expired even if nobody has touched the row since. Exported so the
+ * developer console reports exactly what the phones are being told.
+ */
+export function effectiveStatus(account, licence, now = new Date()) {
+  if (!licence) return 'none';
+  if (account && account.status === 'blocked') return 'blocked';
+  if (licence.status === 'blocked' || licence.status === 'revoked') return licence.status;
+  if (licence.expires_at && new Date(licence.expires_at) < now) return 'expired';
+  return licence.status || 'active';
+}
+
 /** Pulls the account off the bearer token. Everything below is scoped by it. */
 async function whoami(req, reply) {
   const header = String(req.headers.authorization || '');
@@ -112,7 +127,7 @@ export default async function syncRoutes(app) {
     const me = await whoami(req, reply);
     if (!me) return;
 
-    const acct = await q('select id, email, name from accounts where id = $1', [me.id]);
+    const acct = await q('select id, email, name, status from accounts where id = $1', [me.id]);
     const lic = await q(
       `select plan, term, seats, status, expires_at from licences
         where account_id = $1 order by started_at desc limit 1`,
@@ -123,10 +138,10 @@ export default async function syncRoutes(app) {
     const biz = await q('select id from businesses where account_id = $1', [me.id]);
     const token = await issueLicence({
       account: acct.rows[0],
-      licence: lic.rows[0],
+      licence: { ...lic.rows[0], status: effectiveStatus(acct.rows[0], lic.rows[0]) },
       businesses: biz.rows.map((b) => b.id),
     });
-    return { token, record: lic.rows[0] };
+    return { token, record: { ...lic.rows[0], status: effectiveStatus(acct.rows[0], lic.rows[0]) } };
   });
 
   /* --------------------------------------------------------- business */
@@ -162,6 +177,12 @@ export default async function syncRoutes(app) {
 
     const biz = await businessFor(me.id, ops[0].business);
     if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+
+    // a blocked account keeps its books on the phone but adds nothing here
+    const st = await q('select status from accounts where id = $1', [me.id]);
+    if (st.rows[0]?.status === 'blocked') {
+      return fail(reply, 403, 'server', 'This account has been blocked. Contact support.');
+    }
 
     const accepted = [];
     const rejected = [];

@@ -30,6 +30,7 @@ import { Icon } from '../components/icons';
 import { useGo, useGoReset } from '../nav/navigate';
 import { useToneColor } from '../components/Quick';
 import { useAuth } from '../data/AuthContext';
+import { useDeveloper } from '../data/useDeveloper';
 
 export const BUILD = '1.0.0';
 
@@ -39,6 +40,8 @@ export default function MenuScreen() {
   const goReset = useGoReset();
   const { db, me, dueRecurring, activeShift } = useAppData();
   const { account, signOut } = useAuth();
+  // asked of the server, so a phone cannot talk itself into the console
+  const { developer } = useDeveloper();
   const tone = useToneColor();
   const [q, setQ] = useState('');
 
@@ -156,6 +159,21 @@ export default function MenuScreen() {
           </View>
         ) : (
           <>
+            {developer ? (
+              <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+                <Panel flush>
+                  <ListRow
+                    icon="shield"
+                    tone="accent"
+                    title="Developer console"
+                    subtitle="Owners, licences, server health and backups"
+                    onPress={() => go('Developer')}
+                    last
+                  />
+                </Panel>
+              </View>
+            ) : null}
+
             {/* more than one book: moving between them signs you out first */}
             {manyFirms ? (
               <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>

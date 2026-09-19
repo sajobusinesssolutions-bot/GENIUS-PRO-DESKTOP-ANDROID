@@ -144,3 +144,13 @@ describe('accounts on a fresh book', () => {
     expect(names.join(' ')).not.toMatch(/Stanbic|MTN|Till 1/);
   });
 });
+
+describe('telling the demo from a real shop', () => {
+  it('marks the demo, so signing in never adopts it as somebody\'s books', () => {
+    expect(seed().demo).toBe(true);
+  });
+
+  it('does not mark a real shop\'s fresh books as the demo', () => {
+    expect(emptyBook().demo).toBe(false);
+  });
+});

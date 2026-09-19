@@ -15,6 +15,7 @@ import { verifyMail, mailConfigured } from './mail.js';
 import authRoutes from './auth.js';
 import googleRoutes from './google.js';
 import syncRoutes from './sync.js';
+import adminRoutes, { recordRequest, runBackup } from './admin.js';
 
 const app = Fastify({
   logger: {
@@ -65,6 +66,12 @@ app.get('/', async () => ({
   message: 'This is an API for the Genius POS app. There is no website here.',
 }));
 
+// every request is timed for the developer console's live figures — registered
+// before the routes so it applies to all of them
+app.addHook('onResponse', async (req, reply) => {
+  recordRequest(reply.elapsedTime, reply.statusCode);
+});
+
 // Tighter limits where guessing is the attack: sign-in and code entry.
 await app.register(async (scope) => {
   await scope.register(rateLimit, { max: 10, timeWindow: '1 minute' });
@@ -72,6 +79,28 @@ await app.register(async (scope) => {
 });
 await app.register(googleRoutes);
 await app.register(syncRoutes);
+await app.register(adminRoutes);
+
+
+/*
+ * A nightly dump of every tenant. The button in the console is for "now"; this
+ * is for the night nobody remembers to press it. Checked hourly; runs once a day
+ * after 02:00 UTC. A restart may add a second dump that day, which is harmless —
+ * the retention limit trims the oldest.
+ */
+let lastNightly = '';
+setInterval(async () => {
+  const d = new Date();
+  const day = d.toISOString().slice(0, 10);
+  if (d.getUTCHours() < 2 || lastNightly === day) return;
+  lastNightly = day;
+  try {
+    const b = await runBackup();
+    app.log.info({ backup: b.name, bytes: b.bytes }, 'nightly backup');
+  } catch (e) {
+    app.log.error({ err: e.message }, 'nightly backup failed');
+  }
+}, 60 * 60 * 1000).unref();
 
 /* ---------------------------------------------------------------- */
 

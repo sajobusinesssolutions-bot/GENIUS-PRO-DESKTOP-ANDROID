@@ -88,6 +88,10 @@ export async function issueLicence({ account, licence, businesses }) {
 
   return new SignJWT({
     email: account.email,
+    // what the licence is right now: active, trial, expired, blocked or revoked
+    status: licence.status,
+    // when the subscription itself ends, as distinct from when this token does
+    until: licence.expires_at ? new Date(licence.expires_at).toISOString() : null,
     plan: licence.plan,
     term: licence.term,
     seats: licence.seats,

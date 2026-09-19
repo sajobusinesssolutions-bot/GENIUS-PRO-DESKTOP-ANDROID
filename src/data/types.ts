@@ -472,6 +472,8 @@ export interface DB {
    * the books say whose they are and are replaced when that stops matching.
    */
   ownerEmail?: string;
+  /** True for the demo shop the app ships with, so it is never mistaken for real books. */
+  demo?: boolean;
 
   // --- Instalments (reference DB.plans; renamed so it does not collide with
   //     the subscription price list this port already keeps in `plans`) ---

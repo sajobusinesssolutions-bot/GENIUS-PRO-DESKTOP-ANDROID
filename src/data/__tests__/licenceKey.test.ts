@@ -86,3 +86,28 @@ describe('readLicenceToken', () => {
     expect(readLicenceToken(token({ alg: 'EdDSA' }, claims({ plan: 'trial' }))).verdict).toBe('trial');
   });
 });
+
+describe('licenceFromToken honours what the server says', () => {
+  const { licenceFromToken } = require('../licenceKey');
+
+  it('stops a blocked account even while its token is still in date', () => {
+    const l = licenceFromToken(token({ alg: 'EdDSA' }, claims({ status: 'blocked' })));
+    expect(l.status).toBe('blocked');
+  });
+
+  it('treats a lapsed subscription as expired though the token is fresh', () => {
+    expect(licenceFromToken(token({ alg: 'EdDSA' }, claims({ status: 'expired' }))).status).toBe('expired');
+  });
+
+  it('reports the subscription end rather than the token\'s', () => {
+    const until = new Date(Date.now() + 200 * 86400000).toISOString();
+    const l = licenceFromToken(token({ alg: 'EdDSA' }, claims({ status: 'active', until })));
+    expect(l.licence.daysLeft).toBeGreaterThanOrEqual(199);
+  });
+
+  it('shows no end date for a lifetime licence', () => {
+    const l = licenceFromToken(token({ alg: 'EdDSA' }, claims({ status: 'active', until: null, term: 'lifetime' })));
+    expect(l.licence.daysLeft).toBeNull();
+    expect(l.status).toBe('active');
+  });
+});

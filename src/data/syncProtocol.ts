@@ -201,6 +201,15 @@ export interface LicenceClaims {
   sub: AccountId;
   /** The owner's email. The licence follows this, not a device or a business. */
   email: string;
+  /**
+   * What the licence is right now, as the server sees it: active, trial,
+   * expired, blocked or revoked. Carried in the token so a licence the server
+   * has blocked stops a phone at its next check-in, not a month later when the
+   * token itself runs out.
+   */
+  status?: string;
+  /** When the subscription ends — null for a lifetime licence. */
+  until?: string | null;
   plan: string;
   term: string;
   /** How many devices this account may register. */
