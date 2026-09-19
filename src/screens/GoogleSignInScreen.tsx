@@ -34,6 +34,7 @@ import { useToast } from '../components/Toast';
 import { Button, Panel, InfoBanner, DetailRow, StickyBar } from '../components/ui';
 import { Icon } from '../components/icons';
 import { useAuth } from '../data/AuthContext';
+import { useAfterSignIn } from '../nav/afterSignIn';
 import * as api from '../data/authApi';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
@@ -58,6 +59,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'GoogleSignIn'>;
 export default function GoogleSignInScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { adopt } = useAuth();
+  const afterSignIn = useAfterSignIn();
   const { error, success } = useToast();
   const [busy, setBusy] = useState(false);
   const handled = useRef(false);
@@ -107,8 +109,14 @@ export default function GoogleSignInScreen({ navigation }: Props) {
       email: r.value.email, name: r.value.name, method: 'google',
       verified: true, localOnly: false, id: r.value.accountId, refresh: r.value.refresh,
     });
-    success('Signed in as ' + r.value.email);
-  }, [adopt, error, success, back]);
+    // Claims the books and goes where this person belongs. Without this the
+    // sign-in succeeded — ticket redeemed, session issued — and the screen
+    // simply stayed on 'Continue with Google', which looks like a failure.
+    const { replacedBooks } = afterSignIn(r.value.email);
+    success(replacedBooks
+      ? 'Signed in as ' + r.value.email + ' — starting fresh books for this account'
+      : 'Signed in as ' + r.value.email);
+  }, [adopt, error, success, back, afterSignIn]);
 
   useEffect(() => {
     const sub = Linking.addEventListener('url', (e) => { void handleReturn(e.url); });

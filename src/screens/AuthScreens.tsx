@@ -24,6 +24,7 @@ import {
 import { Icon, IconName } from '../components/icons';
 import { useAuth } from '../data/AuthContext';
 import { useAppData } from '../data/AppDataContext';
+import { useAfterSignIn } from '../nav/afterSignIn';
 import {
   emailLooksReal, checkPassword, codeLooksReal,
 } from '../data/account';
@@ -123,7 +124,7 @@ type SignInProps = NativeStackScreenProps<RootStackParamList, 'SignIn'>;
 export function SignInScreen({ navigation }: SignInProps) {
   const { colors } = useTheme();
   const { adopt } = useAuth();
-  const { claimBooksFor } = useAppData();
+  const afterSignIn = useAfterSignIn();
   const { error, success } = useToast();
 
   const [email, setEmail] = useState('');
@@ -149,8 +150,8 @@ export function SignInScreen({ navigation }: SignInProps) {
       email: r.value.email, name: r.value.name, method: 'password',
       verified: true, localOnly: false, id: r.value.accountId, refresh: r.value.refresh,
     });
-    const replaced = claimBooksFor(r.value.email);
-    success(replaced
+    const { replacedBooks } = afterSignIn(r.value.email);
+    success(replacedBooks
       ? 'Signed in as ' + r.value.email + ' — starting fresh books for this account'
       : 'Signed in as ' + r.value.email);
   }
@@ -197,7 +198,7 @@ export function SignInScreen({ navigation }: SignInProps) {
       email: r.value.email, name: r.value.name, method: 'otp',
       verified: true, localOnly: false, id: r.value.accountId, refresh: r.value.refresh,
     });
-    claimBooksFor(r.value.email);
+    afterSignIn(r.value.email);
     success('Password changed, and you are signed in');
   }
 
