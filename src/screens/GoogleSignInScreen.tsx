@@ -25,9 +25,10 @@
  * The app therefore needs no Google client id of its own, which is why there is
  * no longer one in this file.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Linking, AppState } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import { useTheme, fonts } from '../theme';
 import { useToast } from '../components/Toast';
 import { Button, Panel, InfoBanner, DetailRow, StickyBar } from '../components/ui';
@@ -39,8 +40,18 @@ import type { RootStackParamList } from '../nav/types';
 
 WebBrowser.maybeCompleteAuthSession();
 
-/** Where the browser is sent back to once our server has finished. */
-export const RETURN_URL = 'geniuspos://oauth';
+/**
+ * Where the browser is sent back to once our server has finished.
+ *
+ * This cannot be a fixed string. Expo Go does not register custom schemes at
+ * all, so `geniuspos://` opens nothing there and the browser simply sits on the
+ * server's page for ever — which is exactly what it did. `makeRedirectUri`
+ * returns whatever the thing actually running can receive: an `exp://…` address
+ * under Expo Go, and `geniuspos://oauth` in a development or standalone build.
+ */
+export function returnUrl(): string {
+  return AuthSession.makeRedirectUri({ scheme: 'geniuspos', path: 'oauth' });
+}
 
 type Props = NativeStackScreenProps<RootStackParamList, 'GoogleSignIn'>;
 
@@ -50,6 +61,8 @@ export default function GoogleSignInScreen({ navigation }: Props) {
   const { error, success } = useToast();
   const [busy, setBusy] = useState(false);
   const handled = useRef(false);
+  // worked out once, and shown on the screen so a mismatch is visible
+  const back = useMemo(() => returnUrl(), []);
 
   const ready = api.serverConfigured();
 
@@ -62,7 +75,7 @@ export default function GoogleSignInScreen({ navigation }: Props) {
    */
   const handleReturn = useCallback(async (url: string) => {
     if (handled.current) return;
-    if (!url.startsWith(RETURN_URL)) return;
+    if (!url.startsWith(back)) return;
     handled.current = true;
 
     const query = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
@@ -95,7 +108,7 @@ export default function GoogleSignInScreen({ navigation }: Props) {
       verified: true, localOnly: false, id: r.value.accountId, refresh: r.value.refresh,
     });
     success('Signed in as ' + r.value.email);
-  }, [adopt, error, success]);
+  }, [adopt, error, success, back]);
 
   useEffect(() => {
     const sub = Linking.addEventListener('url', (e) => { void handleReturn(e.url); });
@@ -120,7 +133,7 @@ export default function GoogleSignInScreen({ navigation }: Props) {
     handled.current = false;
     setBusy(true);
     try {
-      const result = await WebBrowser.openAuthSessionAsync(api.googleStartUrl(RETURN_URL), RETURN_URL);
+      const result = await WebBrowser.openAuthSessionAsync(api.googleStartUrl(back), back);
       // On iOS the session returns the URL directly; on Android the deep-link
       // listener above usually fires first. Both paths are guarded by `handled`.
       if (result.type === 'success' && result.url) {
@@ -168,7 +181,7 @@ export default function GoogleSignInScreen({ navigation }: Props) {
             <View style={{ height: 14 }} />
             <Panel>
               <DetailRow label="Server" value="Not set" />
-              <DetailRow label="Returns to" value={RETURN_URL} last />
+              <DetailRow label="Returns to" value={back} last />
             </Panel>
           </>
         )}

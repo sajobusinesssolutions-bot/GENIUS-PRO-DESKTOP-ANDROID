@@ -15,12 +15,14 @@ import { randomBytes, createHash } from 'node:crypto';
 import { decodeJwt } from 'jose';
 import { q } from './db.js';
 import { issueSession, normalise } from './auth.js';
+import { allowedRedirect } from './redirect.js';
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 /** state → where to send the browser back to. Short-lived and in memory. */
 const pending = new Map();
+
 
 function sweep() {
   const now = Date.now();
@@ -38,9 +40,7 @@ export default async function googleRoutes(app) {
     sweep();
     const back = String(req.query?.redirect || process.env.APP_RETURN_URL);
 
-    // Only our own app scheme is accepted, or this endpoint would be an open
-    // redirector that could bounce someone to any site on the internet.
-    if (!back.startsWith('geniuspos://')) {
+    if (!allowedRedirect(back)) {
       return reply.code(400).send({ error: 'malformed', message: 'Bad redirect.' });
     }
 
@@ -65,7 +65,12 @@ export default async function googleRoutes(app) {
     if (held) pending.delete(state);
 
     const back = held?.back || process.env.APP_RETURN_URL;
-    const bounce = (params) => reply.redirect(back + '?' + new URLSearchParams(params).toString(), 302);
+    // An Expo Go return address already carries a path, and may carry a query,
+    // so the separator is chosen rather than assumed.
+    const bounce = (params) => reply.redirect(
+      back + (back.includes('?') ? '&' : '?') + new URLSearchParams(params).toString(),
+      302,
+    );
 
     if (error) return bounce({ error: String(error) });
     if (!held) return bounce({ error: 'expired' });
