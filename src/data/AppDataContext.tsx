@@ -528,7 +528,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setOnboarded: (v) => commit((d) => { d.onboarded = v; }),
     setSetting: (patch) => commit((d) => { d.settings = { ...d.settings, ...patch }; }),
     setLoyalty: (patch) => commit((d) => { d.loyaltyRules = { ...d.loyaltyRules, ...patch }; }),
-    setWarehouse: (warehouseId) => commit((d) => { d.session.warehouse = warehouseId; }),
+    setWarehouse: (warehouseId) => {
+      const w = dbRef.current?.warehouses.find((x) => x.id === warehouseId);
+      if (w && w.active === false) throw new Refusal(w.name + ' is disabled', 'A disabled branch cannot be opened by anyone until it is enabled again under Branches.');
+      commit((d) => { d.session.warehouse = warehouseId; });
+    },
 
     updateFirm: (patch) => commit((d) => {
       d.firm = { ...d.firm, ...patch };
@@ -767,7 +771,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Shifts ---
     openShift: (openingFloat, till) => commit((d) => { logic.openShiftFor(d, openingFloat, till); }),
-    closeShift: (shiftId, countedCash, note) => commit((d) => { logic.closeShift(d, shiftId, countedCash, note || ''); }),
+    closeShift: (shiftId, countedCash, note) => {
+      const d0 = dbRef.current;
+      const sh = d0?.shifts.find((x) => x.id === shiftId);
+      // your own shift needs "Close a shift"; somebody else's, "See every shift" as well
+      requirePerm('shifts.close');
+      if (sh && d0 && sh.userId !== d0.session.userId) requirePerm('shifts.view_all');
+      commit((d) => { logic.closeShift(d, shiftId, countedCash, note || ''); });
+    },
     activeShift: () => dbRef.current?.shifts.find((s) => !s.closedAt && s.userId === dbRef.current!.session.userId),
     shiftTotals: (s) => {
       const d = dbRef.current;
@@ -904,7 +915,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     updateWarehouse: (id, patch) => commit((d) => {
       const w = d.warehouses.find((x) => x.id === id);
       if (!w) return;
+      if (patch.active === false && d.warehouses.filter((x) => x.active !== false && x.id !== id).length === 0) {
+        throw new Refusal('This is the only branch trading', 'Enable another branch before disabling this one; the shop needs somewhere to work.');
+      }
       Object.assign(w, patch);
+      // nobody stays working in a branch that has just been switched off
+      if (patch.active === false && d.session.warehouse === id) {
+        d.session.warehouse = (d.warehouses.find((x) => x.active !== false && x.id !== id) || d.warehouses[0]).id;
+      }
       audit(d, 'Branch changed', w.name + (patch.active === false ? ' — disabled' : patch.active === true ? ' — enabled' : ''));
     }),
     removeWarehouse: (id) => {
