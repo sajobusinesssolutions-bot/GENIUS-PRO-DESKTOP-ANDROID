@@ -39,3 +39,12 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Secrets — the OAuth client secret and the licence signing key live on the
+# server only. Nothing here may carry them into the repository.
+.env
+.env.*
+!.env.example
+server/.env
+secrets/
+*.pem
