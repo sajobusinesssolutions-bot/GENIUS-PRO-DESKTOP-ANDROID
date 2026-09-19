@@ -31,12 +31,20 @@ const normalise = (e) => String(e || '').trim().toLowerCase();
 
 /* ---------------------------------------------------------------- */
 
-async function issueSession(account, deviceName = 'unknown') {
+/**
+ * Signing in creates a session, never a device.
+ *
+ * A device is a licence seat, claimed deliberately through POST /v1/devices.
+ * Letting a session consume one meant signing in three times locked a person
+ * out of their own books — exactly backwards, since signing in again is what
+ * somebody does when something has already gone wrong.
+ */
+async function issueSession(account, sessionName = 'unknown') {
   const refresh = newRefresh();
   await q(
-    `insert into devices (account_id, name, kind, platform, refresh_hash, last_seen)
-     values ($1, $2, 'phone', $3, $4, now())`,
-    [account.id, deviceName, 'app', hashRefresh(refresh)],
+    `insert into sessions (account_id, name, refresh_hash, last_seen)
+     values ($1, $2, $3, now())`,
+    [account.id, sessionName, hashRefresh(refresh)],
   );
   return {
     accountId: account.id,
@@ -229,7 +237,7 @@ export default async function authRoutes(app) {
     // Every other session is ended: a password reset is how someone recovers an
     // account that may have been taken, and leaving old sessions alive would
     // defeat the point of resetting it.
-    await q('update devices set revoked_at = now() where account_id = $1 and revoked_at is null', [rows[0].id]);
+    await q('update sessions set revoked_at = now() where account_id = $1 and revoked_at is null', [rows[0].id]);
     return issueSession(rows[0], req.body?.device || 'a device');
   });
 
@@ -239,16 +247,16 @@ export default async function authRoutes(app) {
     if (!token) return fail(reply, 400, 'malformed', 'No refresh token was sent.');
 
     const { rows } = await q(
-      `select d.id as device_id, d.refresh_hash, a.id, a.email, a.name
-         from devices d join accounts a on a.id = d.account_id
-        where d.refresh_hash = $1 and d.revoked_at is null`,
+      `select s.id as session_id, s.refresh_hash, a.id, a.email, a.name
+         from sessions s join accounts a on a.id = s.account_id
+        where s.refresh_hash = $1 and s.revoked_at is null`,
       [hashRefresh(token)],
     );
     const row = rows[0];
     if (!row || !refreshMatches(token, row.refresh_hash)) {
       return fail(reply, 401, 'badCredentials', 'Please sign in again.');
     }
-    await q('update devices set last_seen = now() where id = $1', [row.device_id]);
+    await q('update sessions set last_seen = now() where id = $1', [row.session_id]);
     return { access: await issueAccess({ id: row.id, email: row.email }) };
   });
 }
