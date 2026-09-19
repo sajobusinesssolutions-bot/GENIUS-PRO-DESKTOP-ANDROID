@@ -25,7 +25,7 @@ export interface RunOutcome {
 }
 
 export function useSyncRun() {
-  const { db, setSync, dropQueued, logAudit } = useAppData();
+  const { db, setSync, dropQueued, logAudit, licFeature } = useAppData();
   const { account } = useAuth();
   const running = useRef(false);
   const dbRef = useRef(db);
@@ -40,6 +40,7 @@ export function useSyncRun() {
   const run = useCallback(async (how: 'manual' | 'auto'): Promise<RunOutcome> => {
     const d = dbRef.current;
     if (!d) return { ok: false, sent: 0, message: 'The books are not loaded yet.' };
+    if (!licFeature('sync')) return { ok: false, sent: 0, message: 'Cloud sync is part of Pro. The developer switches it on for your account.' };
     if (!d.sync.on) return { ok: false, sent: 0, message: 'Turn sync on first.' };
     if (!account) return { ok: false, sent: 0, message: 'Sign in to your account first.' };
     if (d.session.online === false) return { ok: false, sent: 0, message: 'This phone has no internet right now.' };
@@ -94,7 +95,7 @@ export function useSyncRun() {
     } finally {
       running.current = false;
     }
-  }, [account, accessToken, setSync, dropQueued, logAudit]);
+  }, [account, accessToken, setSync, dropQueued, logAudit, licFeature]);
 
   return { run, accessToken };
 }

@@ -18,12 +18,12 @@ const EVERY_MS = 3 * 60 * 1000;
 const SNAPSHOT_EVERY_MS = 30 * 60 * 1000;
 
 export default function SyncKeeper() {
-  const { db, ready } = useAppData();
+  const { db, ready, licFeature } = useAppData();
   const { account } = useAuth();
   const { run } = useSyncRun();
   const last = useRef(0);
 
-  const on = !!db?.sync.on && !!account && !account.localOnly;
+  const on = !!db?.sync.on && !!account && !account.localOnly && licFeature('sync');
   const online = db?.session.online !== false;
   const waiting = db?.queue.length || 0;
 

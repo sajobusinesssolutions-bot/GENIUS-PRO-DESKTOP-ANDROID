@@ -1,289 +1,169 @@
 /**
  * CLOUD SYNC.
  *
- * The old screen was a mock: it emptied the change queue, wrote "sent up" in a
- * log and nothing left the phone. This one does the work and reports exactly
- * what happened — including the part that is not built yet.
+ * One card that says where the books are, and one button. The first press
+ * turns sync on — from then on it runs by itself (see SyncKeeper) — and later
+ * presses send whatever is waiting straight away. Everything that was here
+ * before and changed nothing a shopkeeper could see (Wi-Fi only, online mode,
+ * server counters, a separate on/off toggle) is gone.
  *
- * The honest shape of it today is **one-way**. This phone's trading is copied
- * to the account, so a lost or stolen phone is no longer a lost business. What
- * it does not yet do is bring another device's work *down*; that needs a
- * reducer mirroring every mutator in the app, and a half-written one produces
- * wrong figures rather than missing ones. So the screen says "backed up", not
- * "in step", because saying the second would be a lie a shopkeeper could only
- * discover by trusting it.
+ * Cloud sync is a Pro feature. The licence comes from the account and only the
+ * developer can grant or remove it, so a till on Starter sees why the button is
+ * locked rather than a switch that silently does nothing.
  */
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
-import { useTheme, fonts, radius } from '../theme';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, Alert, Pressable } from 'react-native';
+import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
 import { useToast } from '../components/Toast';
-import {
-  Panel, Button, SectionLabel, DetailRow, InfoBanner, Badge, ListRow, ToggleRow, ProgressBar,
-} from '../components/ui';
+import { Panel, Button, SectionLabel, ListRow, ProgressBar } from '../components/ui';
 import { Icon, IconName } from '../components/icons';
 import { useGo } from '../nav/navigate';
 import { plural, fmtDate } from '../data/helpers';
-import * as api from '../data/authApi';
-import { serverState } from '../data/syncClient';
 import { useSyncRun } from '../data/useSyncRun';
 
-/* ---------------------------------------------------------------- */
-
-type Health = 'off' | 'noAccount' | 'offline' | 'behind' | 'safe';
+type Health = 'locked' | 'noAccount' | 'off' | 'offline' | 'behind' | 'safe';
 
 const LOOK: Record<Health, { tone: 'good' | 'warn' | 'danger' | 'accent'; icon: IconName; head: string }> = {
-  off: { tone: 'warn', icon: 'cloud', head: 'Kept on this phone only' },
+  locked: { tone: 'warn', icon: 'lock', head: 'Cloud sync is part of Pro' },
   noAccount: { tone: 'danger', icon: 'user', head: 'No account signed in' },
+  off: { tone: 'warn', icon: 'cloud', head: 'Kept on this phone only' },
   offline: { tone: 'warn', icon: 'cloud', head: 'Waiting for a connection' },
   behind: { tone: 'accent', icon: 'up', head: 'Changes waiting to go up' },
   safe: { tone: 'good', icon: 'shield', head: 'Backed up to your account' },
 };
 
-/** The one card at the top that says where the books actually are. */
-function StateCard({ health, note, busy }: { health: Health; note: string; busy: boolean }) {
-  const { colors } = useTheme();
-  const look = LOOK[health];
-  const bg = look.tone === 'good' ? colors.goodSoft
-    : look.tone === 'danger' ? colors.dangerSoft
-      : look.tone === 'warn' ? colors.warnSoft : colors.accentSoft;
-  const fg = look.tone === 'good' ? colors.good
-    : look.tone === 'danger' ? colors.danger
-      : look.tone === 'warn' ? colors.warn : colors.accent;
-
-  return (
-    <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-      <View style={{
-        backgroundColor: colors.surface, borderRadius: 18, padding: 16,
-        borderWidth: 1, borderColor: colors.line,
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-          <View style={{
-            width: 46, height: 46, borderRadius: 15, backgroundColor: bg,
-            alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Icon name={busy ? 'cloud' : look.icon} size={22} color={fg} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>
-              {busy ? 'Sending…' : look.head}
-            </Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: colors.faint, marginTop: 3 }}>
-              {note}
-            </Text>
-          </View>
-        </View>
-        {busy ? <View style={{ marginTop: 13 }}><ProgressBar pct={100} /></View> : null}
-      </View>
-    </View>
-  );
-}
-
-/* ---------------------------------------------------------------- */
-
 export default function SyncScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, setSync, logAudit, dropQueued } = useAppData();
+  const { db, setSync, licFeature } = useAppData();
   const { account } = useAuth();
   const { success, error } = useToast();
-  const { run: runSync } = useSyncRun();
-
+  const { run } = useSyncRun();
   const [busy, setBusy] = useState(false);
-  const [access, setAccess] = useState<string | null>(null);
-  const [server, setServer] = useState<{ seq: number; ops: number; lastPush: string | null } | null>(null);
 
-  const isOwner = db?.session.role === 'owner';
-  const online = db?.session.online !== false;
-  const waiting = db?.queue.length || 0;
-  const s = db?.sync;
+  if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+  const s = db.sync;
+  const isOwner = db.session.role === 'owner';
+  const online = db.session.online !== false;
+  const waiting = db.queue.length;
+  const pro = licFeature('sync');
+  const signedIn = !!account && !account.localOnly;
 
-  /**
-   * A fresh access token, from the refresh token kept with the account.
-   *
-   * Access tokens last fifteen minutes, so one is fetched when the screen opens
-   * rather than stored — a stale token would produce "sign in again" on a
-   * button press for no reason the person could act on.
-   */
-  const getAccess = useCallback(async (): Promise<string | null> => {
-    if (!account?.refresh) return null;
-    const r = await api.refreshSession(account.refresh);
-    if (!r.ok) return null;
-    setAccess(r.value.access);
-    return r.value.access;
-  }, [account?.refresh]);
+  const health: Health = !pro ? 'locked'
+    : !signedIn ? 'noAccount'
+      : !s.on ? 'off'
+        : !online ? 'offline'
+          : waiting > 0 ? 'behind' : 'safe';
 
-  useEffect(() => { void getAccess(); }, [getAccess]);
+  const note = {
+    locked: 'Your licence does not include cloud sync. The developer switches it on when you move to Pro.',
+    noAccount: 'Sign in to the owner\'s account so the books have somewhere to go.',
+    off: 'Nothing leaves this phone. If it is lost or stolen, the books go with it.',
+    offline: plural(waiting, 'change') + ' will go up by themselves as soon as there is internet.',
+    behind: plural(waiting, 'change') + ' waiting. They go up by themselves every few minutes.',
+    safe: s.lastPush ? 'Syncing by itself. Last sent ' + fmtDate(s.lastPush) + '.' : 'Syncing by itself.',
+  }[health];
 
-  // what the server actually holds, so the figure shown is not a guess
-  useEffect(() => {
-    (async () => {
-      if (!access) return;
-      const r = await serverState(access);
-      if (r.ok) setServer(r.value);
-    })();
-  }, [access]);
+  const look = LOOK[health];
+  const fg = { good: colors.good, danger: colors.danger, warn: colors.warn, accent: colors.accent }[look.tone];
+  const bg = { good: colors.goodSoft, danger: colors.dangerSoft, warn: colors.warnSoft, accent: colors.accentSoft }[look.tone];
 
-  if (!db || !s) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
-
-  const health: Health = !s.on ? 'off'
-    : !account ? 'noAccount'
-      : !online ? 'offline'
-        : waiting > 0 ? 'behind' : 'safe';
-
-  const note = health === 'off'
-    ? 'Nothing leaves this phone. If it is lost or stolen, the books go with it.'
-    : health === 'noAccount'
-      ? 'Sync is on but nobody is signed in, so there is no account to send anything to.'
-      : health === 'offline'
-        ? plural(waiting, 'change') + ' will go up as soon as there is internet.'
-        : health === 'behind'
-          ? plural(waiting, 'change') + ' has not been sent yet.'
-          : s.lastPush
-            ? 'Everything on this phone is on your account. Last sent ' + fmtDate(s.lastPush) + '.'
-            : 'Everything on this phone is on your account.';
-
-  /* ------------------------------------------------------------ */
-
-  async function sendNow() {
+  async function syncNow() {
+    if (!s.on) {
+      if (!isOwner) { Alert.alert('Owner only', 'Only the owner can switch cloud sync on.'); return; }
+      try { setSync({ on: true }); } catch (e: any) { error(e?.message || 'Sync could not be switched on.'); return; }
+    }
     setBusy(true);
     try {
-      const r = await runSync('manual');
-      if (!r.ok) { error(r.message); return; }
-      const token = access || await getAccess();
-      if (token) {
-        const st = await serverState(token);
-        if (st.ok) { setServer(st.value); setSync({ serverOps: st.value.ops }); }
-      }
-      success(r.message);
+      const r = await run('manual');
+      if (r.ok) success(r.message); else error(r.message);
     } finally {
       setBusy(false);
     }
   }
 
-  function toggle(v: boolean) {
-    if (!isOwner) { Alert.alert('Owner only', 'Only the owner can turn cloud sync on or off.'); return; }
-    if (!v) { setSync({ on: false }); return; }
+  function turnOff() {
     Alert.alert(
-      'Turn on cloud sync?',
-      'Everything already on this phone will be sent to your account. From then on a sale '
-      + 'can only be saved while the phone has internet, so nothing is recorded that your '
-      + 'account does not know about.',
+      'Stop syncing?',
+      'The books stay on this phone and nothing more goes to your account until you sync again.'
+        + (waiting ? ' ' + plural(waiting, 'change') + ' not yet sent will wait here.' : ''),
       [
-        { text: 'Not now', style: 'cancel' },
-        { text: 'Turn it on', onPress: () => setSync({ on: true }) },
+        { text: 'Keep syncing', style: 'cancel' },
+        { text: 'Stop', style: 'destructive', onPress: () => setSync({ on: false }) },
       ],
     );
   }
 
-  /* ------------------------------------------------------------ */
+  const button = !pro ? (
+    <Button label="See what Pro includes" variant="pri" icon={<Icon name="lock" size={17} color={colors.accentInk} />} onPress={() => go('Licence')} />
+  ) : !signedIn ? (
+    <Button label="Sign in" variant="pri" icon={<Icon name="user" size={17} color={colors.accentInk} />} onPress={() => go('AuthGate')} />
+  ) : (
+    <Button
+      label={!s.on ? 'Sync — and keep syncing' : waiting ? 'Sync ' + plural(waiting, 'change') + ' now' : 'Sync now'}
+      variant="pri"
+      loading={busy}
+      disabled={busy || !online}
+      icon={<Icon name="cloud" size={17} color={colors.accentInk} />}
+      onPress={syncNow}
+    />
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 28 }}>
-        <StateCard health={health} note={note} busy={busy} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+        <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: colors.line, alignItems: 'center' }}>
+          <View style={{ width: 64, height: 64, borderRadius: 22, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name={busy ? 'cloud' : look.icon} size={30} color={fg} />
+          </View>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: colors.ink, marginTop: 14, textAlign: 'center' }}>
+            {busy ? 'Syncing…' : look.head}
+          </Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, lineHeight: 20, color: colors.faint, marginTop: 6, textAlign: 'center' }}>
+            {note}
+          </Text>
+          {busy ? <View style={{ alignSelf: 'stretch', marginTop: 14 }}><ProgressBar pct={100} /></View> : null}
 
-        {/* the account it all hangs off */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
-          <SectionLabel>The account</SectionLabel>
-          <Panel flush>
-            {account ? (
-              <>
-                <ListRow
-                  icon="user"
-                  title={account.email}
-                  subtitle={account.localOnly
-                    ? 'Made on this phone — not yet on the server'
-                    : 'Signed in' + (account.method === 'google' ? ' with Google' : '')}
-                  badge={<Badge tone={account.localOnly ? 'warn' : 'good'} label={account.localOnly ? 'Local' : 'Verified'} />}
-                />
-                <DetailRow label="Server" value={api.serverConfigured() ? 'Connected' : 'Not configured'} last />
-              </>
-            ) : (
-              <ListRow
-                icon="alert"
-                tone="danger"
-                title="Nobody is signed in"
-                subtitle="Sync needs an account to send the books to"
-                onPress={() => go('AuthGate')}
-                last
-              />
-            )}
-          </Panel>
+          <View style={{ flexDirection: 'row', alignSelf: 'stretch', marginTop: 18, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 14 }}>
+            {[
+              ['Waiting', waiting ? String(waiting) : '0'],
+              ['Last sent', s.lastPush ? fmtDate(s.lastPush) : 'Never'],
+              ['Automatic', s.on && pro ? 'On' : 'Off'],
+            ].map(([k, v], i) => (
+              <View key={k} style={{ flex: 1, alignItems: 'center', borderLeftWidth: i ? 1 : 0, borderLeftColor: colors.line }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }} numberOfLines={1}>{v}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{k}</Text>
+              </View>
+            ))}
+          </View>
         </View>
 
-        {/* what is here and what is there */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
-          <SectionLabel>Where things stand</SectionLabel>
-          <Panel>
-            <DetailRow label="Waiting on this phone" value={waiting ? plural(waiting, 'change') : 'Nothing'} />
-            <DetailRow label="Held on your account" value={server ? plural(server.ops, 'record') : '—'} />
-            <DetailRow label="Last sent" value={s.lastPush ? fmtDate(s.lastPush) : 'Never'} />
-            <DetailRow label="This phone" value={s.deviceId ? 'Registered' : 'Not registered yet'} last />
-          </Panel>
-        </View>
+        <View style={{ marginTop: 16 }}>{button}</View>
+        {pro && signedIn && s.on && isOwner ? (
+          <Pressable onPress={turnOff} hitSlop={8} style={{ alignSelf: 'center', marginTop: 14 }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.faint }}>Stop syncing</Text>
+          </Pressable>
+        ) : null}
 
-        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-          <Button
-            label={waiting ? 'Send ' + plural(waiting, 'change') + ' now' : 'Check for anything to send'}
-            variant="pri"
-            loading={busy}
-            disabled={!s.on || !account || !online}
-            icon={<Icon name="up" size={17} color={colors.accentInk} />}
-            onPress={sendNow}
-          />
-        </View>
+        {account ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, textAlign: 'center', marginTop: 18 }}>
+            {account.email}{s.businessId ? ' · business ' + s.businessId.slice(0, 8).toUpperCase() : ''}
+          </Text>
+        ) : null}
 
-        {/* settings */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 20 }}>
-          <SectionLabel>Settings</SectionLabel>
-          <Panel flush>
-            <ToggleRow
-              label="Keep this device synced"
-              sub={isOwner
-                ? 'Sends every sale to your account as it is made'
-                : 'Only the owner can change this'}
-              on={s.on}
-              onChange={toggle}
-            />
-            <ToggleRow
-              label="Only on Wi-Fi"
-              sub="Saves mobile data on a metered connection"
-              on={s.wifiOnly}
-              onChange={(v) => setSync({ wifiOnly: v })}
-            />
-            <ListRow
-              icon="cloud"
-              title="Online mode"
-              subtitle={s.on ? 'Every till reads the same books' : 'This device only'}
-              onPress={() => go('Online')}
-              last
-            />
-          </Panel>
-        </View>
-
-        {/* what it does and does not do */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
-          <InfoBanner
-            tone="neutral"
-            icon="shield"
-            text="Sync copies this phone's trading up to your account, so losing the phone does not lose the business. Bringing another device's work back down is not built yet — until it is, treat this as a backup rather than as two tills agreeing."
-          />
-        </View>
-
-        {/* history */}
         {(s.log || []).length ? (
-          <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
+          <View style={{ marginTop: 22 }}>
             <SectionLabel>Recent</SectionLabel>
             <Panel flush>
-              {[...(s.log || [])].reverse().slice(0, 6).map((l, i, a) => (
+              {[...(s.log || [])].reverse().slice(0, 5).map((l, i, a) => (
                 <ListRow
                   key={l.id}
                   icon={l.ok ? 'check' : 'alert'}
                   tone={l.ok ? 'good' : 'danger'}
                   title={l.note}
-                  subtitle={fmtDate(l.ts) + (l.by ? ' · ' + l.by : '')}
+                  subtitle={fmtDate(l.ts) + (l.how === 'auto' ? ' · automatic' : l.by ? ' · ' + l.by : '')}
                   last={i === a.length - 1}
                 />
               ))}
