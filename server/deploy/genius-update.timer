@@ -1,0 +1,10 @@
+[Unit]
+Description=Check GitHub for a new Genius POS API every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=Update the Genius POS API from GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/genius/repo/server/deploy/genius-update.sh
+# the script restarts genius-api, installs packages and runs psql, so it runs as root
+User=root
