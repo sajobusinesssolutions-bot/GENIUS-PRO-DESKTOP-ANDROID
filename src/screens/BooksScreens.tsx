@@ -11,6 +11,9 @@ import {
   Panel, DetailRow, StatGrid, FilterChips, AccentHead, InfoBanner,
 } from '../components/ui';
 import { finRange, FIN_PERIODS, inRange, fmtDate, money0 } from '../data/helpers';
+import { RangeBar, periodFor, Period } from '../components/RangeBar';
+import { accountFlow } from '../data/accountFlow';
+import { Icon } from '../components/icons';
 
 /** Accounting — ledgers, P&L and a trial balance from the journal. */
 export function AccountingScreen() {
@@ -163,54 +166,85 @@ export function TaxScreen() {
   );
 }
 
-/** Account detail — reference SCREENS.accountDetail, line 12707. */
+/**
+ * One account's statement for a period — reference SCREENS.accountDetail,
+ * redesigned. Opens on the period chosen on Cash & bank; the bar at the top
+ * changes it. Opening balance, money in, money out and closing balance, then
+ * every movement grouped by day with that day's totals and the running balance.
+ */
 export function AccountDetailScreen({ route }: any) {
   const { colors } = useTheme();
-  const { db, money, accountBalance } = useAppData();
+  const { db, money } = useAppData();
+  const p = route?.params || {};
+  const [period, setPeriod] = useState<Period>(
+    p.period === 'custom' && p.from && p.to ? periodFor('custom', { from: p.from, to: p.to }) : periodFor(p.period || 'today'),
+  );
+  const acc = db?.accounts.find((a) => a.id === p.accountId);
+  const flow = useMemo(() => (db && acc ? accountFlow(db, acc.id, period.from, period.to) : null), [db, acc, period]);
   if (!db) return null;
-  const id = route?.params?.accountId;
-  const acc = db.accounts.find((a) => a.id === id);
-  if (!acc) return <EmptyState icon="card" title="Account not found" />;
+  if (!acc || !flow) return <EmptyState icon="card" title="Account not found" />;
 
-  const rows: { ts: string; memo: string; delta: number }[] = [];
-  db.journal.forEach((e) => {
-    e.lines.forEach((l) => {
-      if (l.acc !== acc.id) return;
-      rows.push({ ts: e.ts, memo: e.memo, delta: (l.dr || 0) - (l.cr || 0) });
-    });
-  });
-  rows.reverse();
+  const kind = acc.type === 'cash' ? 'Cash drawer' : acc.type === 'bank' ? 'Bank account' : 'Mobile money';
+  const cell = (label: string, value: string, color: string) => (
+    <View style={{ flex: 1 }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color, marginTop: 3 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+    </View>
+  );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: 24 }}>
-      <View style={{ padding: 16 }}>
-        <Card style={{ paddingVertical: 15, paddingHorizontal: 16 }}>
-          <Cap>Balance</Cap>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, color: colors.ink, marginTop: 6, letterSpacing: -1 }}>{money(accountBalance(acc.id))}</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 4 }}>
-            {acc.type === 'cash' ? 'Cash' : acc.type === 'bank' ? 'Bank' : 'Mobile wallet'} · opening {money(acc.opening)}
-          </Text>
-        </Card>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+      <RangeBar value={period} onChange={setPeriod} />
+
+      <View style={{ marginTop: 14, backgroundColor: colors.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: colors.line }}>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>{acc.name} · {kind}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 10 }}>Balance at the end of {period.label.toLowerCase()}</Text>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, color: colors.ink, letterSpacing: -0.8 }} numberOfLines={1} adjustsFontSizeToFit>{money(flow.closing)}</Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line }}>
+          {cell('Opening', money(flow.opening), colors.ink)}
+          {cell('In', '+' + money0(flow.inflow), colors.good)}
+          {cell('Out', '−' + money0(flow.outflow), colors.danger)}
+        </View>
       </View>
-      <View style={{ paddingHorizontal: 16 }}>
-        <Cap style={{ marginBottom: 8 }}>Movements</Cap>
-        <Card>
-          {rows.length ? rows.map((r, i) => (
-            <View key={i} style={{
-              flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 11, paddingHorizontal: 16,
-              borderBottomWidth: i === rows.length - 1 ? 0 : 1, borderBottomColor: colors.line,
-            }}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{r.memo}</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>{fmtDate(r.ts)}</Text>
+
+      {flow.days.length ? flow.days.map((g) => (
+        <View key={g.day} style={{ marginTop: 18 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 8, paddingHorizontal: 2 }}>
+            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>{g.label}</Text>
+            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12, color: colors.good }}>+{money0(g.inflow)}</Text>
+            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12, color: colors.danger, marginLeft: 10 }}>−{money0(g.outflow)}</Text>
+          </View>
+          <Card>
+            {g.rows.map((r, i) => (
+              <View key={r.id} style={{
+                flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 11, paddingHorizontal: 14,
+                borderBottomWidth: i === g.rows.length - 1 ? 0 : 1, borderBottomColor: colors.line,
+              }}>
+                <View style={{
+                  width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: r.delta >= 0 ? colors.goodSoft : colors.dangerSoft,
+                }}>
+                  <Icon name={r.delta >= 0 ? 'down' : 'up'} size={15} color={r.delta >= 0 ? colors.good : colors.danger} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{r.memo}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>
+                    {new Date(r.ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · balance {money0(r.balance)}
+                  </Text>
+                </View>
+                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: r.delta >= 0 ? colors.good : colors.danger }}>
+                  {(r.delta >= 0 ? '+' : '−') + money0(Math.abs(r.delta))}
+                </Text>
               </View>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: r.delta >= 0 ? colors.good : colors.danger }}>
-                {(r.delta >= 0 ? '+' : '−') + ' ' + money0(Math.abs(r.delta))}
-              </Text>
-            </View>
-          )) : <EmptyState icon="card" title="Nothing yet" subtitle="Transactions on this account will show here." />}
-        </Card>
-      </View>
+            ))}
+          </Card>
+        </View>
+      )) : (
+        <View style={{ marginTop: 18 }}>
+          <EmptyState icon="card" title="Nothing moved" subtitle={'No money went in or out of ' + acc.name + ' in ' + period.label.toLowerCase() + '.'} />
+        </View>
+      )}
     </ScrollView>
   );
 }
+

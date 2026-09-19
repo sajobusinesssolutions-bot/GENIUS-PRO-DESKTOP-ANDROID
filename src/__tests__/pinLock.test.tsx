@@ -11,11 +11,13 @@ const mockUpdateUser = jest.fn();
 const mockDb: any = {
   firm: { name: 'Amar Shop' },
   settings: { theme: 'light' },
+  session: { warehouse: 'w1' },
+  warehouses: [] as any[],
   ownerEmail: 'owner@example.com',
   users: [] as any[],
 };
 jest.mock('../data/AppDataContext', () => ({
-  useAppData: () => ({ db: mockDb, login: mockLogin, updateUser: mockUpdateUser }),
+  useAppData: () => ({ db: mockDb, login: mockLogin, updateUser: mockUpdateUser, setWarehouse: jest.fn() }),
   useAppDataSafe: () => ({ db: mockDb }),
 }));
 jest.mock('../data/AuthContext', () => ({ useAuth: () => ({ account: null }) }));
@@ -89,4 +91,13 @@ it('tells staff to ask the owner, rather than offering a reset', () => {
   expect(spy.mock.calls[0][1]).toMatch(/Ask the owner/);
   expect(screen.queryByText(/reset sheet/)).toBeNull();
   spy.mockRestore();
+});
+
+it('shows a disabled branch as disabled, and will not open it', () => {
+  mockDb.users = [{ id: 'o', name: 'Amar', role: 'owner', pin: '1234', active: true }, { id: 'c', name: 'Grace', role: 'cashier', pin: '1111', active: true }];
+  mockDb.warehouses = [{ id: 'w1', name: 'Main shop', active: true }, { id: 'w2', name: 'Town branch', active: false }];
+  renderIt();
+  expect(screen.getByText('Town branch · disabled')).toBeTruthy();
+  expect(screen.getByText('Main shop')).toBeTruthy();
+  mockDb.warehouses = [];
 });
