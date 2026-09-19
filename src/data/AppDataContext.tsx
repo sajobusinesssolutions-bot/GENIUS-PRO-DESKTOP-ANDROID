@@ -10,7 +10,8 @@ import {
 import { setCostHidden } from './perms';
 import { ensureRoles, setRoleRegistry, canWith, builtinRoles, allPermKeys, permCount } from './perms';
 import { seed, emptyBook } from './seed';
-import { loadDB, saveDB, clearDB, scheduleSave, flushSave } from './storage';
+import { loadDB, saveDB, clearDB, scheduleSave, flushSave, migrate } from './storage';
+import { defaultSync } from './defaults';
 import { uid, iso } from './uid';
 import * as logic from './logic';
 import { activeBranchId, branchJournal } from './branch';
@@ -40,6 +41,8 @@ interface Ctx {
   startFreshBook: (o?: { firmName?: string; ownerName?: string; ownerEmail?: string }) => void;
   /** Empties the books if they belong to a different owner than the one signing in. */
   claimBooksFor: (email: string) => boolean;
+  /** Replaces the books on this phone with a business's books from the account. */
+  adoptBook: (data: DB, o: { businessId: string; ownerEmail: string }) => void;
   commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; userId?: string }) => Sale;
   voidSale: (saleId: string, reason?: string) => void;
   createPurchase: (partyId: string, lines: PurchaseLine[], method: PayMethod, userId?: string) => Purchase;
@@ -379,6 +382,28 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setDb(fresh);
       scheduleSave(fresh);
       return true;
+    },
+    adoptBook: (data, o) => {
+      // The copy came from another phone: its queue, its device and whoever was
+      // at its till are that phone's, not this one's.
+      const d = migrate(JSON.parse(JSON.stringify(data))) as DB;
+      const till = dbRef.current?.session.till || d.session.till;
+      d.ownerEmail = o.ownerEmail;
+      d.demo = false;
+      d.onboarded = true;
+      d.sync = {
+        ...defaultSync(till),
+        on: true,
+        businessId: o.businessId,
+        lastPull: new Date().toISOString(),
+      };
+      d.session = { ...d.session, till, userId: '', role: 'cashier' as any };
+      ensureRoles(d);
+      dbRef.current = d;
+      setRoleRegistry(d.roles);
+      setDb(d);
+      void flushSave();
+      scheduleSave(d);
     },
     startFreshBook: (o) => {
       const fresh = emptyBook(o || {});

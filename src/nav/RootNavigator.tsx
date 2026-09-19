@@ -18,6 +18,7 @@ import KeyboardSafe from '../components/KeyboardSafe';
 import RouteGuard from './RouteGuard';
 import PinLockScreen from '../screens/PinLockScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
+import BusinessesScreen from '../screens/BusinessesScreen';
 import MainTabs from './MainTabs';
 import NewSaleScreen from '../screens/NewSaleScreen';
 import ReceiptScreen from '../screens/ReceiptScreen';
@@ -141,6 +142,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
         <Stack.Screen name="PinLock" component={PinLockScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Businesses" component={BusinessesScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
 
         <Stack.Screen name="MenuGroup" component={MenuGroupScreen} options={{ title: 'Menu' }} />

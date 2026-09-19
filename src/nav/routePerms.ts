@@ -17,7 +17,7 @@ export type RouteRule = string | null | ((params: any) => string | null);
 export const ROUTE_PERMS: Record<string, RouteRule> = {
   // getting in, and the shell
   AuthGate: null, SignIn: null, CreateAccount: null, GoogleSignIn: null, Welcome: null,
-  Onboarding: null, PinLock: null, Main: null, MenuGroup: null, Notifications: null,
+  Onboarding: null, PinLock: null, Businesses: null, Main: null, MenuGroup: null, Notifications: null,
   About: null, Install: null, Update: null, Versions: null, LicenceStop: null,
 
   // selling

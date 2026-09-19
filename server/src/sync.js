@@ -150,10 +150,60 @@ export default async function syncRoutes(app) {
     const me = await whoami(req, reply);
     if (!me) return;
     const { rows } = await q(
-      'select id, name, tin, local_id, created_at from businesses where account_id = $1 order by created_at',
+      `select b.id, b.name, b.tin, b.local_id, b.created_at,
+              s.updated_at as snapshot_at, s.bytes as snapshot_bytes
+         from businesses b
+         left join business_snapshots s on s.business_id = b.id
+        where b.account_id = $1 and b.status = 'active'
+        order by b.created_at`,
       [me.id],
     );
     return { businesses: rows };
+  });
+
+  /* ------------------------------------------------------- snapshots */
+  /*
+   * A whole copy of a business's books, so a phone that has never held them
+   * can open them: the owner signs in, picks a shop from the list, and gets
+   * that shop — not an empty book, and not whichever shop was on the phone.
+   */
+  app.put('/v1/businesses/:id/snapshot', { bodyLimit: 48 * 1024 * 1024 }, async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const biz = await businessFor(me.id, req.params.id);
+    if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    const data = req.body?.data;
+    if (!data || typeof data !== 'object') return fail(reply, 400, 'malformed', 'No books were sent.');
+    const text = JSON.stringify(data);
+    await q(
+      `insert into business_snapshots (business_id, data, bytes, device_id, updated_at)
+       values ($1, $2::jsonb, $3, $4, now())
+       on conflict (business_id) do update
+         set data = excluded.data, bytes = excluded.bytes,
+             device_id = excluded.device_id, updated_at = now()`,
+      [biz.id, text, Buffer.byteLength(text), req.body?.device || null],
+    );
+    // the name on the list follows the name on the books
+    if (data.firm?.name && data.firm.name !== biz.name) {
+      await q('update businesses set name = $2 where id = $1', [biz.id, String(data.firm.name).slice(0, 200)]);
+    }
+    return { ok: true, bytes: Buffer.byteLength(text) };
+  });
+
+  app.get('/v1/businesses/:id/snapshot', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const biz = await businessFor(me.id, req.params.id);
+    if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    const { rows } = await q(
+      'select data, updated_at from business_snapshots where business_id = $1',
+      [biz.id],
+    );
+    if (!rows[0]) {
+      return fail(reply, 404, 'noSnapshot',
+        'This business has no copy on the server yet. Open it on the phone that holds it and sync once.');
+    }
+    return { data: rows[0].data, updatedAt: rows[0].updated_at };
   });
 
   app.post('/v1/businesses', async (req, reply) => {
