@@ -93,8 +93,9 @@ export async function ensureWiring(d: DB, access: string): Promise<Result<Wiring
   // a business chosen from the list (see BusinessesScreen) is kept; otherwise
   // the one these books were first sent as, matched by the shop's own id
   let businessId = (d.sync?.businessId && list.find((b) => b.id === d.sync.businessId)?.id)
-    || list.find((b) => b.local_id === d.firm.id)?.id
-    || (list.length === 1 && !list[0].local_id ? list[0].id : undefined);
+    // Matched by id only, never by name or by being the only one: two shops
+    // can share a name, and guessing is how one shop's books end up in another.
+    || list.find((b) => b.local_id === d.firm.id)?.id;
   if (!businessId) {
     const made = await call<{ id: string }>('/v1/businesses', access, {
       name: d.firm.name, tin: d.firm.tin, localId: d.firm.id,
