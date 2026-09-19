@@ -9,7 +9,8 @@
  * DB.printers, DB.printServer, DB.templates and DB.templateFor.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TextInput, Switch, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, TextInput, Switch, Pressable, Alert, Platform } from 'react-native';
+import { pickSystemPrinter } from '../data/printSetup';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
@@ -188,6 +189,7 @@ function PrintersPane() {
       name, kind: (edit.kind || 'wifi') as Printer['kind'], width: (edit.width || '80mm') as Paper,
       address: String(edit.address || ''), port: Number(edit.port) || 9100,
       dflt: !!edit.dflt, online: edit.online !== false, note: String(edit.note || ''),
+      url: edit.url || undefined,
     };
     if (edit.id) updatePrinter(edit.id, body); else addPrinter(body);
     setEdit(null);
@@ -340,6 +342,16 @@ function PrintersPane() {
                 <Field label="Host or IP" value={String(edit.address || '')} onChangeText={(v) => setEdit({ ...edit, address: v })} placeholder="192.168.1.44" />
                 <Field label="Port" value={String(edit.port ?? 9100)} numeric onChangeText={(v) => setEdit({ ...edit, port: Number(v) || 0 })} />
               </>
+            ) : null}
+            {Platform.OS === 'ios' ? (
+              <Pressable
+                onPress={async () => { const p = await pickSystemPrinter(); if (p) setEdit({ ...edit, url: p.url, name: edit.name || p.name }); }}
+                style={{ paddingVertical: 12, marginBottom: 12 }}
+              >
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.accent }}>
+                  {edit.url ? 'AirPrint printer chosen · change' : 'Choose the AirPrint printer, so it prints without asking'}
+                </Text>
+              </Pressable>
             ) : null}
             <Field label="Note" value={String(edit.note || '')} onChangeText={(v) => setEdit({ ...edit, note: v })} placeholder="Where it sits" />
             <ToggleRow label="Make this the default" value={!!edit.dflt} onChange={(v) => setEdit({ ...edit, dflt: v })} last />

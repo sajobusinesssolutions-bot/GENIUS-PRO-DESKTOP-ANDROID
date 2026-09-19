@@ -11,7 +11,8 @@ import { Icon, IconName } from './icons';
 import Sheet from './Sheet';
 import { ListRow } from './kit';
 import { printDoc, shareDoc, docText, DocMeta } from '../data/docPrint';
-import type { Sale, Purchase, Payment } from '../data/types';
+import { printOptsFor, docKindOf, defaultPrinter, paperOf } from '../data/printSetup';
+import type { Sale, Purchase, Payment, Printer } from '../data/types';
 
 /** Builds the printable form of a sale, including batch and expiry per line. */
 export function useDocBuilder() {
@@ -21,6 +22,8 @@ export function useDocBuilder() {
     const pt = sale.partyId ? party(sale.partyId) : undefined;
     return {
       kind,
+      // paid in full at the counter it is a receipt; money still owed makes it an invoice
+      docKind: sale.due > 0 ? 'invoice' : 'receipt',
       no: sale.no,
       ts: sale.ts,
       firmName: db?.firm.name || '',
@@ -137,18 +140,23 @@ export function DocActions({ doc, more, compact, phone }: {
   phone?: string;
 }) {
   const { colors } = useTheme();
-  const { money } = useAppData();
+  const { money, db } = useAppData();
   const { error, success } = useToast();
   const [busy, setBusy] = useState<'print' | 'share' | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  const printers = db?.printers || [];
+  const dflt = defaultPrinter(db);
 
-  async function run(what: 'print' | 'share') {
+  async function run(what: 'print' | 'share', printer?: Printer) {
     setBusy(what);
     try {
       const d = doc();
-      if (what === 'print') await printDoc(d, money);
+      const opts = printOptsFor(db, d.docKind || docKindOf(d.kind), printer);
+      if (what === 'print') await printDoc(d, money, opts);
       else {
-        const ok = await shareDoc(d, money);
+        // a shared copy is A4 unless it is a receipt for a roll
+        const ok = await shareDoc(d, money, { ...opts, paper: opts.tpl?.kind === 'thermal' ? opts.paper : 'A4' });
         if (!ok) error('Sharing is not available on this device.');
       }
     } catch (e: any) {
@@ -215,9 +223,9 @@ export function DocActions({ doc, more, compact, phone }: {
           card
           icon="print"
           tone="accent"
-          title="Print"
-          subtitle="Open the system print dialog"
-          onPress={() => { setMoreOpen(false); run('print'); }}
+          title="Print on another printer"
+          subtitle={dflt ? 'Now goes to ' + dflt.name + ' · ' + paperOf(dflt) : 'Choose the printer and paper'}
+          onPress={() => { setMoreOpen(false); setChoosing(true); }}
         />
         {(more || []).map((a) => (
           <ListRow
@@ -230,6 +238,25 @@ export function DocActions({ doc, more, compact, phone }: {
             onPress={() => { setMoreOpen(false); a.onPress(); }}
           />
         ))}
+      </Sheet>
+
+      <Sheet visible={choosing} title="Print on" icon="print" onClose={() => setChoosing(false)}>
+        {printers.map((p) => (
+          <ListRow
+            key={p.id}
+            card
+            icon="print"
+            tone={p.dflt ? 'accent' : 'neutral'}
+            title={p.name + (p.dflt ? ' · default' : '')}
+            subtitle={paperOf(p) + (paperOf(p) === 'A4' ? ' page' : ' roll') + (p.note ? ' · ' + p.note : '')}
+            onPress={() => { setChoosing(false); void run('print', p); }}
+          />
+        ))}
+        {!printers.length ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, paddingVertical: 12 }}>
+            No printers are set up. Add them under Settings, Printing.
+          </Text>
+        ) : null}
       </Sheet>
     </>
   );

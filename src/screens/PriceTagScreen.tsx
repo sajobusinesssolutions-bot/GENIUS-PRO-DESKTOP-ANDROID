@@ -20,7 +20,10 @@ import {
   TopTabs, Sw, SelectField,
 } from '../components/ui';
 import { Icon } from '../components/icons';
-import type { Product } from '../data/types';
+import type { Product, Paper, Printer } from '../data/types';
+import { defaultPrinter, paperOf } from '../data/printSetup';
+import { pageSize } from '../data/docPrint';
+import { Platform } from 'react-native';
 
 type Size = 'small' | 'medium' | 'large';
 
@@ -49,35 +52,52 @@ function esc(s: unknown) {
  * finest most thermal and inkjet printers hold, and the code is printed
  * underneath so it can still be keyed in if a scanner is having a bad day.
  */
-function barsFor(code: string, height: number): string {
-  return code128Html(code, height, 2);
+function barsFor(code: string, height: number, module = 2): string {
+  return code128Html(code, height, module);
 }
 
-function tagHtml(items: Product[], style: TagStyle, shop: string, money: (n: number) => string) {
-  const w = style.perRow === 2 ? 48 : style.perRow === 3 ? 31.5 : 23.5;
-  const cells = items.map((p) => `
+/** The code on the tag: the item's own barcode when it has one, else its SKU. */
+export function tagCode(p: Product): string {
+  return (p.barcodes || []).find((x) => x && x.trim()) || p.sku;
+}
+
+/**
+ * The print sheet. On a roll (58mm or 80mm label or receipt printer) each tag
+ * is its own label, full width, one after another. On A4 the tags are laid out
+ * in a grid to be cut apart. Each item is repeated as many times as asked.
+ */
+export function tagHtml(items: Array<{ p: Product; n: number }>, style: TagStyle, shop: string, money: (n: number) => string, paper: Paper) {
+  const roll = paper !== 'A4';
+  const narrow = paper === '58mm';
+  const w = roll ? 100 : style.perRow === 2 ? 48 : style.perRow === 3 ? 31.5 : 23.5;
+  const scale = roll ? (narrow ? 1 : 1.15) : style.perRow === 4 ? 0.85 : 1;
+  const one = (p: Product) => `
     <div class="tag" style="width:${w}%">
       ${style.shopName ? `<div class="shop">${esc(shop)}</div>` : ''}
       ${style.name ? `<div class="name">${esc(p.name)}</div>` : ''}
       ${style.category && p.category ? `<div class="meta">${esc(p.category)}</div>` : ''}
-      ${style.price ? `<div class="price" style="font-size:${PRICE_PT[style.priceSize]}px">${esc(money(p.price))}${style.unit ? `<span class="per"> / ${esc(p.unit)}</span>` : ''}</div>` : ''}
-      ${style.barcode ? `<div class="bars">${barsFor(p.sku, BAR_H[style.barcodeSize])}</div>` : ''}
-      ${style.sku ? `<div class="sku">${esc(p.sku)}</div>` : ''}
-    </div>`).join('');
+      ${style.price ? `<div class="price" style="font-size:${Math.round(PRICE_PT[style.priceSize] * scale)}px">${esc(money(p.price))}${style.unit ? `<span class="per"> / ${esc(p.unit)}</span>` : ''}</div>` : ''}
+      ${style.barcode ? `<div class="bars">${barsFor(tagCode(p), Math.round(BAR_H[style.barcodeSize] * scale), narrow ? 1 : 2)}</div>` : ''}
+      ${style.sku ? `<div class="sku">${esc(tagCode(p))}</div>` : ''}
+    </div>`;
+  const cells = items.flatMap(({ p, n }) => Array.from({ length: Math.max(1, n) }, () => one(p))).join('');
 
   return `<!doctype html><html><head><meta charset="utf-8"/>
 <style>
-  @page { margin: 8mm; }
-  body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; }
-  .sheet { display: flex; flex-wrap: wrap; gap: 8px; }
-  .tag { border: 1px dashed #999; border-radius: 6px; padding: 8px 6px; text-align: center; box-sizing: border-box; page-break-inside: avoid; }
-  .shop { font-size: 8px; color: #777; text-transform: uppercase; letter-spacing: .5px; }
-  .name { font-size: 11px; font-weight: 700; margin-top: 2px; line-height: 1.25; }
-  .meta { font-size: 8px; color: #888; margin-top: 1px; }
+  @page { ${roll ? `size: ${narrow ? 58 : 80}mm auto; margin: 1.5mm;` : 'size: A4; margin: 8mm;'} }
+  body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; color: #000; }
+  svg { display: inline-block; max-width: 100%; }
+  .sheet { display: flex; flex-wrap: wrap; gap: ${roll ? 0 : 8}px; }
+  .tag { border: ${roll ? '0' : '1px dashed #999'}; border-radius: 6px; padding: ${roll ? '3mm 1mm' : '8px 6px'}; text-align: center;
+         box-sizing: border-box; page-break-inside: avoid; ${roll ? 'page-break-after: always; border-bottom: 1px dashed #000;' : ''} }
+  .tag:last-child { page-break-after: auto; }
+  .shop { font-size: ${narrow ? 8 : 9}px; color: #333; text-transform: uppercase; letter-spacing: .5px; }
+  .name { font-size: ${roll ? (narrow ? 12 : 14) : 11}px; font-weight: 700; margin-top: 2px; line-height: 1.25; }
+  .meta { font-size: 8px; color: #444; margin-top: 1px; }
   .price { font-weight: 800; margin-top: 5px; letter-spacing: -.4px; }
-  .per { font-size: 9px; font-weight: 500; color: #666; }
+  .per { font-size: 9px; font-weight: 500; color: #333; }
   .bars { margin-top: 5px; line-height: 0; }
-  .sku { font-family: monospace; font-size: 8px; color: #555; margin-top: 3px; }
+  .sku { font-family: monospace; font-size: ${roll ? 10 : 8}px; color: #111; margin-top: 3px; }
 </style></head><body><div class="sheet">${cells}</div></body></html>`;
 }
 
@@ -96,6 +116,11 @@ function PriceTagScreenBody() {
   const [tab, setTab] = useState<'pick' | 'design'>('pick');
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<Record<string, boolean>>({});
+  // how many of each: a shelf of twelve tins wants twelve tags, not one
+  const [copies, setCopies] = useState<Record<string, number>>({});
+  const [printerId, setPrinterId] = useState<string>(defaultPrinter(db)?.id || '');
+  const printer: Printer | undefined = (db?.printers || []).find((x) => x.id === printerId);
+  const [paper, setPaper] = useState<Paper>(paperOf(defaultPrinter(db), 'A4'));
   const [style, setStyle] = useState<TagStyle>({
     shopName: true, name: true, sku: true, category: false,
     price: true, barcode: true, unit: false,
@@ -113,21 +138,26 @@ function PriceTagScreenBody() {
 
   const chosen = all.filter((p) => picked[p.id]);
   const sample = chosen[0] || all[0];
+  const countOf = (id: string) => Math.max(1, copies[id] || 1);
+  const tagCount = chosen.reduce((n, p) => n + countOf(p.id), 0);
+  // the preview draws the same widths the printer will, so nothing is a surprise
+  const previewBars = useMemo(() => code128b(sample ? tagCode(sample) : ''), [sample]);
 
   const set = (patch: Partial<TagStyle>) => setStyle((s) => ({ ...s, ...patch }));
 
   async function print(share: boolean) {
     if (!chosen.length) { error('Choose at least one item.'); return; }
-    const html = tagHtml(chosen, style, db?.firm.name || '', money);
+    const html = tagHtml(chosen.map((p) => ({ p, n: countOf(p.id) })), style, db?.firm.name || '', money, paper);
+    const size = paper === 'A4' ? pageSize('A4') : pageSize(paper, tagCount * 4);
     try {
       if (share) {
-        const { uri } = await Print.printToFileAsync({ html });
+        const { uri } = await Print.printToFileAsync({ html, ...size });
         if (!(await Sharing.isAvailableAsync())) { error('Sharing is not available here.'); return; }
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Price tags' });
       } else {
-        await Print.printAsync({ html });
+        await Print.printAsync({ html, ...size, ...(Platform.OS === 'ios' && printer?.url ? { printerUrl: printer.url } : null) });
       }
-      success(chosen.length + ' tag' + (chosen.length === 1 ? '' : 's') + ' sent');
+      success(tagCount + ' tag' + (tagCount === 1 ? '' : 's') + ' sent');
     } catch (e: any) {
       error(e?.message || 'That could not be printed.');
     }
@@ -152,9 +182,6 @@ function PriceTagScreenBody() {
       <Sw on={!!style[key]} onPress={() => set({ [key]: !style[key] } as Partial<TagStyle>)} />
     </Pressable>
   );
-
-  // the preview draws the same widths the printer will, so nothing is a surprise
-  const previewBars = useMemo(() => code128b(sample?.sku || ''), [sample]);
 
   const sizeRow = (label: string, key: 'priceSize' | 'barcodeSize') => (
     <View style={{ marginTop: 14 }}>
@@ -227,7 +254,21 @@ function PriceTagScreenBody() {
                   />
                 </View>
               </View>
-              <SectionLabel right={<Badge label={chosen.length + ' chosen'} tone={chosen.length ? 'accent' : 'neutral'} />}>
+              {chosen.length ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Copies of each chosen item:</Text>
+                  {[1, 2, 5, 10, 20].map((n) => (
+                    <Pressable
+                      key={n}
+                      onPress={() => { const next: Record<string, number> = {}; chosen.forEach((p) => { next[p.id] = n; }); setCopies(next); }}
+                      style={{ paddingVertical: 6, paddingHorizontal: 11, borderRadius: radius.pill, borderWidth: 1.2, borderColor: colors.line, backgroundColor: colors.surface }}
+                    >
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft }}>×{n}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              <SectionLabel right={<Badge label={chosen.length + ' chosen · ' + tagCount + ' tags'} tone={chosen.length ? 'accent' : 'neutral'} />}>
                 {rows.length} items
               </SectionLabel>
             </View>
@@ -256,15 +297,92 @@ function PriceTagScreenBody() {
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>{p.sku}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                    {money(p.price)} · {tagCode(p)}
+                  </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(p.price)}</Text>
+                {on ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Pressable
+                      hitSlop={6}
+                      onPress={() => setCopies((c) => ({ ...c, [p.id]: Math.max(1, countOf(p.id) - 1) }))}
+                      style={{ width: 32, height: 32, borderRadius: 10, borderWidth: 1.4, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }}
+                    >
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.accent }}>−</Text>
+                    </Pressable>
+                    <Text style={{ minWidth: 30, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>×{countOf(p.id)}</Text>
+                    <Pressable
+                      hitSlop={6}
+                      onPress={() => setCopies((c) => ({ ...c, [p.id]: Math.min(500, countOf(p.id) + 1) }))}
+                      onLongPress={() => setCopies((c) => ({ ...c, [p.id]: Math.min(500, countOf(p.id) + 10) }))}
+                      style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.accentInk }}>+</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(p.price)}</Text>
+                )}
               </Pressable>
             );
           }}
         />
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 150 }}>
+          <SectionLabel>Printer and paper</SectionLabel>
+          <Panel>
+            {(db.printers || []).length ? (
+              <>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Print on</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                  {db.printers.map((pr) => {
+                    const on = pr.id === printerId;
+                    return (
+                      <Pressable
+                        key={pr.id}
+                        onPress={() => { setPrinterId(pr.id); setPaper(paperOf(pr, paper)); }}
+                        style={{
+                          paddingVertical: 9, paddingHorizontal: 13, borderRadius: radius.pill, borderWidth: 1.4,
+                          borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
+                        }}
+                      >
+                        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accent : colors.soft }}>
+                          {pr.name} · {paperOf(pr)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Paper</Text>
+            <View style={{ flexDirection: 'row', gap: 9 }}>
+              {([['58mm', '58mm roll'], ['80mm', '80mm roll'], ['A4', 'A4 sheet']] as Array<[Paper, string]>).map(([v, l]) => {
+                const on = paper === v;
+                return (
+                  <Pressable
+                    key={v}
+                    onPress={() => setPaper(v)}
+                    style={{
+                      flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: radius.md,
+                      borderWidth: 1.4, borderColor: on ? colors.accent : colors.line,
+                      backgroundColor: on ? colors.accentSoft : colors.surface,
+                    }}
+                  >
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: on ? colors.accent : colors.soft }}>{l}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 10 }}>
+              {paper === 'A4'
+                ? 'Tags are laid out in a grid on the page, to cut apart.'
+                : 'One tag per label, full width of the roll — for a POS or label printer.'}
+              {Platform.OS === 'android' ? ' Android asks which printer in its print window.' : ''}
+            </Text>
+          </Panel>
+
+          <View style={{ height: 20 }} />
           {/* live preview, drawn from the same settings the sheet prints */}
           <SectionLabel>Preview</SectionLabel>
           <Panel style={{ alignItems: 'center', paddingVertical: 24 }}>
@@ -310,7 +428,7 @@ function PriceTagScreenBody() {
                   </View>
                 ) : null}
                 {style.sku ? (
-                  <Text style={{ fontFamily: fonts.mono, fontSize: 9, color: '#555', marginTop: 4 }}>{sample.sku}</Text>
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 9, color: '#555', marginTop: 4 }}>{tagCode(sample)}</Text>
                 ) : null}
                 {!style.name && !style.price && !style.barcode && !style.sku && !style.shopName ? (
                   <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: '#bbb' }}>Everything is switched off</Text>
@@ -338,8 +456,8 @@ function PriceTagScreenBody() {
           <Panel>
             {sizeRow('Price size', 'priceSize')}
             {sizeRow('Barcode size', 'barcodeSize')}
-            <View style={{ height: 16 }} />
-            <SelectField
+            {paper === 'A4' ? <View style={{ height: 16 }} /> : null}
+            {paper === 'A4' ? <SelectField
               icon="chart"
               label="Tags per row on the sheet"
               value={String(style.perRow)}
@@ -350,14 +468,14 @@ function PriceTagScreenBody() {
               ]}
               onChange={(v) => set({ perRow: Number(v) as 2 | 3 | 4 })}
               style={{ marginBottom: 0 }}
-            />
+            /> : null}
           </Panel>
 
           <View style={{ height: 16 }} />
           <InfoBanner
             tone="neutral"
             icon="bulb"
-            text="The bars are a real Code 128 barcode of the item code, so a tag scans at the till. The code is printed underneath as well, in case a label is smudged."
+            text="The bars are a real Code 128 barcode of the item's barcode (or its code when it has none), so a tag scans at the till. The code is printed underneath as well, in case a label is smudged."
           />
         </ScrollView>
       )}
@@ -365,7 +483,7 @@ function PriceTagScreenBody() {
       <StickyBar>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-            {chosen.length} tag{chosen.length === 1 ? '' : 's'}
+            {tagCount} tag{tagCount === 1 ? '' : 's'} · {paper === 'A4' ? 'A4' : paper + ' roll'}
           </Text>
           {tab === 'pick' && chosen.length ? (
             <Pressable onPress={() => setTab('design')}>

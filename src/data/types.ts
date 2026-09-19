@@ -211,6 +211,8 @@ export type Paper = '58mm' | '80mm' | 'A4';
 export interface Printer {
   id: string; name: string; kind: PrinterKind; width: Paper;
   address: string; port: number; dflt: boolean; online: boolean; note: string;
+  /** iOS: the AirPrint address chosen for this printer, so it prints without asking. */
+  url?: string;
 }
 
 export interface PrintServer {

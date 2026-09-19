@@ -67,18 +67,20 @@ describe('code128b', () => {
 });
 
 describe('code128Html', () => {
-  it('draws one span per width, inked on the bars', () => {
+  it('draws one inked rectangle per bar, as SVG so it survives printing', () => {
     const html = code128Html('A', 40, 2);
-    const spans = html.split('<span').length - 1;
-    expect(spans).toBe(code128b('A').length);
-    expect(html.indexOf('background:#000')).toBeGreaterThan(-1);
-    expect(html.indexOf('background:#fff')).toBeGreaterThan(-1);
+    expect(html.startsWith('<svg')).toBe(true);
+    const rects = html.split('<rect').length - 1;
+    // bars are the even positions: bar, space, bar, ... ending on a bar
+    expect(rects).toBe(Math.ceil(code128b('A').length / 2));
+    // no background colours, which printers drop
+    expect(html.includes('background')).toBe(false);
   });
 
   it('scales every bar by the module width', () => {
     const one = code128Html('A', 40, 1);
     const two = code128Html('A', 40, 2);
-    const first = (s: string) => Number(s.match(/width:(\d+)px/)![1]);
+    const first = (s: string) => Number(s.match(/<rect x="[-0-9.]+" y="0" width="(\d+)"/)![1]);
     expect(two === one).toBe(false);
     expect(first(two)).toBe(first(one) * 2);
   });

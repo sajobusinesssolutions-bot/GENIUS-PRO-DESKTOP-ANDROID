@@ -60,17 +60,27 @@ export function code128b(text: string): number[] {
 }
 
 /**
- * The same bars as HTML spans, for the print sheet.
+ * The same bars as an inline SVG, for anything printed.
+ *
+ * These were coloured <span>s, and print engines leave out background colours
+ * unless "print backgrounds" is switched on — so every barcode came out as a
+ * blank strip. SVG shapes are ink, and always print.
+ *
  * `module` is the width of one narrow bar in pixels — 1 is too fine for most
- * thermal printers, so callers pass 2 where the tag has room.
+ * thermal printers, so callers pass 2 where there is room.
  */
 export function code128Html(text: string, height: number, module = 2): string {
   const widths = code128b(text);
   if (!widths.length) return '';
-  return widths
-    .map((w, i) => {
-      const ink = i % 2 === 0 ? '#000' : '#fff';
-      return `<span style="display:inline-block;width:${w * module}px;height:${height}px;background:${ink}"></span>`;
-    })
-    .join('');
+  let x = 0;
+  const bars: string[] = [];
+  widths.forEach((w, i) => {
+    if (i % 2 === 0) bars.push(`<rect x="${x}" y="0" width="${w * module}" height="${height}"/>`);
+    x += w * module;
+  });
+  // ten modules of quiet space either side, which scanners need to find the start
+  const quiet = 10 * module;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${x + quiet * 2}" height="${height}" `
+    + `viewBox="${-quiet} 0 ${x + quiet * 2} ${height}" shape-rendering="crispEdges" style="max-width:100%">`
+    + `<g fill="#000">${bars.join('')}</g></svg>`;
 }
