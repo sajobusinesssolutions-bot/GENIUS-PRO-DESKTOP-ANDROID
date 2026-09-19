@@ -30,6 +30,7 @@ function get() {
 const PURPOSE_WORDS = {
   signup: 'confirm your email address',
   reset: 'reset your password',
+  pin: 'reset your owner PIN',
 };
 
 export async function sendCode(email, code, purpose) {
@@ -59,6 +60,35 @@ export async function sendCode(email, code, purpose) {
       + `It expires in ${minutes} minutes.</p>`
       + `<p style="font-size:13px;color:#888">If you did not ask for this you can ignore `
       + `this email — nobody can use the code without it.</p></div>`,
+  });
+}
+
+/**
+ * Tells somebody the developer has opened an account for them, and how to get
+ * in: the account has no password yet, so it is Google, or "Forgot password".
+ */
+export async function sendInvite(email, { plan, until }) {
+  if (!mailConfigured()) {
+    const e = new Error('mail_not_configured');
+    e.expose = true;
+    throw e;
+  }
+  const what = plan === 'trial' ? 'a trial of Genius POS' : 'a Genius POS ' + plan + ' subscription';
+  const when = until ? ' It runs until ' + new Date(until).toDateString() + '.' : '';
+  await get().sendMail({
+    from: process.env.MAIL_FROM,
+    to: email,
+    subject: 'Your Genius POS account is ready',
+    text:
+      `An account has been opened for ${email} with ${what}.${when}\n\n`
+      + `To get in: open the Genius POS app and choose "Continue with Google" with this address, `
+      + `or choose "Forgot password" to set a password by email.\n`,
+    html:
+      `<div style="font-family:system-ui,sans-serif;max-width:440px">`
+      + `<p style="font-size:16px;color:#222;font-weight:600">Your Genius POS account is ready</p>`
+      + `<p style="font-size:14px;color:#444">An account has been opened for <b>${email}</b> with ${what}.${when}</p>`
+      + `<p style="font-size:14px;color:#444">To get in, open the app and choose <b>Continue with Google</b> `
+      + `with this address, or choose <b>Forgot password</b> to set a password by email.</p></div>`,
   });
 }
 

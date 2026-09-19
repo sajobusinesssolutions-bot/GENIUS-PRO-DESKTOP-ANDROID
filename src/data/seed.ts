@@ -371,7 +371,8 @@ export function emptyBook(o: { firmName?: string; ownerName?: string; branchName
     id: uid('usr'),
     name: (o.ownerName || '').trim() || 'Owner',
     role: 'owner' as const,
-    pin: '0000',
+    // no PIN until the owner chooses one — onboarding asks, and so does the lock screen
+    pin: '',
     active: true,
   }];
 

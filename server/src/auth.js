@@ -107,11 +107,16 @@ async function spendCode(email, purpose, code) {
 
 /* ---------------------------------------------------------------- routes */
 
+/** Which kind of code is being asked for; anything unknown is a sign-up code. */
+function purposeOf(p) {
+  return p === 'reset' || p === 'pin' ? p : 'signup';
+}
+
 export default async function authRoutes(app) {
   /* --- ask for a code ------------------------------------------------- */
   app.post('/v1/auth/otp/request', async (req, reply) => {
     const email = normalise(req.body?.email);
-    const purpose = req.body?.purpose === 'reset' ? 'reset' : 'signup';
+    const purpose = purposeOf(req.body?.purpose);
     if (!email.includes('@')) return fail(reply, 400, 'malformed', 'That email address does not look right.');
     if (!mailConfigured()) {
       return fail(reply, 503, 'server',
@@ -125,7 +130,7 @@ export default async function authRoutes(app) {
       return fail(reply, 409, 'emailTaken',
         'There is already an account with that email. Sign in instead, or reset the password.');
     }
-    if (purpose === 'reset' && !exists) {
+    if (purpose !== 'signup' && !exists) {
       // Said plainly. Hiding it would be theatre: the signup route already
       // reveals whether an address is taken, so pretending here protects nobody.
       return fail(reply, 404, 'unknownEmail', 'No account was found with that email address.');
@@ -152,7 +157,7 @@ export default async function authRoutes(app) {
    */
   app.post('/v1/auth/otp/verify', async (req, reply) => {
     const email = normalise(req.body?.email);
-    const purpose = req.body?.purpose === 'reset' ? 'reset' : 'signup';
+    const purpose = purposeOf(req.body?.purpose);
     const code = String(req.body?.code || '');
     if (!/^[0-9]{6}$/.test(code)) {
       return fail(reply, 400, 'badCode', 'The code is six digits.');
@@ -260,6 +265,26 @@ export default async function authRoutes(app) {
     if (!ok) return no();
 
     return issueSession(account, req.body?.device || 'a device');
+  });
+
+  /* --- reset the owner's PIN ------------------------------------------- */
+  /*
+   * The PIN lives on the phone, not here, so all the server can do is prove
+   * that whoever is holding the phone can read the owner's email. It spends the
+   * code and says so; the app then lets them choose a new PIN. Only the owner's
+   * address is ever offered by the app, and a code is only sent to an address
+   * that has an account.
+   */
+  app.post('/v1/auth/pin/reset', async (req, reply) => {
+    const email = normalise(req.body?.email);
+    const why = await spendCode(email, 'pin', String(req.body?.code || ''));
+    if (why) {
+      return fail(reply, why === 'rateLimited' ? 429 : 400, why,
+        why === 'codeExpired' ? 'That code has expired. Ask for a new one.'
+          : why === 'rateLimited' ? 'Too many attempts. Ask for a new code.'
+            : 'That code is not right.');
+    }
+    return { ok: true };
   });
 
   /* --- reset the password ---------------------------------------------- */
