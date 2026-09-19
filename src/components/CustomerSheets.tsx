@@ -30,9 +30,11 @@ function Field({ label, value, onChangeText, placeholder, keyboardType, multilin
   );
 }
 
-export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, onCreate, onClose }: {
+export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, onCreate, onClose, kind = 'customer' }: {
   visible: boolean; customers: Party[]; selectedId: string | null;
   onSelect: (id: string | null) => void; onCreate: () => void; onClose: () => void;
+  /** The same sheet picks a supplier on a purchase — there is no walk-in supplier. */
+  kind?: 'customer' | 'supplier';
 }) {
   const { colors } = useTheme();
   const [search, setSearch] = useState('');
@@ -45,9 +47,9 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
   return (
     <Sheet
       visible={visible}
-      title="Choose customer"
+      title={'Choose ' + kind}
       onClose={onClose}
-      footer={<Button label="Create new customer" variant="pri" icon={<Icon name="plus" size={16} color={colors.accentInk} />} onPress={onCreate} />}
+      footer={<Button label={'Create new ' + kind} variant="pri" icon={<Icon name="plus" size={16} color={colors.accentInk} />} onPress={onCreate} />}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.sunk, borderRadius: 12, borderWidth: 1, borderColor: colors.lineHard, paddingHorizontal: 12, marginBottom: 12 }}>
         <Icon name="search" size={16} color={colors.faint} />
@@ -60,7 +62,7 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
         />
       </View>
 
-      <Pressable
+      {kind === 'customer' ? <Pressable
         onPress={() => { onSelect(null); onClose(); }}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line }}
       >
@@ -69,7 +71,7 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
         </View>
         <Text style={{ flex: 1, color: colors.soft, fontFamily: fonts.uiSemi, fontSize: 14 }}>Walk-in customer</Text>
         {!selectedId ? <Icon name="check" size={17} color={colors.good} /> : null}
-      </Pressable>
+      </Pressable> : null}
 
       {list.map((c) => (
         <Pressable
@@ -92,15 +94,16 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
 
       {!list.length && (
         <Text style={{ paddingVertical: 24, textAlign: 'center', color: colors.faint, fontFamily: fonts.ui, fontSize: 13 }}>
-          No customer matches that search.
+          {customers.length ? 'No ' + kind + ' matches that search.' : 'No ' + kind + 's yet. Create the first one below.'}
         </Text>
       )}
     </Sheet>
   );
 }
 
-export function CustomerFormSheet({ visible, onClose, onSave }: {
+export function CustomerFormSheet({ visible, onClose, onSave, kind = 'customer' }: {
   visible: boolean; onClose: () => void; onSave: (p: Omit<Party, 'id'>) => void;
+  kind?: 'customer' | 'supplier';
 }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -121,7 +124,7 @@ export function CustomerFormSheet({ visible, onClose, onSave }: {
       email: email.trim(),
       address: address.trim(),
       gstin: gstin.trim(),
-      type: 'customer',
+      type: kind,
       openingBalance: Number(balance) || 0,
       creditLimit: Number(creditLimit) || 0,
       points: 0,
@@ -133,12 +136,12 @@ export function CustomerFormSheet({ visible, onClose, onSave }: {
   return (
     <Sheet
       visible={visible}
-      title="New customer"
+      title={'New ' + kind}
       onClose={() => { reset(); onClose(); }}
-      footer={<Button label="Save customer" variant="pri" disabled={!name.trim()} onPress={save} />}
+      footer={<Button label={'Save ' + kind} variant="pri" disabled={!name.trim()} onPress={save} />}
     >
       <View style={{ gap: 14 }}>
-        <Field label="Customer name" value={name} onChangeText={setName} placeholder="Required" />
+        <Field label={kind === 'supplier' ? 'Supplier name' : 'Customer name'} value={name} onChangeText={setName} placeholder="Required" />
         <Field label="Phone" value={phone} onChangeText={setPhone} placeholder="Optional" keyboardType="phone-pad" />
         <Field label="Email" value={email} onChangeText={setEmail} placeholder="Optional" keyboardType="email-address" />
         <Field label="Billing address" value={address} onChangeText={setAddress} placeholder="Street, city" multiline />

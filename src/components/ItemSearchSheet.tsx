@@ -10,7 +10,7 @@ import type { Product } from '../data/types';
  * the keyboard, so matches always grow into the visible area instead of sliding
  * underneath it.
  */
-export default function ItemSearchSheet({ visible, products, categories, money, stockOf, onPick, onScan, onClose, canSell }: {
+export default function ItemSearchSheet({ visible, products, categories, money, stockOf, onPick, onScan, onClose, canSell, title = 'Add item', priceOf, onCreate }: {
   visible: boolean;
   products: Product[];
   categories: string[];
@@ -24,6 +24,14 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
    * made every service unsellable — a service has no stock to have.
    */
   canSell?: (p: Product) => boolean;
+  title?: string;
+  /** The figure shown on each row: the selling price unless told otherwise (a purchase shows cost). */
+  priceOf?: (p: Product) => number;
+  /**
+   * Offers "Create a new item" with whatever was typed — so a delivery with
+   * something new on it does not mean leaving the purchase to go and add it.
+   */
+  onCreate?: (name: string) => void;
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -60,7 +68,7 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
             flexDirection: 'row', alignItems: 'center', gap: 10,
             backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.line,
           }}>
-            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>Add item</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>{title}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
               {results.length} match{results.length === 1 ? '' : 'es'}
             </Text>
@@ -77,7 +85,25 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
             keyboardDismissMode="none"
             keyExtractor={(p) => p.id}
             contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }}
-            ListFooterComponent={results.length ? null : (
+            // inverted: the header sits at the bottom, right above the search box
+            ListHeaderComponent={onCreate ? (
+              <Pressable
+                onPress={() => onCreate(q.trim())}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8,
+                  borderRadius: 14, borderWidth: 1.4, borderStyle: 'dashed', borderColor: colors.accent,
+                  backgroundColor: colors.accentSoft, paddingHorizontal: 12, paddingVertical: 12,
+                }}
+              >
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="plus" size={18} color={colors.accentInk} />
+                </View>
+                <Text numberOfLines={1} style={{ flex: 1, color: colors.accent, fontFamily: fonts.uiBold, fontSize: 14 }}>
+                  {q.trim() ? 'Create “' + q.trim() + '” as a new item' : 'Create a new item'}
+                </Text>
+              </Pressable>
+            ) : null}
+            ListFooterComponent={results.length || onCreate ? null : (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint }}>No items match “{q}”</Text>
               </View>
@@ -103,7 +129,7 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                       {p.sku} · {p.kind === 'service' ? 'Service' : out ? 'Out of stock' : stock + ' ' + p.unit + ' in stock'}
                     </Text>
                   </View>
-                  <Text style={{ color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 13 }}>{money(p.price)}</Text>
+                  <Text style={{ color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 13 }}>{money(priceOf ? priceOf(p) : p.price)}</Text>
                 </Pressable>
               );
             }}
@@ -144,7 +170,11 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                 placeholderTextColor={colors.faint}
                 autoCorrect={false}
                 returnKeyType="search"
-                onSubmitEditing={() => { if (results.length === 1 && stockOf(results[0]) > 0) onPick(results[0]); }}
+                onSubmitEditing={() => {
+                  if (results.length !== 1) return;
+                  const ok = canSell ? canSell(results[0]) : stockOf(results[0]) > 0;
+                  if (ok) onPick(results[0]);
+                }}
                 style={{ flex: 1, paddingVertical: 13, color: colors.ink, fontFamily: fonts.uiSemi, fontSize: 15 }}
               />
               {q.length > 0 && (

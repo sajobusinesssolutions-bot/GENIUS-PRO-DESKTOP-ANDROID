@@ -16,6 +16,9 @@ export function StockAdjustScreen() {
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [value, setValue] = useState('');
+  // For a batch-tracked item the count can be one batch's: the shelf holds lots,
+  // and "we found 3 more of lot A12" is what a count actually turns up.
+  const [batchNo, setBatchNo] = useState<string | undefined>(undefined);
 
   if (!db) return null;
   const wh = db.session.warehouse;
@@ -24,8 +27,8 @@ export function StockAdjustScreen() {
   const apply = (id: string) => {
     const n = Number(value);
     if (Number.isNaN(n)) { Alert.alert('Count', 'Enter a number.'); return; }
-    adjustStock(id, wh, n, 'Manual stock count');
-    setEditing(null); setValue('');
+    adjustStock(id, wh, n, batchNo ? 'Batch count' : 'Manual stock count', batchNo);
+    setEditing(null); setValue(''); setBatchNo(undefined);
   };
 
   return (
@@ -38,7 +41,7 @@ export function StockAdjustScreen() {
             borderBottomWidth: i === list.length - 1 ? 0 : 1, borderBottomColor: colors.line,
           }}>
             <Pressable
-              onPress={() => { setEditing(editing === p.id ? null : p.id); setValue(String(stockOf(p))); }}
+              onPress={() => { setEditing(editing === p.id ? null : p.id); setValue(String(stockOf(p))); setBatchNo(undefined); }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}
             >
               <IconTile icon="box" bg={colors.sunk} color={colors.faint} />
@@ -48,13 +51,26 @@ export function StockAdjustScreen() {
               </View>
               <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: colors.ink }}>{stockOf(p)} {p.unit}</Text>
             </Pressable>
+            {editing === p.id && p.trackBatches && (p.batches || []).length ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
+                <Chip label={'Whole item · ' + stockOf(p)} on={!batchNo} onPress={() => { setBatchNo(undefined); setValue(String(stockOf(p))); }} />
+                {(p.batches || []).map((b) => (
+                  <Chip
+                    key={b.no}
+                    label={'Batch ' + b.no + ' · ' + b.qty + (b.expiry ? ' · exp ' + fmtDay(b.expiry) : '')}
+                    on={batchNo === b.no}
+                    onPress={() => { setBatchNo(b.no); setValue(String(b.qty)); }}
+                  />
+                ))}
+              </View>
+            ) : null}
             {editing === p.id ? (
               <View style={{ flexDirection: 'row', gap: 9, marginTop: 10, alignItems: 'center' }}>
                 <TextInput
                   value={value} onChangeText={setValue} keyboardType="numeric" autoFocus
                   style={{ flex: 1, backgroundColor: colors.sunk, borderRadius: 10, height: 40, paddingHorizontal: 12, fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}
                 />
-                <Button size="sm" variant="pri" label="Set count" onPress={() => apply(p.id)} />
+                <Button size="sm" variant="pri" label={batchNo ? 'Set batch count' : 'Set count'} onPress={() => apply(p.id)} />
               </View>
             ) : null}
           </View>
