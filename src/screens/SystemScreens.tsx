@@ -25,6 +25,8 @@ import { View, Text, ScrollView, TextInput, Switch, Pressable, Alert, ActivityIn
 import Constants from 'expo-constants';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useAuth } from '../data/AuthContext';
+import { refreshSession } from '../data/authApi';
 import { canFor } from '../data/perms';
 import {
   Card, Cap, KV, Button, Pill, EmptyState, IconTile, Grid, Stat,
@@ -216,7 +218,22 @@ function ProWall({ what, blurb }: { what: string; blurb: string }) {
 
 export function LicenceScreen() {
   const { colors } = useTheme();
-  const { db, setLicence, licState } = useAppData();
+  const { db, setLicence, licState, refreshLicence } = useAppData();
+  const { account } = useAuth();
+
+  /** Asks the account server for this owner's licence, as the app does by itself every few hours. */
+  const checkAccount = async () => {
+    if (!account?.refresh) return;
+    setBusy(true);
+    try {
+      const r = await refreshSession(account.refresh);
+      if (!r.ok) { Alert.alert('Licence', r.error.message); return; }
+      const now = await refreshLicence(r.value.access, account.id);
+      Alert.alert('Licence', now === 'active' || now === 'trial' ? 'Your licence is up to date.' : 'The account answered: ' + now + '.');
+    } finally {
+      setBusy(false);
+    }
+  };
   const [busy, setBusy] = useState(false);
   const [key, setKey] = useState(db?.licence.key || '');
   const [server, setServer] = useState(db?.licence.server || LIC_SERVER_DEFAULT);
@@ -322,24 +339,25 @@ export function LicenceScreen() {
         </View>
       ) : null}
 
-      {st === 'none' ? (
-        <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
-          <Cap style={{ marginBottom: 8 }}>Type the key</Cap>
-          <Card style={{ paddingVertical: 12, paddingHorizontal: 14 }}>
-            <Field label="Licence key" value={key} onChangeText={setKey} mono autoCaps placeholder="GENIUS-PRO-XXXX-XXXX-XXXX-XXXX" />
-            <Field label="Licence server" value={server} onChangeText={setServer} mono placeholder={LIC_SERVER_DEFAULT} />
-            <Button variant="pri" label={busy ? 'Checking…' : 'Activate this till'} onPress={activate} disabled={busy} />
-          </Card>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 11, lineHeight: 16, color: colors.faint, marginTop: 9 }}>
-            The key comes from the author when you pay. One key covers the number of devices its plan allows.
-          </Text>
-        </View>
-      ) : (
-        <View style={{ paddingHorizontal: 16, paddingTop: 4, flexDirection: 'row', gap: 9 }}>
-          <View style={{ flex: 1 }}><Button size="sm" label={busy ? 'Checking…' : 'Check now'} onPress={checkNow} disabled={busy} /></View>
-          <View style={{ flex: 1 }}><Button size="sm" variant="dngr" label="Remove the licence" onPress={forget} /></View>
-        </View>
-      )}
+      {/*
+        The licence comes from the owner's account and is granted, or taken
+        away, by the developer only. The key box and "Remove the licence"
+        button that were here let a till drop its own licence or bypass the
+        account, so they are gone.
+      */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+        <Button
+          variant="pri"
+          label={busy ? 'Checking…' : 'Check with my account'}
+          disabled={busy || !account?.refresh}
+          onPress={checkAccount}
+        />
+        <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, lineHeight: 17, color: colors.faint, marginTop: 9 }}>
+          {account
+            ? 'Your licence belongs to ' + account.email + '. To change plan, add devices or renew, contact the developer. The change reaches this till by itself.'
+            : "Sign in with the owner's account to receive its licence."}
+        </Text>
+      </View>
 
       {l.offlineSince ? (
         <View style={{ paddingTop: 12 }}>
@@ -945,17 +963,13 @@ export function PlansScreen() {
     Alert.alert(
       PLANS[id].name,
       'Take ' + PLANS[id].name + ' ' + term + 'ly at ' + money(PLANS[id].prices[term]) + '?\n\n' +
-      'This records the choice on this device. A licence key from the author is what switches the ' +
-      'features on across every till.',
+      'Plans are switched on by the developer, on your account. Once paid, the new plan reaches ' +
+      'every till by itself; nothing needs typing in.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Close', style: 'cancel' },
         {
-          text: 'Choose',
+          text: 'My licence',
           onPress: () => {
-            setSubscription({
-              plan: id, term, status: 'active', renewsAt: renews.toISOString(),
-              history: [...sub.history, { ts: new Date().toISOString(), what: 'Chose ' + PLANS[id].name + ' (' + term + ')' }],
-            });
             go('Licence');
           },
         },
@@ -1023,7 +1037,7 @@ export function PlansScreen() {
                 ))}
               </View>
               <View style={{ marginTop: 6 }}>
-                <Button variant={mine ? 'default' : 'pri'} label={mine ? 'This is your plan' : 'Choose ' + p.name} onPress={() => choose(id)} disabled={mine} />
+                <Button variant={mine ? 'default' : 'pri'} label={mine ? 'This is your plan' : 'Upgrade to ' + p.name} onPress={() => choose(id)} disabled={mine} />
               </View>
             </View>
           </View>
