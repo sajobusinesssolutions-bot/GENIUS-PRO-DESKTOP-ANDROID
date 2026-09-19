@@ -11,7 +11,15 @@
  * carries its own expiry; the grace window in `syncProtocol` decides how long
  * an expired one is still honoured.
  */
+import * as ed from '@noble/ed25519';
+import { sha512 } from '@noble/hashes/sha2';
 import { LicenceClaims, licenceVerdict, LicenceVerdict } from './syncProtocol';
+
+// @noble/ed25519 needs a SHA-512 supplied; React Native has no WebCrypto to
+// take one from, so the audited pure-JS one is wired in here, once. The hook
+// takes several byte arrays, so they are joined before hashing.
+ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
+ed.etc.sha512Async = async (...m) => sha512(ed.etc.concatBytes(...m));
 
 /**
  * The public key of the licence signer.
@@ -158,4 +166,46 @@ export function licenceFromToken(
       owner: { name: claims.email },
     },
   };
+}
+
+/* ---------------------------------------------------------------- */
+
+/**
+ * Checks that the licence really was signed by our server.
+ *
+ * Reading the claims is not the same as trusting them. Without this, anyone
+ * could write themselves a token with `"seats": 999` and an `EdDSA` header and
+ * the app would believe it — which is the whole reason the token is signed.
+ *
+ * Asynchronous because the curve arithmetic is not instant on a cheap phone.
+ * It runs when a licence arrives or is loaded, not on the path of a sale.
+ */
+export async function verifyLicenceSignature(token: string): Promise<boolean> {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return false;
+  try {
+    const header = JSON.parse(textFrom(parts[0]));
+    if (header.alg !== 'EdDSA') return false;
+
+    const signed = new TextEncoder().encode(parts[0] + '.' + parts[1]);
+    const signature = base64ToBytes(parts[2].replace(/-/g, '+').replace(/_/g, '/'));
+    if (signature.length !== 64) return false;
+
+    return await ed.verifyAsync(signature, signed, publicKeyBytes());
+  } catch {
+    // a malformed point or a bad length throws rather than returning false
+    return false;
+  }
+}
+
+/**
+ * The whole check: signature first, then what the claims mean.
+ *
+ * A token that does not verify is treated exactly as a missing one, so a forged
+ * licence buys nothing over having none at all.
+ */
+export async function verifyLicence(token: string, accountId?: string): Promise<ReadLicence> {
+  const authentic = await verifyLicenceSignature(token);
+  if (!authentic) return { claims: null, verdict: 'expired', authentic: false };
+  return readLicenceToken(token, accountId);
 }
