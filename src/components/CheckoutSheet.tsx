@@ -46,6 +46,9 @@ export default function CheckoutSheet({
   const [splitMethods, setSplitMethods] = useState<PaymentAllocation[]>(methods || [{ method, amount: 0 }]);
 
   const netTotal = Math.max(0, total - discount) + Math.max(0, additionalCharges);
+  // While the amount received is being typed, everything above it folds away,
+  // so the box sits at the top of the sheet instead of under the keypad.
+  const [typingReceived, setTypingReceived] = useState(false);
   const splitTotal = splitMethods.reduce((s, m) => s + m.amount, 0);
   const splitRemaining = Math.max(0, netTotal - splitTotal);
   const splitOver = Math.max(0, splitTotal - netTotal);
@@ -67,6 +70,12 @@ export default function CheckoutSheet({
 
   return (
     <View style={{ gap: 20 }}>
+      {typingReceived ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Credit sale · total</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(netTotal)}</Text>
+        </View>
+      ) : (<>
       <View style={{ gap: spacing.sm }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Subtotal</Text>
@@ -141,6 +150,7 @@ export default function CheckoutSheet({
           );
         })}
       </View>
+      </>)}
 
       {/* part payment against a credit sale */}
       {method === 'credit' && onReceivedChange ? (
@@ -154,6 +164,8 @@ export default function CheckoutSheet({
             decimal
             placeholder="0"
             onChangeText={(v) => onReceivedChange(Math.max(0, Math.min(netTotal, parseFloat(v) || 0)))}
+            onFocus={() => setTypingReceived(true)}
+            onBlur={() => setTypingReceived(false)}
             style={{ marginBottom: 10 }}
           />
           <View style={{ flexDirection: 'row', gap: 9, marginBottom: 12 }}>
