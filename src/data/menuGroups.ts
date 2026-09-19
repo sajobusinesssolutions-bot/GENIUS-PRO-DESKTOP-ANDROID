@@ -63,6 +63,12 @@ export type MenuGroupDef = {
   perm: PermKey | null;
   b: (c: MenuCtx) => string;
   items: MenuItem[];
+  /**
+   * Opens this screen directly instead of a list. For a card whose list would
+   * have held one row that matters — Reports opened a list whose first row
+   * was "All reports", one tap for nothing.
+   */
+  open?: string;
 };
 
 const liveSales = (d: DB) => d.sales.filter((s) => s.status !== 'void');
@@ -128,17 +134,10 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     // One place that answers "how is it going", instead of a reports catalogue
     // in one group and a staff report filed under Business.
     id: 'reports', n: 'Reports', i: 'chart', tone: 'danger', perm: 'reports',
-    b: () => plural(REPORT_COUNT, 'report'),
+    b: () => plural(REPORT_COUNT, 'report') + ' · sales, stock, money',
+    open: 'Reports',
     items: [
       { route: 'Reports', i: 'chart', n: 'All reports', b: () => plural(REPORT_COUNT, 'report') + ' · sales, stock, money', alt: 'sales stock profit debtors batch movement' },
-      { route: 'StaffReport', i: 'user', n: 'Staff performance', b: () => 'Who sold and who posted what', perm: 'settings', alt: 'accountability who sold' },
-      {
-        route: 'AuditLog', i: 'shield', n: 'Audit log', perm: 'settings', alt: 'history changes trail',
-        b: (c) => {
-          const n = c.db.auditLog.filter((a) => (Date.now() - new Date(a.ts).getTime()) / 864e5 <= 30).length;
-          return n ? plural(n, 'change') + ' this month' : 'Nothing changed';
-        },
-      },
     ],
   },
   {
@@ -146,6 +145,15 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     b: (c) => plural(c.db.warehouses.filter((w) => w.active !== false).length, 'branch', 'branches') + ' · settings',
     items: [
       { route: 'Branches', i: 'home', n: 'Branches', b: (c) => plural(c.db.warehouses.filter((w) => w.active !== false).length, 'open branch', 'open branches'), perm: 'settings', alt: 'stores shops outlets new branch' },
+      // who did what — kept with staff and settings now that Reports opens straight onto the reports
+      { route: 'StaffReport', i: 'chart', n: 'Staff performance', b: () => 'Who sold and who posted what', perm: 'settings', alt: 'accountability who sold' },
+      {
+        route: 'AuditLog', i: 'shield', n: 'Audit log', perm: 'settings', alt: 'history changes trail',
+        b: (c) => {
+          const n = c.db.auditLog.filter((a) => (Date.now() - new Date(a.ts).getTime()) / 864e5 <= 30).length;
+          return n ? plural(n, 'change') + ' this month' : 'Nothing changed';
+        },
+      },
       { route: 'UsersRoles', i: 'user', n: 'Staff & roles', b: (c) => plural(c.db.users.filter((u) => u.active).length, 'person', 'people'), perm: 'users', alt: 'users permissions pins' },
       { route: 'Settings', i: 'cog', n: 'Settings', b: () => 'Business details, tax, till, numbering', perm: 'settings', alt: 'preferences currency numbering' },
       { route: 'Printing', i: 'print', n: 'Printing', b: (c) => (c.db.printers.find((p) => p.dflt) || c.db.printers[0])?.name || 'Receipt layout and copies', perm: 'settings', alt: 'printer receipt template' },
