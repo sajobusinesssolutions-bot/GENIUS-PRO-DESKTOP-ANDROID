@@ -209,6 +209,15 @@ export default async function syncRoutes(app) {
   app.post('/v1/businesses', async (req, reply) => {
     const me = await whoami(req, reply);
     if (!me) return;
+    // The same books asking twice get the same business back: a business is
+    // identified by the id the books carry, never by its name.
+    if (req.body?.localId) {
+      const had = await q(
+        'select id, name, local_id from businesses where account_id = $1 and local_id = $2 limit 1',
+        [me.id, String(req.body.localId)],
+      );
+      if (had.rows[0]) return had.rows[0];
+    }
     const { rows } = await q(
       `insert into businesses (account_id, name, tin, local_id)
        values ($1, $2, $3, $4) returning id, name, local_id`,

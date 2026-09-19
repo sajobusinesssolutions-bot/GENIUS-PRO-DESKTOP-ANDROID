@@ -24,6 +24,9 @@ import { refreshSession, serverConfigured } from '../data/authApi';
 import { useSyncRun } from '../data/useSyncRun';
 import { fmtDate } from '../data/helpers';
 
+/** Enough of the unique id to tell two shops with the same name apart. */
+const shortId = (id: string) => 'ID ' + id.replace(/-/g, '').slice(0, 8).toUpperCase();
+
 export default function BusinessesScreen() {
   const { colors } = useTheme();
   const { db, adoptBook, startFreshBook } = useAppData();
@@ -73,8 +76,8 @@ export default function BusinessesScreen() {
     }
     return new Promise((resolve) => Alert.alert(
       'The books on this phone are not on your account',
-      '"' + db.firm.name + '" could not be sent to your account' + (db.sync.on ? '' : ' because cloud sync is off')
-      + '. If you switch, they will be removed from this phone and cannot be brought back.',
+      '"' + db.firm.name + '" is a separate business and is not saved to your account' + (db.sync.on ? ' right now' : ', because cloud sync is off')
+      + '. Nothing is merged: if you open the other business, the books of "' + db.firm.name + '" are removed from this phone and cannot be brought back.',
       [
         { text: 'Keep them', style: 'cancel', onPress: () => resolve(false) },
         { text: 'Switch anyway', style: 'destructive', onPress: () => resolve(true) },
@@ -90,7 +93,13 @@ export default function BusinessesScreen() {
       const token = await access();
       if (!token) { Alert.alert('Not signed in', 'Your session has expired. Sign in again.'); return; }
       const r = await downloadSnapshot(token, b.id);
-      if (!r.ok) { Alert.alert('Could not open ' + b.name, r.error.message); return; }
+      if (!r.ok) {
+        const old = /route/i.test(r.error.message) && /not found/i.test(r.error.message);
+        Alert.alert('Could not open ' + b.name, old
+          ? 'The account server has not been updated to hand out saved businesses yet. Contact the developer.'
+          : r.error.message);
+        return;
+      }
       adoptBook(r.value.data, { businessId: b.id, ownerEmail: account!.email });
       goReset('PinLock');
     } finally {
@@ -114,9 +123,9 @@ export default function BusinessesScreen() {
       key={b.id}
       icon="home"
       title={b.name}
-      subtitle={current
+      subtitle={shortId(b.id) + ' · ' + (current
         ? 'On this phone'
-        : b.snapshot_at ? 'Last saved ' + fmtDate(b.snapshot_at) : 'Not saved to the account yet'}
+        : b.snapshot_at ? 'Last saved ' + fmtDate(b.snapshot_at) : 'Not saved to the account yet')}
       right={busy === b.id ? <ActivityIndicator color={colors.accent} /> : undefined}
       onPress={busy ? undefined : () => void open(b)}
       last={i === n - 1}
@@ -146,7 +155,7 @@ export default function BusinessesScreen() {
               <SectionLabel>On this phone</SectionLabel>
               <Panel flush>
                 {here ? row(here, true, 0, 1) : (
-                  <ListRow icon="home" title={db.firm.name} subtitle="On this phone" onPress={() => goReset('PinLock')} last />
+                  <ListRow icon="home" title={db.firm.name} subtitle={(hereId ? shortId(hereId) + ' · ' : '') + 'On this phone · not on the account yet'} onPress={() => goReset('PinLock')} last />
                 )}
               </Panel>
             </>
