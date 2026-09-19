@@ -166,6 +166,7 @@ export default function DeveloperScreen() {
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<Owner | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async (which: Tab) => {
     const a = await access();
@@ -229,6 +230,13 @@ export default function DeveloperScreen() {
 
   const ownersTab = (
     <>
+      <Button
+        label="Add an owner and subscription"
+        variant="pri"
+        icon={<Icon name="plus" size={17} color={colors.accentInk} />}
+        onPress={() => setAdding(true)}
+      />
+      <View style={{ height: 12 }} />
       <Search value={q} onChange={setQ} placeholder="Search email, name or business" />
       <View style={{ height: 12 }} />
       {owners && owners.length ? (
@@ -431,6 +439,12 @@ export default function DeveloperScreen() {
         {tab === 'owners' ? ownersTab : tab === 'reports' ? reportsTab : tab === 'server' ? serverTab : backupsTab}
       </ScrollView>
 
+      <AddOwnerSheet
+        visible={adding}
+        onClose={() => setAdding(false)}
+        access={access}
+        onAdded={() => { setAdding(false); void load('owners'); }}
+      />
       <OwnerSheet
         owner={open}
         onClose={() => setOpen(null)}
@@ -452,6 +466,98 @@ const PERIODS: Array<{ v: string; l: string; days: number | null }> = [
   { v: '365', l: '1 year', days: 365 },
   { v: 'life', l: 'Lifetime', days: null },
 ];
+
+/* ================================================================
+   Adding an owner by email, with a subscription
+   ================================================================ */
+
+function AddOwnerSheet({ visible, onClose, access, onAdded }: {
+  visible: boolean; onClose: () => void;
+  access: () => Promise<string | null>; onAdded: () => void;
+}) {
+  const { colors } = useTheme();
+  const { success, error } = useToast();
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [plan, setPlan] = useState('pro');
+  const [period, setPeriod] = useState('365');
+  const [seats, setSeats] = useState('2');
+  const [invite, setInvite] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (visible) { setEmail(''); setName(''); setPlan('pro'); setPeriod('365'); setSeats('2'); setInvite(true); }
+  }, [visible]);
+
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  async function save() {
+    const days = PERIODS.find((p) => p.v === period)?.days ?? 365;
+    const n = Math.max(1, Math.min(100, Number(seats) || 1));
+    const a = await access();
+    if (!a) return;
+    setBusy(true);
+    const r = await dev.addOwner(a, { email: email.trim().toLowerCase(), name: name.trim() || undefined, plan, days, seats: n, invite });
+    setBusy(false);
+    if (!r.ok) { error(r.error.message); return; }
+    const who = email.trim().toLowerCase();
+    success(
+      (r.value.created ? who + ' added' : who + ' already had an account — subscription granted')
+      + (r.value.invited ? ' · invitation sent' : r.value.inviteError ? ' · ' + r.value.inviteError : ''),
+    );
+    onAdded();
+  }
+
+  const chip = (label: string, on: boolean, press: () => void) => (
+    <Pressable
+      key={label}
+      onPress={press}
+      style={{
+        paddingVertical: 9, paddingHorizontal: 13, borderRadius: radius.pill, borderWidth: 1,
+        borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accent : colors.surface,
+      }}
+    >
+      <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13, color: on ? colors.accentInk : colors.soft }}>{label}</Text>
+    </Pressable>
+  );
+
+  return (
+    <Sheet
+      visible={visible}
+      title="Add an owner"
+      subtitle="An account and a subscription, in one step"
+      icon="user"
+      onClose={onClose}
+      full
+      footer={<Button label="Add and grant" variant="pri" loading={busy} disabled={!valid || busy} onPress={save} />}
+    >
+      <Field icon="user" label="Owner's email *" value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="name@example.com" />
+      <Field icon="pencil" label="Name (optional)" value={name} onChangeText={setName} />
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Plan</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {['trial', 'starter', 'pro'].map((p) => chip(p.charAt(0).toUpperCase() + p.slice(1), plan === p, () => setPlan(p)))}
+      </View>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginTop: 14, marginBottom: 8 }}>For how long, from today</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {PERIODS.map((p) => chip(p.l, period === p.v, () => setPeriod(p.v)))}
+      </View>
+      <View style={{ height: 14 }} />
+      <Field icon="phone" label="Devices allowed" value={seats} onChangeText={setSeats} numeric maxLength={3} />
+      <Pressable onPress={() => setInvite(!invite)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}>
+        <View style={{
+          width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
+          borderColor: invite ? colors.accent : colors.lineHard, backgroundColor: invite ? colors.accent : 'transparent',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          {invite ? <Icon name="check" size={14} color={colors.accentInk} /> : null}
+        </View>
+        <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.ink }}>
+          Email them how to get in (Google, or "Forgot password" to set one)
+        </Text>
+      </Pressable>
+    </Sheet>
+  );
+}
 
 function OwnerSheet({ owner, onClose, access, onChanged }: {
   owner: Owner | null; onClose: () => void;

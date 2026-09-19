@@ -54,6 +54,9 @@ export default async function googleRoutes(app) {
     url.searchParams.set('scope', 'openid email profile');
     url.searchParams.set('state', state);
     url.searchParams.set('prompt', 'select_account');
+    // Google's phone layout. Without it the account chooser can come up in its
+    // desktop layout inside the in-app browser, small and hard to tap.
+    url.searchParams.set('display', 'touch');
     return reply.redirect(url.toString(), 302);
   });
 
