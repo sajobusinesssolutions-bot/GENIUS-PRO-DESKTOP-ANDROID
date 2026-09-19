@@ -199,7 +199,7 @@ export default function MenuScreen() {
                   return (
                     <Pressable
                       key={g.id}
-                      onPress={() => go('MenuGroup', { groupId: g.id })}
+                      onPress={() => (g.open ? go(g.open) : go('MenuGroup', { groupId: g.id }))}
                       style={({ pressed }) => ({
                         backgroundColor: pressed ? colors.sunk : colors.surface,
                         borderRadius: 18, paddingVertical: 15, paddingHorizontal: 14,
@@ -243,31 +243,45 @@ export default function MenuScreen() {
                 icon={<Icon name="lock" size={17} color={colors.ink} />}
                 onPress={() => go('PinLock')}
               />
-              <View style={{ height: 10 }} />
-              <Button
-                variant="dngr"
-                label="Sign out"
-                icon={<Icon name="arrow" size={17} color={colors.danger} />}
-                onPress={() => Alert.alert(
-                  'Sign out of ' + (account?.email || 'this account') + '?',
-                  'You will need the account email and password to get back in. '
-                  + 'The shop\'s books stay on this phone.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Sign out',
-                      style: 'destructive',
-                      onPress: async () => { await signOut(); goReset('AuthGate'); },
-                    },
-                  ],
-                )}
-              />
               <Text style={{
                 fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint,
                 textAlign: 'center', marginTop: 14,
               }}>
                 {account?.email ? account.email + ' · ' : ''}Genius POS {BUILD} · till {db.session.till}
               </Text>
+              {/*
+                Sign out sat ten points under "Lock the till", and staff pressing
+                the wrong one signed the whole shop out — then the owner had to
+                come and sign in again. So only the owner sees it, and it sits
+                apart, below everything, as a quiet link rather than a big red
+                button next to the one staff press every day.
+              */}
+              {isOwner ? (
+                <View style={{ marginTop: 44, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.line, alignItems: 'center' }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => Alert.alert(
+                      'Sign out of ' + (account?.email || 'this account') + '?',
+                      'Staff will not be able to use this phone until you sign in again with the account '
+                      + 'email and password. To hand the till over, use "Lock the till" instead. '
+                      + 'The shop\'s books stay on this phone.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Sign out',
+                          style: 'destructive',
+                          onPress: async () => { await signOut(); goReset('AuthGate'); },
+                        },
+                      ],
+                    )}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12 }}
+                  >
+                    <Icon name="arrow" size={14} color={colors.danger} />
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger }}>Sign out of the account</Text>
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           </>
         )}
