@@ -363,7 +363,7 @@ export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], me
   return pu;
 }
 
-export function recordPayment(d: DB, o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; userId?: string }, when = new Date()): Payment {
+export function recordPayment(d: DB, o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; userId?: string; allocations?: Array<{ saleId: string; amount: number }> }, when = new Date()): Payment {
   const party = d.parties.find((p) => p.id === o.partyId);
   if (!party) throw new Error('A party is required for payments');
   if (o.direction === 'in' && party.type !== 'customer') throw new Error('A customer is required for customer payments');
@@ -376,14 +376,37 @@ export function recordPayment(d: DB, o: { partyId: string; amount: number; direc
   const partyName = party.name;
   if (o.direction === 'in') journal(d, when, 'Receipt from ' + partyName, 'RCT', [{ acc: o.accountId, dr: o.amount }, { acc: 'n_ar', cr: o.amount }]);
   else journal(d, when, 'Payment to ' + partyName, 'PAY', [{ acc: 'n_ap', dr: o.amount }, { acc: o.accountId, cr: o.amount }]);
+  // Which bills this pays. The bills the person picked, in the amounts they
+  // picked; otherwise the oldest first. Before, the picks were thrown away and
+  // nothing recorded which bills a payment had settled, so a receipt could not
+  // be traced to an invoice or back.
   let left = o.amount;
-  if (o.direction === 'in') {
-    d.sales.filter((s) => s.partyId === o.partyId && s.due > 0 && s.status !== 'void').sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
-      .forEach((s) => { if (left <= 0) return; const take = Math.min(left, s.due); s.due -= take; s.paid += take; left -= take; });
+  const bills: Array<{ id: string; no: string; ts: string; due: number; paid: number; receipts?: { paymentId: string; amount: number; ts: string }[] }> =
+    (o.direction === 'in'
+      ? d.sales.filter((s) => s.partyId === o.partyId && s.due > 0 && s.status !== 'void')
+      : d.purchases.filter((x) => x.partyId === o.partyId && x.due > 0 && (x as any).status !== 'void')) as any;
+  const order = [...bills].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  const plan: Array<{ bill: typeof bills[number]; amount: number }> = [];
+  if (o.allocations && o.allocations.length) {
+    o.allocations.forEach((a) => {
+      const bill = bills.find((b) => b.id === a.saleId);
+      if (!bill || left <= 0) return;
+      const take = Math.min(left, bill.due, Math.max(0, Number(a.amount) || 0));
+      if (take > 0) { plan.push({ bill, amount: take }); left -= take; }
+    });
   } else {
-    d.purchases.filter((x) => x.partyId === o.partyId && x.due > 0 && x.status !== 'void').sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
-      .forEach((x) => { if (left <= 0) return; const take = Math.min(left, x.due); x.due -= take; x.paid += take; left -= take; });
+    order.forEach((bill) => {
+      if (left <= 0) return;
+      const take = Math.min(left, bill.due);
+      plan.push({ bill, amount: take }); left -= take;
+    });
   }
+  pay.allocations = plan.map(({ bill, amount }) => {
+    bill.due -= amount; bill.paid += amount;
+    bill.receipts = [...(bill.receipts || []), { paymentId: pay.id, amount, ts: pay.ts }];
+    return { docId: bill.id, no: bill.no, amount };
+  });
+  pay.unapplied = Math.max(0, left);
   touch(d, pay, 'Recorded', 'payments');
   return pay;
 }

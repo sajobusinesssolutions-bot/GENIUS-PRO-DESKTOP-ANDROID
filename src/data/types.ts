@@ -103,6 +103,8 @@ export interface SaleLine {
 }
 
 export interface Sale {
+  /** Payments received against this invoice after it was raised, each by id. */
+  receipts?: BillReceipt[];
   id: string; no: string; ts: string; partyId: string | null; userId: string;
   till: string; warehouse: string; lines: SaleLine[];
   discount: number; redeemed: number; gross: number; tax: number; total: number; cogs: number;
@@ -126,6 +128,8 @@ export interface PurchaseLine {
   batchNo?: string; expiry?: string;
 }
 export interface Purchase {
+  /** Payments made against this bill after it was raised, each by id. */
+  receipts?: BillReceipt[];
   id: string; no: string; ts: string; partyId: string; lines: PurchaseLine[];
   total: number; method: PayMethod; paid: number; due: number;
   userId?: string;
@@ -143,7 +147,20 @@ export interface Payment {
   userId?: string;
   /** The branch whose account took or paid the money. */
   branch?: string;
+  /**
+   * Exactly which invoices (or purchase bills) this payment settled, and how
+   * much of each. Whatever is left over is held on the party's account.
+   */
+  allocations?: BillAllocation[];
+  /** The part not applied to any bill — an advance. */
+  unapplied?: number;
 }
+
+/** One link between a payment and one bill. */
+export interface BillAllocation { docId: string; no: string; amount: number }
+
+/** One payment recorded against a bill, kept on the bill. */
+export interface BillReceipt { paymentId: string; amount: number; ts: string }
 
 export interface Entry {
   id: string; ts: string; direction: 'in' | 'out' | 'transfer'; accountId: string; toId?: string;

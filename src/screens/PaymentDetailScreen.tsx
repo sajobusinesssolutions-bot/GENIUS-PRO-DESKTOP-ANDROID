@@ -104,6 +104,33 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
           </View>
         </Card>
 
+        {/* the bills this payment settled, each one tappable */}
+        {pay.allocations && pay.allocations.length ? (
+          <>
+            <Cap>{inbound ? 'Paid against these invoices' : 'Paid against these bills'}</Cap>
+            <Card>
+              <View style={{ padding: 12 }}>
+                {pay.allocations.map((a, i, arr) => (
+                  <Text
+                    key={a.docId}
+                    onPress={() => (inbound
+                      ? navigation.navigate('SaleDetail', { saleId: a.docId } as any)
+                      : navigation.navigate('PurchaseDetail', { purchaseId: a.docId } as any))}
+                    style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent, paddingVertical: 7, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line }}
+                  >
+                    {a.no}  ·  {money(a.amount)}
+                  </Text>
+                ))}
+                {pay.unapplied ? (
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6 }}>
+                    {money(pay.unapplied)} not applied to a bill — held on the account as an advance.
+                  </Text>
+                ) : null}
+              </View>
+            </Card>
+          </>
+        ) : null}
+
         {editing && (
           <>
             <Cap>Change it</Cap>

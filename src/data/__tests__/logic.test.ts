@@ -481,6 +481,31 @@ describe('recordPayment', () => {
     expect(sale.paid).toBe(200); // capped at what was actually owed
   });
 
+  // each payment names the invoices it paid, and each invoice names its payments
+  it('links a payment to exactly the invoices picked, both ways', () => {
+    const d = makeDb();
+    const line = { productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty: 1, price: 200, cost: 100, taxRate: 18 };
+    const first = logic.commitSale(d, { lines: [line], partyId: 'pty_1', method: 'credit', discount: 0 });
+    const second = logic.commitSale(d, { lines: [line], partyId: 'pty_1', method: 'credit', discount: 0 });
+    // pay the newer one, which oldest-first would have skipped
+    const pay = logic.recordPayment(d, {
+      partyId: 'pty_1', amount: 200, direction: 'in', accountId: 'acc_cash',
+      allocations: [{ saleId: second.id, amount: 200 }],
+    });
+    expect(pay.allocations).toEqual([{ docId: second.id, no: second.no, amount: 200 }]);
+    expect(d.sales.find((s) => s.id === second.id)!.due).toBe(0);
+    expect(d.sales.find((s) => s.id === first.id)!.due).toBe(200);
+    expect(d.sales.find((s) => s.id === second.id)!.receipts).toEqual([{ paymentId: pay.id, amount: 200, ts: pay.ts }]);
+  });
+
+  it('records the part no invoice took as an advance', () => {
+    const d = makeDb();
+    logic.commitSale(d, { lines: [{ productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty: 1, price: 200, cost: 100, taxRate: 18 }], partyId: 'pty_1', method: 'credit', discount: 0 });
+    const pay = logic.recordPayment(d, { partyId: 'pty_1', amount: 500, direction: 'in', accountId: 'acc_cash' });
+    expect(pay.allocations!.reduce((n, a) => n + a.amount, 0)).toBe(200);
+    expect(pay.unapplied).toBe(300);
+  });
+
   it('requires a supplier for purchases and accepts cash-out payments for other cases', () => {
     const d = makeDb();
     const supplier = { id: 'pty_2', name: 'Sup', type: 'supplier' as const, phone: '', openingBalance: 0, creditLimit: 0, points: 0, active: true };

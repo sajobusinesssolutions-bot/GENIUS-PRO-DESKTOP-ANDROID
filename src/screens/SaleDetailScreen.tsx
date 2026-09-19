@@ -172,6 +172,28 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
           {sale.ref ? <DetailRow label="Reference" value={sale.ref} last /> : null}
         </Panel>
 
+        {/* every later payment against this invoice, by its own id */}
+        {(sale.receipts || []).length ? (
+          <>
+            <View style={{ height: 20 }} />
+            <SectionLabel>Payments against this invoice</SectionLabel>
+            <Panel flush>
+              {(sale.receipts || []).map((r, i, arr) => (
+                <Text
+                  key={r.paymentId + i}
+                  onPress={() => navigation.navigate('PaymentDetail', { paymentId: r.paymentId } as any)}
+                  style={{
+                    fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent, paddingVertical: 13, paddingHorizontal: 15,
+                    borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line,
+                  }}
+                >
+                  {new Date(r.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}  ·  {money(r.amount)}  ·  RCT-{r.paymentId.slice(-6).toUpperCase()}
+                </Text>
+              ))}
+            </Panel>
+          </>
+        ) : null}
+
         {!live && sale.voidReason ? (
           <View style={{ marginTop: 14 }}>
             <InfoBanner tone="danger" text={'Reversed — ' + sale.voidReason} />
