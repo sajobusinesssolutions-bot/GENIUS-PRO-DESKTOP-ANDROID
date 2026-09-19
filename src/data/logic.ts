@@ -18,17 +18,36 @@ export function stockOfImpl(p: Product, wh?: string): number {
   return Object.keys(p.stock).reduce((s, k) => s + (p.stock[k] || 0), 0);
 }
 
-export function saleTotals(lines: SaleLine[], discount: number) {
+/**
+ * What a set of lines comes to.
+ *
+ * `inclusive` is Settings → "Prices already include tax". When prices include
+ * it, the tax is the part of each price that is tax and the customer pays the
+ * shelf price. When they do not, the tax is added on top. Until the setting was
+ * wired, the app always behaved as inclusive whatever it said — see the
+ * migration in storage.ts that keeps existing shops that way.
+ */
+export function saleTotals(lines: SaleLine[], discount: number, inclusive = true) {
   let gross = 0, tax = 0, cost = 0;
   lines.forEach((l) => {
     const line = l.qty * l.price;
+    const rate = (l.taxRate || 0) / 100;
     gross += line; cost += l.qty * (l.cost || 0);
-    tax += line - line / (1 + (l.taxRate || 0) / 100);
+    tax += inclusive ? line - line / (1 + rate) : line * rate;
   });
   const disc = Math.min(discount || 0, gross);
-  const total = gross - disc;
-  const taxAfter = tax * (gross ? total / gross : 0);
-  return { gross, discount: disc, total, tax: taxAfter, net: total - taxAfter, cost };
+  const taxAfter = tax * (gross ? (gross - disc) / gross : 0);
+  if (inclusive) {
+    const total = gross - disc;
+    return { gross, discount: disc, total, tax: taxAfter, net: total - taxAfter, cost };
+  }
+  const net = gross - disc;
+  return { gross, discount: disc, total: net + taxAfter, tax: taxAfter, net, cost };
+}
+
+/** Whether a book's prices already include tax. Absent means yes, as it always behaved. */
+export function pricesIncludeTax(d: { settings?: { pricesIncludeTax?: boolean } }): boolean {
+  return d.settings?.pricesIncludeTax !== false;
 }
 
 /** Rounds to the smallest coin. Every posted figure passes through here. */
@@ -116,6 +135,32 @@ export function audit(d: DB, action: string, details = '') {
  * `ref` is the record's id. The sync client finds records by id; queuing a
  * document number instead made every sale and purchase quietly unfindable.
  */
+/**
+ * Whether the shop lets stock go below zero.
+ *
+ * Settings has two switches that say the same thing from opposite ends —
+ * "Refuse to sell what is not in stock" and "Allow selling below zero". The
+ * screen now keeps them in step; this reads them so that either one, turned to
+ * permit it, permits it.
+ */
+export function mayGoBelowZero(d: { settings?: { allowNegativeStock?: boolean; blockNegativeStock?: boolean } }): boolean {
+  return d.settings?.allowNegativeStock === true || d.settings?.blockNegativeStock === false;
+}
+
+/** Whether an item has a shelf at all. Services and uncounted items do not. */
+export function isStocked(p: { kind?: string; trackInventory?: boolean } | null | undefined): boolean {
+  return !!p && p.kind !== 'service' && p.trackInventory !== false;
+}
+
+/**
+ * The most of an item that may go on a sale. Unlimited for a service, an
+ * uncounted item, or any item when the shop allows selling below zero.
+ */
+export function sellLimit(d: Parameters<typeof mayGoBelowZero>[0], p: Product | null | undefined, onHand: number): number {
+  if (!isStocked(p) || mayGoBelowZero(d)) return Infinity;
+  return Math.max(0, onHand);
+}
+
 /** How much of the item's main stock unit a line uses. */
 export function stockQty(l: { qty: number; unitFactor?: number }): number {
   return l.qty * (l.unitFactor && l.unitFactor > 0 ? l.unitFactor : 1);
@@ -134,7 +179,7 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
   const taxable = d.settings.taxEnabled === false
     ? o.lines.map((l) => ({ ...l, taxRate: 0 }))
     : o.lines;
-  const t = saleTotals(taxable, o.discount);
+  const t = saleTotals(taxable, o.discount, pricesIncludeTax(d));
   const charges = Math.max(0, Number(o.additionalCharges) || 0);
   const finalTotal = t.total + charges;
   const redeemed = o.redeem || 0;
@@ -166,7 +211,7 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     // Services and anything not counted have no shelf to run short of.
     if (prod.kind === 'service' || prod.trackInventory === false) return;
     const available = prod.stock[wh] || 0;
-    if (d.settings.blockNegativeStock && !d.settings.allowNegativeStock && available < required) {
+    if (!mayGoBelowZero(d) && available < required) {
       throw new Error(
         'Not enough ' + prod.name + ' — ' + available + ' ' + prod.unit + ' on hand, ' + required + ' needed',
       );
@@ -280,6 +325,21 @@ export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], me
   d.purchases.push(pu);
   lines.forEach((l) => {
     const prod = d.products.find((x) => x.id === l.productId);
+
+    // What the item costs from now on. Purchases used to leave the cost as it
+    // was entered on day one, so "Costing: average / last" had nothing to act
+    // on and every margin drifted as supplier prices moved.
+    if (prod && l.qty > 0 && l.cost > 0) {
+      if (d.settings.costing === 'last') {
+        prod.cost = l.cost;
+      } else {
+        const onHand = Math.max(0, stockOfImpl(prod));
+        prod.cost = cents((onHand * (prod.cost || 0) + l.qty * l.cost) / (onHand + l.qty));
+      }
+    }
+    // a new selling price set while buying, as happens when a supplier's price moves
+    if (prod && l.price !== undefined && l.price > 0) prod.price = l.price;
+
     // A batch-tracked delivery opens its lot before the stock moves, so the
     // quantity lands on the batch as well as the warehouse.
     if (prod?.trackBatches && l.batchNo) {
@@ -540,7 +600,7 @@ export function createInstalmentPlan(
   when = new Date(),
 ): InstalmentPlan | null {
   if (!o.partyId || !o.lines.length) return null;
-  const t = saleTotals(o.lines, o.discount || 0);
+  const t = saleTotals(o.lines, o.discount || 0, pricesIncludeTax(d));
   const down = Math.max(0, o.down || 0);
   // A down payment that covers the whole bill is an outright sale, not a plan.
   if (down >= t.total) return null;

@@ -25,7 +25,7 @@ export async function loadDB(): Promise<DB | null> {
 
 // Fills in defaults for fields added after a user's DB was first saved to
 // AsyncStorage, so older local data doesn't crash the newer app.
-function migrate(d: any): any {
+export function migrate(d: any): any {
   d.estimates = d.estimates || [];
   d.challans = d.challans || [];
   d.creditNotes = d.creditNotes || [];
@@ -77,6 +77,15 @@ function migrate(d: any): any {
     if (p.category && d.categories.indexOf(p.category) < 0) d.categories.push(p.category);
   });
   d.numberSafe = d.numberSafe || { mode: 'auto' };
+
+  // "Prices already include tax" used to be ignored: tax was always taken out
+  // of the price, whatever the switch said, and the switch defaulted to off.
+  // Now that it is honoured, every existing book is set to what it has really
+  // been doing, once — or every shop's totals would jump by the tax rate.
+  if (!d.settings.taxModeFixed) {
+    d.settings.pricesIncludeTax = true;
+    d.settings.taxModeFixed = true;
+  }
   d.revisions = d.revisions || [];
 
   // --- branches keep their own books ---

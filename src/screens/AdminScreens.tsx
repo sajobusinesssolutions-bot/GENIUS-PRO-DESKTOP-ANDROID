@@ -114,8 +114,12 @@ export function NotificationsScreen() {
   const { db, stockOf, dueRecurring } = useAppData();
   if (!db) return null;
 
-  const low = db.products.filter((p) => p.active && stockOf(p) <= p.reorder);
-  const overdue = db.sales.filter((s) => s.due > 0 && s.status !== 'void' && ageOfDays(s.ts) > 30);
+  // each list is shown only if its alert is switched on in Settings
+  const st = db.settings;
+  const low = st.lowStockAlerts === false || st.notifyLowStock === false
+    ? [] : db.products.filter((p) => p.active && p.kind !== 'service' && stockOf(p) <= p.reorder);
+  const overdue = st.notifyOverdue === false
+    ? [] : db.sales.filter((s) => s.due > 0 && s.status !== 'void' && ageOfDays(s.ts) > 30);
   const claims = db.claims.filter((c) => c.status === 'open');
   const due = dueRecurring();
 

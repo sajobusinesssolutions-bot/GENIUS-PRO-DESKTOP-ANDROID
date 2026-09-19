@@ -117,7 +117,7 @@ export default function LineEditSheet({
         <View>
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>{line.name}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
-            {line.sku}{line.batchNo ? ' · Batch ' + line.batchNo : ''} · {Math.floor(availableHere * 100) / 100} {chosen.unit} available
+            {line.sku}{line.batchNo ? ' · Batch ' + line.batchNo : ''} · {Number.isFinite(availableHere) ? Math.floor(availableHere * 100) / 100 + ' ' + chosen.unit + ' available' : 'No stock limit'}
           </Text>
         </View>
 

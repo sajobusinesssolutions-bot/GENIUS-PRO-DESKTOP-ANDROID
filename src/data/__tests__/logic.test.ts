@@ -740,3 +740,38 @@ describe('selling in a second unit', () => {
     expect(d.products.find((p: any) => p.id === 'p_a')!.stock.w1).toBeCloseTo(before, 6);
   });
 });
+
+describe('prices with or without tax', () => {
+  const lines = [{ productId: 'p', name: 'X', sku: 'X', unit: 'PC', qty: 1, price: 118, cost: 50, taxRate: 18 }];
+
+  it('takes the tax out of the price when prices include it, as it always has', () => {
+    const t = logic.saleTotals(lines as any, 0, true);
+    expect(t.total).toBe(118);
+    expect(Math.round(t.tax)).toBe(18);
+    expect(Math.round(t.net)).toBe(100);
+  });
+
+  it('adds the tax on top when they do not', () => {
+    const t = logic.saleTotals([{ ...lines[0], price: 100 }] as any, 0, false);
+    expect(t.net).toBe(100);
+    expect(t.tax).toBe(18);
+    expect(t.total).toBe(118);
+  });
+
+  it('treats a book without the setting as tax-included, so old books keep their totals', () => {
+    expect(logic.pricesIncludeTax({ settings: {} } as any)).toBe(true);
+    expect(logic.pricesIncludeTax({ settings: { pricesIncludeTax: false } } as any)).toBe(false);
+  });
+
+  it('posts a tax-exclusive sale in balance', () => {
+    const d = makeDb();
+    d.settings.pricesIncludeTax = false;
+    d.settings.taxEnabled = true;
+    const s = logic.commitSale(d, {
+      lines: [{ productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty: 1, price: 100, cost: 50, taxRate: 18 }],
+      partyId: null, method: 'cash', discount: 0,
+    });
+    expect(s.total).toBe(118);
+    expect(d.journal.every((e: any) => e.balanced)).toBe(true);
+  });
+});

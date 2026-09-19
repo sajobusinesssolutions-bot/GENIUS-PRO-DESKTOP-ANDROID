@@ -92,13 +92,13 @@ export default function SettingsScreen() {
               <SettingRow icon="factory" label="Businesses on this device" value={plural(db.firms.length, 'business', 'businesses')} onPress={() => go('Firms')} />
             </SettingGroup>
 
-            <SettingGroup title="Money & language">
+            {/* Date format, week start and language were switches with nothing behind them —
+                dates are shown in fixed forms and the app has one language — so they
+                are not offered until they do something. */}
+            <SettingGroup title="Money">
               <SettingRow icon="coins" label="Currency" value={s.currency + ' · ' + s.currencyName} onPress={() => setSheet('money')} />
               <SettingRow icon="money" label="Symbol" value={s.symbolBefore ? 'Before the number' : 'After the number'} onPress={() => setSheet('money')} />
               <SettingRow icon="pie" label="Decimals" value={String(s.decimals)} onPress={() => setSheet('money')} />
-              <SettingRow icon="calendar" label="Date format" value={s.dateFormat} onPress={() => setSheet('locale')} />
-              <SettingRow icon="clock" label="Week starts" value={s.firstDay} onPress={() => setSheet('locale')} />
-              <SettingRow icon="doc" label="Language" value={s.language} onPress={() => setSheet('locale')} />
             </SettingGroup>
 
             <SettingGroup title="Appearance">
@@ -118,7 +118,6 @@ export default function SettingsScreen() {
               <SettingRow icon="cash" label="Default payment" value={s.defaultMethod} onPress={() => setSheet('till')} />
               <SettingRow icon="coins" label="Round totals to" value={s.roundTo ? 'nearest ' + s.roundTo : 'no rounding'} onPress={() => setSheet('till')} />
               <SettingRow icon="tag" label="Biggest discount a cashier may give" value={s.maxDiscountPct + '%'} onPress={() => setSheet('till')} />
-              <SettingRow icon="till" label="Quick items on the till" value={String(s.quickItems)} onPress={() => setSheet('till')} />
               <SettingToggle label="A shift must be open to sell" on={s.requireShift} onChange={(v) => set({ requireShift: v })} />
               <SettingToggle label="Ask for the customer on every sale" on={s.askCustomer} onChange={(v) => set({ askCustomer: v })} />
               <SettingToggle label="Let staff change the price at the till" on={s.allowPriceEdit} onChange={(v) => set({ allowPriceEdit: v })} />
@@ -126,7 +125,7 @@ export default function SettingsScreen() {
 
             {/* Selling rules — reference the wrapper at 15407 */}
             <SettingGroup title="Selling rules">
-              <SettingToggle label="Refuse to sell what is not in stock" on={s.blockNegativeStock} onChange={(v) => set({ blockNegativeStock: v })} />
+              <SettingToggle label="Refuse to sell what is not in stock" on={s.blockNegativeStock} onChange={(v) => set({ blockNegativeStock: v, allowNegativeStock: !v })} />
               <SettingRow
                 icon="alert"
                 label="Selling below cost"
@@ -151,9 +150,6 @@ export default function SettingsScreen() {
               {s.taxEnabled !== false ? (
                 <SettingToggle label="Prices already include tax" on={s.pricesIncludeTax} onChange={(v) => set({ pricesIncludeTax: v })} />
               ) : null}
-              {s.taxEnabled !== false ? (
-                <SettingToggle label="Withholding tax on supplier bills" on={s.withholding} onChange={(v) => set({ withholding: v })} />
-              ) : null}
             </SettingGroup>
           </>
         ) : null}
@@ -165,7 +161,7 @@ export default function SettingsScreen() {
               <SettingRow icon="chart" label="Costing" value={s.costing === 'average' ? 'Weighted average' : 'Last cost'} onPress={() => setSheet('stock')} />
               <SettingToggle label="Buy and sell in a second unit" on={s.useSecondaryUnit} onChange={(v) => set({ useSecondaryUnit: v })} />
               <SettingToggle label="Warn when stock runs low" on={s.lowStockAlerts} onChange={(v) => set({ lowStockAlerts: v })} />
-              <SettingToggle label="Allow selling below zero" on={s.allowNegativeStock} onChange={(v) => set({ allowNegativeStock: v })} />
+              <SettingToggle label="Allow selling below zero" on={s.allowNegativeStock} onChange={(v) => set({ allowNegativeStock: v, blockNegativeStock: !v })} />
               <SettingToggle label="Track batches and expiry" on={s.trackBatches} onChange={(v) => set({ trackBatches: v })} />
             </SettingGroup>
 
@@ -225,8 +221,6 @@ export default function SettingsScreen() {
             <SettingGroup title="Alerts">
               <SettingToggle label="Low stock" on={s.notifyLowStock} onChange={(v) => set({ notifyLowStock: v })} />
               <SettingToggle label="Overdue bills" on={s.notifyOverdue} onChange={(v) => set({ notifyOverdue: v })} />
-              <SettingToggle label="Shift closed with a variance" on={s.notifyShiftClose} onChange={(v) => set({ notifyShiftClose: v })} />
-              <SettingToggle label="Daily summary at close of business" on={s.notifyDailySummary} onChange={(v) => set({ notifyDailySummary: v })} />
             </SettingGroup>
           </>
         ) : null}

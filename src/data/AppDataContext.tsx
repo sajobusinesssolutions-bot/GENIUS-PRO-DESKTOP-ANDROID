@@ -7,6 +7,7 @@ import {
   InstalmentPlan, Printer, PrintServer, PrintTemplate, PrinterSettings, DocKind,
   Subscription, Licence, SyncCfg, UpdateCfg, Revision, RoleDef, NumberingKey, Shift,
 } from './types';
+import { setCostHidden } from './perms';
 import { ensureRoles, setRoleRegistry, canWith, builtinRoles, allPermKeys, permCount } from './perms';
 import { seed, emptyBook } from './seed';
 import { loadDB, saveDB, clearDB, scheduleSave, flushSave } from './storage';
@@ -221,6 +222,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       }
       ensureRoles(d);
       setRoleRegistry(d.roles);
+      setCostHidden(d.settings?.hideCostFromCashier !== false);
       dbRef.current = d;
       setDb(d);
       setReady(true);
@@ -295,9 +297,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const api = useMemo<Ctx>(() => ({
     db, ready,
     cur: () => dbRef.current?.settings.currency || 'Sh',
+    // Settings → Currency: the symbol, whether it goes before or after, and decimals.
     money: (n: number) => {
-      const v = Math.round(n || 0);
-      return (dbRef.current?.settings.currency || 'Sh') + ' ' + v.toLocaleString('en-US');
+      const st = dbRef.current?.settings;
+      const places = Math.max(0, Math.min(3, Number(st?.decimals) || 0));
+      const v = (n || 0).toLocaleString('en-US', { minimumFractionDigits: places, maximumFractionDigits: places });
+      const sym = st?.currency || 'Sh';
+      return st?.symbolBefore === false ? v + ' ' + sym : sym + ' ' + v;
     },
     stockOf: stockOfImpl,
     product: (id) => dbRef.current?.products.find((p) => p.id === id),
@@ -369,6 +375,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     commitSale: (o) => {
       requireRecordable();
+      const d0 = dbRef.current;
+      // Settings → "A shift must be open to sell"
+      if (d0 && d0.settings.requireShift && !d0.shifts.some((sh) => !sh.closedAt)) {
+        throw new Error('No shift is open. Open one from the cash register before selling, or switch off "A shift must be open to sell" in Settings.');
+      }
       let sale!: Sale;
       commit((d) => { sale = logic.commitSale(d, o); });
       return sale;
@@ -507,7 +518,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       let est!: Estimate;
       commit((d) => {
         d.counters.estimate += 1;
-        const t = saleTotals(o.lines, o.discount);
+        const t = saleTotals(o.lines, o.discount, logic.pricesIncludeTax(d));
         est = { id: uid('est'), no: 'EST-' + String(100000 + d.counters.estimate).slice(1), ts: iso(new Date()), partyId: o.partyId, lines: o.lines, discount: t.discount, total: t.total, status: 'open', convertedSaleId: null };
         d.estimates.push(est);
         audit(d, 'Estimate created', est.no);

@@ -119,6 +119,8 @@ export interface Sale {
 }
 
 export interface PurchaseLine {
+  /** A new selling price set while buying. Absent leaves the price alone. */
+  price?: number;
   productId: string; qty: number; cost: number;
   /** Lot this delivery arrives as, for batch-tracked items. */
   batchNo?: string; expiry?: string;
@@ -304,6 +306,8 @@ export interface Settings {
   dateFormat: string; firstDay: 'Mon' | 'Sun'; language: string; timezone: string;
   // tax
   taxName: string; taxRate: number; pricesIncludeTax: boolean; withholding: boolean;
+  /** Set once the tax-inclusive migration has run; see storage.ts. */
+  taxModeFixed?: boolean;
   efris: boolean;
   // selling & the till
   defaultMethod: 'cash' | 'momo' | 'bank'; roundTo: 0 | 50 | 100 | 500;

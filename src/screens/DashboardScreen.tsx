@@ -190,7 +190,9 @@ export default function DashboardScreen() {
       days.push({ v, idx: new Date(day).getDay() });
     }
 
-    const low = db.products.filter((p) => p.active && stockOf(p) <= p.reorder);
+    // Settings → "Warn when stock runs low"; services have no shelf to run low
+    const low = db.settings.lowStockAlerts === false
+      ? [] : db.products.filter((p) => p.active && p.kind !== 'service' && stockOf(p) <= p.reorder);
     const openPO = (db.purchaseOrders || []).filter((p) => p.status === 'open');
     const openCounts = (db.stockTakes || []).filter((s) => s.status === 'open').length;
     const openQuotes = (db.estimates || []).filter((e) => e.status === 'open');

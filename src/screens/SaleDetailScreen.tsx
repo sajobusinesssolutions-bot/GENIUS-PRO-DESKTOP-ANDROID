@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Alert } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
+import { useOwnerPin } from '../components/OwnerPin';
 import {
   Panel, Badge, DetailRow, ActionGrid, StickyBar, InfoBanner, SectionLabel, StatGrid,
 } from '../components/ui';
@@ -24,6 +25,8 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const { db, money, party, voidSale, deleteSale, canEditSale, can, logAudit } = useAppData();
   const { error } = useToast();
+  // asked before an edit or delete when Settings require a PIN for it
+  const ownerPin = useOwnerPin();
   const sale = db?.sales.find((s) => s.id === route.params.saleId);
   if (!sale) return null;
 
@@ -37,12 +40,21 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   function onEdit() {
     if (!can('sales.edit')) return refuse('Your role cannot change a raised bill.');
     if (!gate.ok) return refuse(gate.why);
-    navigation.navigate('EditSale', { saleId: sale!.id });
+    const open = () => navigation.navigate('EditSale', { saleId: sale!.id });
+    // Settings → "A PIN is needed to edit a transaction"
+    if (db?.settings.requirePinToEdit) { ownerPin.ask('Edit ' + sale!.no, open); return; }
+    open();
   }
 
   function onDelete() {
     if (!can('sales.delete')) return refuse('Your role cannot delete a bill.');
     if (!gate.ok) return refuse(gate.why);
+    // Settings → "A PIN is needed to delete one"
+    if (db?.settings.requirePinToDelete) { ownerPin.ask('Delete ' + sale!.no, confirmDelete); return; }
+    confirmDelete();
+  }
+
+  function confirmDelete() {
     Alert.alert(
       'Delete ' + sale!.no + '?',
       'The bill is reversed, not erased: ' + money(sale!.total) + ' comes off the books and the stock goes back on the shelf. The reversal stays in the audit log.',
@@ -184,6 +196,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
           ]}
         />
       </StickyBar>
+      {ownerPin.sheet}
     </View>
   );
 }

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { saleTotals, pricesIncludeTax, sellLimit } from '../data/logic';
 import { Button, Field, InfoBanner } from '../components/ui';
 import { Icon } from '../components/icons';
 import Sheet from '../components/Sheet';
@@ -33,7 +34,8 @@ export default function NewSaleScreen({ navigation }: Props) {
   const who = useWho('Who served this sale?');
 
   const [cart, setCart] = useState<SaleLine[]>([]);
-  const [method, setMethod] = useState<PayMethod>('cash');
+  // Settings → "Default payment"
+  const [method, setMethod] = useState<PayMethod>((db?.settings.defaultMethod as PayMethod) || 'cash');
   const [methods, setMethods] = useState<Array<{ method: PayMethod; amount: number }>>();
   const [partyId, setPartyId] = useState<string | null>(null);
   const [discount, setDiscount] = useState(0);
@@ -71,7 +73,12 @@ export default function NewSaleScreen({ navigation }: Props) {
   const subtotal = cart.reduce((s, l) => s + l.qty * l.price, 0);
   const savings = cart.reduce((s, l) => s + l.qty * Math.max(0, (l.listPrice ?? l.price) - l.price), 0);
   const totalQty = cart.reduce((s, l) => s + l.qty, 0);
-  const grandTotal = Math.max(0, subtotal - discount) + Math.max(0, additionalCharges);
+  // Worked out exactly as the sale will be posted, so the total on the button
+  // is the total on the receipt — including tax added on top, where it is.
+  const taxedLines = db?.settings.taxEnabled === false ? cart.map((l) => ({ ...l, taxRate: 0 })) : cart;
+  const priced = saleTotals(taxedLines, discount, db ? pricesIncludeTax(db) : true);
+  const taxOnTop = db && !pricesIncludeTax(db) ? priced.tax : 0;
+  const grandTotal = Math.max(0, priced.total) + Math.max(0, additionalCharges);
 
   function openProduct(p: Product) {
     setSearchVisible(false);
@@ -104,7 +111,7 @@ export default function NewSaleScreen({ navigation }: Props) {
     const p = findByCode(code);
     if (!p) return { title: 'Unknown code', subtitle: code, ok: false };
     const stock = stockOf(p);
-    if (stock <= 0) return { title: p.name, subtitle: 'Out of stock', ok: false };
+    if (db && sellLimit(db, p, stock) <= 0) return { title: p.name, subtitle: 'Out of stock', ok: false };
     return { title: p.name, subtitle: money(p.price) + ' · ' + stock + ' ' + p.unit + ' in stock', ok: true };
   }
 
@@ -138,20 +145,67 @@ export default function NewSaleScreen({ navigation }: Props) {
     const p = (db?.products || []).find((x) => x.id === line.productId);
     if (!p) return line.qty;
     if (line.batchNo) return (p.batches || []).find((b) => b.no === line.batchNo)?.qty ?? line.qty;
-    return stockOf(p);
+    // Infinity for a service, or when the shop allows selling below zero
+    return db ? sellLimit(db, p, stockOf(p)) : stockOf(p);
   }
 
   function checkout() {
     if (!cart.length || (method === 'credit' && !partyId)) return;
-    who.ask((server) => postSale(server.userId, server.userName));
+    const st = db?.settings;
+
+    // Settings → "Biggest discount a cashier may give", on the bill as a whole
+    if (!trusted && st && subtotal > 0 && discount > subtotal * (Number(st.maxDiscountPct) || 0) / 100) {
+      Alert.alert('Discount too large', 'The most you can take off is ' + st.maxDiscountPct + '% of the bill. Ask a manager to give more.');
+      return;
+    }
+
+    // Settings → "Below cost": warn, block, or allow
+    const under = cart.filter((l) => l.cost > 0 && l.price < l.cost);
+    const belowCost = (st as any)?.belowCost || 'warn';
+    if (under.length && belowCost === 'block' && !trusted) {
+      Alert.alert('Selling below cost', under[0].name + ' is priced under what it costs. A manager has to approve that.');
+      return;
+    }
+
+    const go = () => who.ask((server) => postSale(server.userId, server.userName));
+    const askCustomer = () => {
+      // Settings → "Ask for the customer on every sale"
+      if (st?.askCustomer && !partyId) {
+        Alert.alert('Who is this sale for?', 'Settings ask for a customer on every sale.', [
+          { text: 'Choose a customer', onPress: () => setPartyPickerVisible(true) },
+          { text: 'Walk-in customer', onPress: go },
+        ]);
+        return;
+      }
+      go();
+    };
+
+    if (under.length && belowCost === 'warn') {
+      Alert.alert(
+        'Selling below cost',
+        under.map((l) => l.name).slice(0, 3).join(', ') + (under.length > 3 ? ' and others' : '') + ' will sell for less than they cost.',
+        [{ text: 'Go back', style: 'cancel' }, { text: 'Sell anyway', onPress: askCustomer }],
+      );
+      return;
+    }
+    askCustomer();
   }
 
   function postSale(userId: string, userName: string) {
     setLoading(true);
     try {
       const splitMethods = (methods && methods.length > 1) ? methods : undefined;
+      // Settings → "Round totals to": the difference is a discount when rounding
+      // down and a charge when rounding up, so the books still tie out.
+      const step = Number(db?.settings.roundTo) || 0;
+      const rounded = step > 0 && method !== 'credit' && !splitMethods ? Math.round(grandTotal / step) * step : grandTotal;
+      const roundDown = Math.max(0, grandTotal - rounded);
+      const roundUp = Math.max(0, rounded - grandTotal);
       const sale = commitSale({
-        lines: cart, partyId, method, discount, additionalCharges, description, terms,
+        lines: cart, partyId, method,
+        discount: discount + roundDown,
+        additionalCharges: additionalCharges + roundUp,
+        description, terms,
         methods: splitMethods, no: invoiceNo.trim() || undefined, ts: invoiceAt.toISOString(),
         received: method === 'credit' ? received : undefined,
         receivedVia: method === 'credit' ? receivedVia : undefined,
@@ -159,7 +213,7 @@ export default function NewSaleScreen({ navigation }: Props) {
       });
       success(sale.no + ' saved by ' + userName);
       setCart([]);
-      setMethod('cash');
+      setMethod((db?.settings.defaultMethod as PayMethod) || 'cash');
       setMethods(undefined);
       setDiscount(0);
       setAdditionalCharges(0);
@@ -328,6 +382,7 @@ export default function NewSaleScreen({ navigation }: Props) {
             {savings > 0 ? <TotalRow label="Item discounts" value={'− ' + money(savings)} tone={colors.good} colors={colors} /> : null}
             {discount > 0 ? <TotalRow label="Bill discount" value={'− ' + money(discount)} tone={colors.good} colors={colors} /> : null}
             {additionalCharges > 0 ? <TotalRow label="Additional charges" value={'+ ' + money(additionalCharges)} colors={colors} /> : null}
+            {taxOnTop > 0 ? <TotalRow label={(db?.settings.taxName || 'Tax') + ' added'} value={'+ ' + money(taxOnTop)} colors={colors} /> : null}
             <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 3 }} />
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Amount due</Text>
@@ -368,6 +423,7 @@ export default function NewSaleScreen({ navigation }: Props) {
         categories={cats}
         money={money}
         stockOf={stockOf}
+        canSell={(p) => !!db && sellLimit(db, p, stockOf(p)) > 0}
         onPick={openProduct}
         onScan={() => { setSearchVisible(false); setScanning(true); }}
         onClose={() => setSearchVisible(false)}
@@ -399,7 +455,7 @@ export default function NewSaleScreen({ navigation }: Props) {
         visible={qtyPickerVisible}
         productName={selectedProduct?.name || ''}
         price={selectedProduct?.price || 0}
-        maxStock={selectedProduct ? stockOf(selectedProduct) : 0}
+        maxStock={selectedProduct && db ? sellLimit(db, selectedProduct, stockOf(selectedProduct)) : 0}
         money={money}
         onConfirm={afterQty}
         onCancel={() => { setQtyPickerVisible(false); setSelectedProduct(null); setSelectedBatch(null); }}

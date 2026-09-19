@@ -1,6 +1,10 @@
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import AppLock from './AppLock';
+
+/** Shared so the app lock can send the till back to the PIN from anywhere. */
+export const navRef = createNavigationContainerRef<any>();
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAppData } from '../data/AppDataContext';
 import { useTheme } from '../theme';
@@ -115,7 +119,8 @@ export default function RootNavigator() {
         : 'PinLock';
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navRef}>
+      <AppLock nav={navRef} />
       <Stack.Navigator
         initialRouteName={initialRoute}
         /* every screen keeps its fields and its Save bar above the keyboard — see KeyboardSafe */

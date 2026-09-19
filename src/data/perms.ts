@@ -215,7 +215,19 @@ export function canFor(role: string | undefined, k: string | null | undefined): 
 }
 
 /** Convenience gates the reference defines at 7796. */
-export function showCostFor(role: string | undefined): boolean { return canFor(role, 'inventory.view_cost_price'); }
+/**
+ * Settings → "Hide cost prices from cashiers". Kept here, beside the role
+ * registry, because showCostFor is asked from all over the app without a book
+ * in hand. Turning the switch off lets a cashier see cost; turning it on leaves
+ * the role's own permission in charge.
+ */
+let COST_HIDDEN = true;
+export function setCostHidden(v: boolean) { COST_HIDDEN = v; }
+
+export function showCostFor(role: string | undefined): boolean {
+  if (!COST_HIDDEN && role === 'cashier') return true;
+  return canFor(role, 'inventory.view_cost_price');
+}
 export function showProfitFor(role: string | undefined): boolean { return canFor(role, 'inventory.view_profit'); }
 
 /** Kept so anything still importing it compiles; now derived from the matrix. */

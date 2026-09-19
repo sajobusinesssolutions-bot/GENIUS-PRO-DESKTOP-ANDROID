@@ -8,7 +8,7 @@ import {
 } from '../components/ui';
 import { Icon } from '../components/icons';
 import { Field } from '../components/form';
-import { saleTotals } from '../data/logic';
+import { saleTotals, pricesIncludeTax } from '../data/logic';
 import type { SaleLine, Product } from '../data/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
@@ -38,7 +38,7 @@ export default function EditSaleScreen({ route, navigation }: Props) {
 
   if (!sale) return null;
   const gate = canEditSale(sale.id);
-  const t = saleTotals(lines, Number(discount) || 0);
+  const t = saleTotals(lines, Number(discount) || 0, db ? pricesIncludeTax(db) : true);
 
   function setQty(id: string, qty: number) {
     setLines((prev) => qty <= 0 ? prev.filter((l) => l.productId !== id) : prev.map((l) => l.productId === id ? { ...l, qty } : l));

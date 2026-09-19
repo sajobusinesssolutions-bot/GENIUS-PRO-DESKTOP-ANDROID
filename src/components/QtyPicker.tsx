@@ -16,6 +16,7 @@ interface QtyPickerProps {
 export default function QtyPicker({ visible, productName, onConfirm, onCancel, maxStock, money, price }: QtyPickerProps) {
   const { colors } = useTheme();
   const [qty, setQty] = useState('1');
+  // maxStock is Infinity for a service, or when the shop allows selling below zero
   const qtyNum = Math.min(parseInt(qty) || 1, maxStock);
   const lineTotal = qtyNum * price;
 

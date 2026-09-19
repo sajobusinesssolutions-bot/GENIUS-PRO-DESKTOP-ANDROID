@@ -10,7 +10,7 @@ import type { Product } from '../data/types';
  * the keyboard, so matches always grow into the visible area instead of sliding
  * underneath it.
  */
-export default function ItemSearchSheet({ visible, products, categories, money, stockOf, onPick, onScan, onClose }: {
+export default function ItemSearchSheet({ visible, products, categories, money, stockOf, onPick, onScan, onClose, canSell }: {
   visible: boolean;
   products: Product[];
   categories: string[];
@@ -19,6 +19,11 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
   onPick: (p: Product) => void;
   onScan: () => void;
   onClose: () => void;
+  /**
+   * Whether an item may be picked. Defaults to "has stock", which on its own
+   * made every service unsellable — a service has no stock to have.
+   */
+  canSell?: (p: Product) => boolean;
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -79,7 +84,7 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
             )}
             renderItem={({ item: p }) => {
               const stock = stockOf(p);
-              const out = stock <= 0;
+              const out = canSell ? !canSell(p) : stock <= 0;
               return (
                 <Pressable
                   onPress={out ? undefined : () => onPick(p)}
@@ -95,7 +100,7 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text numberOfLines={1} style={{ color: colors.ink, fontFamily: fonts.uiSemi, fontSize: 14 }}>{p.name}</Text>
                     <Text numberOfLines={1} style={{ color: out ? colors.danger : colors.faint, fontFamily: fonts.ui, fontSize: 11, marginTop: 2 }}>
-                      {p.sku} · {out ? 'Out of stock' : stock + ' ' + p.unit + ' in stock'}
+                      {p.sku} · {p.kind === 'service' ? 'Service' : out ? 'Out of stock' : stock + ' ' + p.unit + ' in stock'}
                     </Text>
                   </View>
                   <Text style={{ color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 13 }}>{money(p.price)}</Text>

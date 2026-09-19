@@ -117,7 +117,8 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   const [trackInventory, setTrackInventory] = useState(existing?.trackInventory !== false);
   const [reorder, setReorder] = useState(String(existing?.reorder ?? 0));
   const [warrantyMonths, setWarrantyMonths] = useState(String(existing?.warrantyMonths ?? 0));
-  const [trackBatches, setTrackBatches] = useState(!!existing?.trackBatches);
+  // a new item starts with the shop's own choice: Settings → "Track batches and expiry"
+  const [trackBatches, setTrackBatches] = useState(existing ? !!existing.trackBatches : !!ctx.db?.settings.trackBatches);
   const [batchList, setBatchList] = useState<ProductBatch[]>(existing?.batches || []);
   const [trackSerials, setTrackSerials] = useState(!!existing?.trackSerials);
   const [serialList, setSerialList] = useState<string[]>(existing?.serials || []);
