@@ -1316,7 +1316,8 @@ export function openBranch(d: DB, plan: BranchPlan, when = new Date()): BranchOp
   const cashAccountId = 'acc_' + id;
   d.accounts.push({
     id: cashAccountId,
-    name: (plan.drawerName || '').trim() || name + ' drawer',
+    // a branch's accounts are its own, so a plain name is unambiguous inside it
+    name: (plan.drawerName || '').trim() || 'Cash drawer',
     type: 'cash',
     opening: 0,
     branch: id,

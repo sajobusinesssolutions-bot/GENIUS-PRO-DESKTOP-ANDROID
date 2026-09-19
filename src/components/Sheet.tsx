@@ -3,6 +3,7 @@ import { Modal, View, Text, Pressable, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts, radius, shadow } from '../theme';
 import { Icon, IconName } from './icons';
+import KeyboardSafe from './KeyboardSafe';
 
 /**
  * The bottom sheet used for every form and detail panel: a drag handle, an
@@ -32,6 +33,8 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
         list for the pan gesture — the sheet would only scroll where a touch
         happened to miss it.
       */}
+      {/* a Modal is outside the screens, so it needs its own keyboard handling */}
+      <KeyboardSafe>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Pressable
           testID="sheet-scrim"
@@ -94,6 +97,7 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
           ) : null}
         </View>
       </View>
+      </KeyboardSafe>
     </Modal>
   );
 }

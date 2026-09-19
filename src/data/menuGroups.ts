@@ -92,8 +92,9 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     b: (c) => plural(c.db.products.filter((p) => p.active).length, 'item'),
     items: [
       { route: 'ItemsTab', i: 'box', n: 'Items', b: (c) => plural(c.db.products.filter((p) => p.active).length, 'product or service', 'products & services'), alt: 'products services catalogue' },
-      { route: 'Purchases', i: 'box', n: 'Purchases', b: (c) => plural(c.db.purchases.length, 'supplier bill'), perm: 'purchases', alt: 'supplier bills buying goods in' },
-      { route: 'PurchaseOrders', i: 'doc', n: 'Purchase orders', b: (c) => (c.db.purchaseOrders || []).filter((p) => p.status === 'open').length + ' open', perm: 'purchases', alt: 'po ordering' },
+      // one direct way to buy: goods into stock and money out, in a single step
+      { route: 'PurchaseNew', i: 'plus', n: 'New purchase', b: () => 'Record goods bought from a supplier', perm: 'purchases', alt: 'buy receive stock in supplier bill' },
+      { route: 'Purchases', i: 'box', n: 'Purchases', b: (c) => plural(c.db.purchases.length, 'supplier bill'), perm: 'purchases', alt: 'supplier bills bought' },
       { route: 'StockTakes', i: 'check', n: 'Stock take', b: (c) => ((c.db.stockTakes || []).some((s) => s.status === 'open') ? 'A count is open' : 'All posted'), alt: 'count stocktake variance' },
       { route: 'Batches', i: 'calendar', n: 'Batches & expiry', b: () => 'Lots, expiry dates and what is left', alt: 'lot expiry shelf life' },
       { route: 'Production', i: 'factory', n: 'Production', b: (c) => plural(c.db.products.filter((p) => p.bom && p.bom.length).length, 'recipe'), alt: 'manufacture assemble bom' },

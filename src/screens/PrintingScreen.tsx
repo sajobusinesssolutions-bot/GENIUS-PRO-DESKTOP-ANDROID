@@ -308,7 +308,7 @@ function PrintersPane() {
       >
         {edit ? (
           <View>
-            <Field label="What to call it" value={String(edit.name || '')} onChangeText={(v) => setEdit({ ...edit, name: v })} placeholder="Front counter" />
+            <Field label="What to call it" value={String(edit.name || '')} onChangeText={(v) => setEdit({ ...edit, name: v })} placeholder="What this printer is called" />
             <Cap style={{ marginBottom: 8 }}>How it connects</Cap>
             <View style={{ gap: 7, marginBottom: 12 }}>
               {PRINTER_KINDS.map((k) => (

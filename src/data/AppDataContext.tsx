@@ -14,7 +14,7 @@ import { uid, iso } from './uid';
 import * as logic from './logic';
 import { activeBranchId, branchJournal } from './branch';
 import { mayRecord, refusalMessage } from './recordGate';
-import { licenceFromToken } from './licenceKey';
+import { licenceFromToken, verifyLicenceSignature } from './licenceKey';
 import { fetchLicence } from './authApi';
 import NetInfo from '@react-native-community/netinfo';
 
@@ -995,6 +995,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const r = await fetchLicence(access);
       const d = dbRef.current;
       if (!r.ok) return d ? logic.licState(d) : 'unknown';
+      // a token that does not verify is ignored, never stored — forging one must buy nothing
+      if (!(await verifyLicenceSignature(r.value.token))) return d ? logic.licState(d) : 'invalid';
       const next = licenceFromToken(r.value.token, accountId);
       commit((db2) => { db2.licence = next; });
       return next.status;

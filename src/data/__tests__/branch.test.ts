@@ -226,7 +226,7 @@ describe('opening a branch', () => {
     const out = logic.openBranch(d, { name: 'Lakeside', openingFloat: 50000 });
     const drawer = d.accounts.find((a: any) => a.id === out.cashAccountId);
     expect(drawer.branch).toBe(out.warehouseId);
-    expect(drawer.name).toBe('Lakeside drawer');
+    expect(drawer.name).toBe('Cash drawer');
     // the original branch's drawer is untouched
     expect(ledgerBalance(d, 'acc_cash', 0, Number.MAX_SAFE_INTEGER, 'w1')).toBe(0);
   });

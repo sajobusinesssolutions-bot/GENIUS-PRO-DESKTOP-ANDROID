@@ -358,7 +358,10 @@ export function emptyBook(o: { firmName?: string; ownerName?: string; branchName
 
   // The drawer and the bank still exist — a shop needs somewhere to put money
   // on day one — but they start at nothing rather than at someone else's float.
-  db.accounts = db.accounts.map((a) => ({ ...a, opening: 0 }));
+  // Neutral names: the demo's included a real bank ("Stanbic"), which on a new
+  // shop's books reads as somebody else's account.
+  const plain: Record<string, string> = { cash: 'Cash drawer', bank: 'Bank account', wallet: 'Mobile money' };
+  db.accounts = db.accounts.map((a) => ({ ...a, name: plain[a.type] || a.name, opening: 0 }));
 
   // A fresh book gets its own owner rather than inheriting the demo's staff.
   // Keeping users[0] meant a real shop opened with 'Ronald Okello' on the till.

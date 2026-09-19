@@ -78,7 +78,17 @@ const LICENCE_WHY: Record<string, { title: string; why: string }> = {
   },
 };
 
-const RECORDING_STATES = Object.keys(LICENCE_WHY);
+/**
+ * The states that stop recording.
+ *
+ * 'none' is deliberately not one of them. It means the device has never heard
+ * from the licence server — a phone that has just been set up, or one that was
+ * signed up before it could reach the internet — not that a licence ran out.
+ * Blocking on it told every brand-new shop to 'enter a licence' while the server
+ * had already given it a trial. The rule the owner asked for is that an
+ * *expired* licence blocks, and it still does.
+ */
+const RECORDING_STATES = Object.keys(LICENCE_WHY).filter((k) => k !== 'none');
 
 /**
  * Whether a new transaction may be written, and if not, why not.

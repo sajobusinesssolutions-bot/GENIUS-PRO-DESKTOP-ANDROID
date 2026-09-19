@@ -7,6 +7,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppDataProvider } from './src/data/AppDataContext';
 import { AuthProvider } from './src/data/AuthContext';
+import LicenceKeeper from './src/data/LicenceKeeper';
 import { ToastProvider } from './src/components/Toast';
 import RootNavigator from './src/nav/RootNavigator';
 
@@ -29,6 +30,7 @@ export default function App() {
       <AuthProvider>
         <AppDataProvider>
           <ToastProvider>
+            <LicenceKeeper />
             <RootNavigator />
             <StatusBar style="auto" />
           </ToastProvider>

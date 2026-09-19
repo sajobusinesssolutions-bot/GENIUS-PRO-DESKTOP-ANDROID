@@ -35,10 +35,16 @@ function fmt(iso: string) {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-export default function BatchEditor({ batches, onChange, unit = 'pcs', suggestNo }: {
+export default function BatchEditor({ batches, onChange, unit = 'pcs', suggestNo, target }: {
   batches: ProductBatch[];
   onChange: (next: ProductBatch[]) => void;
   unit?: string;
+  /**
+   * How much of the item there is in total. Batches are a breakdown of that
+   * quantity, not a second count of it, so each one is entered against what is
+   * left to place rather than as a free-standing number.
+   */
+  target?: number;
   /** Used to seed the number of a freshly added batch. */
   suggestNo?: () => string;
 }) {
@@ -53,7 +59,9 @@ export default function BatchEditor({ batches, onChange, unit = 'pcs', suggestNo
     const n = suggestNo
       ? suggestNo()
       : 'B' + String(batches.length + 1).padStart(3, '0');
-    onChange([...batches, { no: n, expiry: addMonths(12), qty: 0 }]);
+    // a new batch starts with whatever is still unplaced, which is usually all of it
+    const left = target === undefined ? 0 : Math.max(0, target - total);
+    onChange([...batches, { no: n, expiry: addMonths(12), qty: left }]);
   }
 
   function remove(i: number) {
@@ -61,16 +69,38 @@ export default function BatchEditor({ batches, onChange, unit = 'pcs', suggestNo
   }
 
   const total = batches.reduce((s, b) => s + (Number(b.qty) || 0), 0);
+  const hasTarget = target !== undefined && target > 0;
+  const left = hasTarget ? target! - total : 0;
+  const over = hasTarget && left < 0;
 
   return (
     <View>
       <SectionLabel right={
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>
-          {total} {unit}
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: over ? colors.danger : colors.ink }}>
+          {hasTarget ? total + ' of ' + target + ' ' + unit : total + ' ' + unit}
         </Text>
       }>
         Batches
       </SectionLabel>
+
+      {hasTarget ? (
+        <View style={{ marginBottom: 14, gap: 7 }}>
+          <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.sunk, overflow: 'hidden' }}>
+            <View style={{
+              height: 6, borderRadius: 3,
+              width: (Math.min(100, Math.round((total / target!) * 100)) + '%') as `${number}%`,
+              backgroundColor: over ? colors.danger : left === 0 ? colors.good : colors.accent,
+            }} />
+          </View>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: over ? colors.danger : left === 0 ? colors.good : colors.faint }}>
+            {over
+              ? (-left) + ' ' + unit + ' more than the item holds — reduce a batch'
+              : left === 0
+                ? 'Every ' + unit + ' is in a batch'
+                : left + ' ' + unit + ' not in a batch yet'}
+          </Text>
+        </View>
+      ) : null}
 
       {!batches.length ? (
         <Panel style={{ marginBottom: 14 }}>

@@ -29,7 +29,7 @@ function defaultExpiry(months = 12) {
 export default function PurchaseNewScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { db, createPurchase, money } = useAppData();
-  const who = useWho('Who received this delivery?');
+  const who = useWho('Who recorded this purchase?');
 
   const suppliers = useMemo(() => (db?.parties || []).filter((p) => p.type === 'supplier'), [db]);
   const [partyId, setPartyId] = useState<string | null>(suppliers[0]?.id || null);

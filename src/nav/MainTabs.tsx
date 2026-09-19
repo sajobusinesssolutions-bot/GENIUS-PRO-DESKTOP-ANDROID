@@ -4,8 +4,8 @@
  * between the second and third, and a raised accent `.fab` that opens the
  * `quickAll` sheet.
  */
-import React, { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, Pressable, Keyboard } from 'react-native';
 import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts } from '../theme';
@@ -32,6 +32,16 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const [quick, setQuick] = useState(false);
   const current = state.routes[state.index].name;
+
+  // The bar steps aside while typing. With the screen now lifted clear of the
+  // keyboard, a tab bar riding up with it would take a row of space from the
+  // very field being filled in.
+  const [typing, setTyping] = useState(false);
+  useEffect(() => {
+    const a = Keyboard.addListener('keyboardDidShow', () => setTyping(true));
+    const b = Keyboard.addListener('keyboardDidHide', () => setTyping(false));
+    return () => { a.remove(); b.remove(); };
+  }, []);
 
   const btn = (t: typeof BAR[number]) => {
     const on = t.s === current;
@@ -60,7 +70,9 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
 
   return (
     <>
+      {/* the sheet below must survive typing in its own search box, so only the bar hides */}
       <View style={{
+        display: typing ? 'none' : 'flex',
         flexDirection: 'row', backgroundColor: colors.surface,
         borderTopWidth: 1, borderTopColor: colors.line,
         paddingTop: 8, paddingBottom: 10 + insets.bottom, paddingHorizontal: 10,

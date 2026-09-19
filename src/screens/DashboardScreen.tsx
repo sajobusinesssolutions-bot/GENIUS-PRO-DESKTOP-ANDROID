@@ -201,7 +201,6 @@ export default function DashboardScreen() {
     if (lateBills.length) todo.push({ t: plural(lateBills.length, 'bill') + ' over 30 days', route: 'Sales' });
     if (due.length) todo.push({ t: plural(due.length, 'recurring bill') + ' due', route: 'Recurring' });
     if (low.length) todo.push({ t: plural(low.length, 'item') + ' to restock', route: 'ItemsTab' });
-    if (openPO.length) todo.push({ t: plural(openPO.length, 'purchase order') + ' open', route: 'PurchaseOrders' });
     if (openCounts) todo.push({ t: 'A stock count is still open', route: 'StockTakes' });
     if (openQuotes.length) todo.push({ t: plural(openQuotes.length, 'quotation') + ' open', route: 'Estimates' });
 

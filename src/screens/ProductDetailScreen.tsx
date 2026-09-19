@@ -159,6 +159,15 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     [opening],
   );
 
+  /**
+   * What the batches are a breakdown of: the opening stock typed in for a new
+   * item, or what an existing one holds across its branches.
+   */
+  const batchTarget = existing
+    ? Object.values(existing.stock || {}).reduce((s, q) => s + (Number(q) || 0), 0)
+    : totalOpening;
+  const batchTotal = batchList.reduce((s, b) => s + (Number(b.qty) || 0), 0);
+
   if (!db) return null;
 
   /* ---- barcodes, reference A.genBarcode / addBarcodeTo (9384-9420) ---- */
@@ -183,6 +192,10 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
 
   function save() {
     if (!name.trim()) { error('Give it a name.'); return; }
+    if (!svc && trackBatches && batchTarget > 0 && batchTotal > batchTarget) {
+      error('The batches add up to ' + batchTotal + ' but the item holds ' + batchTarget + '. Reduce a batch before saving.');
+      return;
+    }
     const track = svc ? false : trackInventory;
     const patch: Partial<Product> = {
       name: name.trim(),
@@ -306,8 +319,8 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         </>
       )}
 
-      <Field icon="tag" label="Name" value={name} onChangeText={setName} placeholder={svc ? 'Delivery within town' : 'Cement 50kg bag'} />
-      <Field icon="doc" label="Item code" value={sku} onChangeText={setSku} placeholder={svc ? 'SRV-DEL' : 'CEM-050'} />
+      <Field icon="tag" label="Name" value={name} onChangeText={setName} placeholder={svc ? 'What the service is called' : 'What the item is called'} />
+      <Field icon="doc" label="Item code" value={sku} onChangeText={setSku} placeholder="Left blank, one is made for you" />
 
       <SelectField
         icon="tag"
@@ -571,6 +584,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
                 <BatchEditor
                   batches={batchList}
                   onChange={setBatchList}
+                  target={batchTarget}
                   unit={unit || 'pcs'}
                   suggestNo={() => (sku || 'B').toUpperCase().slice(0, 4) + '-' + String(batchList.length + 1).padStart(3, '0')}
                 />
@@ -696,7 +710,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           addUnit(v); setUnit(v); setNewUnit(''); setSheet(null);
         }} />}
       >
-        <Field label="Short name" value={newUnit} onChangeText={setNewUnit} placeholder="CTN" />
+        <Field label="Short name" value={newUnit} onChangeText={setNewUnit} placeholder="A second unit, if any" />
         <FieldNote>Keep it short — it prints on the receipt beside every quantity.</FieldNote>
         <Cap style={{ marginBottom: 8 }}>Already set up</Cap>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -716,7 +730,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           addCategory(v); setCategory(v); setNewCat(''); setSheet(null);
         }} />}
       >
-        <Field label="Name" value={newCat} onChangeText={setNewCat} placeholder="Hardware" />
+        <Field label="Name" value={newCat} onChangeText={setNewCat} placeholder="A new category" />
         <Cap style={{ marginBottom: 8 }}>Already set up</Cap>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
           {cats.map((c) => <Pill key={c} label={c} />)}

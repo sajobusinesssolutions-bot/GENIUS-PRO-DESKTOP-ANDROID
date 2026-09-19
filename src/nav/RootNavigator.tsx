@@ -10,6 +10,7 @@ import WelcomeScreen from '../screens/WelcomeScreen';
 import { AuthGateScreen, SignInScreen, CreateAccountScreen } from '../screens/AuthScreens';
 import GoogleSignInScreen from '../screens/GoogleSignInScreen';
 import { useAuth } from '../data/AuthContext';
+import KeyboardSafe from '../components/KeyboardSafe';
 import PinLockScreen from '../screens/PinLockScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import MainTabs from './MainTabs';
@@ -116,6 +117,8 @@ export default function RootNavigator() {
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName={initialRoute}
+        /* every screen keeps its fields and its Save bar above the keyboard — see KeyboardSafe */
+        screenLayout={({ children }) => <KeyboardSafe>{children}</KeyboardSafe>}
         /* one shared header for every screen — reference render(), lines 1529-1536 */
         screenOptions={{ header: (props) => <NavHeader {...props} />, contentStyle: { backgroundColor: colors.bg } }}
       >
@@ -152,7 +155,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Purchases" component={PurchasesScreen} options={{ title: 'Purchases' }} />
         <Stack.Screen name="PurchaseDetail" component={PurchaseDetailScreen} options={{ title: 'Purchase' }} />
         <Stack.Screen name="EditPurchase" component={EditPurchaseScreen} options={{ title: 'Edit purchase' }} />
-        <Stack.Screen name="PurchaseNew" component={PurchaseNewScreen} options={{ title: 'Receive a purchase' }} />
+        <Stack.Screen name="PurchaseNew" component={PurchaseNewScreen} options={{ title: 'New purchase' }} />
         <Stack.Screen name="PurchaseOrders" component={PurchaseOrdersScreen} options={{ title: 'Purchase orders' }} />
         <Stack.Screen name="PurchaseOrderNew" component={PurchaseOrderNewScreen} options={{ title: 'New purchase order' }} />
 

@@ -163,8 +163,8 @@ describe('"Needs you"', () => {
     mockState.stockTakes = [{ id: 'st', status: 'open' }];
     mockState.estimates = [{ id: 'e', status: 'open' }];
     render(<DashboardScreen />);
-    // five things to do, three shown, the remainder offered as a link
-    expect(screen.getByText('2 more')).toBeTruthy();
+    // four things to do (open purchase orders no longer count — buying is direct), three shown
+    expect(screen.getByText('1 more')).toBeTruthy();
     expect(screen.queryByText('1 quotation open')).toBeNull();
   });
 });

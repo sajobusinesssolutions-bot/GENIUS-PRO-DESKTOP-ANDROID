@@ -124,7 +124,7 @@ export default function OnboardingScreen({ navigation }: Props) {
         {step === 2 && (
           <>
             <SectionLabel>First branch</SectionLabel>
-            <Field icon="home" label="Branch name" value={branchName} onChangeText={setBranchName} placeholder="Main shop" />
+            <Field icon="home" label="Branch name" value={branchName} onChangeText={setBranchName} placeholder="What the branch is called" />
             <InfoBanner
               tone="accent"
               text="Name your first branch or till location. You can add more later under Business & Branches."

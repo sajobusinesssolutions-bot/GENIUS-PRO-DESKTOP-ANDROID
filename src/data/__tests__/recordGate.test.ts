@@ -46,14 +46,16 @@ describe('a licence that has run out', () => {
   });
 
   it('gives each reason its own words, not one generic refusal', () => {
-    const words = ['expired', 'blocked', 'revoked', 'toomany', 'invalid', 'none']
+    const words = ['expired', 'blocked', 'revoked', 'toomany', 'invalid']
       .map((s) => mayRecord(expired(s), true)!.title);
     expect(new Set(words).size).toBe(words.length);
   });
 
-  it('blocks when there is no licence at all', () => {
+  it('does not block a device that has simply never checked yet', () => {
+    // a brand-new shop was being told to enter a licence while the server had
+    // already given it a trial; never having asked is not having run out
     const d = book({ licence: { key: '', status: 'none', checkedAt: '', licence: null, server: '', reason: '', offlineSince: '' } });
-    expect(canRecord(d, true)).toBe(false);
+    expect(canRecord(d, true)).toBe(true);
   });
 
   it('blocks even while online — a connection is not a licence', () => {

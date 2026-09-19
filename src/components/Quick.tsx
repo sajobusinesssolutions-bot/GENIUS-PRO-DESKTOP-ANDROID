@@ -139,7 +139,7 @@ export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: ()
    * What a shop does all day. Shown first so the common case is one tap, not
    * one tap after a scroll past everything it is not.
    */
-  const COMMON = ['New sale', 'Money received', 'Record expense', 'Add product', 'Receive a purchase', 'Add customer'];
+  const COMMON = ['New sale', 'Money received', 'Record expense', 'Add product', 'New purchase', 'Add customer'];
   const common = useMemo(
     () => COMMON.map((n) => all.find((x) => x.it.n === n)).filter(Boolean) as typeof all,
     [all],

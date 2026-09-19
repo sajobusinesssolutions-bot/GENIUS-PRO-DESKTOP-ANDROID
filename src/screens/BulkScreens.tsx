@@ -138,7 +138,7 @@ export function BulkChangeScreen({ route, navigation }: EditProps) {
 
         {kind === 'bulkNames' ? (
           <>
-            <Field label="Find this text" value={String(form.find || '')} onChangeText={(v) => set({ find: v })} placeholder="50kg" />
+            <Field label="Find this text" value={String(form.find || '')} onChangeText={(v) => set({ find: v })} placeholder="Text to find" />
             <Field label="Replace it with" value={String(form.replace || '')} onChangeText={(v) => set({ replace: v })} placeholder="50 kg" />
             <Note>Case matters. Leave the replacement blank to remove the text.</Note>
           </>
@@ -160,7 +160,7 @@ export function BulkChangeScreen({ route, navigation }: EditProps) {
 
         {kind === 'bulkTags' ? (
           <>
-            <Field label="Move them into" value={String(form.replace || '')} onChangeText={(v) => set({ replace: v })} placeholder="Building" />
+            <Field label="Move them into" value={String(form.replace || '')} onChangeText={(v) => set({ replace: v })} placeholder="Category" />
             {cats.length ? (
               <>
                 <Cap style={{ marginBottom: 8 }}>Categories already in use</Cap>

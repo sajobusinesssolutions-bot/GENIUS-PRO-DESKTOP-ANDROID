@@ -136,3 +136,11 @@ describe('no invented person appears in a real shop', () => {
     expect(emptyBook().firm.name).toBe('My shop');
   });
 });
+
+describe('accounts on a fresh book', () => {
+  it('carry plain names, not the demo\'s — one of which was a real bank', () => {
+    const names = emptyBook().accounts.map((a) => a.name);
+    expect(names).toEqual(expect.arrayContaining(['Cash drawer', 'Bank account', 'Mobile money']));
+    expect(names.join(' ')).not.toMatch(/Stanbic|MTN|Till 1/);
+  });
+});

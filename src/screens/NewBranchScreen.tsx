@@ -247,7 +247,7 @@ export default function NewBranchScreen() {
             <Panel>
               <Field
                 icon="cash" label="Drawer name" value={drawerName} onChangeText={setDrawerName}
-                placeholder={(name.trim() || 'Branch') + ' drawer'}
+                placeholder="Cash drawer"
               />
               <Field
                 icon="coins" label="Opening float" value={float} onChangeText={setFloat}
@@ -430,7 +430,7 @@ export default function NewBranchScreen() {
             <View style={{ height: 14 }} />
             <SectionLabel>Money</SectionLabel>
             <Panel>
-              <DetailRow label="Drawer" value={drawerName.trim() || name.trim() + ' drawer'} />
+              <DetailRow label="Drawer" value={drawerName.trim() || 'Cash drawer'} />
               <DetailRow label="Opening float" value={money(Number(float) || 0)} />
               <DetailRow
                 label="Second account"
