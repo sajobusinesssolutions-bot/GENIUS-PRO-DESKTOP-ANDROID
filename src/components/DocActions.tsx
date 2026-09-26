@@ -182,9 +182,16 @@ export function DocActions({ doc, more, compact, phone }: {
     const d = doc();
     const body = encodeURIComponent(docText(d, money));
     const to = (phone || '').replace(/[^0-9]/g, '');
-    const url = to ? `whatsapp://send?phone=${to}&text=${body}` : `whatsapp://send?text=${body}`;
+    // whatsapp://send?phone=…&text=… — used here before — is an unofficial
+    // scheme that has become unreliable at carrying phone and text together:
+    // WhatsApp often opens straight to the chat with the text box empty,
+    // which reads as "nothing to send" even though the app did open. Meta's
+    // own documented format, wa.me, reliably pre-fills text for a specific
+    // number; the plain app-scheme version (no phone) already works fine for
+    // "let the person pick who to send it to", so only the phone case changes.
+    const url = to ? `https://wa.me/${to}?text=${body}` : `whatsapp://send?text=${body}`;
     try {
-      const can = await Linking.canOpenURL(url);
+      const can = to ? true : await Linking.canOpenURL(url);
       if (!can) { error('WhatsApp is not installed.'); return; }
       await Linking.openURL(url);
     } catch {
@@ -198,10 +205,11 @@ export function DocActions({ doc, more, compact, phone }: {
     Alert.alert(d.kind + ' ' + d.no, docText(d, money));
   }
 
-  const btn = (icon: IconName, onPress: () => void, loading?: boolean, tint?: string) => (
+  const btn = (icon: IconName, onPress: () => void, loading?: boolean, tint?: string, label?: string) => (
     <Pressable
       onPress={loading ? undefined : onPress}
       hitSlop={6}
+      accessibilityLabel={label}
       style={({ pressed }) => ({
         width: compact ? 38 : 44, height: compact ? 38 : 44,
         borderRadius: compact ? 12 : 14,
@@ -217,9 +225,9 @@ export function DocActions({ doc, more, compact, phone }: {
   return (
     <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        {btn('print', () => run('print'), busy === 'print', colors.accent)}
-        {btn('swap', () => run('share'), busy === 'share', colors.good)}
-        {btn('dots', () => setMoreOpen(true))}
+        {btn('print', () => run('print'), busy === 'print', colors.accent, 'Print')}
+        {btn('swap', () => run('share'), busy === 'share', colors.good, 'Share')}
+        {btn('dots', () => setMoreOpen(true), false, undefined, 'More options')}
       </View>
 
       <Sheet
