@@ -39,7 +39,7 @@ function makeDb(): DB {
     sales: [], purchases: [], payments: [], entries: [], journal: [], movements: [],
     shifts: [], warranties: [], claims: [],
     estimates: [], challans: [], creditNotes: [], offers: [], stockTakes: [],
-    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], queue: [],
+    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], businessAccess: [], queue: [],
     plans: [],
     session: { userId: user.id, role: 'owner', online: true, till: 'Till 1', warehouse: 'w1' },
     counters: { sale: 0, purchase: 0, estimate: 0, challan: 0, creditNote: 0, po: 0, plan: 0 },
@@ -148,6 +148,18 @@ describe('shiftTotals', () => {
 });
 
 describe('closeShift', () => {
+  it('queues opening and closing changes for sync', () => {
+    const d = makeDb();
+    d.sync.on = true;
+    const s = logic.openShiftFor(d, 100000);
+    expect(d.queue).toHaveLength(1);
+    expect(d.queue[0]).toMatchObject({ kind: 'shift.open', ref: s.id });
+
+    logic.closeShift(d, s.id, 100000);
+    expect(d.queue).toHaveLength(2);
+    expect(d.queue[1]).toMatchObject({ kind: 'shift.close', ref: s.id });
+  });
+
   it('stamps the shift with what was expected and the variance', () => {
     const d = makeDb();
     const s = logic.openShiftFor(d, 100000);

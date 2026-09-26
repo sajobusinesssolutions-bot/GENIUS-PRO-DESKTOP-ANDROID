@@ -32,6 +32,10 @@ export interface CheckoutSheetProps {
   /** How the part taken against a credit sale was paid. */
   receivedVia?: 'cash' | 'momo' | 'bank';
   onReceivedViaChange?: (m: 'cash' | 'momo' | 'bank') => void;
+  momoNetwork?: 'mtn' | 'airtel';
+  onMomoNetworkChange?: (n: 'mtn' | 'airtel') => void;
+  momoRef?: string;
+  onMomoRefChange?: (v: string) => void;
 }
 
 export default function CheckoutSheet({
@@ -39,6 +43,7 @@ export default function CheckoutSheet({
   additionalCharges, onAdditionalChargesChange, description, onDescriptionChange, terms, onTermsChange,
   partyId, onPartyChange, parties, onCheckout, loading, canCheckout,
   received = 0, onReceivedChange, receivedVia = 'cash', onReceivedViaChange,
+  momoNetwork = 'mtn', onMomoNetworkChange, momoRef = '', onMomoRefChange,
 }: CheckoutSheetProps) {
   const { colors } = useTheme();
   const [discountText, setDiscountText] = useState(String(discount));
@@ -49,10 +54,26 @@ export default function CheckoutSheet({
   // While the amount received is being typed, everything above it folds away,
   // so the box sits at the top of the sheet instead of under the keypad.
   const [typingReceived, setTypingReceived] = useState(false);
+  const [typingAdditionalCharges, setTypingAdditionalCharges] = useState(false);
   const splitTotal = splitMethods.reduce((s, m) => s + m.amount, 0);
   const splitRemaining = Math.max(0, netTotal - splitTotal);
   const splitOver = Math.max(0, splitTotal - netTotal);
   const splitValid = !splitMode || Math.abs(splitTotal - netTotal) < 0.01;
+
+  const additionalChargesField = (
+    <Field
+      icon="plus"
+      label="Additional charges"
+      value={String(additionalCharges || 0)}
+      numeric
+      decimal
+      placeholder="0"
+      onChangeText={(v) => onAdditionalChargesChange(Math.max(0, parseFloat(v) || 0))}
+      onFocus={() => setTypingAdditionalCharges(true)}
+      onBlur={() => setTypingAdditionalCharges(false)}
+      style={{ marginBottom: 0 }}
+    />
+  );
 
   const toggleSplit = () => {
     if (splitMode) {
@@ -76,50 +97,50 @@ export default function CheckoutSheet({
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(netTotal)}</Text>
         </View>
       ) : (<>
-      <View style={{ gap: spacing.sm }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Subtotal</Text>
-          <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.ink }}>{money(total)}</Text>
+      {typingAdditionalCharges ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Additional charges</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(additionalCharges)}</Text>
         </View>
-        {discount > 0 && (
+      ) : (
+        <>
+        <View style={{ gap: spacing.sm }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Discount</Text>
-            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.accent }}>−{money(discount)}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Subtotal</Text>
+            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.ink }}>{money(total)}</Text>
           </View>
-        )}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.line }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Total</Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(netTotal)}</Text>
+          {discount > 0 && (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Discount</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.accent }}>−{money(discount)}</Text>
+            </View>
+          )}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.line }}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Total</Text>
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(netTotal)}</Text>
+          </View>
         </View>
-      </View>
 
-      <View>
-        <Field
-          icon="tag"
-          label="Discount"
-          value={discountText}
-          numeric
-          decimal
-          placeholder="0"
-          onChangeText={(v) => {
-            setDiscountText(v);
-            const d = parseFloat(v) || 0;
-            onDiscountChange(Math.min(d, total));
-          }}
-          style={{ marginBottom: 0 }}
-        />
-        <View style={{ height: 14 }} />
-        <Field
-          icon="plus"
-          label="Additional charges"
-          value={String(additionalCharges || 0)}
-          numeric
-          decimal
-          placeholder="0"
-          onChangeText={(v) => onAdditionalChargesChange(Math.max(0, parseFloat(v) || 0))}
-          style={{ marginBottom: 0 }}
-        />
-      </View>
+        <View>
+          <Field
+            icon="tag"
+            label="Discount"
+            value={discountText}
+            numeric
+            decimal
+            placeholder="0"
+            onChangeText={(v) => {
+              setDiscountText(v);
+              const d = parseFloat(v) || 0;
+              onDiscountChange(Math.min(d, total));
+            }}
+            style={{ marginBottom: 0 }}
+          />
+          <View style={{ height: 14 }} />
+        </View>
+        </>
+      )}
+      {!typingReceived ? additionalChargesField : null}
 
       {/*
         Two separate questions. Is this bill paid now, or does it go on the
@@ -242,24 +263,66 @@ export default function CheckoutSheet({
               <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.accent }}>Split →</Text>
             </Pressable>
           </View>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' }}>
-            {(['cash', 'momo', 'bank'] as PayMethod[]).map((m) => (
-              <Pressable
-                key={m}
-                onPress={() => onMethodChange(m)}
-                style={{
-                  backgroundColor: m === method ? colors.accentSoft : colors.sunk,
-                  borderWidth: 1,
-                  borderColor: m === method ? colors.accent : colors.line,
-                  borderRadius: 999,
-                  paddingVertical: 8,
-                  paddingHorizontal: 12,
-                }}
-              >
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: m === method ? colors.accent : colors.ink, textTransform: 'capitalize' }}>{m}</Text>
-              </Pressable>
-            ))}
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {([
+              { value: 'cash', label: 'Cash', icon: 'cash' },
+              { value: 'momo', label: 'MoMo', icon: 'phone' },
+              { value: 'bank', label: 'Bank', icon: 'bank' },
+            ] as const).map((opt) => {
+              const active = method === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => onMethodChange(opt.value)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    minWidth: 96, paddingVertical: 11, paddingHorizontal: 14,
+                    borderRadius: 14,
+                    borderWidth: 1.4,
+                    borderColor: active ? colors.accent : colors.line,
+                    backgroundColor: active ? colors.accentSoft : colors.surface,
+                  }}
+                >
+                  <Icon name={opt.icon as any} size={15} color={active ? colors.accent : colors.soft} />
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: active ? colors.accent : colors.ink }}>{opt.label}</Text>
+                </Pressable>
+              );
+            })}
           </View>
+          {(receivedVia === 'momo' || method === 'momo') && onMomoNetworkChange && onMomoRefChange ? (
+            <View style={{ marginTop: 14 }}>
+              <Panel>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint, marginBottom: 8 }}>MoMo details</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                  {([
+                    { value: 'mtn', label: 'MTN MoMo' },
+                    { value: 'airtel', label: 'Airtel Money' },
+                  ] as const).map((net) => (
+                    <Pressable
+                      key={net.value}
+                      onPress={() => onMomoNetworkChange(net.value)}
+                      style={{
+                        flex: 1, alignItems: 'center', paddingVertical: 10,
+                        borderRadius: 12, borderWidth: 1.4,
+                        borderColor: momoNetwork === net.value ? colors.accent : colors.line,
+                        backgroundColor: momoNetwork === net.value ? colors.accentSoft : colors.surface,
+                      }}
+                    >
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: momoNetwork === net.value ? colors.accent : colors.ink }}>{net.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Field
+                  icon="phone"
+                  label="Transaction ID"
+                  value={momoRef}
+                  onChangeText={onMomoRefChange}
+                  placeholder="e.g. 456789"
+                  style={{ marginBottom: 0 }}
+                />
+              </Panel>
+            </View>
+          ) : null}
         </View>
       ) : (
         <View>

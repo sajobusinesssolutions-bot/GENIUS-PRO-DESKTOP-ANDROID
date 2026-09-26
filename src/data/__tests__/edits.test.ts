@@ -41,7 +41,7 @@ function makeDb(): DB {
     sales: [], purchases: [], payments: [], entries: [], journal: [], movements: [],
     shifts: [], warranties: [], claims: [],
     estimates: [], challans: [], creditNotes: [], offers: [], stockTakes: [],
-    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], queue: [],
+    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], businessAccess: [], queue: [],
     plans: [],
     session: { userId: user.id, role: 'owner', online: true, till: 'Till 1', warehouse: 'w1' },
     counters: { sale: 0, purchase: 0, estimate: 0, challan: 0, creditNote: 0, po: 0, plan: 0 },

@@ -29,7 +29,8 @@ export const REPORTS: ReportDef[] = [
   { id: 'day-close', cat: 'Sales', name: 'Z report · end of day', sub: 'Close the day — takings by mode and cashier' },
   { id: 'x-report', cat: 'Sales', name: 'X report', sub: 'Today so far, without closing' },
   { id: 'sale-summary', cat: 'Sales', name: 'Sale summary', sub: 'All bills with tax and dues' },
-  { id: 'daily-sales', cat: 'Sales', name: 'Daily sales', sub: 'Totals per day in the range' },
+  { id: 'daily-sales', cat: 'Sales', name: 'Daily sales', sub: 'Each sale with cash and credit detail' },
+  { id: 'daybook', cat: 'Sales', name: 'Day book', sub: 'All transactions in the range, with debit and credit columns' },
   { id: 'hourly-sales', cat: 'Sales', name: 'Hourly sales', sub: 'Which hours sell the most' },
   { id: 'invoice-list', cat: 'Sales', name: 'Invoice list', sub: 'Every bill in the range' },
   { id: 'item-sales', cat: 'Sales', name: 'Item list (units sold)', sub: 'Quantity and revenue per item' },
@@ -81,6 +82,10 @@ export const REPORTS: ReportDef[] = [
   // Stock
   { id: 'stock-summary', cat: 'Stock', name: 'Stock summary', sub: 'Quantity and value of every item' },
   { id: 'stock-movement', cat: 'Stock', name: 'Stock movement', sub: 'Every in and out with reference' },
+  { id: 'days-out-of-stock', cat: 'Stock', name: 'Days out of stock', sub: 'Items and the days they were unavailable' },
+  { id: 'amc', cat: 'Stock', name: 'Average monthly consumption', sub: 'Average units consumed per calendar month' },
+  { id: 'aamc', cat: 'Stock', name: 'Adjusted average monthly consumption', sub: 'Consumption normalized for stockout months' },
+  { id: 'aawc', cat: 'Stock', name: 'Adjusted average weekly consumption', sub: 'Consumption normalized for stockout weeks' },
   { id: 'low-stock', cat: 'Stock', name: 'Low stock', sub: 'Items at or below reorder level' },
   { id: 'reorder-list', cat: 'Stock', name: 'Reorder list', sub: 'What to buy now, with suggested quantity' },
   { id: 'expiry', cat: 'Stock', name: 'Batch / expiry', sub: 'Tracked batches by days to expiry' },
@@ -95,6 +100,9 @@ export const REPORTS: ReportDef[] = [
   // Tax & books
   { id: 'tax-summary', cat: 'Tax & books', name: 'Tax summary', sub: 'VAT levied — sales vs purchases' },
   { id: 'party-statement', cat: 'Tax & books', name: 'Party statement', sub: 'Running ledger for any party' },
+  { id: 'ledger-summary', cat: 'Tax & books', name: 'Ledger summary', sub: 'Debit, credit and closing by ledger' },
+  { id: 'voucher-summary', cat: 'Tax & books', name: 'Voucher summary', sub: 'Journal vouchers with date, type and reference' },
+  { id: 'chart-of-accounts', cat: 'Tax & books', name: 'Chart of accounts', sub: 'Every ledger with type, totals and balance' },
   { id: 'trial-balance', cat: 'Tax & books', name: 'Trial balance', sub: 'All accounts — Dr must equal Cr' },
   { id: 'general-ledger', cat: 'Tax & books', name: 'General ledger', sub: 'Every account: debit, credit, closing' },
   { id: 'pnl', cat: 'Tax & books', name: 'Profit & loss', sub: 'Sales, cost of goods, expenses' },
@@ -129,8 +137,11 @@ export interface ReportCol { h: string; r?: boolean; key?: string }
 export interface ReportStat { k: string; v: string; tone?: 'g' | 'w' | 'd' | 'a' }
 
 /** What a tapped row opens. */
-export type RowRefKind = 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote';
+export type RowRefKind = 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month';
 export interface RowRef { kind: RowRefKind; id: string }
+
+export const INVENTORY_METRIC_REPORTS = ['days-out-of-stock', 'amc', 'aamc', 'aawc'] as const;
+export type InventoryMetricReport = typeof INVENTORY_METRIC_REPORTS[number];
 
 export interface ReportResult {
   title: string;
@@ -175,6 +186,317 @@ function parseNum(s: string): number {
 
 export function cellTone(c: Cell): CellTone | undefined {
   return c && typeof c === 'object' ? c.tone : undefined;
+}
+
+function monthKeyFor(ts: string | number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${d.getMonth()}`;
+}
+
+function monthLabelForKey(key: string): string {
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m, 1);
+  return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
+
+function monthStartForKey(key: string): number {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m, 1).getTime();
+}
+
+function monthEndForKey(key: string): number {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m + 1, 0, 23, 59, 59, 999).getTime();
+}
+
+function monthKeysBetween(from: number, to: number): string[] {
+  const start = new Date(from || Date.now());
+  const end = new Date(to || Date.now());
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  const last = new Date(end.getFullYear(), end.getMonth(), 1);
+  const keys: string[] = [];
+  while (cursor <= last) {
+    keys.push(monthKeyFromDate(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return keys;
+}
+
+function monthKeyFromDate(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}`;
+}
+
+function isConsumptionMovement(type: string): boolean {
+  return type === 'sale' || type === 'production-consume';
+}
+
+interface StockoutInterval { from: number; to: number }
+interface InventoryMetricSnapshot {
+  inward: number;
+  outward: number;
+  consumption: number;
+  closing: number;
+  daysOut: number;
+  availableDays: number;
+}
+
+function inventoryMetricSnapshot(
+  db: DB,
+  product: Product,
+  from: number,
+  to: number,
+): InventoryMetricSnapshot {
+  const all = db.movements
+    .filter((m) => m.productId === product.id)
+    .slice()
+    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  const periodTo = to || Date.now();
+  const periodFrom = from || (all[0] ? startOfDay(new Date(all[0].ts)) : periodTo);
+  const historicalOpening = stockOf(product) - all.reduce((sum, m) => sum + m.qty, 0);
+  let running = historicalOpening;
+  const firstMovement = all[0];
+  const startsUnavailable = running < 0 || (!firstMovement && running === 0) || (running === 0 && firstMovement && firstMovement.qty < 0);
+  let stockoutFrom: number | null = startsUnavailable ? periodFrom : null;
+  const intervals: StockoutInterval[] = [];
+  all.forEach((m) => {
+    const ts = new Date(m.ts).getTime();
+    if (ts > periodTo) return;
+    const before = running;
+    running += m.qty;
+    if (before > 0 && running <= 0) stockoutFrom = ts;
+    if (before <= 0 && running > 0 && stockoutFrom !== null) {
+      // A receipt makes stock available for that calendar day. Count only
+      // complete unavailable days before the receipt day.
+      intervals.push({ from: stockoutFrom, to: startOfDay(new Date(ts)) });
+      stockoutFrom = null;
+    }
+  });
+  if (stockoutFrom !== null) intervals.push({ from: stockoutFrom, to: periodTo });
+
+  const daysOut = intervals.reduce((sum, x) => {
+    const a = Math.max(x.from, periodFrom);
+    const b = Math.min(x.to, periodTo);
+    return sum + (b > a ? Math.ceil((b - a) / 86400000) : 0);
+  }, 0);
+  const totalDays = Math.max(1, Math.floor((startOfDay(periodTo) - startOfDay(periodFrom)) / 86400000) + 1);
+  const periodMoves = all.filter((m) => within(m.ts, periodFrom, periodTo));
+  const inward = periodMoves.reduce((sum, m) => sum + Math.max(0, m.qty), 0);
+  const outward = periodMoves.reduce((sum, m) => sum + Math.max(0, -m.qty), 0);
+  const consumption = periodMoves
+    .filter((m) => isConsumptionMovement(m.type))
+    .reduce((sum, m) => sum + Math.max(0, -m.qty), 0);
+  return { inward, outward, consumption, closing: running, daysOut: Math.min(daysOut, totalDays), availableDays: Math.max(0, totalDays - Math.min(daysOut, totalDays)) };
+}
+
+function metricValue(metric: InventoryMetricReport, snapshot: InventoryMetricSnapshot, from: number, to: number): number {
+  if (metric === 'days-out-of-stock') return snapshot.daysOut;
+  const months = Math.max(1, monthKeysBetween(from, to).length);
+  if (metric === 'amc') return snapshot.consumption / months;
+  if (metric === 'aamc') {
+    const availableDaysInSample = Math.max(0, 90 - snapshot.daysOut);
+    return availableDaysInSample > 0 ? (snapshot.consumption * 30.5) / availableDaysInSample : 0;
+  }
+  if (metric === 'aawc') {
+    const availableDaysInSample = Math.max(0, 56 - snapshot.daysOut);
+    return availableDaysInSample > 0 ? (snapshot.consumption * 7) / availableDaysInSample : 0;
+  }
+  return 0;
+}
+
+function metricLabel(metric: InventoryMetricReport): string {
+  if (metric === 'days-out-of-stock') return 'Days out';
+  if (metric === 'amc') return 'AMC';
+  if (metric === 'aamc') return 'AAMC';
+  return 'AAWC';
+}
+
+function aamcSample(from: number, to: number): { from: number; to: number } {
+  const sampleTo = to || Date.now();
+  const sampleFrom = startOfDay(sampleTo - (90 - 1) * 86400000);
+  return { from: sampleFrom, to: sampleTo };
+}
+
+function aawcSample(from: number, to: number): { from: number; to: number } {
+  const sampleTo = to || Date.now();
+  const sampleFrom = startOfDay(sampleTo - (56 - 1) * 86400000);
+  return { from: sampleFrom, to: sampleTo };
+}
+
+export function inventoryMetricDrill(
+  db: DB,
+  metric: InventoryMetricReport,
+  productId: string,
+  from: number,
+  to: number,
+  monthKey?: string,
+  dayKey?: string,
+): ReportResult {
+  const product = productOf(db, productId);
+  if (!product) return empty(metricLabel(metric), [{ h: 'Item' }], 'This item is no longer in stock records.');
+  const firstMovement = db.movements
+    .filter((m) => m.productId === productId)
+    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())[0];
+  const baseFrom = from || (firstMovement ? startOfDay(new Date(firstMovement.ts)) : (to || Date.now()));
+  const baseTo = to || Date.now();
+  const sample = metric === 'aamc' ? aamcSample(baseFrom, baseTo)
+    : metric === 'aawc' ? aawcSample(baseFrom, baseTo)
+      : { from: baseFrom, to: baseTo };
+  const periodFrom = sample.from;
+  const periodTo = sample.to;
+  if (!monthKey) {
+    const months = monthKeysBetween(periodFrom, periodTo);
+    const rows = months.map((key) => {
+      const a = Math.max(periodFrom, monthStartForKey(key));
+      const b = Math.min(periodTo, monthEndForKey(key));
+      const s = inventoryMetricSnapshot(db, product, a, b);
+      const metricCell = { text: String(metric === 'days-out-of-stock' ? s.daysOut : metricValue(metric, s, a, b)), n: metric === 'days-out-of-stock' ? s.daysOut : metricValue(metric, s, a, b) };
+      return metric === 'days-out-of-stock'
+        ? [monthLabelForKey(key), { text: String(s.inward), n: s.inward }, { text: String(s.outward), n: s.outward }, { text: String(s.closing), n: s.closing }, metricCell]
+        : [monthLabelForKey(key), { text: String(s.inward), n: s.inward }, { text: String(s.outward), n: s.outward }, { text: String(s.closing), n: s.closing }, { text: String(s.daysOut), n: s.daysOut }, metricCell];
+    });
+    const cols = metric === 'days-out-of-stock'
+      ? [{ h: 'Month' }, { h: 'Inward', r: true }, { h: 'Outward', r: true }, { h: 'Closing', r: true }, { h: 'Days out', r: true }]
+      : [{ h: 'Month' }, { h: 'Inward', r: true }, { h: 'Outward', r: true }, { h: 'Closing', r: true }, { h: 'Days out', r: true }, { h: metricLabel(metric), r: true }];
+    return {
+      title: `${product.name} · ${metricLabel(metric)}`,
+      cols,
+      rows,
+      rowRefs: months.map((key) => ({ kind: 'month' as const, id: key })),
+      foot: metric === 'days-out-of-stock'
+        ? ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, '', { text: String(sumCol(rows, 4)), n: sumCol(rows, 4) }]
+        : ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, '', { text: String(sumCol(rows, 4)), n: sumCol(rows, 4) }, ''],
+      note: 'Tap a month to see daily inward, outward, closing stock, and stockout days. Adjusted consumption uses only days when stock was available.',
+    };
+  }
+
+  const days: string[] = [];
+  const first = new Date(Math.max(periodFrom, monthStartForKey(monthKey)));
+  const last = new Date(Math.min(periodTo, monthEndForKey(monthKey)));
+  for (const cursor = new Date(first.getFullYear(), first.getMonth(), first.getDate()); cursor <= last; cursor.setDate(cursor.getDate() + 1)) days.push(`${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`);
+  const rows = days.map((key) => {
+    const [y, m, d] = key.split('-').map(Number);
+    const dayFrom = new Date(y, m, d).getTime();
+    const dayTo = new Date(y, m, d, 23, 59, 59, 999).getTime();
+    const s = inventoryMetricSnapshot(db, product, dayFrom, dayTo);
+    const metricCell = { text: String(metric === 'days-out-of-stock' ? s.daysOut : metricValue(metric, s, dayFrom, dayTo)), n: metric === 'days-out-of-stock' ? s.daysOut : metricValue(metric, s, dayFrom, dayTo) };
+    return metric === 'days-out-of-stock'
+      ? [shortDay(dayFrom), { text: String(s.inward), n: s.inward }, { text: String(s.outward), n: s.outward }, { text: String(s.closing), n: s.closing }, metricCell]
+      : [shortDay(dayFrom), { text: String(s.inward), n: s.inward }, { text: String(s.outward), n: s.outward }, { text: String(s.closing), n: s.closing }, { text: String(s.daysOut), n: s.daysOut }, metricCell];
+  });
+  const cols = metric === 'days-out-of-stock'
+    ? [{ h: 'Date' }, { h: 'Inward', r: true }, { h: 'Outward', r: true }, { h: 'Closing', r: true }, { h: 'Days out', r: true }]
+    : [{ h: 'Date' }, { h: 'Inward', r: true }, { h: 'Outward', r: true }, { h: 'Closing', r: true }, { h: 'Days out', r: true }, { h: metricLabel(metric), r: true }];
+  return {
+    title: `${product.name} · ${monthLabelForKey(monthKey)}`,
+    cols,
+    rows,
+    foot: metric === 'days-out-of-stock'
+      ? ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, '', { text: String(sumCol(rows, 4)), n: sumCol(rows, 4) }]
+      : ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, '', { text: String(sumCol(rows, 4)), n: sumCol(rows, 4) }, ''],
+    note: `Daily ${metricLabel(metric)} detail for ${product.name}.`,
+  };
+}
+
+export function stockMovementDrill(
+  db: DB,
+  productId: string,
+  from: number,
+  to: number,
+  monthKey?: string,
+): ReportResult {
+  const product = productOf(db, productId);
+  if (!product) {
+    return {
+      title: 'Stock movement',
+      cols: [{ h: 'Item' }, { h: 'Stock In', r: true }, { h: 'Stock Out', r: true }, { h: 'Closing', r: true }],
+      rows: [],
+      note: 'This item is no longer in stock records.',
+    };
+  }
+
+  const items = db.movements
+    .filter((m) => m.productId === productId && within(m.ts, from, to))
+    .slice()
+    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+
+  if (!monthKey) {
+    const monthMap: Record<string, typeof items> = {};
+    items.forEach((m) => {
+      const key = monthKeyFor(m.ts);
+      if (!monthMap[key]) monthMap[key] = [];
+      monthMap[key].push(m);
+    });
+
+    const keys = Object.keys(monthMap).sort();
+    const rows: Cell[][] = [];
+    const rowRefs: RowRef[] = [];
+    let running = 0;
+
+    keys.forEach((key) => {
+      const bucket = monthMap[key];
+      const inQty = bucket.reduce((a, x) => a + Math.max(0, x.qty), 0);
+      const outQty = bucket.reduce((a, x) => a + Math.max(0, -x.qty), 0);
+      running += bucket.reduce((a, x) => a + x.qty, 0);
+      rows.push([
+        monthLabelForKey(key),
+        { text: String(inQty), n: inQty, tone: inQty ? 'good' as CellTone : undefined },
+        { text: String(outQty), n: outQty, tone: outQty ? 'danger' as CellTone : undefined },
+        { text: String(running), n: running, tone: 'accent' as CellTone },
+      ]);
+      rowRefs.push({ kind: 'month', id: key });
+    });
+
+    return {
+      title: `${product.name} · stock movement`,
+      cols: [{ h: 'Month' }, { h: 'Stock In', r: true }, { h: 'Stock Out', r: true }, { h: 'Closing', r: true }],
+      rows,
+      rowRefs,
+      foot: ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, { text: String(sumCol(rows, 3)), n: sumCol(rows, 3) }],
+      note: 'Tap a month to see the detailed movement for that month.',
+    };
+  }
+
+  const monthItems = db.movements
+    .filter((m) => m.productId === productId && monthKeyFor(m.ts) === monthKey)
+    .slice()
+    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+
+  const earlierQty = db.movements
+    .filter((m) => m.productId === productId && new Date(m.ts).getTime() < new Date(monthKey + '-01T00:00:00').getTime())
+    .reduce((a, m) => a + m.qty, 0);
+
+  const rows: Cell[][] = [[
+    shortDay(from || Date.now()),
+    'Opening Balance',
+    'opening',
+    '—',
+    '',
+    '',
+    { text: String(earlierQty), n: earlierQty, tone: 'muted' as CellTone },
+  ]];
+  let running = earlierQty;
+  monthItems.forEach((m) => {
+    const inQty = Math.max(0, m.qty);
+    const outQty = Math.max(0, -m.qty);
+    running += m.qty;
+    rows.push([
+      shortDay(m.ts),
+      product.name,
+      m.type || 'stock',
+      m.ref || '—',
+      inQty ? { text: String(inQty), n: inQty, tone: 'good' as CellTone } : '',
+      outQty ? { text: String(outQty), n: outQty, tone: 'danger' as CellTone } : '',
+      { text: String(running), n: running, tone: 'accent' as CellTone },
+    ]);
+  });
+
+  return {
+    title: `${product.name} · ${monthLabelForKey(monthKey)}`,
+    cols: [{ h: 'Date' }, { h: 'Particulars' }, { h: 'Voucher Type' }, { h: 'Voucher No' }, { h: 'Stock In', r: true }, { h: 'Stock Out', r: true }, { h: 'Closing', r: true }],
+    rows,
+    foot: ['Closing', '', '', '', '', '', { text: String(running), n: running }],
+    note: `Showing the stock movements for ${product.name} in ${monthLabelForKey(monthKey)}.`,
+  };
 }
 
 /** Sum a numeric column across rows — reference sumCol(), 3451. */
@@ -328,6 +650,8 @@ const NOMINAL_TYPE: Record<string, AccType> = {
   n_equity: 'equity',
 };
 function accType(db: DB, id: string): AccType {
+  const chartType = db.coa?.find((ledger) => ledger.id === id)?.type;
+  if (chartType) return chartType;
   if (db.accounts.some((a) => a.id === id)) return 'asset';
   return NOMINAL_TYPE[id] || 'equity';
 }
@@ -345,6 +669,30 @@ function nominalTotal(db: DB, id: string, from = 0, to = 0): number {
 }
 
 interface LedgerRow { ts: string; memo: string; debit: number; credit: number; balance: number; ref?: RowRef }
+
+function accountTypeOrder(type?: string): number {
+  switch (type) {
+    case 'asset': return 0;
+    case 'equity': return 1;
+    case 'liability': return 2;
+    case 'income': return 3;
+    case 'expense': return 4;
+    default: return 99;
+  }
+}
+
+function orderedLedgerIds(db: DB): string[] {
+  const ids = allAccountIds(db);
+  const map = new Map<string, { code?: string; name: string; type?: string }>();
+  ids.forEach((id) => map.set(id, { code: db.coa?.find((l) => l.id === id)?.code, name: accName(db, id), type: (db.coa?.find((l) => l.id === id)?.type || accType(db, id)) }));
+  return ids.sort((a, b) => {
+    const aa = map.get(a)!; const bb = map.get(b)!;
+    const ord = accountTypeOrder(aa.type) - accountTypeOrder(bb.type);
+    if (ord !== 0) return ord;
+    return (aa.code || aa.name || a).localeCompare(bb.code || bb.name || b);
+  });
+}
+
 /** Reference partyLedgerRows(), 1070. */
 function partyLedgerRows(db: DB, id: string): LedgerRow[] {
   const rows: LedgerRow[] = [];
@@ -470,28 +818,84 @@ RPT['sale-summary'] = (db, from, to, money) => {
   };
 };
 
-/* --- Daily sales — reference RPT['daily-sales'], 3474 --- */
+/* --- Daily sales — each transaction with the required voucher fields and cash/credit split --- */
+function txRow(date: string, type: string, no: string, particulars: string, extra: Cell[] = []): Cell[] {
+  return [shortDay(date), type, no, particulars, ...extra];
+}
+
 RPT['daily-sales'] = (db, from, to) => {
-  const span = to - (from || to - 30 * 864e5);
-  const days = Math.min(60, Math.max(1, Math.ceil(span / 864e5)));
-  const rows: Cell[][] = [];
-  for (let d = days - 1; d >= 0; d--) {
-    const f = startOfDay(daysAgo(d));
-    const g = endOfDay(daysAgo(d));
-    if (from && g < from) continue;
-    const ss = salesBetween(db, f, g);
-    rows.push([
-      fmtDay(daysAgo(d)),
-      ss.length,
-      m(ss.reduce((a, s) => a + s.total, 0)),
-      m(ss.reduce((a, s) => a + (s.total - s.tax - s.cogs), 0)),
-    ]);
-  }
+  const sales = salesBetween(db, from, to).slice().reverse();
+  const rows: Cell[][] = sales.map((s) => {
+    const methodTotal = s.methods
+      ? s.methods.reduce((sum, m) => sum + (m.method === 'cash' || m.method === 'momo' || m.method === 'bank' ? m.amount : 0), 0)
+      : (s.method === 'cash' || s.method === 'momo' || s.method === 'bank') ? s.total : 0;
+    const creditTotal = s.methods
+      ? s.methods.reduce((sum, m) => sum + (m.method === 'credit' ? m.amount : 0), 0)
+      : (s.method === 'credit' ? s.total : Math.max(0, s.due));
+    return txRow(s.ts, 'Sale', s.no, partyName(db, s.partyId) || 'Walk-in', [m(methodTotal), m(creditTotal), m(s.total)]);
+  });
   return {
     title: 'Daily sales',
-    cols: [{ h: 'Day' }, { h: 'Bills', r: true }, { h: 'Sales', r: true }, { h: 'Profit', r: true }],
+    cols: [
+      { h: 'Date' }, { h: 'Vch Type' }, { h: 'Vch No' }, { h: 'Particulars' },
+      { h: 'Cash', r: true }, { h: 'Credit', r: true }, { h: 'Total', r: true },
+    ],
     rows,
-    foot: ['Total', sumCol(rows, 1), m(sumCol(rows, 2)), m(sumCol(rows, 3))],
+    foot: ['Total', '', '', '', m(sumCol(rows, 4)), m(sumCol(rows, 5)), m(sumCol(rows, 6))],
+    rowRefs: sales.map((s) => ({ kind: 'sale' as const, id: s.id })),
+  };
+};
+
+RPT['daybook'] = (db, from, to) => {
+  const txns: Array<{ ts: string; type: string; no: string; particulars: string; debit: number; credit: number; ref?: RowRef }> = [];
+
+  (db.sales || []).filter((s) => within(s.ts, from, to) && s.status !== 'void').forEach((s) => {
+    txns.push({
+      ts: s.ts,
+      type: 'Sale',
+      no: s.no,
+      particulars: partyName(db, s.partyId) || 'Walk-in',
+      debit: 0,
+      credit: s.total,
+      ref: { kind: 'sale', id: s.id },
+    });
+  });
+  (db.purchases || []).filter((p) => within(p.ts, from, to) && p.status !== 'void').forEach((p) => {
+    txns.push({
+      ts: p.ts,
+      type: 'Purchase',
+      no: p.no,
+      particulars: supplierName(db, p.partyId),
+      debit: p.total,
+      credit: 0,
+      ref: { kind: 'purchase', id: p.id },
+    });
+  });
+  (db.entries || []).filter((e) => within(e.ts, from, to)).forEach((e) => {
+    txns.push({
+      ts: e.ts,
+      type: 'Entry',
+      no: e.id.slice(0, 8).toUpperCase(),
+      particulars: e.note || e.category || 'Entry',
+      debit: e.direction === 'in' ? e.amount : 0,
+      credit: e.direction === 'out' ? e.amount : 0,
+      ref: { kind: 'entry', id: e.id },
+    });
+  });
+
+  txns.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  const rows: Cell[][] = txns.map((t) => txRow(t.ts, t.type, t.no, t.particulars, [m(t.debit), m(t.credit)]));
+
+  return {
+    title: 'Day book',
+    cols: [
+      { h: 'Date' }, { h: 'Vch Type' }, { h: 'Vch No' }, { h: 'Particulars' },
+      { h: 'Debit', r: true }, { h: 'Credit', r: true },
+    ],
+    rows,
+    rowRefs: txns.map((t) => t.ref || null),
+    foot: ['Total', '', '', '', m(sumCol(rows, 4)), m(sumCol(rows, 5))],
+    note: 'Every transaction in the range, booked by date with debit and credit split.',
   };
 };
 
@@ -520,14 +924,12 @@ RPT['hourly-sales'] = (db, from, to) => {
 /* --- Invoice list — reference RPT['invoice-list'], 3502 --- */
 RPT['invoice-list'] = (db, from, to) => {
   const sales = salesBetween(db, from, to).slice().reverse();
-  const rows: Cell[][] = sales.map((s) => [
-    s.no, partyName(db, s.partyId), s.method, m(s.total), dash(s.due),
-  ]);
+  const rows: Cell[][] = sales.map((s) => txRow(s.ts, 'Sale', s.no, partyName(db, s.partyId) || 'Walk-in', [s.method, m(s.total), dash(s.due)]));
   return {
     title: 'Invoice list',
-    cols: [{ h: 'Bill' }, { h: 'Customer' }, { h: 'Mode' }, { h: 'Total', r: true }, { h: 'Due', r: true }],
+    cols: [{ h: 'Date' }, { h: 'Vch Type' }, { h: 'Vch No' }, { h: 'Customer' }, { h: 'Mode' }, { h: 'Total', r: true }, { h: 'Due', r: true }],
     rows,
-    foot: ['Total', '', '', m(sumCol(rows, 3)), m(sumCol(rows, 4))],
+    foot: ['Total', '', '', '', '', m(sumCol(rows, 5)), m(sumCol(rows, 6))],
     rowRefs: sales.map((s) => ({ kind: 'sale' as const, id: s.id })),
   };
 };
@@ -1313,19 +1715,31 @@ RPT['stock-summary'] = (db) => {
   };
 };
 
-/* --- Stock movement — reference 3943 --- */
+/* --- Stock movement — all products first, with item drill-down into monthly movement --- */
 RPT['stock-movement'] = (db, from, to) => {
-  const ms = db.movements.filter((x) => within(x.ts, from, to)).slice().reverse().slice(0, 150);
-  const rows: Cell[][] = ms.map((x) => [
-    shortDay(x.ts), productOf(db, x.productId)?.name || '—', x.type, x.ref || '—',
-    { text: (x.qty > 0 ? '+' : '') + x.qty, n: x.qty, tone: (x.qty > 0 ? 'good' : 'danger') as CellTone },
-  ]);
+  const rows: Cell[][] = [];
+  const rowRefs: RowRef[] = [];
+
+  db.products.filter((p) => p.active).forEach((p) => {
+    const ms = db.movements.filter((x) => x.productId === p.id && within(x.ts, from, to));
+    const inQty = ms.reduce((a, x) => a + Math.max(0, x.qty), 0);
+    const outQty = ms.reduce((a, x) => a + Math.max(0, -x.qty), 0);
+    const closing = stockOf(p);
+    rows.push([
+      p.name,
+      { text: String(inQty), n: inQty, tone: inQty ? 'good' as CellTone : undefined },
+      { text: String(outQty), n: outQty, tone: outQty ? 'danger' as CellTone : undefined },
+      { text: String(closing), n: closing, tone: 'accent' as CellTone },
+    ]);
+    rowRefs.push({ kind: 'product', id: p.id });
+  });
   return {
     title: 'Stock movement',
-    cols: [{ h: 'Date' }, { h: 'Item' }, { h: 'Type' }, { h: 'Ref' }, { h: 'Qty', r: true }],
+    cols: [{ h: 'Item' }, { h: 'Stock In', r: true }, { h: 'Stock Out', r: true }, { h: 'Closing', r: true }],
     rows,
-    foot: ['Net', '', '', '', { text: String(sumCol(rows, 4)), n: sumCol(rows, 4) }],
-    note: ms.length === 150 ? 'The 150 most recent movements in the range.' : undefined,
+    rowRefs,
+    foot: ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, { text: String(sumCol(rows, 3)), n: sumCol(rows, 3) }],
+    note: 'Tap an item to open its monthly stock movement, then tap a month to see the item’s movements for that month.',
   };
 };
 
@@ -1347,17 +1761,16 @@ RPT['batch-movement'] = (db, from, to) => {
     running.set(key, next);
     return { m, balance: next };
   });
-
   const rows: Cell[][] = withBalance
     .filter((x) => within(x.m.ts, from, to))
     .reverse()
     .slice(0, 200)
     .map((x) => [
       shortDay(x.m.ts),
+      'Batch',
+      x.m.ref || '—',
       productOf(db, x.m.productId)?.name || '—',
       x.m.batchNo || '—',
-      x.m.type,
-      x.m.ref || '—',
       { text: (x.m.qty > 0 ? '+' : '') + x.m.qty, n: x.m.qty, tone: (x.m.qty > 0 ? 'good' : 'danger') as CellTone },
       { text: String(x.balance), n: x.balance },
     ]);
@@ -1365,7 +1778,7 @@ RPT['batch-movement'] = (db, from, to) => {
   return {
     title: 'Batch movement',
     cols: [
-      { h: 'Date' }, { h: 'Item' }, { h: 'Batch' }, { h: 'Type' }, { h: 'Ref' },
+      { h: 'Date' }, { h: 'Vch Type' }, { h: 'Vch No' }, { h: 'Item' }, { h: 'Batch' },
       { h: 'Qty', r: true }, { h: 'Balance', r: true },
     ],
     rows,
@@ -1699,6 +2112,100 @@ RPT['party-statement'] = (db) => {
   };
 };
 
+/* --- Ledger summary — a high-level account roll-up for the period --- */
+RPT['ledger-summary'] = (db, from, to) => {
+  const ids = orderedLedgerIds(db);
+  const rows: Cell[][] = ids.map((id) => {
+    let dr = 0; let cr = 0;
+    let opening = 0;
+    db.journal.forEach((e) => {
+      const at = new Date(e.ts).getTime();
+      if (at < from && !from) return;
+      if (from && at < from) {
+        e.lines.forEach((l) => { if (l.acc === id) { opening += (l.dr || 0) - (l.cr || 0); } });
+      }
+      if (!within(e.ts, from, to)) return;
+      e.lines.forEach((l) => {
+        if (l.acc !== id) return;
+        dr += l.dr || 0;
+        cr += l.cr || 0;
+      });
+    });
+    const current = dr - cr;
+    const closing = opening + current;
+    return [accName(db, id), m(dr), m(cr), { text: money0(Math.abs(closing)) + (closing >= 0 ? ' Dr' : ' Cr'), n: closing }, { text: money0(Math.abs(opening)) + (opening >= 0 ? ' Dr' : ' Cr'), n: opening }, { text: money0(Math.abs(current)) + (current >= 0 ? ' Dr' : ' Cr'), n: current }];
+  });
+  return {
+    title: 'Ledger summary',
+    cols: [{ h: 'Ledger' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Closing', r: true }, { h: 'Opening', r: true }, { h: 'Current', r: true }],
+    rows,
+    foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4)), m(sumCol(rows, 5))],
+    rowRefs: ids.map((id) => ({ kind: 'entry', id })),
+    note: 'All ledgers, grouped by asset, equity and liability, with opening, current and closing balances.',
+  };
+};
+
+/* --- Voucher summary — every journal voucher in the period, with a debit and credit total --- */
+RPT['voucher-summary'] = (db, from, to) => {
+  const rows: Cell[][] = db.journal
+    .filter((e) => within(e.ts, from, to))
+    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
+    .map((e) => {
+      const dr = e.lines.reduce((a, l) => a + (l.dr || 0), 0);
+      const cr = e.lines.reduce((a, l) => a + (l.cr || 0), 0);
+      return [shortDay(e.ts), 'Journal', e.ref || '—', e.memo || '—', m(dr), m(cr)];
+    });
+  return {
+    title: 'Voucher summary',
+    cols: [{ h: 'Date' }, { h: 'Vch Type' }, { h: 'Vch No' }, { h: 'Narration' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }],
+    rows,
+    foot: ['Total', '', '', '', m(sumCol(rows, 4)), m(sumCol(rows, 5))],
+    note: 'Every journal voucher in the range, with its supporting debit and credit totals.',
+  };
+};
+
+/* --- Chart of accounts — the shop's ledger list with balance and type --- */
+RPT['chart-of-accounts'] = (db) => {
+  const ledgers = (db.coa && db.coa.length ? db.coa : allAccountIds(db).map((id) => ({ id, code: id, name: accName(db, id), type: accType(db, id), builtin: false, active: true }))) as Array<{ id: string; code?: string; name: string; type?: string; builtin?: boolean; active?: boolean }>;
+  const ordered = [...ledgers].sort((a, b) => {
+    const ord = accountTypeOrder(a.type || accType(db, a.id)) - accountTypeOrder(b.type || accType(db, b.id));
+    if (ord !== 0) return ord;
+    return (a.code || a.name).localeCompare(b.code || b.name);
+  });
+  const rows: Cell[][] = [];
+  const rowRefs: (RowRef | null)[] = [];
+  let totalDr = 0; let totalCr = 0; let totalBalance = 0;
+  [0, 1, 2, 3, 4].forEach((typeOrder) => {
+    const group = ordered.filter((l) => accountTypeOrder(l.type || accType(db, l.id)) === typeOrder);
+    if (!group.length) return;
+    const label = typeOrder === 0 ? 'Assets' : typeOrder === 1 ? 'Equity' : typeOrder === 2 ? 'Liabilities' : typeOrder === 3 ? 'Income' : 'Expenses';
+    rows.push([label, '', '', '', '', '']);
+    rowRefs.push(null);
+    let groupDr = 0; let groupCr = 0; let groupBalance = 0;
+    group.forEach((l) => {
+      let dr = 0; let cr = 0;
+      db.journal.forEach((e) => e.lines.forEach((line) => {
+        if (line.acc === l.id) { dr += line.dr || 0; cr += line.cr || 0; }
+      }));
+      const balance = dr - cr;
+      groupDr += dr; groupCr += cr; groupBalance += balance;
+      rows.push([l.code || l.id, l.name, (l.type || accType(db, l.id)).toString(), m(dr), m(cr), { text: money0(Math.abs(balance)) + (balance >= 0 ? ' Dr' : ' Cr'), n: balance }]);
+      rowRefs.push({ kind: 'entry', id: l.id });
+    });
+    totalDr += groupDr; totalCr += groupCr; totalBalance += groupBalance;
+    rows.push(['', `Total ${label}`, '', m(groupDr), m(groupCr), { text: money0(Math.abs(groupBalance)) + (groupBalance >= 0 ? ' Dr' : ' Cr'), n: groupBalance }]);
+    rowRefs.push(null);
+  });
+  return {
+    title: 'Chart of accounts',
+    cols: [{ h: 'Code' }, { h: 'Account' }, { h: 'Type' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Balance', r: true }],
+    rows,
+    foot: ['Total', '', '', m(totalDr), m(totalCr), { text: money0(Math.abs(totalBalance)) + (totalBalance >= 0 ? ' Dr' : ' Cr'), n: totalBalance }],
+    rowRefs,
+    note: 'The active account structure and running balances, grouped with subtotals for assets, equity, liabilities, income and expenses.',
+  };
+};
+
 /* --- Trial balance — reference 4085 --- */
 RPT['trial-balance'] = (db, _f, _t, money) => {
   const accs: Record<string, { d: number; c: number }> = {};
@@ -1706,13 +2213,33 @@ RPT['trial-balance'] = (db, _f, _t, money) => {
     const a = accs[l.acc] || (accs[l.acc] = { d: 0, c: 0 });
     a.d += l.dr || 0; a.c += l.cr || 0;
   }));
-  const keys = Object.keys(accs);
-  const rows: Cell[][] = keys.map((k) => {
-    const net = accs[k].d - accs[k].c;
-    return [accName(db, k), net > 0 ? m(net) : '', net < 0 ? m(-net) : ''];
+  const keys = Object.keys(accs).sort((a, b) => {
+    const ord = accountTypeOrder((db.coa?.find((l) => l.id === a)?.type || accType(db, a))) - accountTypeOrder((db.coa?.find((l) => l.id === b)?.type || accType(db, b)));
+    if (ord !== 0) return ord;
+    return accName(db, a).localeCompare(accName(db, b));
   });
   const td = keys.reduce((a, k) => { const n = accs[k].d - accs[k].c; return a + (n > 0 ? n : 0); }, 0);
   const tc = keys.reduce((a, k) => { const n = accs[k].d - accs[k].c; return a + (n < 0 ? -n : 0); }, 0);
+  const rows: Cell[][] = [];
+  const rowRefs: (RowRef | null)[] = [];
+  [0, 1, 2, 3, 4].forEach((typeOrder) => {
+    const group = keys.filter((id) => accountTypeOrder(accType(db, id)) === typeOrder);
+    if (!group.length) return;
+    const label = typeOrder === 0 ? 'Assets' : typeOrder === 1 ? 'Equity' : typeOrder === 2 ? 'Liabilities' : typeOrder === 3 ? 'Income' : 'Expenses';
+    rows.push([label, '', '']);
+    rowRefs.push(null);
+    let groupDebit = 0; let groupCredit = 0;
+    group.forEach((k) => {
+      const net = accs[k].d - accs[k].c;
+      const debit = net > 0 ? net : 0;
+      const credit = net < 0 ? -net : 0;
+      groupDebit += debit; groupCredit += credit;
+      rows.push([accName(db, k), debit ? m(debit) : '', credit ? m(credit) : '']);
+      rowRefs.push({ kind: 'entry', id: k });
+    });
+    rows.push([`Total ${label}`, m(groupDebit), m(groupCredit)]);
+    rowRefs.push(null);
+  });
   const ok = Math.abs(td - tc) < 2;
   return {
     title: 'Trial balance',
@@ -1720,12 +2247,15 @@ RPT['trial-balance'] = (db, _f, _t, money) => {
     cols: [{ h: 'Account' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }],
     rows,
     foot: ['Total', m(td), m(tc)],
+    rowRefs,
+    note: 'The trial balance is grouped by account type with a subtotal for each group.',
   };
 };
 
 /* --- General ledger — reference accountingView('ledger'), 3221 --- */
 RPT['general-ledger'] = (db) => {
-  const rows: Cell[][] = allAccountIds(db).map((id) => {
+  const ids = orderedLedgerIds(db);
+  const rows: Cell[][] = ids.map((id) => {
     let dr = 0; let cr = 0;
     db.journal.forEach((e) => e.lines.forEach((l) => {
       if (l.acc === id) { dr += l.dr || 0; cr += l.cr || 0; }
@@ -1737,6 +2267,8 @@ RPT['general-ledger'] = (db) => {
     cols: [{ h: 'Account' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Closing', r: true }],
     rows,
     foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3))],
+    rowRefs: ids.map((id) => ({ kind: 'entry', id })),
+    note: 'Ledger balances are grouped by asset, equity and liability to match the accounting structure.',
   };
 };
 
@@ -1836,6 +2368,52 @@ RPT['zreport-summary'] = (db) => {
     foot: ['Total', '', '', m(sumCol(rows, 3)), m(sumCol(rows, 4)), signed(sumCol(rows, 5))],
   };
 };
+
+function inventoryMetricReport(db: DB, from: number, to: number, metric: InventoryMetricReport): ReportResult {
+  const rows: Cell[][] = [];
+  const rowRefs: RowRef[] = [];
+  db.products.filter((p) => p.active).forEach((p) => {
+    const sample = metric === 'aamc' ? aamcSample(from, to)
+      : metric === 'aawc' ? aawcSample(from, to)
+        : { from, to };
+    const s = inventoryMetricSnapshot(db, p, sample.from, sample.to);
+    const firstMovement = db.movements.filter((m) => m.productId === p.id)
+      .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())[0];
+    const metricFrom = sample.from || (firstMovement ? startOfDay(new Date(firstMovement.ts)) : (to || Date.now()));
+    const value = metricValue(metric, s, metricFrom, sample.to || Date.now());
+    rows.push([
+      p.name,
+      { text: String(value), n: value, tone: metric === 'days-out-of-stock' && value > 0 ? 'danger' as CellTone : 'accent' as CellTone },
+      ...(metric === 'days-out-of-stock' ? [] : [{ text: String(s.daysOut), n: s.daysOut, tone: s.daysOut > 0 ? 'danger' as CellTone : 'good' as CellTone }]),
+      { text: String(s.consumption), n: s.consumption },
+      { text: String(s.closing), n: s.closing },
+    ]);
+    rowRefs.push({ kind: 'product', id: p.id });
+  });
+  const label = metricLabel(metric);
+  return {
+    title: reportById(metric)?.name || label,
+    cols: metric === 'days-out-of-stock'
+      ? [{ h: 'Item' }, { h: 'Days out', r: true }, { h: 'Consumed', r: true }, { h: 'Closing', r: true }]
+      : [{ h: 'Item' }, { h: label, r: true }, { h: 'Days out', r: true }, { h: 'Consumed', r: true }, { h: 'Closing', r: true }],
+    rows,
+    rowRefs,
+    foot: metric === 'days-out-of-stock'
+      ? ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, { text: String(sumCol(rows, 3)), n: sumCol(rows, 3) }]
+      : ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, { text: String(sumCol(rows, 3)), n: sumCol(rows, 3) }, { text: String(sumCol(rows, 4)), n: sumCol(rows, 4) }],
+    note: metric === 'days-out-of-stock'
+      ? 'Stockout days are derived automatically from the movement history. The clock starts when running stock reaches zero and stops when replenishment makes it positive.'
+      : metric === 'amc'
+        ? 'AMC is consumption divided by calendar months in the selected period.'
+        : metric === 'aamc'
+          ? 'AAMC is consumption normalized by months with stock available, excluding stockout time.'
+          : 'AAWC is consumption normalized by weeks with stock available, excluding stockout time.',
+  };
+}
+
+INVENTORY_METRIC_REPORTS.forEach((metric) => {
+  RPT[metric] = (db, from, to) => inventoryMetricReport(db, from, to, metric);
+});
 
 /* ------------------------------------------------------------------ */
 /* Entry point                                                         */

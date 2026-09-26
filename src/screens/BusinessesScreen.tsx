@@ -15,17 +15,23 @@ import { View, Text, ScrollView, Alert, ActivityIndicator, Pressable } from 'rea
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
-import { Panel, ListRow, SectionLabel } from '../components/ui';
+import { Panel, ListRow, SectionLabel, ProgressBar, DetailRow, Badge, StatGrid } from '../components/ui';
 import { Button } from '../components/ui';
 import { Icon } from '../components/icons';
 import { useGoReset } from '../nav/navigate';
-import { listBusinesses, downloadSnapshot, RemoteBusiness } from '../data/syncClient';
+import { listBusinesses, downloadSnapshot, setBusinessStatus, RemoteBusiness, filterVisibleBusinesses } from '../data/syncClient';
 import { refreshSession, serverConfigured } from '../data/authApi';
 import { useSyncRun } from '../data/useSyncRun';
 import { fmtDate } from '../data/helpers';
 
 /** Enough of the unique id to tell two shops with the same name apart. */
 const shortId = (id: string) => 'ID ' + id.replace(/-/g, '').slice(0, 8).toUpperCase();
+const snapshotSize = (bytes: number | null) => {
+  if (!bytes) return 'No saved data';
+  if (bytes < 1024) return bytes + ' B saved';
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB saved';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB saved';
+};
 
 export default function BusinessesScreen() {
   const { colors } = useTheme();
@@ -37,6 +43,7 @@ export default function BusinessesScreen() {
   const [list, setList] = useState<RemoteBusiness[] | null>(null);
   const [problem, setProblem] = useState('');
   const [busy, setBusy] = useState('');
+  const [progress, setProgress] = useState(0);
 
   const access = useCallback(async () => {
     if (!account?.refresh) return null;
@@ -60,7 +67,8 @@ export default function BusinessesScreen() {
   const hasBooks = !!db?.onboarded;
   const isHere = (b: RemoteBusiness) => b.id === hereId || (!!db && (b as any).local_id === db.firm.id);
   const here = list?.find(isHere);
-  const others = (list || []).filter((b) => !isHere(b));
+  const visible = list ? filterVisibleBusinesses(list, hereId, db?.firm.id) : [];
+  const others = visible.filter((b) => !isHere(b));
 
   // A brand-new account with nothing anywhere: straight into setting up.
   useEffect(() => {
@@ -92,7 +100,8 @@ export default function BusinessesScreen() {
       if (!(await keepCurrent())) return;
       const token = await access();
       if (!token) { Alert.alert('Not signed in', 'Your session has expired. Sign in again.'); return; }
-      const r = await downloadSnapshot(token, b.id);
+      setProgress(10);
+      const r = await downloadSnapshot(token, b.id, setProgress);
       if (!r.ok) {
         const old = /route/i.test(r.error.message) && /not found/i.test(r.error.message);
         Alert.alert('Could not open ' + b.name, old
@@ -100,8 +109,22 @@ export default function BusinessesScreen() {
           : r.error.message);
         return;
       }
-      adoptBook(r.value.data, { businessId: b.id, ownerEmail: account!.email });
-      goReset('PinLock');
+      adoptBook(r.value.data, { businessId: b.id, ownerEmail: account!.email, snapshotVersion: r.value.version });
+        goReset('PinLock');
+        setProgress(0);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function deactivate(b: RemoteBusiness) {
+    const token = await access();
+    if (!token) { Alert.alert('Not signed in', 'Your session has expired. Sign in again.'); return; }
+    setBusy('deactivate:' + b.id);
+    try {
+      const r = await setBusinessStatus(token, b.id, false);
+      if (!r.ok) { Alert.alert('Could not deactivate ' + b.name, r.error.message); return; }
+      await load();
     } finally {
       setBusy('');
     }
@@ -123,10 +146,17 @@ export default function BusinessesScreen() {
       key={b.id}
       icon="home"
       title={b.name}
-      subtitle={shortId(b.id) + ' · ' + (current
+      subtitle={shortId(b.id) + ' · ' + (b.role ? b.role.toUpperCase() + ' · ' : '') + (current
         ? 'On this phone'
         : b.snapshot_at ? 'Last saved ' + fmtDate(b.snapshot_at) : 'Not saved to the account yet')}
-      right={busy === b.id ? <ActivityIndicator color={colors.accent} /> : undefined}
+      right={busy === b.id ? <ActivityIndicator color={colors.accent} /> : !current ? (
+        <Pressable onPress={() => Alert.alert('Deactivate ' + b.name + '?', 'It will no longer appear on this account or open on another device.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Deactivate', style: 'destructive', onPress: () => void deactivate(b) },
+        ])} hitSlop={8}>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.danger }}>Deactivate</Text>
+        </Pressable>
+      ) : undefined}
       onPress={busy ? undefined : () => void open(b)}
       last={i === n - 1}
     />
@@ -146,6 +176,12 @@ export default function BusinessesScreen() {
         <ActivityIndicator color={colors.accent} style={{ marginTop: 30 }} />
       ) : (
         <>
+          {progress > 0 && progress < 100 ? (
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink, marginBottom: 7 }}>Downloading business data {progress}%</Text>
+              <ProgressBar pct={progress} />
+            </View>
+          ) : null}
           {problem ? (
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger, marginBottom: 12 }}>{problem}</Text>
           ) : null}
@@ -163,8 +199,34 @@ export default function BusinessesScreen() {
 
           {others.length ? (
             <>
-              <SectionLabel style={{ marginTop: 18 }}>On your account</SectionLabel>
-              <Panel flush>{others.map((b, i) => row(b, false, i, others.length))}</Panel>
+              <SectionLabel style={{ marginTop: 18 }} right={<Badge label={others.length + ' to compare'} tone="accent" />}>Compare account businesses</SectionLabel>
+              <StatGrid
+                items={[
+                  { icon: 'home', label: 'Businesses', value: String(visible.length), tone: 'accent' },
+                  { icon: 'check', label: 'Available', value: String(visible.filter((b) => b.active !== false).length), tone: 'good' },
+                  { icon: 'cloud', label: 'With snapshots', value: String(visible.filter((b) => !!b.snapshot_at && Number(b.snapshot_bytes || 0) > 0).length), tone: 'warn' },
+                ]}
+              />
+              <View style={{ height: 10 }} />
+              {others.map((b, i) => (
+                <Panel key={b.id} style={{ marginBottom: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: b.active === false ? colors.sunk : colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="factory" size={19} color={b.active === false ? colors.faint : colors.accent} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{b.name}</Text>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{shortId(b.id)}</Text>
+                    </View>
+                    <Badge label={b.active === false ? 'Disabled' : b.role || 'Available'} tone={b.active === false ? 'neutral' : 'accent'} />
+                  </View>
+                  <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 11 }} />
+                  <DetailRow label="Access" value={(b.role || 'available').toUpperCase()} />
+                  <DetailRow label="Last saved" value={b.snapshot_at ? fmtDate(b.snapshot_at) : 'Not saved yet'} />
+                  <DetailRow label="Saved data" value={snapshotSize(b.snapshot_bytes)} last />
+                  <Button label="Open business" size="sm" variant="pri" onPress={() => void open(b)} loading={busy === b.id} />
+                </Panel>
+              ))}
             </>
           ) : null}
 

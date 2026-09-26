@@ -22,6 +22,7 @@ import { Icon, IconName } from '../components/icons';
 import { useGo } from '../nav/navigate';
 import { plural, fmtDate } from '../data/helpers';
 import { useSyncRun } from '../data/useSyncRun';
+import { listDevices, revokeDevice } from '../data/authApi';
 
 type Health = 'locked' | 'noAccount' | 'off' | 'offline' | 'behind' | 'safe';
 
@@ -37,11 +38,13 @@ const LOOK: Record<Health, { tone: 'good' | 'warn' | 'danger' | 'accent'; icon: 
 export default function SyncScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, setSync, licFeature } = useAppData();
+  const { db, setSync, licFeature, refreshLicence } = useAppData();
   const { account } = useAuth();
   const { success, error } = useToast();
   const { run } = useSyncRun();
   const [busy, setBusy] = useState(false);
+  const [devices, setDevices] = useState<Array<{ id: string; name: string; kind: string; platform: string; created_at: string; last_seen: string }>>([]);
+  const [deviceBusy, setDeviceBusy] = useState<string | null>(null);
 
   if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   const s = db.sync;
@@ -61,9 +64,9 @@ export default function SyncScreen() {
     locked: 'Your licence does not include cloud sync. The developer switches it on when you move to Pro.',
     noAccount: 'Sign in to the owner\'s account so the books have somewhere to go.',
     off: 'Nothing leaves this phone. If it is lost or stolen, the books go with it.',
-    offline: plural(waiting, 'change') + ' will go up by themselves as soon as there is internet.',
-    behind: plural(waiting, 'change') + ' waiting. They go up by themselves every few minutes.',
-    safe: s.lastPush ? 'Syncing by itself. Last sent ' + fmtDate(s.lastPush) + '.' : 'Syncing by itself.',
+    offline: plural(waiting, 'change') + ' is queued. Automatic sync will retry as soon as the connection is back.',
+    behind: plural(waiting, 'change') + ' queued for automatic sync. It retries in the background and keeps the books current.',
+    safe: s.lastPush ? 'Automatic sync is running. Last sent ' + fmtDate(s.lastPush) + '.' : 'Automatic sync is running.',
   }[health];
 
   const look = LOOK[health];
@@ -84,6 +87,63 @@ export default function SyncScreen() {
     }
   }
 
+  async function refreshAccountLicence() {
+    const refreshToken = account?.refresh;
+    if (!refreshToken) return;
+    setBusy(true);
+    try {
+      const r = await import('../data/authApi').then((m) => m.refreshSession(refreshToken));
+      if (!r.ok) { error(r.error.message); return; }
+      const next = await refreshLicence(r.value.access, account.id);
+      success(next === 'active' || next === 'trial' ? 'Licence refreshed.' : 'Licence refreshed: ' + next);
+      await loadDevices();
+    } catch (e: any) {
+      error(e?.message || 'The licence could not be refreshed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadDevices() {
+    const refreshToken = account?.refresh;
+    if (!refreshToken || !isOwner) return;
+    try {
+      const r = await import('../data/authApi').then((m) => m.refreshSession(refreshToken));
+      if (!r.ok) { error(r.error.message); return; }
+      const devicesResult = await listDevices(r.value.access);
+      if (!devicesResult.ok) { error(devicesResult.error.message); return; }
+      setDevices(devicesResult.value.devices || []);
+    } catch (e: any) {
+      error(e?.message || 'Could not load devices.');
+    }
+  }
+
+  async function removeDevice(id: string, name: string) {
+    const refreshToken = account?.refresh;
+    if (!refreshToken) return;
+    Alert.alert('Remove device?', 'This removes ' + name + ' from the account licence count.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive',
+        onPress: async () => {
+          setDeviceBusy(id);
+          try {
+            const r = await import('../data/authApi').then((m) => m.refreshSession(refreshToken));
+            if (!r.ok) { error(r.error.message); return; }
+            const res = await revokeDevice(r.value.access, id);
+            if (!res.ok) { error(res.error.message); return; }
+            success('Device removed.');
+            setDevices((current) => current.filter((d) => d.id !== id));
+          } catch (e: any) {
+            error(e?.message || 'The device could not be removed.');
+          } finally {
+            setDeviceBusy(null);
+          }
+        },
+      },
+    ]);
+  }
+
   function turnOff() {
     Alert.alert(
       'Stop syncing?',
@@ -102,7 +162,7 @@ export default function SyncScreen() {
     <Button label="Sign in" variant="pri" icon={<Icon name="user" size={17} color={colors.accentInk} />} onPress={() => go('AuthGate')} />
   ) : (
     <Button
-      label={!s.on ? 'Sync — and keep syncing' : waiting ? 'Sync ' + plural(waiting, 'change') + ' now' : 'Sync now'}
+      label={!s.on ? 'Turn on automatic sync' : waiting ? 'Queued for auto sync' : 'Sync now'}
       variant="pri"
       loading={busy}
       disabled={busy || !online}
@@ -145,6 +205,41 @@ export default function SyncScreen() {
           <Pressable onPress={turnOff} hitSlop={8} style={{ alignSelf: 'center', marginTop: 14 }}>
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.faint }}>Stop syncing</Text>
           </Pressable>
+        ) : null}
+
+        {isOwner && signedIn && pro ? (
+          <View style={{ marginTop: 20 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Devices on this account</Text>
+              <Pressable onPress={loadDevices} hitSlop={8}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.accent }}>Refresh</Text>
+              </Pressable>
+            </View>
+            <Panel flush>
+              {devices.length ? devices.map((device, index) => (
+                <View key={device.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: index === devices.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{device.name || 'This phone'}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 2 }}>{device.kind || 'phone'} · {fmtDate(device.last_seen || device.created_at)}</Text>
+                  </View>
+                  <Button
+                    size="sm"
+                    label={deviceBusy === device.id ? 'Removing…' : 'Remove'}
+                    variant="dngr"
+                    disabled={deviceBusy !== null}
+                    onPress={() => removeDevice(device.id, device.name || 'This phone')}
+                  />
+                </View>
+              )) : (
+                <View style={{ padding: 16 }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>No devices are registered yet.</Text>
+                </View>
+              )}
+            </Panel>
+            <View style={{ marginTop: 12 }}>
+              <Button label="Refresh licence" variant="default" onPress={refreshAccountLicence} />
+            </View>
+          </View>
         ) : null}
 
         {account ? (

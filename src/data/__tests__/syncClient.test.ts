@@ -6,7 +6,7 @@
  * skipped; and nothing was queued at all while the phone was online, so a
  * connected phone with sync on never sent anything new.
  */
-import { opsFrom } from '../syncClient';
+import { opsFrom, pushQueue, uploadSnapshot } from '../syncClient';
 import { enqueue } from '../logic';
 
 function book(over: any = {}): any {
@@ -18,6 +18,7 @@ function book(over: any = {}): any {
     queue: [],
     sales: [{ id: 's1', no: 'INV-00001', total: 1000 }],
     purchases: [{ id: 'p1', no: 'PUR-00001', total: 500 }],
+    shifts: [],
     payments: [], entries: [], journal: [], movements: [], creditNotes: [],
     products: [{ id: 'prd1', name: 'Sugar' }],
     parties: [],
@@ -26,6 +27,34 @@ function book(over: any = {}): any {
 }
 
 const wiring = { businessId: 'biz1', deviceId: 'dev1' };
+
+describe('snapshot compare-and-swap', () => {
+  it('uploads the current snapshot version so stale writes are rejected', async () => {
+    const d = book({ sync: { on: true, lamport: 0, snapshotVersion: 7 } });
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      headers: { get: () => '0' },
+      text: async () => JSON.stringify({ bytes: 99, version: 8 }),
+    }));
+    const prev = global.fetch;
+    // @ts-expect-error mock fetch for the request
+    global.fetch = fetchMock;
+    try {
+      const r = await uploadSnapshot(d, 'access-token', wiring);
+      expect(r.ok).toBe(true);
+      if (!r.ok) throw new Error('snapshot upload failed');
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/v1/businesses/biz1/snapshot'),
+        expect.objectContaining({
+          body: expect.stringContaining('"version":7'),
+        }),
+      );
+      expect(r.value.version).toBe(8);
+    } finally {
+      global.fetch = prev;
+    }
+  });
+});
 
 describe('what gets queued', () => {
   it('queues while online once sync is on', () => {
@@ -47,7 +76,47 @@ describe('what gets queued', () => {
   });
 });
 
+describe('business roles', () => {
+  it('keeps the role the server returns for each business', async () => {
+    const prev = global.fetch;
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      headers: { get: () => '0' },
+      text: async () => JSON.stringify({ businesses: [{ id: 'biz1', name: 'Main', tin: null, created_at: '2026-01-01', snapshot_at: null, snapshot_bytes: null, role: 'manager', active: true }] }),
+    })) as any;
+    try {
+      const r = await require('../syncClient').listBusinesses('token');
+      expect(r.ok).toBe(true);
+      if (!r.ok) throw new Error('list failed');
+      expect(r.value[0]).toMatchObject({ id: 'biz1', role: 'manager' });
+    } finally {
+      global.fetch = prev;
+    }
+  });
+
+  it('hides businesses that have no saved snapshot yet', () => {
+    const { filterVisibleBusinesses } = require('../syncClient');
+    const list = [
+      { id: 'biz1', name: 'Saved', snapshot_at: '2026-01-02T00:00:00.000Z', snapshot_bytes: 123, active: true },
+      { id: 'biz2', name: 'Not saved', snapshot_at: null, snapshot_bytes: null, active: true },
+      { id: 'biz3', name: 'Current phone', snapshot_at: null, snapshot_bytes: null, active: true },
+    ];
+    expect(filterVisibleBusinesses(list, 'biz3', 'firm-3')).toEqual([
+      { id: 'biz1', name: 'Saved', snapshot_at: '2026-01-02T00:00:00.000Z', snapshot_bytes: 123, active: true },
+      { id: 'biz3', name: 'Current phone', snapshot_at: null, snapshot_bytes: null, active: true },
+    ]);
+  });
+});
+
 describe('opsFrom', () => {
+  it('sends a shift close so other tills can receive the day close', () => {
+    const shift = { id: 'shift1', userId: 'u1', till: 'Till 1', closedAt: '2026-09-19T18:00:00.000Z' };
+    const d = book({ shifts: [shift], queue: [{ id: 'q1', ts: '', kind: 'shift.close', ref: 'shift1' }] });
+    const op = opsFrom(d, wiring).ops[0];
+    expect(op.kind).toBe('shift.close');
+    expect(op.payload).toEqual(shift);
+  });
+
   it('finds a sale by its id and sends the whole record', () => {
     const d = book({ queue: [{ id: 'q1', ts: '', kind: 'sale', ref: 's1' }] });
     const { ops, skipped } = opsFrom(d, wiring);
@@ -110,6 +179,25 @@ describe('opsFrom', () => {
   it('sends a page at a time rather than everything at once', () => {
     const queue = Array.from({ length: 250 }, (_, i) => ({ id: 'q' + i, ts: '', kind: 'sale', ref: 's1' }));
     expect(opsFrom(book({ queue }), wiring).ops.length).toBe(200);
+  });
+
+  it('returns rejected operation details when the server refuses stale work', async () => {
+    const d = book({ queue: [{ id: 'q1', ts: '', kind: 'sale', ref: 's1' }, { id: 'q2', ts: '', kind: 'sale', ref: 's1' }] });
+    const prev = global.fetch;
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      headers: { get: () => '0' },
+      text: async () => JSON.stringify({ accepted: ['op_1'], rejected: [{ opId: 'op_2', reason: 'stale_rev', note: 'Older than server' }], seq: 2 }),
+    })) as any;
+    try {
+      const r = await pushQueue(d, 'token', wiring);
+      expect(r.ok).toBe(true);
+      if (!r.ok) throw new Error('push should be reported');
+      expect(r.value.rejected).toBe(1);
+      expect(r.value.rejections).toEqual([{ opId: 'op_2', reason: 'stale_rev', note: 'Older than server' }]);
+    } finally {
+      global.fetch = prev;
+    }
   });
 });
 

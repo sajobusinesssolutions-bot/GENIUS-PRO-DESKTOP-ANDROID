@@ -40,7 +40,7 @@ export default function SettingsScreen() {
   const { colors } = useTheme();
   const go = useGo();
   const {
-    db, setSetting, updateFirm, toggleOnline, can, setDocNumbering, isPro, resetAll,
+    db, setSetting, updateFirm, toggleOnline, can, setDocNumbering, isPro,
   } = useAppData();
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [tab, setTab] = useState<SettingsTab>('general');
@@ -128,8 +128,8 @@ export default function SettingsScreen() {
               <SettingToggle label="Refuse to sell what is not in stock" on={s.blockNegativeStock} onChange={(v) => set({ blockNegativeStock: v, allowNegativeStock: !v })} />
               <SettingRow
                 icon="alert"
-                label="Selling below cost"
-                value={s.belowCost === 'block' ? 'Refuse it' : s.belowCost === 'warn' ? 'Warn me first' : 'Allow it'}
+                label="Stop selling below cost"
+                value={s.belowCost === 'block' ? 'On — refuse it' : s.belowCost === 'warn' ? 'Ask before selling' : 'Off — allow it'}
                 onPress={() => setSheet('belowCost')}
               />
             </SettingGroup>
@@ -187,6 +187,21 @@ export default function SettingsScreen() {
               <SettingRow icon="lock" label="Lock after" value={s.autoLockMins ? s.autoLockMins + ' minutes idle' : 'never'} onPress={() => setSheet('security')} />
               <SettingToggle label="Hide cost prices from cashiers" on={s.hideCostFromCashier} onChange={(v) => set({ hideCostFromCashier: v })} />
               <SettingRow icon="user" label="Users and roles" value={plural(activePeople, 'person', 'people')} onPress={() => go('UsersRoles')} />
+            </SettingGroup>
+
+            <SettingGroup title="Accounting">
+              <SettingRow
+                icon="lock"
+                label="Accounting period"
+                value={s.accountingLock ? 'Locked — ' + new Date(s.accountingLock.from).toLocaleDateString() : 'Open'}
+                onPress={() => {
+                  if (s.accountingLock) {
+                    set({ accountingLock: null });
+                  } else {
+                    set({ accountingLock: { from: new Date().toISOString(), reason: 'Month-end close', lockedAt: new Date().toISOString(), approvedBy: db.session.userId } });
+                  }
+                }}
+              />
             </SettingGroup>
 
             {/* Changing what is recorded — reference the wrapper at 17926 */}
@@ -269,15 +284,6 @@ export default function SettingsScreen() {
               />
             </Card>
 
-            <Button
-              variant="dngr"
-              label="Reset to demo data"
-              icon={<Icon name="trash" size={16} color={colors.danger} />}
-              onPress={() => Alert.alert('Reset', 'This clears all local data and reloads the demo shop.', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Reset', style: 'destructive', onPress: () => { resetAll(); } },
-              ])}
-            />
           </>
         ) : null}
       </ScrollView>

@@ -10,7 +10,7 @@ export type RootStackParamList = {
   MenuGroup: { groupId: string };
 
   // Sell
-  NewSale: undefined;
+  NewSale: { editSaleId?: string } | undefined;
   Receipt: { saleId: string };
   Sales: undefined;
   SaleDetail: { saleId: string };
@@ -33,7 +33,7 @@ export type RootStackParamList = {
   Purchases: undefined;
   PurchaseDetail: { purchaseId: string };
   EditPurchase: { purchaseId: string };
-  PurchaseNew: undefined;
+  PurchaseNew: { editPurchaseId?: string } | undefined;
   PurchaseOrders: undefined;
   PurchaseOrderNew: undefined;
 
@@ -65,6 +65,7 @@ export type RootStackParamList = {
   NewBranch: undefined;
   BranchAnalysis: undefined;
   AccountingHub: undefined;
+  Reconciliation: undefined;
   ChartOfAccounts: undefined;
   LedgerDetail: { ledgerId: string };
   JournalEntry: undefined;

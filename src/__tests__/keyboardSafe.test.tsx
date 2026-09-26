@@ -43,10 +43,10 @@ function fireOnce(ev: string, screenY?: number) {
   act(() => { (listeners[ev] || []).forEach((fn) => fn({ endCoordinates: { screenY, height: 0 } })); });
 }
 
-/** The inner view carries the lift as a bottom margin. */
+/** The outer view carries the lift so absolute children move with it. */
 function lift(): number {
-  const inner = screen.getByTestId('keyboard-safe-body') as any;
-  const style = [].concat(inner.props.style).reduce((a: any, s: any) => ({ ...a, ...(s || {}) }), {});
+  const outer = screen.getByTestId('keyboard-safe') as any;
+  const style = [].concat(outer.props.style).reduce((a: any, s: any) => ({ ...a, ...(s || {}) }), {});
   return style.marginBottom;
 }
 

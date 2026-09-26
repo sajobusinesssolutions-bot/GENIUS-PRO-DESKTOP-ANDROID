@@ -24,6 +24,9 @@ import { Icon, IconName } from '../components/icons';
 import { useGo } from '../nav/navigate';
 import { useIsOwner, Denied } from '../components/Gate';
 import { branchStockUnits } from '../data/branch';
+import { useAuthSafe } from '../data/AuthContext';
+import { createBusiness, uploadSnapshot } from '../data/syncClient';
+import { refreshSession, serverConfigured } from '../data/authApi';
 
 type StepId = 'shop' | 'papers' | 'money' | 'stock' | 'people' | 'review';
 
@@ -69,7 +72,8 @@ function StepHead({ index, step }: { index: number; step: typeof STEPS[number] }
 export default function NewBranchScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, money, openBranch } = useAppData();
+  const { db, money, openBranch, updateWarehouse } = useAppData();
+  const account = useAuthSafe()?.account;
   const { success, error } = useToast();
   const owner = useIsOwner();
 
@@ -94,7 +98,6 @@ export default function NewBranchScreen() {
   const [q, setQ] = useState('');
   // step 5
   const [managerId, setManagerId] = useState<string>('');
-  const [makeActive, setMakeActive] = useState(true);
 
   const [busy, setBusy] = useState(false);
 
@@ -120,6 +123,7 @@ export default function NewBranchScreen() {
   );
 
   if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+  const localDb = db;
   if (!owner) {
     return (
       <Denied
@@ -151,7 +155,7 @@ export default function NewBranchScreen() {
     setAt((i) => Math.min(STEPS.length - 1, i + 1));
   }
 
-  function open() {
+  async function open() {
     setBusy(true);
     try {
       const out = openBranch({
@@ -166,8 +170,40 @@ export default function NewBranchScreen() {
         extraAccount: wantExtra && extraName.trim() ? { name: extraName.trim(), type: extraType } : null,
         stockFrom: stockFrom || null,
         stockLines: chosenLines,
-        makeActive,
+        makeActive: false,
       });
+
+      if (serverConfigured() && account?.refresh) {
+        const session = await refreshSession(account.refresh);
+        if (!session.ok) throw new Error(session.error.message);
+        const remote = await createBusiness(session.value.access, { name: name.trim(), phone: phone.trim(), localId: out.warehouseId });
+        if (!remote.ok) throw new Error(remote.error.message);
+        updateWarehouse(out.warehouseId, { businessId: remote.value.id });
+        const branch = localDb.warehouses.find((w) => w.id === out.warehouseId);
+        const branchBooks = {
+          ...localDb,
+          firm: { ...localDb.firm, id: out.warehouseId, name: name.trim(), address: address.trim(), phone: phone.trim() },
+          firms: [{ ...localDb.firm, id: out.warehouseId, name: name.trim(), address: address.trim(), phone: phone.trim() }],
+          activeFirmId: out.warehouseId,
+          warehouses: branch ? [{ ...branch, businessId: remote.value.id }] : [],
+          accounts: localDb.accounts.filter((a) => !a.branch || a.branch === out.warehouseId),
+          products: localDb.products.map((p) => ({ ...p, stock: { [out.warehouseId]: p.stock?.[out.warehouseId] || 0 } })),
+          sales: localDb.sales.filter((s) => s.warehouse === out.warehouseId),
+          purchases: localDb.purchases.filter((p) => p.branch === out.warehouseId),
+          payments: localDb.payments.filter((p) => p.branch === out.warehouseId),
+          entries: localDb.entries.filter((e) => e.branch === out.warehouseId),
+          journal: localDb.journal.filter((j) => j.branch === out.warehouseId),
+          movements: localDb.movements.filter((m) => m.wh === out.warehouseId),
+          shifts: localDb.shifts.filter((s) => s.branch === out.warehouseId),
+          session: { ...localDb.session, warehouse: out.warehouseId },
+          sync: { ...localDb.sync, businessId: remote.value.id, pending: [], log: [] },
+        };
+        const snapshot = await uploadSnapshot(branchBooks, session.value.access, {
+          businessId: remote.value.id,
+          deviceId: localDb.sync.deviceId || '',
+        });
+        if (!snapshot.ok) throw new Error(snapshot.error.message);
+      }
 
       if (out.shortfalls.length) {
         // Said plainly rather than swallowed: the shelf will not match the plan.
@@ -177,9 +213,9 @@ export default function NewBranchScreen() {
           + '. What was there was moved.',
         );
       } else {
-        success(name.trim() + ' is open' + (makeActive ? ' — you are now working in it' : ''));
+        success(name.trim() + ' is open. Choose it from Businesses to view or trade.');
       }
-      go('Branches');
+      go(serverConfigured() && account ? 'Businesses' : 'Branches');
     } catch (e: any) {
       error(e?.message || 'The branch could not be opened.');
     } finally {
@@ -393,16 +429,6 @@ export default function NewBranchScreen() {
                 />
               ))}
             </Panel>
-            <View style={{ height: 14 }} />
-            <Panel flush>
-              <ToggleRow
-                label="Start working in this branch straight away"
-                sub="Everything you sell and every figure you read will be this branch's"
-                on={makeActive}
-                onChange={setMakeActive}
-              />
-            </Panel>
-            <View style={{ height: 14 }} />
             <InfoBanner
               tone="neutral"
               icon="bulb"
@@ -462,7 +488,7 @@ export default function NewBranchScreen() {
             <SectionLabel>Who runs it</SectionLabel>
             <Panel>
               <DetailRow label="Manager" value={staff.find((u) => u.id === managerId)?.name || 'Not named yet'} />
-              <DetailRow label="After opening" value={makeActive ? 'Work in this branch' : 'Stay where you are'} last />
+              <DetailRow label="After opening" value="Choose it from Businesses" last />
             </Panel>
 
             <View style={{ height: 14 }} />

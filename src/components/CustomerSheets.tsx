@@ -49,6 +49,7 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
       visible={visible}
       title={'Choose ' + kind}
       onClose={onClose}
+      full
       footer={<Button label={'Create new ' + kind} variant="pri" icon={<Icon name="plus" size={16} color={colors.accentInk} />} onPress={onCreate} />}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.sunk, borderRadius: 12, borderWidth: 1, borderColor: colors.lineHard, paddingHorizontal: 12, marginBottom: 12 }}>
@@ -138,6 +139,7 @@ export function CustomerFormSheet({ visible, onClose, onSave, kind = 'customer' 
       visible={visible}
       title={'New ' + kind}
       onClose={() => { reset(); onClose(); }}
+      full
       footer={<Button label={'Save ' + kind} variant="pri" disabled={!name.trim()} onPress={save} />}
     >
       <View style={{ gap: 14 }}>

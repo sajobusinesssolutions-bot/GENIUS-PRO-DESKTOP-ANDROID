@@ -8,7 +8,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useCan, Denied } from '../components/Gate';
-import { View, Text, ScrollView, FlatList, Pressable, Platform } from 'react-native';
+import { View, Text, ScrollView, FlatList, Pressable, Platform, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -21,10 +21,12 @@ import { Icon, IconName } from '../components/icons';
 import Sheet from '../components/Sheet';
 import { useWho } from '../components/WhoSheet';
 import { useGo } from '../nav/navigate';
+import { useOwnerPin } from '../components/OwnerPin';
 import {
   LEDGER_TYPES, LedgerType, Ledger, ledgerBalance, ledgerBalances, ledgerHistory, trialBalance, debitPositive,
 } from '../data/coa';
 import type { JournalLine } from '../data/types';
+import { candidateJournalEntries, importStatementCsv } from '../data/reconciliation';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
@@ -297,7 +299,13 @@ function LedgerDetailScreenBody({ route, navigation }: LedgerProps) {
 
   const dr = rows.reduce((s, r) => s + r.dr, 0);
   const cr = rows.reduce((s, r) => s + r.cr, 0);
+  const opening = (db.journal || []).reduce((sum, e) => {
+    if (new Date(e.ts).getTime() >= Date.now()) return sum;
+    const before = e.lines.filter((line) => line.acc === l.id);
+    return sum + before.reduce((a, line) => a + (line.dr || 0) - (line.cr || 0), 0);
+  }, 0);
   const balance = ledgerBalance(db, l.id);
+  const closing = opening + balance;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -325,8 +333,10 @@ function LedgerDetailScreenBody({ route, navigation }: LedgerProps) {
             <View style={{ height: 16 }} />
             <StatGrid
               items={[
+                { icon: 'clock', label: 'Opening', value: money(opening), tone: 'neutral' },
                 { icon: 'down', label: 'Total debits', value: money(dr), tone: 'accent' },
                 { icon: 'up', label: 'Total credits', value: money(cr), tone: 'warn' },
+                { icon: 'check', label: 'Closing', value: money(closing), tone: 'good' },
               ]}
             />
 
@@ -359,7 +369,8 @@ function LedgerDetailScreenBody({ route, navigation }: LedgerProps) {
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{item.memo}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
-                {item.ref} · {new Date(item.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
+                {new Date(item.ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                {' · '} {item.ref} · {db?.sales.some((s) => s.no === item.ref) ? 'Sales' : db?.purchases.some((p) => p.no === item.ref) ? 'Purchase' : 'Journal'}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 3 }}>
@@ -771,15 +782,126 @@ export function AccountingHubScreen(p: any) {
   return <AccountingHubScreenBody  />;
 }
 
+export function ReconciliationScreen() {
+  const { colors } = useTheme();
+  const { db, money, importBankStatement, matchBankStatementLine, bankReconciliationSummary, completeBankReconciliation } = useAppData();
+  const { success, error } = useToast();
+  const [accountId, setAccountId] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [closing, setClosing] = useState('');
+  const [csv, setCsv] = useState('');
+
+  if (!db) return null;
+  const bankAccounts = db.accounts.filter((a) => a.type === 'bank');
+  const selected = accountId || bankAccounts[0]?.id || '';
+  const lines = (db.bankStatementLines || []).filter((x) => x.accountId === selected && x.date === date);
+  const summary = bankReconciliationSummary(selected, date, date, Number(closing) || 0);
+
+  function addLine() {
+    const value = Number(amount);
+    if (!selected) { error('Add a bank account first.'); return; }
+    if (!description.trim() || !Number.isFinite(value)) { error('Enter a description and amount.'); return; }
+    importBankStatement(selected, [{ date, description, amount: value }]);
+    setDescription(''); setAmount('');
+    success('Statement line added');
+  }
+
+  function importCsv() {
+    if (!db) return;
+    if (!selected) { error('Add a bank account first.'); return; }
+    const parsed = importStatementCsv(db, selected, csv);
+    if (parsed.rows.length) success(parsed.rows.length + ' statement line' + (parsed.rows.length === 1 ? '' : 's') + ' imported');
+    if (parsed.errors.length) Alert.alert('Some rows were skipped', parsed.errors.join('\n'));
+    if (!parsed.rows.length && !parsed.errors.length) error('Paste a CSV statement first.');
+    setCsv('');
+  }
+
+  function finish() {
+    if (!selected || !Number.isFinite(Number(closing))) { error('Enter the statement closing balance.'); return; }
+    if (!completeBankReconciliation(selected, date, date, Number(closing))) {
+      Alert.alert('Reconciliation not ready', 'Match every line and make sure the statement closing balance equals the book balance.');
+      return;
+    }
+    success('Bank period reconciled');
+  }
+
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 36 }}>
+      <InfoBanner tone="accent" icon="bank" text="Match the bank statement to posted journal entries. Differences must be explained before the period can be completed." />
+      <View style={{ height: 16 }} />
+      <SelectField label="Bank account" value={selected} options={bankAccounts.map((a) => ({ v: a.id, l: a.name }))} onChange={setAccountId} />
+      <Field label="Statement date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+      <Panel style={{ padding: 12 }}>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 8 }}>Add statement line</Text>
+        <Field label="Description" value={description} onChangeText={setDescription} placeholder="Bank charge or deposit" />
+        <Field label="Amount" value={amount} onChangeText={setAmount} placeholder="250.00" numeric />
+        <Button label="Add line" icon={<Icon name="plus" size={16} color={colors.ink} />} onPress={addLine} />
+      </Panel>
+      <View style={{ height: 12 }} />
+      <Panel style={{ padding: 12 }}>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 8 }}>Paste CSV statement</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginBottom: 8 }}>Use Date, Description, Amount, or Debit and Credit columns.</Text>
+        <Field value={csv} onChangeText={setCsv} placeholder={'Date,Description,Amount\n2026-09-20,Deposit,250'} multiline autoCapitalize="none" />
+        <Button label="Import CSV rows" onPress={importCsv} />
+      </Panel>
+
+      <View style={{ height: 18 }} />
+      <SectionLabel>Lines for {date}</SectionLabel>
+      <Panel flush>
+        {lines.map((line, index) => {
+          const candidates = candidateJournalEntries(db, line);
+          return (
+            <View key={line.id} style={{ padding: 12, borderBottomWidth: index === lines.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{line.description}</Text>
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 12, color: colors.faint, marginTop: 3 }}>{money(line.amount)} · {line.status}</Text>
+                </View>
+                {line.status === 'matched' ? <Badge label="Matched" tone="good" /> : null}
+              </View>
+              {line.status === 'unmatched' && candidates.length ? (
+                <View style={{ marginTop: 8, gap: 6 }}>
+                  {candidates.slice(0, 3).map((entry) => (
+                    <Pressable key={entry.id} onPress={() => matchBankStatementLine(line.id, entry.id)} style={{ paddingVertical: 7, paddingHorizontal: 9, backgroundColor: colors.accentSoft, borderRadius: radius.sm }}>
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.ink }}>Match {entry.memo} · {entry.ref}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {line.status === 'unmatched' && !candidates.length ? <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.warn, marginTop: 7 }}>No posted journal match found.</Text> : null}
+            </View>
+          );
+        })}
+        {!lines.length ? <EmptyBlock icon="bank" title="No statement lines yet" /> : null}
+      </Panel>
+
+      <View style={{ height: 18 }} />
+      <SectionLabel>Reconciliation</SectionLabel>
+      <Panel>
+        <Field label="Statement closing balance" value={closing} onChangeText={setClosing} placeholder="0.00" numeric />
+        <DetailRow label="Book closing" value={money(summary.bookClosing)} />
+        <DetailRow label="Difference" value={money(summary.difference)} />
+        <DetailRow label="Matched / unmatched" value={summary.matched + ' / ' + summary.unmatched} />
+        <View style={{ height: 10 }} />
+        <Button variant="pri" label="Complete reconciliation" disabled={summary.unmatched > 0 || Math.abs(summary.difference) > 0.005} onPress={finish} />
+      </Panel>
+    </ScrollView>
+  );
+}
+
 function AccountingHubScreenBody() {
   const { colors } = useTheme();
-  const { db, money } = useAppData();
+  const { db, money, lockAccountingPeriod, unlockAccountingPeriod } = useAppData();
   const go = useGo();
+  const owner = useOwnerPin();
 
   const tb = useMemo(() => (db ? trialBalance(db) : null), [db]);
   if (!db || !tb) return null;
 
   const off = Math.abs(tb.totalDebit - tb.totalCredit) >= 0.01;
+  const locked = !!db.settings.accountingLock;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
@@ -799,7 +921,7 @@ function AccountingHubScreenBody() {
       ) : null}
 
       <View style={{ height: 20 }} />
-      <SectionLabel>Books</SectionLabel>
+      <SectionLabel>{locked ? 'Accounting closed' : 'Books'}</SectionLabel>
       <Panel flush>
         <ListRow icon="doc" tone="accent" title="Chart of accounts" subtitle="Add, rename or switch off a ledger" onPress={() => go('ChartOfAccounts')} />
         <ListRow icon="pencil" tone="good" title="New journal entry" subtitle="Post a manual double entry" onPress={() => go('JournalEntry')} />
@@ -808,8 +930,31 @@ function AccountingHubScreenBody() {
       </Panel>
 
       <View style={{ height: 20 }} />
+      <SectionLabel>Period control</SectionLabel>
+      <Panel>
+        <InfoBanner
+          tone={locked ? 'warn' : 'good'}
+          icon={locked ? 'lock' : 'check'}
+          text={locked
+            ? 'The current accounting period is locked. No new postings can be made until it is reopened.'
+            : 'The current accounting period is open and accepting new postings.'}
+        />
+        <View style={{ height: 10 }} />
+        <Button
+          label={locked ? 'Reopen accounting period' : 'Lock accounting period'}
+          variant={locked ? 'default' : 'pri'}
+          icon={<Icon name={locked ? 'unlock' : 'lock'} size={16} color={locked ? colors.ink : colors.accentInk} />}
+          onPress={() => {
+            const action = locked ? 'Reopen the current accounting period so new postings can be made again.' : 'Lock the current accounting period so no new postings can be recorded.';
+            owner.ask(action, () => locked ? unlockAccountingPeriod() : lockAccountingPeriod('Month-end close'));
+          }}
+        />
+      </Panel>
+
+      <View style={{ height: 20 }} />
       <SectionLabel>Statements</SectionLabel>
       <Panel flush>
+        <ListRow icon="bank" tone="good" title="Bank reconciliation" subtitle="Match statement lines to posted entries" onPress={() => go('Reconciliation')} />
         <ListRow icon="pie" tone="good" title="Profit and loss" subtitle="Revenue against cost" onPress={() => go('Accounting')} />
         <ListRow icon="bank" tone="accent" title="Tax" subtitle="What is collected and owed" onPress={() => go('Tax')} last />
       </Panel>

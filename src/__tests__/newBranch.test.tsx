@@ -129,7 +129,7 @@ describe('nothing is written until the end', () => {
     expect(mockOpenBranch).toHaveBeenCalledTimes(1);
     const plan = mockOpenBranch.mock.calls[0][0] as any;
     expect(plan.name).toBe('Lakeside');
-    expect(plan.makeActive).toBe(true);
+    expect(plan.makeActive).toBe(false);
     expect(plan.openingFloat).toBe(0);
     expect(plan.stockFrom).toBeNull();
     expect(plan.stockLines).toEqual([]);
@@ -138,7 +138,7 @@ describe('nothing is written until the end', () => {
   it('says so and goes back to the list when it worked', () => {
     walkToReview('Lakeside');
     fireEvent.press(screen.getByText('Open Lakeside'));
-    expect(mockSuccess).toHaveBeenCalledWith('Lakeside is open — you are now working in it');
+    expect(mockSuccess).toHaveBeenCalledWith('Lakeside is open. Choose it from Businesses to view or trade.');
     expect(mockGo).toHaveBeenCalledWith('Branches');
   });
 

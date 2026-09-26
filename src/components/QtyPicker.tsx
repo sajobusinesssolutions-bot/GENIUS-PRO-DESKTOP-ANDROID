@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, Modal, TextInput } from 'react-native';
 import { useTheme, fonts, spacing } from '../theme';
 import { Button } from './ui';
+import KeyboardSafe from './KeyboardSafe';
 
 interface QtyPickerProps {
   visible: boolean;
@@ -37,11 +38,13 @@ export default function QtyPicker({ visible, productName, onConfirm, onCancel, m
 
   return (
     <Modal visible={visible} transparent animationType="fade">
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={cancel} />
-      <View style={{
-        backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-        padding: spacing.lg, gap: spacing.lg,
-      }}>
+      <KeyboardSafe>
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={cancel} />
+          <View style={{
+            backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+            padding: spacing.lg, gap: spacing.lg,
+          }}>
         <View>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginBottom: 4 }}>Add to cart</Text>
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 16, color: colors.ink }}>{productName}</Text>
@@ -112,7 +115,9 @@ export default function QtyPicker({ visible, productName, onConfirm, onCancel, m
             <Button label="Add" variant="pri" onPress={confirm} />
           </View>
         </View>
-      </View>
+          </View>
+        </View>
+      </KeyboardSafe>
     </Modal>
   );
 }

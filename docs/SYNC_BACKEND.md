@@ -1,5 +1,8 @@
 # Genius POS — sync and licence server
 
+For the local persistence migration plan behind this sync design, see
+[`docs/PERSISTENCE_SPLIT_PLAN.md`](PERSISTENCE_SPLIT_PLAN.md).
+
 A design for the server that will run on a cloud VPS: multi-tenant, keyed to the
 owner's email address, holding both the shops' books and their licences.
 

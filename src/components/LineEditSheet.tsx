@@ -30,7 +30,7 @@ export function unitsFor(p?: Product | null): UnitChoice[] {
 }
 
 export default function LineEditSheet({
-  visible, line, maxStock, money, onSave, onRemove, onClose, product, canEditPrice = true, maxDiscountPct = 100,
+  visible, line, maxStock, money, onSave, onRemove, onClose, onChooseBatch, product, canEditPrice = true, maxDiscountPct = 100,
 }: {
   visible: boolean;
   line: SaleLine | null;
@@ -39,10 +39,11 @@ export default function LineEditSheet({
   money: (n: number) => string;
   onSave: (patch: {
     qty: number; price: number; discountPct: number; listPrice: number;
-    unit: string; unitFactor: number; cost: number;
+    unit: string; unitFactor: number; cost: number; batchNo?: string;
   }) => void;
   onRemove: () => void;
   onClose: () => void;
+  onChooseBatch?: () => void;
   /** The product, so its second unit can be offered. */
   product?: Product | null;
   /** Settings: "Let staff change the price at the till". */
@@ -55,6 +56,7 @@ export default function LineEditSheet({
   const [listPrice, setListPrice] = useState('0');
   const [discountPct, setDiscountPct] = useState('0');
   const [unit, setUnit] = useState('');
+  const [batchNo, setBatchNo] = useState('');
 
   useEffect(() => {
     if (visible && line) {
@@ -62,6 +64,7 @@ export default function LineEditSheet({
       setListPrice(String(line.listPrice ?? line.price));
       setDiscountPct(String(line.discountPct ?? 0));
       setUnit(line.unit);
+      setBatchNo(line.batchNo || '');
     }
   }, [visible, line]);
 
@@ -107,6 +110,7 @@ export default function LineEditSheet({
               onPress={() => onSave({
                 qty: qtyNum, price: netPrice, discountPct: discNum, listPrice: listNum,
                 unit: chosen.unit, unitFactor: chosen.factor, cost: chosen.cost,
+                batchNo: batchNo || undefined,
               })}
             />
           </View>
@@ -117,7 +121,7 @@ export default function LineEditSheet({
         <View>
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>{line.name}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
-            {line.sku}{line.batchNo ? ' · Batch ' + line.batchNo : ''} · {Number.isFinite(availableHere) ? Math.floor(availableHere * 100) / 100 + ' ' + chosen.unit + ' available' : 'No stock limit'}
+            {line.sku}{batchNo ? ' · Batch ' + batchNo : ''} · {Number.isFinite(availableHere) ? Math.floor(availableHere * 100) / 100 + ' ' + chosen.unit + ' available' : 'No stock limit'}
           </Text>
         </View>
 
@@ -143,6 +147,21 @@ export default function LineEditSheet({
                 );
               })}
             </View>
+          </View>
+        ) : null}
+
+        {product?.trackBatches && (product.batches || []).length > 0 ? (
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, letterSpacing: 0.3 }}>BATCH</Text>
+            <Pressable
+              onPress={onChooseBatch}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderRadius: 12, backgroundColor: colors.sunk, borderWidth: 1, borderColor: colors.lineHard, paddingHorizontal: 12, paddingVertical: 12 }}
+            >
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: batchNo ? colors.ink : colors.faint }}>
+                {batchNo ? 'Batch ' + batchNo : 'Choose batch'}
+              </Text>
+              <Icon name="box" size={15} color={colors.accent} />
+            </Pressable>
           </View>
         ) : null}
 

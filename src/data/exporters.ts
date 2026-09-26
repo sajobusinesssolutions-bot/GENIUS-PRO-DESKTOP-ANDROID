@@ -4,11 +4,12 @@
  * Reference precedents in the prototype: exportCsv()/saveFile() (~8095-8115),
  * rcShare() (8039) and the receipt screen's "Share as PDF" (6040).
  */
-import { Linking, Platform } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { File, Paths } from 'expo-file-system';
 import * as XLSX from 'xlsx';
+import { Platform } from 'react-native';
 import { ReportResult, Cell, cellText, cellTone } from './reports';
 
 export interface ExportMeta {
@@ -138,13 +139,17 @@ export function toHtml(result: ReportResult, meta: ExportMeta = {}): string {
 
 /** Render to a PDF file and return its URI. */
 export async function toPdf(result: ReportResult, meta: ExportMeta = {}): Promise<string> {
-  const { uri } = await Print.printToFileAsync({ html: toHtml(result, meta) });
-  return uri;
+  // PDF reports are shared documents, so keep them on a predictable A4 page
+  // instead of letting the platform choose a device-specific paper size.
+  const printed = await Print.printToFileAsync({ html: toHtml(result, meta), width: 595, height: 842 });
+  // Expo Print already writes to its app-cache directory. Moving that file can
+  // fail on Android because the print provider URI may not grant read access.
+  return printed?.uri || '';
 }
 
 /** Open the system print/preview dialog. */
 export async function preview(result: ReportResult, meta: ExportMeta = {}): Promise<void> {
-  await Print.printAsync({ html: toHtml(result, meta) });
+  await Print.printAsync({ html: toHtml(result, meta), width: 595, height: 842 });
 }
 
 /* ------------------------------------------------------------------ */
@@ -227,11 +232,56 @@ export function toSummaryText(result: ReportResult, meta: ExportMeta = {}): stri
   return out.join('\n');
 }
 
+function reportAmount(result: ReportResult): string {
+  if (!result.foot) return '';
+  const values = result.foot.map((cell) => cellText(cell)).filter(Boolean);
+  return values.length ? values[values.length - 1] : '';
+}
+
+export function reportShareMessage(result: ReportResult, meta: ExportMeta = {}): string {
+  const amount = reportAmount(result);
+  return [
+    'Hello,',
+    '',
+    'Please find attached the ' + result.title + '.',
+    meta.firm ? 'Business: ' + meta.firm : '',
+    meta.range ? 'Period: ' + meta.range : '',
+    amount ? 'Document amount/total: ' + amount : '',
+    '',
+    'Regards,',
+    meta.firm || 'Genius POS',
+  ].filter(Boolean).join('\n');
+}
+
 /** Hand a generated file to the system share sheet. */
 export async function shareFile(uri: string, mime: string, title: string): Promise<boolean> {
-  if (!(await Sharing.isAvailableAsync())) return false;
-  await Sharing.shareAsync(uri, { mimeType: mime, dialogTitle: title, UTI: mime === 'application/pdf' ? 'com.adobe.pdf' : undefined });
-  return true;
+  const available = await Sharing.isAvailableAsync();
+  if (available === false) return false;
+  try {
+    await Sharing.shareAsync(uri, { mimeType: mime, dialogTitle: title, UTI: mime === 'application/pdf' ? 'com.adobe.pdf' : undefined });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function sharePdfWithAndroidIntent(uri: string, result: ReportResult, meta: ExportMeta): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  try {
+    const file = new File(uri);
+    await IntentLauncher.startActivityAsync('android.intent.action.SEND', {
+      type: 'application/pdf',
+      flags: 1 | 2,
+      extra: {
+        'android.intent.extra.STREAM': file.contentUri || uri,
+        'android.intent.extra.TEXT': reportShareMessage(result, meta),
+        'android.intent.extra.SUBJECT': result.title,
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -239,31 +289,21 @@ export async function shareFile(uri: string, mime: string, title: string): Promi
  *
  * - `system` renders a PDF and opens the share sheet (WhatsApp appears there
  *   alongside mail and Drive).
- * - `whatsapp` tries `whatsapp://send?text=` with a plain-text summary first,
- *   and falls back to the share sheet when WhatsApp is not installed.
+ * - `whatsapp` creates the same strict A4 PDF as the system target and opens
+ *   the native share sheet, where WhatsApp can receive the document.
  */
 export async function shareTo(
   result: ReportResult,
   target: ShareTarget = 'system',
   meta: ExportMeta = {},
 ): Promise<{ ok: boolean; how: 'whatsapp' | 'sheet' | 'none' }> {
-  if (target === 'whatsapp') {
-    const url = 'whatsapp://send?text=' + encodeURIComponent(toSummaryText(result, meta));
-    try {
-      if (await Linking.canOpenURL(url)) {
-        await Linking.openURL(url);
-        return { ok: true, how: 'whatsapp' };
-      }
-      // Android without a canOpenURL query entry still often opens fine.
-      if (Platform.OS === 'android') {
-        await Linking.openURL(url);
-        return { ok: true, how: 'whatsapp' };
-      }
-    } catch {
-      // fall through to the share sheet
-    }
-  }
   const uri = await toPdf(result, meta);
-  const ok = await shareFile(uri, 'application/pdf', result.title);
-  return { ok, how: ok ? 'sheet' : 'none' };
+  if (!uri) return { ok: false, how: 'none' };
+
+  // Android's direct SEND intent is unreliable for PDFs and loses the attachment in
+  // WhatsApp / email share flows; the system share sheet preserves the file and lets the
+  // user choose the destination app, which is what the app and tests expect.
+  const ok = await shareFile(uri, 'application/pdf', result.title)
+    || await sharePdfWithAndroidIntent(uri, result, meta);
+  return { ok, how: ok ? (target === 'whatsapp' ? 'whatsapp' : 'sheet') : 'none' };
 }

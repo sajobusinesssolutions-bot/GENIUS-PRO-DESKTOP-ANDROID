@@ -86,18 +86,24 @@ export function defaultTemplates(): PrintTemplate[] {
     {
       id: 'tpl_receipt', name: 'Thermal receipt', paper: '80mm', kind: 'thermal',
       showLogo: true, showTax: true, showServed: true, showParty: true, showSaved: true,
+      showAddress: true, showBatch: true, showExpiry: true, showImei: false,
+      showWarranty: false, showUnit: true, showRate: true, showSalesperson: false,
       code: 'barcode', codeData: 'no', codeCaption: true, density: 'normal',
       head: '', foot: 'Goods once sold are not returnable\nThank you', copies: 1,
     },
     {
       id: 'tpl_a4', name: 'A4 document', paper: 'A4', kind: 'page',
       showLogo: true, showTax: true, showServed: true, showParty: true, showSaved: false,
+      showAddress: true, showBatch: true, showExpiry: true, showImei: true,
+      showWarranty: true, showUnit: true, showRate: true, showSalesperson: true,
       code: 'qr', codeData: 'verify', codeCaption: true, density: 'normal',
       head: '', foot: 'Payment is due within the agreed terms.', copies: 1,
     },
     {
       id: 'tpl_small', name: '58mm compact', paper: '58mm', kind: 'thermal',
       showLogo: true, showTax: false, showServed: false, showParty: false, showSaved: true,
+      showAddress: false, showBatch: false, showExpiry: false, showImei: false,
+      showWarranty: false, showUnit: true, showRate: true, showSalesperson: false,
       code: 'none', codeData: 'no', codeCaption: false, density: 'tight',
       head: '', foot: 'Thank you', copies: 1,
     },
@@ -210,7 +216,7 @@ export function defaultSync(till = 'Till 1'): SyncCfg {
     on: false, freq: 'live', wifiOnly: false, conflict: 'server', scope: 'all',
     pending: [], log: [],
     devices: [{ id: 'dev_this', name: till + ' · this phone', kind: 'phone', last: iso(new Date()), me: true }],
-    lastAt: '', strict: false, lastPush: '', lastPull: '', cursor: 0,
+    lastAt: '', strict: false, lastPush: '', lastPull: '', cursor: 0, snapshotVersion: 0,
   };
 }
 
@@ -276,8 +282,9 @@ export function defaultSettings(): Settings {
 
     lockOnOpen: false, autoLockMins: 0, hideCostFromCashier: true,
     requirePinToEdit: false, requirePinToDelete: true, editWindowDays: 7,
+    accountingLock: null,
 
-    theme: 'auto',
+    theme: 'auto', backupSchedule: 'off', lastBackupAt: '',
   };
 }
 

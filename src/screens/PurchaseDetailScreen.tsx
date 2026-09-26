@@ -35,7 +35,7 @@ export default function PurchaseDetailScreen({ route, navigation }: Props) {
   function onEdit() {
     if (!can('purchases.edit')) return refuse('Your role cannot change a purchase.');
     if (!gate.ok) return refuse(gate.why);
-    navigation.navigate('EditPurchase', { purchaseId: x!.id });
+    navigation.navigate('PurchaseNew', { editPurchaseId: x!.id });
   }
 
   function onDelete() {

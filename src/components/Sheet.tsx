@@ -1,9 +1,8 @@
 import React from 'react';
-import { Modal, View, Text, Pressable, ScrollView } from 'react-native';
+import { Modal, View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts, radius, shadow } from '../theme';
 import { Icon, IconName } from './icons';
-import KeyboardSafe from './KeyboardSafe';
 
 /**
  * The bottom sheet used for every form and detail panel: a drag handle, an
@@ -33,23 +32,28 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
         list for the pan gesture — the sheet would only scroll where a touch
         happened to miss it.
       */}
-      {/* a Modal is outside the screens, so it needs its own keyboard handling */}
-      <KeyboardSafe>
-      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+        style={{ flex: 1, justifyContent: 'flex-end' }}
+      >
         <Pressable
           testID="sheet-scrim"
           onPress={onClose}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(10,12,18,0.45)' }}
         />
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            maxHeight: full ? '92%' : '88%',
-            minHeight: full ? '72%' : undefined,
-            borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet,
-            overflow: 'hidden', ...shadow.raised,
-          }}
-        >
+        <View style={{
+          width: '100%',
+          height: full ? '92%' : '88%',
+          flexShrink: 1,
+        }}>
+        <View style={{
+          backgroundColor: colors.surface,
+          height: '100%',
+          flexShrink: 1,
+          borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet,
+          overflow: 'hidden', ...shadow.raised,
+        }}>
           <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 2 }}>
             <View style={{ width: 42, height: 4.5, borderRadius: 3, backgroundColor: colors.lineHard }} />
           </View>
@@ -77,8 +81,10 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
           <View style={{ height: 1, backgroundColor: colors.line }} />
 
           <ScrollView
-            style={{ flexShrink: 1 }}
+            style={{ flex: 1 }}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets
             nestedScrollEnabled
             showsVerticalScrollIndicator
             contentContainerStyle={{ paddingVertical: 18, paddingHorizontal: 18, paddingBottom: 18 + (footer ? 0 : insets.bottom) }}
@@ -96,8 +102,8 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
             </View>
           ) : null}
         </View>
-      </View>
-      </KeyboardSafe>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

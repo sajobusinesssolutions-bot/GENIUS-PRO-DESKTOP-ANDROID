@@ -87,6 +87,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   Shift: (p) => (p && p.close ? 'shifts.close' : 'shifts.open'),
   Accounting: 'reports.money',
   AccountingHub: 'finance.view',
+  Reconciliation: 'finance.view',
   ChartOfAccounts: 'finance.manage_accounts',
   LedgerDetail: 'finance.view',
   JournalEntry: 'finance.manage_accounts',

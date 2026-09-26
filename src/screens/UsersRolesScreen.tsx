@@ -17,6 +17,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useAuth } from '../data/AuthContext';
 import {
   Card, Cap, Button, Pill, Avatar, EmptyState, ChipStrip, Grid,
   Field, SelectField, FieldNote, Checkbox, ProgressBar, ActionChip,
@@ -28,20 +29,31 @@ import { Foot } from '../components/AppBar';
 import { PERM_MATRIX, allPermKeys, permCount } from '../data/perms';
 import { plural, startOfDay, daysAgo } from '../data/helpers';
 import type { RoleDef, User } from '../data/types';
+import {
+  BusinessMember, grantBusinessAccess as grantRemoteBusinessAccess,
+  listBusinessMembers, revokeBusinessAccess as revokeRemoteBusinessAccess,
+} from '../data/syncClient';
+import { refreshSession, serverConfigured } from '../data/authApi';
 
 type Draft = { id: string | null; name: string; description: string; builtin: boolean; perms: Record<string, boolean> };
 
 export default function UsersRolesScreen() {
   const { colors } = useTheme();
   const ctx = useAppData();
+  const { account } = useAuth();
   const {
     db, money, can, roles, role, saveRole, duplicateRole, removeRole,
-    updateUser, addUser, canRemoveUser,
+    updateUser, addUser, canRemoveUser, grantBusinessAccess, revokeBusinessAccess,
   } = ctx;
 
   const [view, setView] = useState<'people' | 'roles'>('people');
   const [draft, setDraft] = useState<Draft | null>(null);
   const [userSheet, setUserSheet] = useState<null | { id: string | null }>(null);
+  const [remoteMembers, setRemoteMembers] = useState<BusinessMember[] | null>(null);
+  const [remoteProblem, setRemoteProblem] = useState('');
+  const [memberEmail, setMemberEmail] = useState('');
+  const [memberRole, setMemberRole] = useState<'staff' | 'manager'>('staff');
+  const [memberBusy, setMemberBusy] = useState(false);
 
   if (!db) return null;
 
@@ -52,6 +64,56 @@ export default function UsersRolesScreen() {
 
   const roleList = roles();
   const total = allPermKeys().length;
+  const businessId = db.sync.businessId;
+
+  async function remoteAccessToken() {
+    if (!serverConfigured() || !account?.refresh) return null;
+    const session = await refreshSession(account.refresh);
+    return session.ok ? session.value.access : null;
+  }
+
+  async function loadRemoteMembers() {
+    setRemoteProblem('');
+    if (!businessId || !account?.refresh || !serverConfigured()) { setRemoteMembers(null); return; }
+    const token = await remoteAccessToken();
+    if (!token) { setRemoteMembers(null); setRemoteProblem('Your account session has expired. Sign in again to manage online access.'); return; }
+    const result = await listBusinessMembers(token, businessId);
+    if (!result.ok) { setRemoteMembers(null); setRemoteProblem(result.error.message); return; }
+    setRemoteMembers(result.value);
+  }
+
+  React.useEffect(() => { void loadRemoteMembers(); }, [businessId, account?.refresh]);
+
+  async function addRemoteMember() {
+    const email = memberEmail.trim().toLowerCase();
+    if (!email.includes('@')) { Alert.alert('Email', 'Enter the staff member\'s account email.'); return; }
+    if (!businessId) { Alert.alert('Business access', 'This business is not connected to the account server yet.'); return; }
+    setMemberBusy(true);
+    try {
+      const token = await remoteAccessToken();
+      if (!token) { Alert.alert('Not signed in', 'Sign in again to manage business access.'); return; }
+      const result = await grantRemoteBusinessAccess(token, businessId, email, memberRole);
+      if (!result.ok) { Alert.alert('Could not grant access', result.error.message); return; }
+      setMemberEmail('');
+      await loadRemoteMembers();
+    } finally {
+      setMemberBusy(false);
+    }
+  }
+
+  async function removeRemoteMember(member: BusinessMember) {
+    if (!businessId) return;
+    setMemberBusy(true);
+    try {
+      const token = await remoteAccessToken();
+      if (!token) { Alert.alert('Not signed in', 'Sign in again to manage business access.'); return; }
+      const result = await revokeRemoteBusinessAccess(token, businessId, member.id);
+      if (!result.ok) { Alert.alert('Could not revoke access', result.error.message); return; }
+      await loadRemoteMembers();
+    } finally {
+      setMemberBusy(false);
+    }
+  }
 
   /* ------------------------ the role editor ------------------------ */
   if (draft) {
@@ -100,6 +162,53 @@ export default function UsersRolesScreen() {
         ]}
       />
       <View style={{ height: 20 }} />
+      <SectionLabel>Business access</SectionLabel>
+      <Panel style={{ padding: 12, marginBottom: 12 }}>
+        {remoteMembers !== null ? (
+          <>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, marginBottom: 8 }}>Account members</Text>
+            {remoteMembers.length ? remoteMembers.map((member) => (
+              <View key={member.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{member.name || member.email}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{member.email} · {member.role.toUpperCase()}</Text>
+                </View>
+                <ActionChip label="Revoke" onPress={() => Alert.alert('Revoke access?', member.email, [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Revoke', style: 'destructive', onPress: () => void removeRemoteMember(member) },
+                ])} />
+              </View>
+            )) : <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginBottom: 8 }}>No remote members have been assigned.</Text>}
+            <View style={{ height: 8 }} />
+            <Field label="Account email" value={memberEmail} onChangeText={setMemberEmail} placeholder="staff@example.com" />
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <SelectField label="Access role" value={memberRole} options={[{ v: 'staff', l: 'Staff' }, { v: 'manager', l: 'Manager' }]} onChange={(v) => setMemberRole(v as 'staff' | 'manager')} />
+              </View>
+              <Button label="Grant access" loading={memberBusy} disabled={memberBusy} onPress={() => void addRemoteMember()} />
+            </View>
+            {remoteProblem ? <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.warn, marginTop: 5 }}>{remoteProblem}</Text> : null}
+            <View style={{ height: 12 }} />
+          </>
+        ) : null}
+        {db.users.filter((u) => u.active).map((u) => {
+          const grants = db.businessAccess.filter((g) => g.userId === u.id);
+          const soy = grants.length ? grants.map((g) => g.role.toUpperCase()).join(', ') : 'No direct access';
+          return (
+            <View key={u.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{u.name}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{soy}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <ActionChip label="Staff" onPress={() => grantBusinessAccess(u.id, db.sync.businessId || 'local', 'staff')} />
+                <ActionChip label="Manager" onPress={() => grantBusinessAccess(u.id, db.sync.businessId || 'local', 'manager')} />
+                <ActionChip label="Revoke" onPress={() => revokeBusinessAccess(u.id, db.sync.businessId || 'local')} />
+              </View>
+            </View>
+          );
+        })}
+      </Panel>
       <SectionLabel>Staff profiles</SectionLabel>
       <Panel flush>
         {db.users.map((u, i) => {

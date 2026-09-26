@@ -21,3 +21,38 @@ jest.mock('react-native-safe-area-context', () =>
 /** AsyncStorage has no native module under Jest; the package ships a mock. */
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
+
+/** Reanimated needs native worklets on a device; auth tests only need its view and hook shapes. */
+jest.mock('react-native-reanimated', () => {
+  const React = require('react');
+  const RN = require('react-native');
+  const interpolate = (value, input, output) => {
+    if (value <= input[0]) return output[0];
+    if (value >= input[input.length - 1]) return output[output.length - 1];
+    for (let i = 1; i < input.length; i += 1) {
+      if (value <= input[i]) {
+        const t = (value - input[i - 1]) / (input[i] - input[i - 1]);
+        return output[i - 1] + (output[i] - output[i - 1]) * t;
+      }
+    }
+    return output[output.length - 1];
+  };
+  const Animated = {
+    View: RN.View,
+    Text: RN.Text,
+    createAnimatedComponent: (Component) => Component,
+  };
+  return {
+    __esModule: true,
+    default: Animated,
+    Easing: { linear: (value) => value },
+    Extrapolation: { CLAMP: 'clamp' },
+    interpolate,
+    interpolateColor: (_value, _input, output) => output[0],
+    useAnimatedProps: (factory) => factory(),
+    useAnimatedStyle: (factory) => factory(),
+    useSharedValue: (value) => ({ value }),
+    withRepeat: (value) => value,
+    withTiming: (value) => value,
+  };
+});

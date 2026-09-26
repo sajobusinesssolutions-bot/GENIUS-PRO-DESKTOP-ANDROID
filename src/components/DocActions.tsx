@@ -88,6 +88,7 @@ export function useDocBuilder() {
       due: x.due,
       method: x.method,
       note: x.note,
+      servedBy: x.userId ? user(x.userId)?.name : undefined,
     };
   }
 
@@ -120,6 +121,7 @@ export function useDocBuilder() {
       paid: p.amount,
       method: p.method,
       note: p.note,
+      servedBy: p.userId ? user(p.userId)?.name : undefined,
     };
   }
 

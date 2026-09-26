@@ -23,12 +23,17 @@ export function Row({ title, subtitle, right, onPress, left, last }: {
 }) {
   const { colors } = useTheme();
   const Comp: any = onPress ? Pressable : View;
+  const rowStyle = {
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.md, paddingVertical: 13, paddingHorizontal: spacing.lg,
+    minHeight: control.row,
+    borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line, backgroundColor: colors.surface,
+  };
   return (
-    <Comp onPress={onPress} style={{
-      flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 13, paddingHorizontal: spacing.lg,
-      minHeight: control.row,
-      borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line, backgroundColor: colors.surface,
-    }}>
+    <Comp
+      onPress={onPress}
+      android_ripple={onPress ? { color: colors.accentSoft } : undefined}
+      style={onPress ? ({ pressed }: { pressed: boolean }) => [rowStyle, { opacity: pressed ? 0.82 : 1, transform: [{ scale: pressed ? 0.992 : 1 }] }] : rowStyle}
+    >
       {left}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }} numberOfLines={1}>{title}</Text>
@@ -59,18 +64,25 @@ export function Button({ label, onPress, variant = 'default', size = 'md', disab
   const fg = variant === 'pri' ? colors.accentInk : variant === 'dngr' ? colors.danger : colors.ink;
   const isDisabled = disabled || loading;
   return (
-    <Pressable onPress={isDisabled ? undefined : onPress} style={{
-      height: size === 'sm' ? control.buttonSm : control.button,
-      borderRadius: size === 'sm' ? radius.sm : radius.md,
-      backgroundColor: bg, borderWidth: variant === 'default' ? 1.4 : 1, borderColor: border,
-      alignItems: 'center', justifyContent: 'center',
-      flexDirection: 'row', gap: 8, paddingHorizontal: size === 'sm' ? 14 : 18, opacity: isDisabled ? 0.45 : 1,
-      shadowColor: variant === 'pri' ? colors.accent : '#0B1D2A',
-      shadowOpacity: variant === 'pri' ? 0.22 : 0.04,
-      shadowRadius: variant === 'pri' ? 14 : 6,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: variant === 'pri' ? 3 : 1,
-    }}>
+    <Pressable
+      onPress={isDisabled ? undefined : onPress}
+      android_ripple={{ color: variant === 'pri' ? colors.accentInk : colors.accentSoft }}
+      style={({ pressed }) => ({
+        width: '100%', alignSelf: 'stretch',
+        height: size === 'sm' ? control.buttonSm : control.button,
+        borderRadius: size === 'sm' ? radius.sm : radius.md,
+        backgroundColor: bg, borderWidth: variant === 'default' ? 1.4 : 1, borderColor: border,
+        alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'row', gap: 8, paddingHorizontal: size === 'sm' ? 14 : 18,
+        opacity: isDisabled ? 0.45 : pressed ? 0.82 : 1,
+        transform: [{ scale: pressed && !isDisabled ? 0.985 : 1 }],
+        shadowColor: variant === 'pri' ? colors.accent : '#0B1D2A',
+        shadowOpacity: variant === 'pri' ? 0.22 : 0.04,
+        shadowRadius: variant === 'pri' ? 14 : 6,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: variant === 'pri' ? 3 : 1,
+      })}
+    >
       {loading ? (
         <ActivityIndicator color={fg} size="small" />
       ) : (

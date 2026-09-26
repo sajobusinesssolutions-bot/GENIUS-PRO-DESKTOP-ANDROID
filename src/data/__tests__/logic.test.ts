@@ -36,7 +36,7 @@ function makeDb(): DB {
     sales: [], purchases: [], payments: [], entries: [], journal: [], movements: [],
     shifts: [], warranties: [], claims: [],
     estimates: [], challans: [], creditNotes: [], offers: [], stockTakes: [],
-    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], queue: [],
+    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], businessAccess: [], queue: [],
     plans: [],
     session: { userId: user.id, role: 'owner', online: true, till: 'Till 1', warehouse: 'w1' },
     counters: { sale: 0, purchase: 0, estimate: 0, challan: 0, creditNote: 0, po: 0, plan: 0 },
@@ -147,6 +147,26 @@ describe('the stock guard on a sale', () => {
   });
 });
 
+describe('startFinancialYear', () => {
+  it('carries balances and stock while clearing the old transaction period', () => {
+    const d = makeDb();
+    d.financialYear = { start: '2025-01-01T00:00:00.000Z', openedAt: '2025-01-01T00:00:00.000Z' };
+    d.parties[0].openingBalance = 100;
+    logic.journal(d, new Date('2025-06-01T00:00:00.000Z'), 'Cash opening', 'TEST', [
+      { acc: 'acc_cash', dr: 500 }, { acc: 'n_equity', cr: 500 },
+    ]);
+    const out = logic.startFinancialYear(d, new Date('2026-01-01T00:00:00.000Z'));
+    expect(out.openingLines).toBe(2);
+    expect(d.sales).toEqual([]);
+    expect(d.products[0].stock.w1).toBe(50);
+    expect(d.parties[0].openingBalance).toBe(100);
+    expect(d.financialYear?.start).toBe('2026-01-01T00:00:00.000Z');
+    expect(d.journal[d.journal.length - 1].ref).toBe('OPENING');
+    expect(d.archivedFinancialYears).toHaveLength(1);
+    expect(d.archivedFinancialYears![0].transactionCounts.journal).toBe(1);
+  });
+});
+
 describe('splitExpenseOffset', () => {
   it('takes the whole expense off a bill that can cover it', () => {
     expect(logic.splitExpenseOffset(5000, 1200)).toEqual({ offset: 1200, rest: 0 });
@@ -218,6 +238,29 @@ describe('accountability', () => {
     d.parties.push(sup);
     const pu = logic.createPurchase(d, sup.id, [{ productId: 'p_a', qty: 2, cost: 100 }], 'cash', new Date(), 'u1');
     expect(pu.userId).toBe('u1');
+  });
+
+  it('receives one purchase line across multiple batches', () => {
+    const d = makeDb();
+    const sup = { id: 'pty_s', name: 'Supp', type: 'supplier' as const, phone: '', openingBalance: 0, creditLimit: 0, points: 0, active: true };
+    d.parties.push(sup);
+    d.products[0].trackBatches = true;
+    d.products[0].batches = [{ no: 'OLD-1', expiry: '', qty: 4 }];
+    const pu = logic.createPurchase(d, sup.id, [{
+      productId: 'p_a', qty: 6, cost: 100,
+      batchAllocations: [
+        { batchNo: 'OLD-1', qty: 2 },
+        { batchNo: 'NEW-1', qty: 4, expiry: '2027-01-01' },
+      ],
+    }], 'cash', new Date(), 'u1', 'SUP-42');
+    expect(pu.no).toBe('SUP-42');
+    expect(d.products[0].batches).toEqual([
+      { no: 'OLD-1', expiry: '', qty: 6 },
+      { no: 'NEW-1', expiry: '2027-01-01', qty: 4 },
+    ]);
+    expect(d.movements.filter((m) => m.ref === 'SUP-42').map((m) => [m.batchNo, m.qty])).toEqual([
+      ['OLD-1', 2], ['NEW-1', 4],
+    ]);
   });
 });
 

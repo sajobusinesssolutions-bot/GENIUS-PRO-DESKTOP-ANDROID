@@ -14,7 +14,7 @@ import { useCallback, useRef } from 'react';
 import { useAppData } from './AppDataContext';
 import { useAuth } from './AuthContext';
 import { refreshSession } from './authApi';
-import { ensureWiring, pushQueue, uploadSnapshot } from './syncClient';
+import { ensureWiring, pushQueue, pullOps, uploadSnapshot } from './syncClient';
 import { plural } from './helpers';
 
 export interface RunOutcome {
@@ -25,7 +25,7 @@ export interface RunOutcome {
 }
 
 export function useSyncRun() {
-  const { db, setSync, dropQueued, logAudit, licFeature } = useAppData();
+  const { db, setSync, dropQueued, applyRemoteOps, logAudit, licFeature } = useAppData();
   const { account } = useAuth();
   const running = useRef(false);
   const dbRef = useRef(db);
@@ -59,26 +59,44 @@ export function useSyncRun() {
       if (!r.ok) return { ok: false, sent: 0, message: r.error.message };
       dropQueued([...new Set(r.value.done)]);
 
+      let down = 0;
+      let cursor = (dbRef.current || d).sync.cursor || 0;
+      let more = true;
+      while (more) {
+        const pulled = await pullOps(token, wiring.value.businessId, cursor);
+        if (!pulled.ok) return { ok: false, sent: r.value.sent, message: pulled.error.message };
+        if (pulled.value.ops.length) {
+          down += applyRemoteOps(pulled.value.ops);
+          cursor = Math.max(cursor, pulled.value.seq);
+        }
+        more = pulled.value.more;
+      }
+
       // the copy goes after the push, from the books as they are now
       const snap = await uploadSnapshot(dbRef.current || d, token, wiring.value);
+      if (!snap.ok) {
+        return { ok: false, sent: r.value.sent, seq: r.value.seq, message: snap.error.message };
+      }
 
       const now = new Date().toISOString();
       const s = (dbRef.current || d).sync;
+      if (dbRef.current) dbRef.current.sync = { ...dbRef.current.sync, snapshotVersion: snap.value.version };
       const note = (r.value.sent ? plural(r.value.sent, 'change') + ' sent up' : 'Nothing was waiting')
         + (snap.ok ? '' : ' · the copy of the books did not go up');
       setSync({
         lastPush: now,
         lastAt: now,
-        cursor: r.value.seq,
+        cursor: Math.max(r.value.seq, cursor),
+        snapshotVersion: snap.value.version,
         lamport: (s.lamport || 0) + r.value.sent,
         pending: [],
         log: [
           ...(s.log || []).slice(-49),
           {
             id: 'sy_' + Date.now(), ts: now, how,
-            up: r.value.sent, down: 0,
+            up: r.value.sent, down,
             by: d.users.find((u) => u.id === d.session.userId)?.name || '',
-            ok: snap.ok,
+            ok: true,
             note,
           },
         ],
@@ -88,14 +106,14 @@ export function useSyncRun() {
         ok: true,
         sent: r.value.sent,
         seq: r.value.seq,
-        message: r.value.sent
-          ? plural(r.value.sent, 'change') + ' sent to your account'
-          : 'Nothing was waiting — everything is already up',
+        message: r.value.sent || down
+          ? plural(r.value.sent, 'change') + ' sent, ' + plural(down, 'change') + ' received'
+          : 'Everything is up to date',
       };
     } finally {
       running.current = false;
     }
-  }, [account, accessToken, setSync, dropQueued, logAudit, licFeature]);
+  }, [account, accessToken, setSync, dropQueued, applyRemoteOps, logAudit, licFeature]);
 
   return { run, accessToken };
 }

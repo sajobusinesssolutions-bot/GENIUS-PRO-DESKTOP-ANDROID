@@ -19,6 +19,8 @@ export interface RoleDef {
 
 export interface Warehouse {
   id: string; name: string;
+  /** The account business created when this branch became its own shop. */
+  businessId?: string;
   /** A disabled branch keeps its history but cannot be sold from. */
   active?: boolean;
   address?: string; phone?: string;
@@ -112,6 +114,10 @@ export interface Sale {
   method: PayMethod; paid: number; paidAtSale: number; due: number;
   /** On a credit sale, how the part taken at the counter was paid. */
   receivedVia?: 'cash' | 'momo' | 'bank';
+  /** If money was taken by mobile money, record which network handled it. */
+  momoNetwork?: 'mtn' | 'airtel';
+  /** Transaction reference from the mobile-money payout receipt. */
+  momoRef?: string;
   /** Split tender: multiple payment methods in one sale. If present, overrides method. */
   methods?: PaymentAllocation[];
   status: 'complete' | 'void'; voidedAt?: string; voidReason?: string;
@@ -126,7 +132,10 @@ export interface PurchaseLine {
   productId: string; qty: number; cost: number;
   /** Lot this delivery arrives as, for batch-tracked items. */
   batchNo?: string; expiry?: string;
+  /** When one delivery is split across several existing or new lots. */
+  batchAllocations?: PurchaseBatchAllocation[];
 }
+export interface PurchaseBatchAllocation { batchNo: string; qty: number; expiry?: string }
 export interface Purchase {
   /** Payments made against this bill after it was raised, each by id. */
   receipts?: BillReceipt[];
@@ -154,6 +163,18 @@ export interface Payment {
   allocations?: BillAllocation[];
   /** The part not applied to any bill — an advance. */
   unapplied?: number;
+}
+
+export interface BankStatementLine {
+  id: string; accountId: string; date: string; description: string;
+  amount: number; reference?: string; matchedJournalId?: string | null;
+  status: 'unmatched' | 'matched' | 'ignored'; importedAt: string;
+}
+
+export interface BankReconciliation {
+  id: string; accountId: string; from: string; to: string;
+  opening: number; closing: number; statementLineIds: string[];
+  completedAt?: string; completedBy?: string;
 }
 
 /** One link between a payment and one bill. */
@@ -244,6 +265,8 @@ export type CodeData = 'no' | 'total' | 'verify' | 'party' | 'custom';
 export interface PrintTemplate {
   id: string; name: string; paper: Paper; kind: 'thermal' | 'page';
   showLogo: boolean; showTax: boolean; showServed: boolean; showParty: boolean; showSaved: boolean;
+  showAddress: boolean; showBatch: boolean; showExpiry: boolean; showImei: boolean;
+  showWarranty: boolean; showUnit: boolean; showRate: boolean; showSalesperson: boolean;
   code: CodeKind; codeData: CodeData; codeCaption: boolean;
   density: 'normal' | 'tight'; head: string; foot: string; copies: number;
 }
@@ -293,6 +316,8 @@ export interface SyncCfg {
   devices: SyncDevice[]; lastAt: string;
   /** "Online mode" (reference SCREENS.online, 22755) shares this switch. */
   strict: boolean; lastPush: string; lastPull: string; cursor: number;
+  /** Server snapshot version for CAS protection on uploads. */
+  snapshotVersion?: number;
   /** The tenant on the server, found once and then remembered. */
   businessId?: string;
   /** This phone's seat on the account. */
@@ -301,6 +326,17 @@ export interface SyncCfg {
   lamport?: number;
   /** How many operations the server holds for this business. */
   serverOps?: number;
+}
+
+export interface ArchivedFinancialYear {
+  id: string;
+  start: string;
+  endedAt: string;
+  openingLines: { acc: string; dr?: number; cr?: number }[];
+  customerBalances: number;
+  supplierBalances: number;
+  stockValue: number;
+  transactionCounts: { sales: number; purchases: number; payments: number; journal: number };
 }
 
 // --- Updates — reference updCfg() at 23027 ---
@@ -319,6 +355,15 @@ export type Costing = 'average' | 'last';
 export type BelowCost = 'allow' | 'warn' | 'block';
 
 /** Reference SCREENS.settings (6712) and every wrapper that adds a group to it. */
+export interface AccountingLock {
+  from: string; to?: string; reason: string; approvedBy?: string; lockedAt: string;
+}
+
+export interface BusinessAccessGrant {
+  userId: string; businessId: string; role: 'owner' | 'manager' | 'staff';
+  grantedAt: string; grantedBy?: string;
+}
+
 export interface Settings {
   // money & language
   currency: string; currencyName: string; symbolBefore: boolean; decimals: 0 | 2;
@@ -328,6 +373,7 @@ export interface Settings {
   /** Set once the tax-inclusive migration has run; see storage.ts. */
   taxModeFixed?: boolean;
   efris: boolean;
+  accountingLock?: AccountingLock | null;
   // selling & the till
   defaultMethod: 'cash' | 'momo' | 'bank'; roundTo: 0 | 50 | 100 | 500;
   maxDiscountPct: number; quickItems: number;
@@ -353,6 +399,8 @@ export interface Settings {
   theme: 'auto' | 'light' | 'dark';
   // ui
   favReports?: string[];
+  backupSchedule?: 'off' | 'daily' | 'weekly';
+  lastBackupAt?: string;
 }
 
 /** Reference DB.numbering / numLabel(), line 6817. */
@@ -362,6 +410,7 @@ export interface LoyaltyRules { enabled: boolean; earnPer: number; pointValue: n
 export interface Session { userId: string; role: Role; online: boolean; till: string; warehouse: string; }
 export interface Firm {
   id: string; name: string; tin: string; address: string; phone: string;
+  active?: boolean;
   businessType?: string;
   email?: string;
   /** A second number — most shops here have one for calls and one for money. */
@@ -457,6 +506,9 @@ export interface DB {
   firm: Firm;
   firms: Firm[];
   activeFirmId: string;
+  /** The current reporting year; rollover carries balances into the next one. */
+  financialYear?: { start: string; openedAt: string; previousStart?: string };
+  archivedFinancialYears?: ArchivedFinancialYear[];
   settings: Settings;
   /** Reference DB.roles — the editable permission matrix, 7596. */
   roles: RoleDef[];
@@ -474,6 +526,8 @@ export interface DB {
   sales: Sale[];
   purchases: Purchase[];
   payments: Payment[];
+  bankStatementLines?: BankStatementLine[];
+  bankReconciliations?: BankReconciliation[];
   entries: Entry[];
   journal: JournalEntry[];
   movements: Movement[];
@@ -492,6 +546,7 @@ export interface DB {
   productionRuns: ProductionRun[];
   recurringInvoices: RecurringInvoice[];
   auditLog: AuditLogEntry[];
+  businessAccess: BusinessAccessGrant[];
   queue: QueueItem[];
   session: Session;
   counters: { sale: number; purchase: number; estimate: number; challan: number; creditNote: number; po: number; plan: number };

@@ -96,6 +96,16 @@ describe('sync switched off', () => {
   });
 });
 
+describe('accounting period lock', () => {
+  it('blocks new records while the current period is locked', () => {
+    const d = book({
+      settings: { accountLock: null, accountingLock: { from: '2026-09-01T00:00:00.000Z', reason: 'Month end close', lockedAt: '2026-09-20T00:00:00.000Z' } },
+    });
+    expect(mayRecord(d, true)!.code).toBe('period_lock');
+    expect(mayRecord(d, true)!.route).toBe('Accounting');
+  });
+});
+
 describe('when both would refuse', () => {
   it('names the licence first — it is the one being offline cannot fix', () => {
     const d = book({

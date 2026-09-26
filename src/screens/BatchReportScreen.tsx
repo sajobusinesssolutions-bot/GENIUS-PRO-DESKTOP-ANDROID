@@ -42,6 +42,7 @@ export default function BatchReportScreen() {
 
   const warnDays = 90;
   const rows = useMemo(() => (db ? batchRows(db, warnDays) : []), [db]);
+  const ORDER: Record<ExpiryState, number> = { expired: 0, critical: 1, soon: 2, ok: 3, none: 4 };
 
   const counts = useMemo(() => {
     const c: Record<ExpiryState, number> = { expired: 0, critical: 0, soon: 0, ok: 0, none: 0 };
@@ -68,9 +69,37 @@ export default function BatchReportScreen() {
         || r.product.sku.toLowerCase().includes(needle)
         || r.batch.no.toLowerCase().includes(needle));
     }
-    return tab === 'expiry'
+    const sorted = tab === 'expiry'
       ? byUrgency(list)
       : [...list].sort((a, b) => a.product.name.localeCompare(b.product.name) || a.batch.no.localeCompare(b.batch.no));
+
+    const byProduct = new Map<string, { product: typeof sorted[number]['product']; batches: typeof sorted; qty: number; value: number; state: ExpiryState; days: number | null }>();
+    sorted.forEach((r) => {
+      const key = r.product.id;
+      const existing = byProduct.get(key);
+      if (existing) {
+        existing.batches.push(r);
+        existing.qty += r.batch.qty;
+        existing.value += r.value;
+        if (ORDER[existing.state] > ORDER[r.state]) existing.state = r.state;
+        if (existing.days === null || (r.days !== null && (existing.days === null || r.days < existing.days))) existing.days = r.days;
+      } else {
+        byProduct.set(key, {
+          product: r.product,
+          batches: [r],
+          qty: r.batch.qty,
+          value: r.value,
+          state: r.state,
+          days: r.days,
+        });
+      }
+    });
+
+    return Array.from(byProduct.values()).sort((a, b) => {
+      const x = ORDER[a.state] - ORDER[b.state];
+      if (x !== 0) return x;
+      return a.product.name.localeCompare(b.product.name);
+    });
   }, [rows, tab, filter, q]);
 
   if (!db) return null;
@@ -104,7 +133,7 @@ export default function BatchReportScreen() {
 
       <FlatList
         data={visible}
-        keyExtractor={(r) => r.product.id + '·' + r.batch.no}
+        keyExtractor={(r) => r.product.id}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, flexGrow: 1 }}
         ListHeaderComponent={
@@ -161,6 +190,7 @@ export default function BatchReportScreen() {
         renderItem={({ item }) => {
           const tone = toneOf(item.state);
           const edge = tone === 'danger' ? colors.danger : tone === 'warn' ? colors.warn : tone === 'neutral' ? colors.lineHard : colors.good;
+          const topBatch = item.batches[0];
           return (
             <Pressable
               onPress={() => go('ItemDetail', { productId: item.product.id })}
@@ -177,12 +207,12 @@ export default function BatchReportScreen() {
                     {item.product.name}
                   </Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                    Batch {item.batch.no} · {item.product.sku}
+                    {item.batches.length} lot{item.batches.length === 1 ? '' : 's'} · {item.product.sku}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 3 }}>
                   <Text style={{ fontFamily: fonts.uiExtra, fontSize: 17, color: colors.ink }}>
-                    {item.batch.qty} {item.product.unit}
+                    {item.qty} {item.product.unit}
                   </Text>
                   <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{money(item.value)}</Text>
                 </View>
@@ -193,8 +223,8 @@ export default function BatchReportScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
                 <Badge label={STATE_LABEL[item.state]} tone={tone as any} />
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-                  {item.batch.expiry
-                    ? new Date(item.batch.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                  {topBatch.batch.expiry
+                    ? new Date(topBatch.batch.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
                     : 'No expiry recorded'}
                 </Text>
                 <View style={{ flex: 1 }} />
@@ -215,7 +245,7 @@ export default function BatchReportScreen() {
                 icon={<Icon name="doc" size={17} color={colors.ink} />}
                 onPress={() => {
                   const text = visible
-                    .map((r) => `${r.product.name} | ${r.batch.no} | ${r.batch.qty} ${r.product.unit} | ${r.batch.expiry || 'no expiry'} | ${STATE_LABEL[r.state]}`)
+                    .map((r) => `${r.product.name} | ${r.batches.length} lot${r.batches.length === 1 ? '' : 's'} | ${r.qty} ${r.product.unit} | ${STATE_LABEL[r.state]}`)
                     .join('\n');
                   Alert.alert('Batch list', text.slice(0, 1500) + (text.length > 1500 ? '\n…' : ''));
                 }}

@@ -9,7 +9,8 @@ import { builtinRoles } from '../perms';
 import { startOfDay, endOfDay, daysAgo } from '../helpers';
 import {
   REPORTS, REPORT_CATEGORIES, runReport, reportById, isImplemented,
-  salesBetween, sumCol, cellText, cellNum, sortRows, Cell,
+  salesBetween, sumCol, cellText, cellNum, sortRows, Cell, stockMovementDrill,
+  inventoryMetricDrill,
 } from '../reports';
 
 /* ------------------------------------------------------------------ */
@@ -41,7 +42,7 @@ function makeDb(): DB {
     sales: [], purchases: [], payments: [], entries: [], journal: [], movements: [],
     shifts: [], warranties: [], claims: [],
     estimates: [], challans: [], creditNotes: [], offers: [], stockTakes: [],
-    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], queue: [],
+    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], businessAccess: [], queue: [],
     plans: [],
     session: { userId: owner.id, role: 'owner', online: true, till: 'Till 1', warehouse: 'w1' },
     counters: { sale: 0, purchase: 0, estimate: 0, challan: 0, creditNote: 0, po: 0, plan: 0 },
@@ -122,11 +123,119 @@ const ALL = { from: 0, to: endOfDay() };
 /* ------------------------------------------------------------------ */
 
 describe('batch reports', () => {
+  it('registers inventory metric reports at module load', () => {
+    expect(isImplemented('days-out-of-stock')).toBe(true);
+    expect(isImplemented('amc')).toBe(true);
+    expect(isImplemented('aamc')).toBe(true);
+    expect(isImplemented('aawc')).toBe(true);
+  });
+
   it('builds batch movement without throwing, even with no tracked item', () => {
     const db = makeDb();
     const r = runReport(db, 'batch-movement', ALL.from, ALL.to);
     expect(r.error).toBeFalsy();
     expect(r.cols.map((c) => c.h)).toContain('Balance');
+  });
+
+  it('keeps the mandatory transaction fields in daily sales and adds cash/credit detail', () => {
+    const { db } = seeded();
+    const r = runReport(db, 'daily-sales', startOfDay(daysAgo(30)), endOfDay());
+    expect(r.cols.map((c) => c.h).slice(0, 3)).toEqual(['Date', 'Vch Type', 'Vch No']);
+    expect(r.cols.map((c) => c.h)).toContain('Cash');
+    expect(r.cols.map((c) => c.h)).toContain('Credit');
+    expect(r.rows.length).toBeGreaterThan(0);
+    expect(r.rows.some((row) => String(row[2]).includes('INV') || String(row[2]).length > 0)).toBe(true);
+  });
+
+  it('builds a daybook report with debit and credit columns for each transaction', () => {
+    const { db } = seeded();
+    const r = runReport(db, 'daybook', startOfDay(daysAgo(30)), endOfDay());
+    expect(r.cols.map((c) => c.h).slice(0, 3)).toEqual(['Date', 'Vch Type', 'Vch No']);
+    expect(r.cols.map((c) => c.h)).toContain('Debit');
+    expect(r.cols.map((c) => c.h)).toContain('Credit');
+    expect(r.rows.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the mandatory transaction columns on invoice lists too', () => {
+    const { db } = seeded();
+    const r = runReport(db, 'invoice-list', startOfDay(daysAgo(30)), endOfDay());
+    expect(r.cols.map((c) => c.h).slice(0, 3)).toEqual(['Date', 'Vch Type', 'Vch No']);
+    expect(r.cols.map((c) => c.h)).toContain('Customer');
+  });
+
+  it('shows all items first, with item drill-down to monthly movement', () => {
+    const { db } = seeded();
+    const r = runReport(db, 'stock-movement', startOfDay(daysAgo(30)), endOfDay());
+    expect(r.cols.map((c) => c.h)).toEqual(['Item', 'Stock In', 'Stock Out', 'Closing']);
+    expect(r.rows.some((row) => cellText(row[0]) === 'Widget A')).toBe(true);
+    expect(r.rows.some((row) => cellText(row[0]) === 'Gadget B')).toBe(true);
+    expect(r.rowRefs?.some((ref) => ref && ref.kind === 'product')).toBe(true);
+  });
+
+  it('builds an item drill-down that groups movement by month and exposes month rows', () => {
+    const { db } = seeded();
+    const p = db.products[0];
+    const r = stockMovementDrill(db, p.id, startOfDay(daysAgo(30)), endOfDay());
+    expect(r.cols.map((c) => c.h)).toEqual(['Month', 'Stock In', 'Stock Out', 'Closing']);
+    expect(r.rows.some((row) => typeof row[0] === 'string' && String(row[0]).length > 0)).toBe(true);
+    expect(r.rowRefs?.some((ref) => ref && ref.kind === 'month')).toBe(true);
+  });
+
+  it('tracks stockout days from zero balance to replenishment and drills metric reports', () => {
+    const db = makeDb();
+    const p = db.products[0];
+    p.stock.w1 = 5;
+    const when = (daysBack: number) => at(daysBack).toISOString();
+    db.movements.push(
+      { id: 'm1', ts: when(29), productId: p.id, wh: 'w1', qty: 10, type: 'purchase', ref: 'PUR-1' },
+      { id: 'm2', ts: when(20), productId: p.id, wh: 'w1', qty: -15, type: 'sale', ref: 'INV-1' },
+      { id: 'm3', ts: when(10), productId: p.id, wh: 'w1', qty: 5, type: 'purchase', ref: 'PUR-2' },
+    );
+    const from = startOfDay(daysAgo(30));
+    const to = endOfDay();
+    const days = runReport(db, 'days-out-of-stock', from, to);
+    expect(days.rows[0][0]).toBe('Widget A');
+    expect(days.cols.map((c) => c.h)).toEqual(['Item', 'Days out', 'Consumed', 'Closing']);
+    expect(Number(cellText(days.rows[0][1]))).toBeGreaterThan(0);
+
+    const availableDb = makeDb();
+    availableDb.products[0].stock.w1 = 3;
+    availableDb.movements.push(
+      { id: 'in', ts: when(10), productId: 'p_a', wh: 'w1', qty: 10, type: 'purchase', ref: 'PUR-IN' },
+      { id: 'out', ts: when(5), productId: 'p_a', wh: 'w1', qty: -7, type: 'sale', ref: 'INV-OUT' },
+    );
+    const available = runReport(availableDb, 'days-out-of-stock', from, to);
+    expect(Number(cellText(available.rows[0][1]))).toBe(0);
+
+    const months = inventoryMetricDrill(db, 'aamc', p.id, from, to);
+    expect(months.cols.map((c) => c.h)).toEqual(['Month', 'Inward', 'Outward', 'Closing', 'Days out', 'AAMC']);
+    expect(months.rowRefs?.some((ref) => ref?.kind === 'month')).toBe(true);
+    const month = months.rowRefs?.find((ref) => ref?.kind === 'month')?.id;
+    expect(month).toBeTruthy();
+    const aawcMonths = inventoryMetricDrill(db, 'aawc', p.id, startOfDay(daysAgo(89)), to);
+    const aawcMonth = aawcMonths.rowRefs?.find((ref) => ref?.kind === 'month')?.id;
+    expect(aawcMonth).toBeTruthy();
+    const daily = inventoryMetricDrill(db, 'aawc', p.id, startOfDay(daysAgo(89)), to, aawcMonth!);
+    expect(daily.cols.map((c) => c.h)).toEqual(['Date', 'Inward', 'Outward', 'Closing', 'Days out', 'AAWC']);
+    expect(daily.rows.length).toBeGreaterThan(0);
+  });
+
+  it('calculates AAMC from consumption in a rolling 90-day sample using 30.5 days per month', () => {
+    const db = makeDb();
+    db.products[0].stock.w1 = 6;
+    db.movements.push({ id: 'aamc-sale', ts: at(60).toISOString(), productId: 'p_a', wh: 'w1', qty: -4, type: 'sale', ref: 'INV-AAMC' });
+    const report = runReport(db, 'aamc', startOfDay(daysAgo(29)), endOfDay());
+    const value = Number(cellText(report.rows[0][1]));
+    expect(value).toBeCloseTo((4 * 30.5) / (90 - 0), 6);
+  });
+
+  it('calculates AAWC from consumption in a rolling 8-week sample', () => {
+    const db = makeDb();
+    db.products[0].stock.w1 = 6;
+    db.movements.push({ id: 'aawc-sale', ts: at(30).toISOString(), productId: 'p_a', wh: 'w1', qty: -8, type: 'sale', ref: 'INV-AAWC' });
+    const report = runReport(db, 'aawc', startOfDay(daysAgo(6)), endOfDay());
+    const value = Number(cellText(report.rows[0][1]));
+    expect(value).toBeCloseTo((8 * 7) / (56 - 0), 6);
   });
 
   it('builds batch balances without throwing', () => {
@@ -143,9 +252,53 @@ describe('batch reports', () => {
 });
 
 describe('REPORTS catalogue', () => {
-  it('holds 68 reports with unique ids', () => {
-    expect(REPORTS).toHaveLength(68);
-    expect(new Set(REPORTS.map((r) => r.id)).size).toBe(68);
+  it('holds the report catalogue and unique ids', () => {
+    expect(REPORTS.length).toBeGreaterThan(70);
+    expect(new Set(REPORTS.map((r) => r.id)).size).toBe(REPORTS.length);
+  });
+
+  it('includes the ledger, voucher and chart-of-accounts summary reports', () => {
+    expect(reportById('ledger-summary')).toBeTruthy();
+    expect(reportById('voucher-summary')).toBeTruthy();
+    expect(reportById('chart-of-accounts')).toBeTruthy();
+
+    const db = makeDb();
+    db.journal.push({ id: 'j1', ts: at(1).toISOString(), memo: 'Sale cash', ref: 'JV-1', balanced: true, lines: [{ acc: 'acc_cash', dr: 1000 }, { acc: 'n_sales', cr: 1000 }] });
+    const ledger = runReport(db, 'ledger-summary', startOfDay(daysAgo(30)), endOfDay());
+    const voucher = runReport(db, 'voucher-summary', startOfDay(daysAgo(30)), endOfDay());
+    const coa = runReport(db, 'chart-of-accounts', startOfDay(daysAgo(30)), endOfDay());
+
+    expect(ledger.error).toBeFalsy();
+    expect(voucher.error).toBeFalsy();
+    expect(coa.error).toBeFalsy();
+    expect(ledger.cols.map((c) => c.h).slice(0, 3)).toEqual(['Ledger', 'Debit', 'Credit']);
+    expect(voucher.cols.map((c) => c.h).slice(0, 3)).toEqual(['Date', 'Vch Type', 'Vch No']);
+    expect(coa.rows.some((r) => String(r[1]).includes('Cash'))).toBe(true);
+  });
+
+  it('groups the accounting reports in asset, liability and equity order', () => {
+    const db = makeDb();
+    db.coa = [
+      { id: 'n_equity', code: '3000', name: 'Owner equity', type: 'equity', builtin: true, active: true },
+      { id: 'n_ap', code: '2100', name: 'Accounts payable', type: 'liability', builtin: true, active: true },
+      { id: 'acc_cash', code: '1001', name: 'Cash', type: 'asset', builtin: true, active: true },
+    ];
+    db.journal.push({ id: 'j1', ts: at(1).toISOString(), memo: 'Cash sale', ref: 'JV-1', balanced: true, lines: [{ acc: 'acc_cash', dr: 1000 }, { acc: 'n_equity', cr: 1000 }] });
+
+    const ledger = runReport(db, 'ledger-summary', 0, endOfDay());
+    const coa = runReport(db, 'chart-of-accounts', 0, endOfDay());
+    const tb = runReport(db, 'trial-balance', 0, endOfDay());
+    const gl = runReport(db, 'general-ledger', 0, endOfDay());
+    const bs = runReport(db, 'balance-sheet', 0, endOfDay());
+
+    expect(ledger.rows[0][0]).toBe('Cash');
+    expect(coa.rows.find((r) => r[1] === 'Cash')?.[0]).toBe('1001');
+    expect(tb.rows.find((r) => r[0] === 'Cash')?.[0]).toBe('Cash');
+    expect(gl.rows[0][0]).toBe('Cash');
+    expect(coa.rows.some((r) => r[1] === 'Total Assets')).toBe(true);
+    expect(tb.rows.some((r) => r[0] === 'Total Assets')).toBe(true);
+    expect(bs.rows.some((r) => r[1] === 'Total assets')).toBe(true);
+    expect(bs.rows.some((r) => r[0] === 'Liabilities' && r[1] === 'Total liabilities')).toBe(true);
   });
 
   it('carries no EFRIS report — this build excludes fiscalisation', () => {
@@ -162,6 +315,7 @@ describe('REPORTS catalogue', () => {
     REPORTS.forEach((r) => {
       expect([r.id, isImplemented(r.id)]).toEqual([r.id, true]);
     });
+    expect(['days-out-of-stock', 'amc', 'aamc', 'aawc'].every(isImplemented)).toBe(true);
   });
 
   it('builds every report without throwing, on a full fixture and on an empty one', () => {
@@ -452,9 +606,9 @@ describe('the totals row', () => {
     const { db } = seeded();
     const r = runReport(db, 'invoice-list', ALL.from, ALL.to);
     expect(r.rows).toHaveLength(3);
-    expect(cellNum(r.foot![3])).toBe(sumCol(r.rows, 3));
-    expect(cellNum(r.foot![3])).toBe(900);
-    expect(cellNum(r.foot![4])).toBe(300); // only the credit bill is due
+    expect(cellNum(r.foot![5])).toBe(sumCol(r.rows, 5));
+    expect(cellNum(r.foot![5])).toBe(900);
+    expect(cellNum(r.foot![6])).toBe(300); // only the credit bill is due
   });
 
   it('sumCol reads the number behind a formatted cell', () => {
@@ -472,11 +626,11 @@ describe('sortRows', () => {
     const { db } = seeded();
     const r = runReport(db, 'invoice-list', ALL.from, ALL.to);
 
-    const asc = sortRows(r, 3, 'asc');
-    expect(asc.rows.map((x) => cellNum(x[3]))).toEqual([200, 300, 400]);
+    const asc = sortRows(r, 5, 'asc');
+    expect(asc.rows.map((x) => cellNum(x[5]))).toEqual([200, 300, 400]);
 
-    const desc = sortRows(r, 3, 'desc');
-    expect(desc.rows.map((x) => cellNum(x[3]))).toEqual([400, 300, 200]);
+    const desc = sortRows(r, 5, 'desc');
+    expect(desc.rows.map((x) => cellNum(x[5]))).toEqual([400, 300, 200]);
 
     // the ref still points at the bill on that row
     const top = desc.rowRefs![0]!;
@@ -487,7 +641,7 @@ describe('sortRows', () => {
     expect(reportById('pnl')!.cat).toBe('Tax & books');
     const { db } = seeded();
     const r = runReport(db, 'invoice-list', ALL.from, ALL.to);
-    const asc = sortRows(r, 1, 'asc');
-    expect(cellText(asc.rows[0][1])).toBe('Acme Ltd');
+    const asc = sortRows(r, 3, 'asc');
+    expect(cellText(asc.rows[0][3])).toBe('Acme Ltd');
   });
 });

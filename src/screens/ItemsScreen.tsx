@@ -16,7 +16,6 @@ import { AppBar, IconBtn } from '../components/AppBar';
 import { Sheet } from '../components/Sheet';
 import { Icon } from '../components/icons';
 import { useGo } from '../nav/navigate';
-import { listRange, LIST_PERIODS, inRange } from '../data/helpers';
 import { BULK_ACTIONS, sharePriceTags } from './BulkScreens';
 
 export default function ItemsScreen() {
@@ -25,7 +24,8 @@ export default function ItemsScreen() {
   const { db, money, stockOf } = useAppData();
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
-  const [period, setPeriod] = useState('month');
+  const [category, setCategory] = useState('all');
+  const [unit, setUnit] = useState('all');
   const [bulk, setBulk] = useState(false);
 
   const role = db?.session.role;
@@ -33,33 +33,29 @@ export default function ItemsScreen() {
 
   const d = useMemo(() => {
     if (!db) return null;
-    const R = listRange(period);
-    const movedBy: Record<string, { in: number; out: number }> = {};
-    let inQ = 0, outQ = 0;
-    (db.movements || []).forEach((m) => {
-      if (!inRange(m.ts, R.from, R.to)) return;
-      const e = movedBy[m.productId] || (movedBy[m.productId] = { in: 0, out: 0 });
-      if (m.qty > 0) { e.in += m.qty; inQ += m.qty; } else { e.out += -m.qty; outQ += -m.qty; }
-    });
     const value = db.products.reduce((s, x) => s + stockOf(x) * x.price, 0);
     const cost = db.products.reduce((s, x) => s + stockOf(x) * x.cost, 0);
     const active = db.products.filter((x) => x.active);
     const low = active.filter((x) => stockOf(x) <= x.reorder).length;
     const term = q.toLowerCase();
+    const categories = Array.from(new Set(active.map((x) => x.category).filter(Boolean))).sort();
+    const units = Array.from(new Set(active.map((x) => x.unit).filter(Boolean))).sort();
     const list = active.filter((x) => {
-      if (filter === 'low' && stockOf(x) > x.reorder) return false;
-      if (filter === 'out' && stockOf(x) > 0) return false;
-      if (filter === 'asm' && !(x.bom && x.bom.length)) return false;
-      if (filter === 'moved' && !movedBy[x.id]) return false;
-      if (term && (x.name + ' ' + x.sku).toLowerCase().indexOf(term) < 0) return false;
+      if (filter === 'products' && x.kind === 'service') return false;
+      if (filter === 'services' && x.kind !== 'service') return false;
+      if (filter === 'low' && (x.kind === 'service' || stockOf(x) > x.reorder)) return false;
+      if (filter === 'out' && (x.kind === 'service' || stockOf(x) > 0)) return false;
+      if (category !== 'all' && x.category !== category) return false;
+      if (unit !== 'all' && x.unit !== unit) return false;
+      if (term && (x.name + ' ' + x.sku + ' ' + x.category + ' ' + x.unit).toLowerCase().indexOf(term) < 0) return false;
       return true;
     });
     const chips: [string, string][] = [
-      ['all', 'All ' + active.length], ['moved', 'Moved'], ['low', 'Low ' + low],
-      ['out', 'Out'], ['asm', 'Assemblies'],
+      ['all', 'All ' + active.length], ['products', 'Products ' + active.filter((x) => x.kind !== 'service').length],
+      ['services', 'Services ' + active.filter((x) => x.kind === 'service').length], ['low', 'Low ' + low], ['out', 'Out'],
     ];
-    return { R, movedBy, inQ, outQ, value, cost, list, chips };
-  }, [db, q, filter, period]);
+    return { categories, units, value, cost, list, chips };
+  }, [db, q, filter, category, unit]);
 
   const right = (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -102,15 +98,17 @@ export default function ItemsScreen() {
             items={[
               { icon: 'coins', label: 'Stock value (sale)', value: money(d.value), tone: 'good' },
               { icon: 'money', label: 'At cost', value: money(d.cost), tone: 'accent' },
-              { icon: 'down', label: 'Units in · ' + d.R.label, value: String(Math.round(d.inQ)), tone: 'good' },
-              { icon: 'up', label: 'Units out', value: String(Math.round(d.outQ)), tone: 'danger' },
+              { icon: 'box', label: 'Categories', value: String(d.categories.length), tone: 'good' },
+              { icon: 'tag', label: 'Units used', value: String(d.units.length), tone: 'accent' },
             ]}
           />
         </View>
 
         <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-          <SectionLabel>Period</SectionLabel>
-          <FilterChips value={period} onChange={setPeriod} options={LIST_PERIODS.map(([v, l]) => ({ v, l }))} tone="neutral" />
+          <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{category !== 'all' ? 'Category: ' + category : unit !== 'all' ? 'Unit: ' + unit : 'Quick filters'}</Text>}>
+            Filters
+          </SectionLabel>
+          <FilterChips value={filter} onChange={setFilter} options={d.chips.map(([v, l]) => ({ v, l }))} />
         </View>
 
         <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
@@ -142,39 +140,43 @@ export default function ItemsScreen() {
 
         <View style={{ paddingHorizontal: 16 }}>
           <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{d.list.length} shown</Text>}>
-            Items
+            Items & services
           </SectionLabel>
         </View>
 
         {d.list.length ? d.list.map((x) => {
           const st = stockOf(x);
           const out = st <= 0, low = st <= x.reorder;
-          const mv = d.movedBy[x.id];
+          const service = x.kind === 'service';
           return (
             <Pressable
               key={x.id}
               onPress={() => go('ItemDetail', { productId: x.id })}
               style={{
-                flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14,
+                flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12,
                 backgroundColor: colors.surface, borderRadius: 16,
-                marginHorizontal: 16, marginBottom: 10, minHeight: 68,
+                marginHorizontal: 16, marginBottom: 7, minHeight: 64,
                 shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
               }}
             >
-              <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: out ? colors.dangerSoft : colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="box" size={21} color={out ? colors.danger : colors.good} />
+              <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: service ? colors.accentSoft : out ? colors.dangerSoft : colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name={service ? 'tools' : 'box'} size={17} color={service ? colors.accent : out ? colors.danger : colors.good} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{x.name}</Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
-                  {x.sku} · {mv ? `+${Math.round(mv.in)} / −${Math.round(mv.out)} this period` : 'no movement'}
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{x.name}</Text>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, marginTop: 2 }}>
+                  {x.sku}{service ? ' · Service' : ' · ' + x.category}
                 </Text>
               </View>
-              <View style={{ alignItems: 'flex-end', gap: 5 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.good }}>{money(x.price)}</Text>
-                {out ? <Badge label="Out of stock" tone="danger" />
-                  : low ? <Badge label={'Low · ' + st + ' ' + x.unit} tone="warn" />
-                    : <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{st} {x.unit}</Text>}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ alignItems: 'flex-end', minWidth: 58 }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: colors.faint }}>SELL</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.good }}>{money(x.price)}</Text>
+                </View>
+                {!service ? <View style={{ alignItems: 'flex-end', minWidth: 48 }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: colors.faint }}>STOCK</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: out ? colors.danger : low ? colors.warn : colors.ink }}>{st}</Text>
+                </View> : <Badge label="Service" tone="accent" />}
               </View>
             </Pressable>
           );
@@ -182,7 +184,7 @@ export default function ItemsScreen() {
           <EmptyState
             icon="box"
             title="Nothing here"
-            subtitle="Change the period or the filter, or add a product."
+            subtitle="Change the filters, or add an item or service."
             action={<Button size="sm" variant="pri" label="Add item" onPress={() => go('ProductDetail', {})} />}
           />
         )}
@@ -190,13 +192,29 @@ export default function ItemsScreen() {
 
       <Sheet
         visible={bulk}
-        title="Bulk changes"
+        title="Item actions"
         subtitle={db.products.filter((p) => p.active).length + ' active items'}
         icon="tools"
         onClose={() => setBulk(false)}
       >
-        <InfoBanner tone="accent" text="Change many items in one go. Every bulk change is previewed before it happens." />
+        <InfoBanner tone="accent" text="Keep the list clean and focus on the stock work that matters." />
         <View style={{ height: 14 }} />
+        <ListRow
+          card
+          icon="plus"
+          tone="good"
+          title="New item"
+          subtitle="Create a product or service"
+          onPress={() => { setBulk(false); setTimeout(() => go('ProductDetail', {}), 120); }}
+        />
+        <ListRow
+          card
+          icon="tag"
+          tone="accent"
+          title="Units & categories"
+          subtitle="Manage, create and remove item lists"
+          onPress={() => { setBulk(false); setTimeout(() => go('UnitsCategories'), 120); }}
+        />
         <ListRow
           card
           icon="coins"
@@ -204,14 +222,6 @@ export default function ItemsScreen() {
           title="Price list"
           subtitle="Edit cost and sell across items and services"
           onPress={() => { setBulk(false); setTimeout(() => go('PriceList'), 120); }}
-        />
-        <ListRow
-          card
-          icon="pencil"
-          tone="accent"
-          title="Names & descriptions"
-          subtitle="Rename in bulk, or find and replace"
-          onPress={() => { setBulk(false); setTimeout(() => go('NamesEditor'), 120); }}
         />
         <ListRow
           card

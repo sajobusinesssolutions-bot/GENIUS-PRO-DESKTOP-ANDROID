@@ -105,17 +105,19 @@ export default function GoogleSignInScreen({ navigation }: Props) {
     setBusy(false);
     if (!r.ok) { handled.current = false; error(r.error.message); return; }
 
+    const email = String(r.value.email || '').trim().toLowerCase();
+    if (!email) { handled.current = false; error('Google sign-in returned no email address. Try again.'); return; }
     await adopt({
-      email: r.value.email, name: r.value.name, method: 'google',
+      email, name: String(r.value.name || email.split('@')[0]), method: 'google',
       verified: true, localOnly: false, id: r.value.accountId, refresh: r.value.refresh,
     });
     // Claims the books and goes where this person belongs. Without this the
     // sign-in succeeded — ticket redeemed, session issued — and the screen
     // simply stayed on 'Continue with Google', which looks like a failure.
-    const { replacedBooks } = afterSignIn(r.value.email);
+    const { replacedBooks } = afterSignIn(email);
     success(replacedBooks
-      ? 'Signed in as ' + r.value.email + ' — starting fresh books for this account'
-      : 'Signed in as ' + r.value.email);
+      ? 'Signed in as ' + email + ' — starting fresh books for this account'
+      : 'Signed in as ' + email);
   }, [adopt, error, success, back, afterSignIn]);
 
   useEffect(() => {

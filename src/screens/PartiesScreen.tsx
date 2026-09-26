@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { View, FlatList, Pressable, Text } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
-import { Empty, Badge, Search, FilterChips, SectionLabel, StatGrid, FAB, Panel } from '../components/ui';
+import { Empty, Badge, Search, SectionLabel, StatGrid, FAB, Panel } from '../components/ui';
 import { Icon } from '../components/icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
+import { ListFilters } from '../components/ListFilters';
 
 type Props = NativeStackScreenProps<RootStackParamList, any>;
 
@@ -67,12 +68,10 @@ export default function PartiesScreen({ navigation }: Props) {
               ]}
             />
             <Search value={q} onChange={setQ} placeholder="Search by name or phone" />
-            <FilterChips
-              value={type}
-              onChange={setType}
-              options={[
-                { v: 'all', l: 'All' }, { v: 'customer', l: 'Customers' }, { v: 'supplier', l: 'Suppliers' },
-              ]}
+            <ListFilters
+              filterValue={type}
+              filterOptions={[{ v: 'all', l: 'All contacts' }, { v: 'customer', l: 'Customers' }, { v: 'supplier', l: 'Suppliers' }]}
+              onFilterChange={(value) => setType(value as 'all' | 'customer' | 'supplier')}
             />
             {parties.length ? (
               <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{parties.length} shown</Text>}>
@@ -97,13 +96,13 @@ export default function PartiesScreen({ navigation }: Props) {
             <Pressable
               onPress={() => navigation.navigate('PartyDetail', { partyId: item.id })}
               style={{
-                backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13,
-                marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 70,
+                backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9,
+                marginBottom: 6, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60,
                 shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
               }}
             >
               <View style={{
-                width: 44, height: 44, borderRadius: 22,
+                width: 34, height: 34, borderRadius: 17,
                 backgroundColor: item.type === 'customer' ? colors.accentSoft : colors.warnSoft,
                 alignItems: 'center', justifyContent: 'center',
               }}>
@@ -113,15 +112,15 @@ export default function PartiesScreen({ navigation }: Props) {
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{item.name}</Text>
+                  <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{item.name}</Text>
                   <Badge label={item.type === 'customer' ? 'Customer' : 'Supplier'} tone={item.type === 'customer' ? 'accent' : 'warn'} />
                 </View>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, marginTop: 2 }}>
                   {item.phone || 'No phone'}{item.address ? ' · ' + item.address : ''}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 3 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: owes ? colors.danger : credit ? colors.good : colors.faint }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: owes ? colors.danger : credit ? colors.good : colors.faint }}>
                   {money(Math.abs(bal))}
                 </Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>

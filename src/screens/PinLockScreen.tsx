@@ -126,12 +126,14 @@ export default function PinLockScreen({ navigation }: Props) {
             key={w.id}
             disabled={off}
             onPress={() => { try { setWarehouse(w.id); } catch { /* refused */ } }}
-            style={{
+            android_ripple={{ color: colors.accentSoft }}
+            style={({ pressed }) => ({
               paddingVertical: 8, paddingHorizontal: 13, borderRadius: 999, borderWidth: 1.4,
               borderColor: on ? colors.accent : colors.line,
               backgroundColor: off ? colors.sunk : on ? colors.accentSoft : colors.surface,
-              opacity: off ? 0.6 : 1,
-            }}
+              opacity: off ? 0.6 : pressed ? 0.72 : 1,
+              transform: [{ scale: pressed && !off ? 0.96 : 1 }],
+            })}
           >
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: off ? colors.faint : on ? colors.accent : colors.soft, textDecorationLine: off ? 'line-through' : 'none' }}>
               {w.name}{off ? ' · disabled' : ''}
@@ -188,7 +190,7 @@ export default function PinLockScreen({ navigation }: Props) {
           {cap(user.role)} · {prompt}
         </Text>
         {users.length > 1 ? (
-          <Pressable onPress={() => { setSelected(''); setPin(''); setFirst(''); }} hitSlop={8} style={{ marginTop: 10 }}>
+          <Pressable onPress={() => { setSelected(''); setPin(''); setFirst(''); }} hitSlop={8} style={({ pressed }) => ({ marginTop: 10, opacity: pressed ? 0.65 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.accent }}>Not you? Switch profile</Text>
           </Pressable>
         ) : null}
@@ -222,9 +224,11 @@ export default function PinLockScreen({ navigation }: Props) {
                 disabled={!k}
                 accessibilityLabel={k === 'del' ? 'Delete' : k}
                 onPress={() => (k === 'del' ? setPin(pin.slice(0, -1)) : k ? press(k) : undefined)}
+                android_ripple={{ color: colors.accentSoft }}
                 style={({ pressed }) => ({
                   width: '30%', height: 62, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: k && k !== 'del' ? (pressed ? colors.accentSoft : colors.surface) : 'transparent',
+                  transform: [{ scale: pressed && !!k ? 0.94 : 1 }],
                   ...(k && k !== 'del' ? { shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2 } : null),
                 })}
               >

@@ -58,10 +58,15 @@ async function whoami(req, reply) {
  */
 async function businessFor(accountId, wanted) {
   const { rows } = await q(
-    `select id, name from businesses
-      where account_id = $1 and status = 'active'
-        and ($2::uuid is null or id = $2::uuid)
-      order by created_at limit 1`,
+    `select b.id, b.name,
+            case when b.account_id = $1 then 'owner'
+                 else coalesce(bm.role, 'staff') end as role
+       from businesses b
+       left join business_members bm on bm.business_id = b.id and bm.account_id = $1
+      where b.status = 'active'
+        and (b.account_id = $1 or bm.account_id is not null)
+        and ($2::uuid is null or b.id = $2::uuid)
+      order by b.created_at limit 1`,
     [accountId, wanted || null],
   );
   return rows[0] || null;
@@ -81,22 +86,32 @@ export default async function syncRoutes(app) {
     );
     const seats = lic.rows[0]?.seats ?? 1;
 
-    const used = await q(
-      'select count(*)::int as n from devices where account_id = $1 and revoked_at is null',
-      [me.id],
-    );
-    if (used.rows[0].n >= seats) {
-      return fail(reply, 402, 'seatsFull',
-        `Your licence covers ${seats} device${seats === 1 ? '' : 's'} and they are all in use. `
-        + 'Remove one from your account, or add seats, then try again.');
-    }
+    const registration = await tx(async (db) => {
+      // Lock the account's active seats while choosing the one to replace. A
+      // new phone should never create a short-lived over-seat race.
+      const active = await db.query(
+        `select id, name from devices
+           where account_id = $1 and revoked_at is null
+          order by created_at asc, id asc for update`,
+        [me.id],
+      );
+      let replacedDevice = null;
+      if (active.rows.length >= seats) {
+        replacedDevice = active.rows[0];
+        await db.query(
+          'update devices set revoked_at = now() where id = $1 and account_id = $2',
+          [replacedDevice.id, me.id],
+        );
+      }
 
-    const { rows } = await q(
-      `insert into devices (account_id, name, kind, platform, refresh_hash, last_seen)
-       values ($1, $2, $3, $4, '', now()) returning id`,
-      [me.id, req.body?.name || 'a device', req.body?.kind || 'phone', req.body?.platform || null],
-    );
-    return { deviceId: rows[0].id, seats, used: used.rows[0].n + 1 };
+      const inserted = await db.query(
+        `insert into devices (account_id, name, kind, platform, refresh_hash, last_seen)
+         values ($1, $2, $3, $4, '', now()) returning id`,
+        [me.id, req.body?.name || 'a device', req.body?.kind || 'phone', req.body?.platform || null],
+      );
+      return { deviceId: inserted.rows[0].id, used: active.rows.length || 0, replacedDevice };
+    });
+    return { ...registration, seats };
   });
 
   app.get('/v1/devices', async (req, reply) => {
@@ -135,7 +150,8 @@ export default async function syncRoutes(app) {
     );
     if (!lic.rows[0]) return fail(reply, 404, 'server', 'No licence is on this account.');
 
-    const biz = await q('select id from businesses where account_id = $1', [me.id]);
+    const biz = await q(`select b.id from businesses b
+      where b.account_id = $1 or exists (select 1 from business_members bm where bm.business_id = b.id and bm.account_id = $1)`, [me.id]);
     const token = await issueLicence({
       account: acct.rows[0],
       licence: { ...lic.rows[0], status: effectiveStatus(acct.rows[0], lic.rows[0]) },
@@ -150,15 +166,19 @@ export default async function syncRoutes(app) {
     const me = await whoami(req, reply);
     if (!me) return;
     const { rows } = await q(
-      `select b.id, b.name, b.tin, b.local_id, b.created_at,
+      `select b.id, b.name, b.tin, b.local_id, b.created_at, b.status,
+              case when b.account_id = $1 then 'owner'
+                   else coalesce(bm.role, 'staff') end as role,
               s.updated_at as snapshot_at, s.bytes as snapshot_bytes
          from businesses b
+         left join business_members bm on bm.business_id = b.id and bm.account_id = $1
          left join business_snapshots s on s.business_id = b.id
-        where b.account_id = $1 and b.status = 'active'
+        where (b.account_id = $1 or bm.account_id is not null)
+          and ($2::boolean = true or b.status = 'active')
         order by b.created_at`,
-      [me.id],
+      [me.id, String(req.query?.all || '') === 'true'],
     );
-    return { businesses: rows };
+    return { businesses: rows.map((b) => ({ ...b, active: b.status === 'active', role: b.role || 'staff' })) };
   });
 
   /* ------------------------------------------------------- snapshots */
@@ -174,20 +194,30 @@ export default async function syncRoutes(app) {
     if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
     const data = req.body?.data;
     if (!data || typeof data !== 'object') return fail(reply, 400, 'malformed', 'No books were sent.');
+    const version = Number(req.body?.version || 0);
+    const current = await q(
+      'select version from business_snapshots where business_id = $1',
+      [biz.id],
+    );
+    if (current.rows[0] && version < current.rows[0].version) {
+      return fail(reply, 409, 'staleSnapshot', 'This device has an older snapshot than the server. Refresh first.');
+    }
     const text = JSON.stringify(data);
+    const nextVersion = (current.rows[0]?.version || 0) + 1;
     await q(
-      `insert into business_snapshots (business_id, data, bytes, device_id, updated_at)
-       values ($1, $2::jsonb, $3, $4, now())
+      `insert into business_snapshots (business_id, data, bytes, device_id, version, updated_at)
+       values ($1, $2::jsonb, $3, $4, $5, now())
        on conflict (business_id) do update
          set data = excluded.data, bytes = excluded.bytes,
-             device_id = excluded.device_id, updated_at = now()`,
-      [biz.id, text, Buffer.byteLength(text), req.body?.device || null],
+             device_id = excluded.device_id, version = excluded.version,
+             updated_at = now()`,
+      [biz.id, text, Buffer.byteLength(text), req.body?.device || null, nextVersion],
     );
     // the name on the list follows the name on the books
     if (data.firm?.name && data.firm.name !== biz.name) {
       await q('update businesses set name = $2 where id = $1', [biz.id, String(data.firm.name).slice(0, 200)]);
     }
-    return { ok: true, bytes: Buffer.byteLength(text) };
+    return { ok: true, bytes: Buffer.byteLength(text), version: nextVersion };
   });
 
   app.get('/v1/businesses/:id/snapshot', async (req, reply) => {
@@ -196,14 +226,14 @@ export default async function syncRoutes(app) {
     const biz = await businessFor(me.id, req.params.id);
     if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
     const { rows } = await q(
-      'select data, updated_at from business_snapshots where business_id = $1',
+      'select data, updated_at, version from business_snapshots where business_id = $1',
       [biz.id],
     );
     if (!rows[0]) {
       return fail(reply, 404, 'noSnapshot',
         'This business has no copy on the server yet. Open it on the phone that holds it and sync once.');
     }
-    return { data: rows[0].data, updatedAt: rows[0].updated_at };
+    return { data: rows[0].data, updatedAt: rows[0].updated_at, version: rows[0].version };
   });
 
   app.post('/v1/businesses', async (req, reply) => {
@@ -224,6 +254,55 @@ export default async function syncRoutes(app) {
       [me.id, req.body?.name || 'My shop', req.body?.tin || null, req.body?.localId || null],
     );
     return rows[0];
+  });
+
+  app.patch('/v1/businesses/:id', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const biz = await businessFor(me.id, req.params.id);
+    if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    if (typeof req.body?.active !== 'boolean') return fail(reply, 400, 'malformed', 'Choose whether the business is active.');
+    await q('update businesses set status = $2 where id = $1', [biz.id, req.body.active ? 'active' : 'inactive']);
+    return { active: req.body.active };
+  });
+
+  app.get('/v1/businesses/:id/members', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const owner = await q('select id from businesses where id = $1 and account_id = $2', [req.params.id, me.id]);
+    if (!owner.rows[0]) return fail(reply, 403, 'forbidden', 'Only the business owner can manage access.');
+    const { rows } = await q(
+      `select bm.account_id as id, a.email, a.name, bm.role, bm.created_at
+         from business_members bm join accounts a on a.id = bm.account_id
+        where bm.business_id = $1 order by bm.created_at`, [req.params.id],
+    );
+    return { members: rows };
+  });
+
+  app.post('/v1/businesses/:id/members', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const owner = await q('select id from businesses where id = $1 and account_id = $2', [req.params.id, me.id]);
+    if (!owner.rows[0]) return fail(reply, 403, 'forbidden', 'Only the business owner can manage access.');
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email.includes('@')) return fail(reply, 400, 'malformed', 'Enter a valid account email.');
+    const account = await q('select id, email, name from accounts where email = $1', [email]);
+    if (!account.rows[0]) return fail(reply, 404, 'unknownAccount', 'That person must create an account before they can be assigned.');
+    await q(
+      `insert into business_members (business_id, account_id, role) values ($1,$2,$3)
+       on conflict (business_id, account_id) do update set role = excluded.role`,
+      [req.params.id, account.rows[0].id, String(req.body?.role || 'staff').slice(0, 40)],
+    );
+    return { member: { ...account.rows[0], role: String(req.body?.role || 'staff') } };
+  });
+
+  app.delete('/v1/businesses/:id/members/:accountId', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const owner = await q('select id from businesses where id = $1 and account_id = $2', [req.params.id, me.id]);
+    if (!owner.rows[0]) return fail(reply, 403, 'forbidden', 'Only the business owner can manage access.');
+    await q('delete from business_members where business_id = $1 and account_id = $2', [req.params.id, req.params.accountId]);
+    return { removed: true };
   });
 
   /* ------------------------------------------------------------- sync */
@@ -249,7 +328,7 @@ export default async function syncRoutes(app) {
     await tx(async (c) => {
       for (const op of ops) {
         if (!op?.opId || !op?.kind || !op?.device) {
-          rejected.push({ opId: op?.opId || null, reason: 'malformed' });
+          rejected.push({ opId: op?.opId || null, reason: 'malformed', note: 'Missing opId, kind, or device.' });
           continue;
         }
         try {
@@ -269,7 +348,8 @@ export default async function syncRoutes(app) {
           accepted.push(op.opId);
         } catch (e) {
           req.log.warn({ err: e.message, kind: op.kind }, 'op rejected');
-          rejected.push({ opId: op.opId, reason: e.code === '23503' ? 'unknownBranch' : 'malformed' });
+          const reason = e.code === '23503' ? 'unknownBranch' : 'malformed';
+          rejected.push({ opId: op.opId, reason, note: e.message || 'The server rejected this operation.' });
         }
       }
     });
