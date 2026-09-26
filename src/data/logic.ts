@@ -625,15 +625,6 @@ export function runRecurring(d: DB, id: string, when = new Date()): Sale | null 
   return sale;
 }
 
-export function flushQueue(d: DB): number {
-  const n = d.queue.length;
-  if (!n) return 0;
-  d.sales.forEach((s) => { if (!s.synced) s.synced = true; });
-  d.queue = [];
-  audit(d, 'Sync queue flushed', n + ' item(s)');
-  return n;
-}
-
 /* ============================================================
    Instalment plans — reference instalSchedule (11683), the plan
    built in submitDoc (11739) and A.payInstal (11909).

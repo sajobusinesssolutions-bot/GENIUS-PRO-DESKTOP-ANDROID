@@ -10,6 +10,7 @@ import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useSyncRun } from '../data/useSyncRun';
 import { Card, Cap, KV, KVNode, Button, Chip, EmptyState, IconTile } from '../components/ui';
 import { useGo } from '../nav/navigate';
 import { ageOfDays, plural, fmtDate } from '../data/helpers';
@@ -33,7 +34,9 @@ export { default as SettingsScreen } from './SettingsScreen';
 
 export function DataToolsScreen() {
   const { colors } = useTheme();
-  const { db, startFinancialYear, flushQueue, restoreBackup, addProduct, setSetting } = useAppData();
+  const { db, startFinancialYear, restoreBackup, addProduct, setSetting } = useAppData();
+  const { run } = useSyncRun();
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     if (!db) return;
@@ -146,6 +149,16 @@ export function DataToolsScreen() {
     'text/csv',
   );
 
+  const sendWaiting = async () => {
+    setSyncing(true);
+    try {
+      const r = await run('manual');
+      Alert.alert('Sync', r.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, gap: 14 }}>
       <View>
@@ -175,7 +188,7 @@ export function DataToolsScreen() {
         <KV label="Archived financial years" value={String(db.archivedFinancialYears?.length || 0)} />
         <KV label="Current year" value={db.financialYear?.start ? db.financialYear.start.slice(0, 10) : 'Not started'} last />
       </Card>
-      <Button label="Send anything waiting" onPress={() => { flushQueue(); Alert.alert('Sync', 'The queue has been flushed.'); }} />
+      <Button label="Send anything waiting" onPress={sendWaiting} loading={syncing} />
       <Button
         label="Start a new financial year"
         onPress={() => Alert.alert(

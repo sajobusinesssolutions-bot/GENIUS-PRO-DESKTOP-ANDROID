@@ -656,22 +656,22 @@ describe('recurring invoice due calculation', () => {
   });
 });
 
-describe('offline queue flush', () => {
-  it('queues sales made while offline and marks them synced on flush', () => {
+describe('the offline queue', () => {
+  // flushQueue() used to live here: it marked every waiting sale "synced" and
+  // emptied d.queue without ever contacting a server. That was fine before a
+  // real sync backend existed, but d.queue is now the actual outbound buffer
+  // syncClient.ts pushes (see docs/SYNC_BACKEND.md) — clearing it locally
+  // only ever pretended the books had been sent. It has been removed; only
+  // a real push (syncClient.pushQueue, acknowledged per operation) may drop
+  // an entry from the queue now.
+  it('queues a sale made while offline rather than losing it', () => {
     const d = makeDb();
     d.session.online = false;
     const sale = logic.commitSale(d, { lines: [{ productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty: 1, price: 200, cost: 100, taxRate: 18 }], partyId: null, method: 'cash', discount: 0 });
     expect(sale.synced).toBe(false);
     expect(d.queue.length).toBe(1);
-    const flushed = logic.flushQueue(d);
-    expect(flushed).toBe(1);
-    expect(d.queue.length).toBe(0);
-    expect(d.sales.find((s) => s.id === sale.id)!.synced).toBe(true);
-  });
-
-  it('does nothing when the queue is already empty', () => {
-    const d = makeDb();
-    expect(logic.flushQueue(d)).toBe(0);
+    expect(d.queue[0].kind).toBe('sale');
+    expect(d.queue[0].ref).toBe(sale.id);
   });
 });
 
