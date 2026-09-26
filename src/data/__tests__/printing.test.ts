@@ -14,7 +14,12 @@ jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn(), shareAsync: jest
 jest.mock('expo-intent-launcher', () => ({ startActivityAsync: jest.fn() }));
 jest.mock('expo-file-system', () => ({
   File: jest.fn().mockImplementation((a: any, b?: string) => {
-    const uri = typeof a === 'string' ? a : (b || 'file:///tmp/generated.pdf');
+    // new File(uri) and new File(directory, name) both happen in real code
+    // (docPrint.ts and exporters.ts both move a printed PDF into Paths.cache
+    // this way) — the mock needs to join the two, not just fall back to a
+    // fixed placeholder, or a moved file's URI never actually reflects its
+    // new name and every content:// assertion downstream is trivially wrong.
+    const uri = typeof a === 'string' ? a : ((a?.uri || 'file:///tmp') + '/' + (b || 'generated.pdf'));
     const file = {
       base64: async () => (uri.includes('missing') ? Promise.reject(new Error('gone')) : 'QUJD'),
       exists: false,
@@ -32,7 +37,7 @@ import { docHtml, qrSvg, inlineImage, pageSize, numberToWords, DocMeta } from '.
 import { printOptsFor, docKindOf, paperOf } from '../printSetup';
 import { defaultTemplates, defaultTemplateFor } from '../defaults';
 import { tagHtml } from '../../screens/PriceTagScreen';
-import { preview, reportShareMessage, shareTo } from '../exporters';
+import { preview, reportShareMessage, shareTo, toPdf } from '../exporters';
 import * as Print from 'expo-print';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { Platform } from 'react-native';
@@ -278,6 +283,43 @@ describe('price tags', () => {
 
   it('uses the item\'s own barcode when it has one', () => {
     expect(tagHtml([{ p, n: 1 }], style, 'Shop', money, 'A4')).toContain('6001234567890');
+  });
+});
+
+describe('report PDF — where the file actually ends up', () => {
+  // Print.printToFileAsync() writes into expo-print's own cache directory,
+  // and on Android a share intent is not always allowed to read a file
+  // there — Sharing.shareAsync() rejected it outright with "Not allowed to
+  // read file under given URL" when toPdf() handed that URI straight over.
+  // docPrint.ts's shareDoc() already solved this for documents by moving
+  // the file into this app's own File-API cache directory first; toPdf()
+  // never got the same treatment.
+  const rep = { title: 'Daily sales', cols: [{ h: 'Date' }], rows: [['2026-09-10']] };
+
+  it('moves the printed file into this app\'s own cache directory rather than handing over the print engine\'s own path', async () => {
+    const uri = await toPdf(rep);
+    expect(uri).toContain('file:///cache/');
+    expect(uri).not.toBe('file:///tmp/report.pdf'); // the raw path Print.printToFileAsync returned
+  });
+
+  it('names the moved file after the report, not the print engine\'s random name', async () => {
+    const uri = await toPdf(rep);
+    expect(uri).toMatch(/daily-sales-\d{8}-\d{4}\.pdf$/);
+  });
+
+  it('falls back to the print engine\'s own path rather than losing the file if the move fails', async () => {
+    const fs = require('expo-file-system');
+    const original = fs.File;
+    fs.File = jest.fn().mockImplementation(() => ({
+      exists: false,
+      move: () => { throw new Error('Not allowed to read file under given URL'); },
+    }));
+    try {
+      const uri = await toPdf(rep);
+      expect(uri).toBe('file:///tmp/report.pdf');
+    } finally {
+      fs.File = original;
+    }
   });
 });
 

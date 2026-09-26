@@ -142,9 +142,24 @@ export async function toPdf(result: ReportResult, meta: ExportMeta = {}): Promis
   // PDF reports are shared documents, so keep them on a predictable A4 page
   // instead of letting the platform choose a device-specific paper size.
   const printed = await Print.printToFileAsync({ html: toHtml(result, meta), width: 595, height: 842 });
-  // Expo Print already writes to its app-cache directory. Moving that file can
-  // fail on Android because the print provider URI may not grant read access.
-  return printed?.uri || '';
+  const uri = printed?.uri || '';
+  if (!uri) return '';
+  // Expo Print writes to its own cache directory, and on Android that URI is
+  // not always one another app's share intent is allowed to read — exactly
+  // the "Not allowed to read file under given URL" Sharing.shareAsync() threw
+  // when handed it directly. docPrint.ts's shareDoc() already solved this for
+  // documents by moving the file into this app's own File-API cache
+  // directory first, which is one that is readable; reports never got the
+  // same treatment. A move that fails is not worth losing the file over, so
+  // it falls back to the original path exactly as before.
+  try {
+    const dest = new File(Paths.cache, fileNameFor(result, 'pdf'));
+    if (dest.exists) dest.delete();
+    new File(uri).move(dest);
+    return dest.uri;
+  } catch {
+    return uri;
+  }
 }
 
 /** Open the system print/preview dialog. */
