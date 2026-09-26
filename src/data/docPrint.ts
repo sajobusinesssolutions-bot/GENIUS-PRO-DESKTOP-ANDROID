@@ -40,6 +40,8 @@ export interface DocMeta {
   partyName?: string;
   partyPhone?: string;
   partyAddress?: string;
+  /** Settings → Currency's full name, e.g. "Ugandan shilling" — for "Amount in words" on a boxed A4 invoice. */
+  currencyName?: string;
   lines: DocLine[];
   subtotal: number;
   discount?: number;
@@ -63,6 +65,34 @@ function esc(s: unknown): string {
 
 function safeName(s: string) {
   return s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60) || 'document';
+}
+
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+  'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+const SCALES = ['', ' Thousand', ' Million', ' Billion'];
+
+function threeDigitsToWords(n: number): string {
+  const parts: string[] = [];
+  if (n >= 100) { parts.push(ONES[Math.floor(n / 100)] + ' Hundred'); n %= 100; }
+  if (n >= 20) parts.push(TENS[Math.floor(n / 10)] + (n % 10 ? '-' + ONES[n % 10] : ''));
+  else if (n > 0) parts.push(ONES[n]);
+  return parts.join(' ');
+}
+
+/** A whole number, spelled out — "Amount Chargeable (in words)" on a boxed invoice. */
+export function numberToWords(value: number): string {
+  let n = Math.round(Math.abs(value));
+  if (n === 0) return 'Zero';
+  const chunks: string[] = [];
+  let scale = 0;
+  while (n > 0) {
+    const chunk = n % 1000;
+    if (chunk) chunks.unshift(threeDigitsToWords(chunk) + SCALES[scale]);
+    n = Math.floor(n / 1000);
+    scale += 1;
+  }
+  return chunks.join(' ');
 }
 
 /* ================================================================
@@ -224,7 +254,128 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
     <div class="foot">${esc(d.footer || 'Thank you for your business')}</div>`;
 
   let doc: string;
-  if (paper === 'A4') {
+  if (paper === 'A4' && boxed) {
+    // The classic boxed ledger invoice — a ruled grid, "Amount Chargeable in
+    // words", a declaration and a signature line, the shape a Tally or GST
+    // invoice has had for decades. HSN/SAC codes and a CGST/SGST-by-rate
+    // breakdown are deliberately not attempted: those need an HSN field on
+    // the product and per-rate tax grouping, neither of which exist yet.
+    const sameUnit = d.lines.every((l) => l.unit === d.lines[0]?.unit);
+    const totalQty = sameUnit ? d.lines.reduce((s, l) => s + l.qty, 0) : null;
+    const rows = d.lines.map((l, i) => `<tr>
+      <td class="n">${i + 1}</td>
+      <td class="l">${esc(l.name)}${batchSub(l)}</td>
+      <td class="r">${l.qty} ${esc(l.unit || '')}</td>
+      <td class="r">${esc(money(l.price))}</td>
+      <td class="r">${esc(l.unit || '')}</td>
+      <td class="r">${esc(money(l.qty * l.price))}</td>
+    </tr>`).join('');
+    const footRows = [
+      d.discount ? `<tr><td colspan="5" class="l">Discount</td><td class="r">− ${esc(money(d.discount))}</td></tr>` : '',
+      d.charges ? `<tr><td colspan="5" class="l">Additional charges</td><td class="r">${esc(money(d.charges))}</td></tr>` : '',
+      d.tax && showTax ? `<tr><td colspan="5" class="l">VAT</td><td class="r">${esc(money(d.tax))}</td></tr>` : '',
+      `<tr class="total"><td colspan="2" class="l">Total</td><td class="r">${totalQty !== null ? totalQty + ' ' + esc(d.lines[0]?.unit || '') : ''}</td><td></td><td></td><td class="r">${esc(money(d.total))}</td></tr>`,
+    ].join('');
+    doc = `<div class="doc a4 classic">
+      <div class="ttl">${esc(d.kind)}</div>
+      <table class="frame">
+        <tr>
+          <td class="cell wide">
+            ${showLogo && d.logo ? `<img class="logo" src="${esc(d.logo)}" />` : ''}
+            <div class="fname">${esc(d.firmName)}</div>
+            ${firmLines}
+          </td>
+          <td class="cell">
+            <table class="kv2">
+              <tr><td class="k">Invoice No.</td><td class="v">${esc(d.no)}</td></tr>
+              <tr><td class="k">Dated</td><td class="v">${esc(date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }))}</td></tr>
+              ${d.method ? `<tr><td class="k">Mode/Terms of Payment</td><td class="v">${esc(d.method)}</td></tr>` : ''}
+            </table>
+          </td>
+        </tr>
+        ${showParty && d.partyName ? `<tr>
+          <td class="cell">
+            <div class="lbl">${partyLabel}</div>
+            <b>${esc(d.partyName)}</b>
+            ${d.partyPhone ? `<div>${esc(d.partyPhone)}</div>` : ''}${d.partyAddress ? `<div>${esc(d.partyAddress)}</div>` : ''}
+          </td>
+          <td class="cell"></td>
+        </tr>` : ''}
+      </table>
+      ${head ? `<div class="head">${esc(head).replace(/\n/g, '<br/>')}</div>` : ''}
+      <table class="items">
+        <thead><tr><th class="n">Sl No.</th><th class="l">Description of Goods</th><th class="r">Quantity</th><th class="r">Rate</th><th class="r">per</th><th class="r">Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot>${footRows}</tfoot>
+      </table>
+      <table class="words"><tr>
+        <td class="l"><b>Amount Chargeable (in words)</b><br/>${esc(d.currencyName || 'Amount')} ${esc(numberToWords(d.total))} Only</td>
+        <td class="r">E. &amp; O.E</td>
+      </tr></table>
+      <table class="bfoot"><tr>
+        <td class="cell">
+          ${d.firmTin ? `<div>Company's TIN : ${esc(d.firmTin)}</div>` : ''}
+          ${d.note ? `<div>Note: ${esc(d.note)}</div>` : ''}
+          ${d.terms ? `<div>Terms: ${esc(d.terms)}</div>` : ''}
+          <div class="decl"><b>Declaration</b><br/>We declare that this invoice shows the actual price of
+            the goods described and that all particulars are true and correct.</div>
+        </td>
+        <td class="cell right">
+          <div>for ${esc(d.firmName)}</div>
+          ${d.signature ? `<img class="signimg" src="${esc(d.signature)}" />` : '<div style="height:34px"></div>'}
+          <div class="signline">Authorised Signatory</div>
+        </td>
+      </tr></table>
+      ${showServed && d.servedBy ? `<div class="foot">Served by ${esc(d.servedBy)}</div>` : ''}
+      ${code}
+      ${foot ? `<div class="foot">${esc(foot).replace(/\n/g, '<br/>')}</div>` : ''}
+      <div class="foot">This is a Computer Generated ${esc(d.kind)}</div>
+    </div>`;
+  } else if (paper === 'A4' && accent) {
+    // The clean modern invoice — a coloured bar, a boxed grey "Bill to /
+    // Details" panel, a borderless item table. QuickBooks is the reference;
+    // subtotal/tax/total mirror what this app already computes, since
+    // shipping is not a concept this app has.
+    const rows = d.lines.map((l) => `<tr>
+      <td class="l">${esc(l.name)}${batchSub(l)}</td>
+      <td class="r">${l.qty}${l.unit ? ' ' + esc(l.unit) : ''}</td>
+      <td class="r">${esc(money(l.price))}</td>
+      <td class="r">${esc(money(l.qty * l.price))}</td>
+    </tr>`).join('');
+    doc = `<div class="doc a4 modern" style="--accent: ${esc(accent)}">
+      <div class="bar"></div>
+      <div class="mtop">
+        <div class="mfirm">
+          ${showLogo && d.logo ? `<img class="logo" src="${esc(d.logo)}" />` : ''}
+          <div class="fname">${esc(d.firmName)}</div>
+          ${firmLines}
+        </div>
+        <div class="mtitle">${esc(d.kind)}</div>
+      </div>
+      ${head ? `<div class="head">${esc(head).replace(/\n/g, '<br/>')}</div>` : ''}
+      <table class="mgrid"><tr>
+        <td class="cell">
+          ${showParty && d.partyName ? `<div class="lbl">${partyLabel}</div><b>${esc(d.partyName)}</b>
+            ${d.partyPhone ? `<div>${esc(d.partyPhone)}</div>` : ''}${d.partyAddress ? `<div>${esc(d.partyAddress)}</div>` : ''}` : ''}
+        </td>
+        <td class="cell">
+          <div class="kv"><span>Invoice #</span><b>${esc(d.no)}</b></div>
+          <div class="kv"><span>Invoice date</span><span>${esc(date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }))}</span></div>
+          ${d.method ? `<div class="kv"><span>Payment</span><span>${esc(d.method)}</span></div>` : ''}
+        </td>
+      </tr></table>
+      <table class="mitems">
+        <thead><tr><th class="l">Product/service</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="msum">
+        <div class="mnote">${d.note ? esc(d.note) : 'Thank you for your business.'}</div>
+        <table>${totals}</table>
+      </div>
+      ${showServed && d.servedBy ? `<div class="foot">Served by ${esc(d.servedBy)}</div>` : ''}
+      ${endMatter}
+    </div>`;
+  } else if (paper === 'A4') {
     const rows = d.lines.map((l, i) => `<tr>
       <td class="n">${i + 1}</td>
       <td class="l">${esc(l.name)}${batchSub(l)}</td>
@@ -232,8 +383,7 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
       <td class="r">${esc(money(l.price))}</td>
       <td class="r">${esc(money(l.qty * l.price))}</td>
     </tr>`).join('');
-    doc = `<div class="doc a4${boxed ? ' boxed' : ''}"${accent ? ` style="--accent: ${esc(accent)}"` : ''}>
-      ${accent ? '<div class="bar"></div>' : ''}
+    doc = `<div class="doc a4">
       <div class="top">
         <div class="firm">
           ${showLogo && d.logo ? `<img class="logo" src="${esc(d.logo)}" />` : ''}
@@ -289,7 +439,6 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
   const css = paper === 'A4' ? `
   @page { size: A4; margin: 14mm; }
   body { font-size: ${base}px; }
-  .bar { height: 6px; border-radius: 3px; background: var(--accent); margin-bottom: 16px; }
   .top { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
   .firm { display: flex; gap: 14px; align-items: flex-start; }
   .firm .logo { max-width: 38mm; max-height: 24mm; }
@@ -318,15 +467,52 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
   .sign { margin-top: 26px; text-align: right; }
   .sign img { max-width: 50mm; max-height: 18mm; }
   .signline { border-top: 1px solid #999; width: 55mm; margin-left: auto; margin-top: 2px; padding-top: 3px; text-align: center; color: #666; font-size: 10px; }
-  /* "boxed": the classic ledger look — every block ruled off, like a printed
-     account book page, rather than the airy default. */
-  .boxed .top { border: 1.4px solid #000; padding: 10px 14px; }
-  .boxed .party { background: none; border: 1.4px solid #000; border-radius: 0; border-top: none; margin-top: 0; }
-  .boxed table.lines { border: 1.4px solid #000; margin-top: 0; }
-  .boxed table.lines th, .boxed table.lines td { border: 1px solid #000; }
-  .boxed .sum { justify-content: stretch; }
-  .boxed .sum table { width: 100%; border: 1.4px solid #000; border-top: none; }
-  .boxed .sum td { padding: 4px 10px; }`
+  /* "classic": a ruled ledger grid — Tally, or a GST tax invoice, the shape
+     printed accounting software has used for decades. Every block is its
+     own boxed cell rather than the airy default's open layout. */
+  .classic { font-size: 11px; }
+  .classic .ttl { text-align: center; font-weight: 800; font-size: 15px; letter-spacing: 1px; margin-bottom: 8px; }
+  .classic table.frame { width: 100%; border-collapse: collapse; border: 1.3px solid #000; margin-bottom: 0; }
+  .classic table.frame .cell { border: 1px solid #000; padding: 8px 10px; vertical-align: top; width: 50%; }
+  .classic .fname { font-weight: 800; font-size: 14px; margin-bottom: 2px; }
+  .classic table.kv2 { width: 100%; border-collapse: collapse; }
+  .classic table.kv2 td { padding: 1px 0; font-size: 10.5px; }
+  .classic table.kv2 .k { color: #444; }
+  .classic table.kv2 .v { text-align: right; font-weight: 700; }
+  .classic .lbl { font-size: 9.5px; text-transform: uppercase; letter-spacing: .6px; color: #555; margin-bottom: 2px; }
+  .classic table.items { width: 100%; border-collapse: collapse; border: 1.3px solid #000; border-top: none; }
+  .classic table.items th { font-size: 10px; text-transform: uppercase; border: 1px solid #000; padding: 5px 6px; background: #f2f2f2; }
+  .classic table.items td { border: 1px solid #000; padding: ${6 * pad}px 6px; vertical-align: top; }
+  .classic table.items .n { width: 30px; text-align: center; }
+  .classic table.items .total td { font-weight: 800; }
+  .classic table.words { width: 100%; border-collapse: collapse; border: 1.3px solid #000; border-top: none; }
+  .classic table.words td { padding: 6px 10px; font-size: 10.5px; vertical-align: top; }
+  .classic table.bfoot { width: 100%; border-collapse: collapse; border: 1.3px solid #000; border-top: none; margin-bottom: 10px; }
+  .classic table.bfoot .cell { border-right: 1px solid #000; padding: 8px 10px; width: 60%; font-size: 10px; line-height: 15px; vertical-align: bottom; }
+  .classic table.bfoot .cell.right { border-right: none; text-align: center; width: 40%; }
+  .classic .decl { margin-top: 8px; }
+  .classic .signimg { max-width: 34mm; max-height: 14mm; }
+  .classic .signline { margin-top: 4px; font-size: 10px; }
+  .classic .foot { font-size: 9.5px; }
+  /* "modern": a coloured bar, a boxed grey info panel, a borderless table —
+     the shape a clean cloud-invoicing tool like QuickBooks uses. */
+  .modern .bar { height: 7px; background: var(--accent); margin-bottom: 18px; }
+  .modern .mtop { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+  .modern .mfirm .logo { max-width: 34mm; max-height: 20mm; margin-bottom: 6px; }
+  .modern .fname { font-size: 17px; font-weight: 800; }
+  .modern .mtitle { font-size: 22px; font-weight: 800; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+  .modern table.mgrid { width: 100%; border-collapse: collapse; margin-top: 22px; background: #f6f6f6; border-radius: 6px; overflow: hidden; }
+  .modern table.mgrid .cell { padding: 12px 16px; vertical-align: top; width: 50%; font-size: 11.5px; }
+  .modern .lbl { font-size: 9.5px; text-transform: uppercase; letter-spacing: .6px; color: #777; margin-bottom: 3px; }
+  .modern .kv { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; font-size: 11px; }
+  .modern table.mitems { width: 100%; border-collapse: collapse; margin-top: 20px; }
+  .modern table.mitems th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #666;
+    border-bottom: 1.5px solid var(--accent); padding: 6px 4px; }
+  .modern table.mitems td { border-bottom: 1px solid #eee; padding: ${7 * pad}px 4px; vertical-align: top; }
+  .modern .msum { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 14px; gap: 20px; }
+  .modern .mnote { flex: 1; font-size: 10.5px; color: #555; }
+  .modern .msum table { width: 65mm; border-collapse: collapse; font-size: 12px; }
+  .modern .msum td { padding: 3px 0; }`
   : `
   @page { size: ${narrow ? 58 : 80}mm auto; margin: ${narrow ? 1.5 : 3}mm; }
   body { font-size: ${base}px; }
