@@ -77,6 +77,121 @@ function ToggleRow({ label, note, value, onChange, last }: {
 }
 
 /**
+ * An A4 template used to preview as the exact same narrow receipt-shaped card
+ * as an 80mm roll — same width, same single centred column — which is not
+ * what an A4 invoice looks like on paper, and not what docHtml() actually
+ * produces for one (see the classic/modern layouts there). This mocks the
+ * real shape instead: a wide page with a firm/invoice-details header row,
+ * a ruled item grid for "classic", or a coloured bar and a grey details
+ * panel for "modern".
+ */
+function A4Preview({ tpl }: { tpl?: PrintTemplate }) {
+  const { colors } = useTheme();
+  const { db } = useAppData();
+  if (!db) return null;
+  const s = db.sales.filter((x) => x.status !== 'void').slice(-1)[0];
+  const boxed = !!tpl?.boxed;
+  const accent = tpl?.accentColor;
+  const partyName = s?.partyId ? db.parties.find((p) => p.id === s.partyId)?.name : undefined;
+  const lines = (s?.lines || []).slice(0, 2);
+
+  if (!s) {
+    return (
+      <View style={{ width: 320, alignSelf: 'center', padding: 20, alignItems: 'center' }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Nothing sold yet</Text>
+      </View>
+    );
+  }
+
+  const money = (n: number) => money0(n);
+  const row = (name: string, qty: number, price: number) => (
+    <View key={name} style={{ flexDirection: 'row', marginBottom: boxed ? 0 : 5, borderBottomWidth: boxed ? 1 : 0, borderBottomColor: '#000' }}>
+      <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.mono, fontSize: 9, color: '#222', padding: boxed ? 4 : 0 }}>{name}</Text>
+      <Text style={{ width: 32, textAlign: 'right', fontFamily: fonts.mono, fontSize: 9, color: '#222', padding: boxed ? 4 : 0 }}>{qty}</Text>
+      <Text style={{ width: 58, textAlign: 'right', fontFamily: fonts.mono, fontSize: 9, color: '#222', padding: boxed ? 4 : 0 }}>{money(qty * price)}</Text>
+    </View>
+  );
+
+  return (
+    <View style={{
+      width: 320, alignSelf: 'center', backgroundColor: '#fff',
+      borderWidth: boxed ? 1.6 : 1, borderColor: boxed ? '#000' : colors.lineHard,
+      borderRadius: boxed ? 2 : 6, padding: 14,
+    }}>
+      {accent ? <View style={{ height: 5, borderRadius: 3, backgroundColor: accent, marginBottom: 10 }} /> : null}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: accent || '#111' }}>{db.firm.name}</Text>
+          {db.firm.address ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 8.5, color: '#666' }}>{db.firm.address}</Text> : null}
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: accent ? 14 : 10.5, color: accent || '#111', textTransform: 'uppercase' }}>
+            {accent ? 'Invoice' : 'Tax Invoice'}
+          </Text>
+          <Text style={{ fontFamily: fonts.mono, fontSize: 8.5, color: '#444' }}>{s.no}</Text>
+          <Text style={{ fontFamily: fonts.mono, fontSize: 8.5, color: '#444' }}>{fmtDate(s.ts)}</Text>
+        </View>
+      </View>
+
+      {partyName ? (
+        <View style={{
+          marginTop: 10, padding: 8, borderRadius: accent ? 6 : 0,
+          backgroundColor: accent ? colors.sunk : 'transparent',
+          borderWidth: boxed ? 1 : 0, borderColor: '#000',
+        }}>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 8, color: '#777', textTransform: 'uppercase', marginBottom: 1 }}>
+            Customer
+          </Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: '#222' }}>{partyName}</Text>
+        </View>
+      ) : null}
+
+      <View style={{ marginTop: 10, borderWidth: boxed ? 1 : 0, borderColor: '#000' }}>
+        <View style={{
+          flexDirection: 'row', paddingBottom: 4, marginBottom: 4,
+          borderBottomWidth: boxed ? 1 : 1.4, borderBottomColor: boxed ? '#000' : (accent || '#111'),
+          padding: boxed ? 4 : 0,
+        }}>
+          <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 8, color: '#555', textTransform: 'uppercase' }}>
+            {boxed ? 'Description of Goods' : 'Product/service'}
+          </Text>
+          <Text style={{ width: 32, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 8, color: '#555', textTransform: 'uppercase' }}>Qty</Text>
+          <Text style={{ width: 58, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 8, color: '#555', textTransform: 'uppercase' }}>Amount</Text>
+        </View>
+        {lines.map((l) => row(l.name, l.qty, l.price))}
+      </View>
+
+      {boxed ? (
+        <Text style={{ marginTop: 8, fontFamily: fonts.ui, fontSize: 8, color: '#333' }}>
+          <Text style={{ fontFamily: fonts.uiBold }}>Amount Chargeable (in words): </Text>
+          {(db.settings.currencyName || 'Amount')} {numberToWordsPreview(s.total)} Only
+        </Text>
+      ) : (
+        <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end' }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, color: '#111' }}>Total {money(s.total)}</Text>
+        </View>
+      )}
+
+      {boxed ? (
+        <View style={{ marginTop: 10, flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#000', paddingTop: 6 }}>
+          <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 7.5, color: '#444', lineHeight: 10.5 }}>
+            Declaration: We declare that this invoice shows the actual price of the goods described.
+          </Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 7.5, color: '#444' }}>Authorised{'\n'}Signatory</Text>
+        </View>
+      ) : null}
+
+      <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 8, color: '#999', marginTop: 10 }}>{POWERED_BY}</Text>
+    </View>
+  );
+}
+
+/** A short stand-in for numberToWords() in docPrint.ts — good enough for a settings-screen mock. */
+function numberToWordsPreview(n: number): string {
+  return Math.round(n).toLocaleString('en-US');
+}
+
+/**
  * `samplePrint()` — reference 5893, wrapped at 19660. The width drives the
  * type size, the logo/header/footer come from DB.printer, and the maker's
  * mark is printed always and cannot be switched off.
@@ -88,6 +203,16 @@ function ReceiptPreview({ template }: { template?: PrintTemplate } = {}) {
   const pr = db.printer;
   const tpl = template || templateFor('receipt');
   const paper: Paper = tpl?.paper || pr.width;
+  if (paper === 'A4') {
+    return (
+      <View style={{ gap: 8 }}>
+        <A4Preview tpl={tpl} />
+        <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>
+          A4 · {pr.copies === 1 ? 'one copy' : pr.copies + ' copies'} per bill
+        </Text>
+      </View>
+    );
+  }
   const narrow = paper === '58mm';
   const size = narrow ? 9.5 : 11.5;
   const s = db.sales.filter((x) => x.status !== 'void').slice(-1)[0];
@@ -100,19 +225,15 @@ function ReceiptPreview({ template }: { template?: PrintTemplate } = {}) {
   const showImei = !!tpl?.showImei;
   const showWarranty = !!tpl?.showWarranty;
   const showServed = !!tpl?.showServed;
-  // Only meaningful on A4 — the two things that make an invoice look like a
-  // classic ledger page (boxed) or a modern branded one (an accent colour).
-  const boxed = paper === 'A4' && !!tpl?.boxed;
-  const accent = paper === 'A4' ? tpl?.accentColor : undefined;
+  // boxed/accentColor are A4-only (see A4Preview above) — paper here is
+  // always thermal, since the A4 branch already returned.
 
   const sheet = (
     <View style={{
-      backgroundColor: '#FFFFFF', borderRadius: boxed ? 2 : 8,
-      borderWidth: boxed ? 1.6 : 1, borderColor: boxed ? '#000' : colors.lineHard,
+      backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: colors.lineHard,
       paddingVertical: 14, paddingHorizontal: narrow ? 12 : 16,
       width: narrow ? 210 : 280, alignSelf: 'center',
     }}>
-      {accent ? <View style={{ height: 4, borderRadius: 2, backgroundColor: accent, marginBottom: 8 }} /> : null}
       {!s ? (
         <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>
           Nothing sold yet
@@ -120,7 +241,7 @@ function ReceiptPreview({ template }: { template?: PrintTemplate } = {}) {
       ) : (
         <>
           {tpl?.showLogo || pr.showLogo ? (
-            <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size + 1.5, color: accent || '#111' }}>{db.firm.name}</Text>
+            <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size + 1.5, color: '#111' }}>{db.firm.name}</Text>
           ) : null}
           {pr.header ? <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{pr.header}</Text> : null}
           {showAddress ? <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{db.firm.address}</Text> : null}
