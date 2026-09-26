@@ -24,10 +24,18 @@ export interface RunOutcome {
   seq?: number;
 }
 
+/**
+ * Shared across every component that calls useSyncRun (the Sync screen and
+ * the background SyncKeeper both do), not one ref per hook instance. Two
+ * instances used to each keep their own flag, so a manual tap on the Sync
+ * screen and an automatic run from SyncKeeper never actually saw each other
+ * — both could be mid-push at once, racing to write dbRef.current.
+ */
+let syncRunning = false;
+
 export function useSyncRun() {
   const { db, setSync, dropQueued, applyRemoteOps, logAudit, licFeature } = useAppData();
   const { account } = useAuth();
-  const running = useRef(false);
   const dbRef = useRef(db);
   dbRef.current = db;
 
@@ -44,9 +52,9 @@ export function useSyncRun() {
     if (!d.sync.on) return { ok: false, sent: 0, message: 'Turn sync on first.' };
     if (!account) return { ok: false, sent: 0, message: 'Sign in to your account first.' };
     if (d.session.online === false) return { ok: false, sent: 0, message: 'This phone has no internet right now.' };
-    if (running.current) return { ok: false, sent: 0, message: 'A sync is already running.' };
+    if (syncRunning) return { ok: false, sent: 0, message: 'A sync is already running.' };
 
-    running.current = true;
+    syncRunning = true;
     try {
       const token = await accessToken();
       if (!token) return { ok: false, sent: 0, message: 'Your session has expired. Sign out and in again.' };
@@ -111,7 +119,7 @@ export function useSyncRun() {
           : 'Everything is up to date',
       };
     } finally {
-      running.current = false;
+      syncRunning = false;
     }
   }, [account, accessToken, setSync, dropQueued, applyRemoteOps, logAudit, licFeature]);
 
