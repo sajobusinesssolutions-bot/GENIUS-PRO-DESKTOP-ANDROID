@@ -96,6 +96,10 @@ export type RootStackParamList = {
   Shift: { open?: boolean; close?: boolean } | undefined;
   Settings: undefined;
   Printing: undefined;
+  PrintingPrinters: undefined;
+  PrintingTemplates: undefined;
+  PrintingServer: undefined;
+  PrintingWording: undefined;
   DataTools: { backup?: boolean } | undefined;
   Business: undefined;
   Firms: undefined;

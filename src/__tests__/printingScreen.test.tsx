@@ -28,6 +28,9 @@ const mockDb: any = {
 const mockPrintDoc = jest.fn();
 jest.mock('../data/docPrint', () => ({ printDoc: (...a: any[]) => mockPrintDoc(...a) }));
 
+const mockGo = jest.fn();
+jest.mock('../nav/navigate', () => ({ useGo: () => mockGo }));
+
 jest.mock('../data/AppDataContext', () => ({
   useAppData: () => ({
     db: mockDb,
@@ -45,19 +48,42 @@ jest.mock('../data/AppDataContext', () => ({
   useAppDataSafe: () => ({ db: mockDb }),
 }));
 
-import PrintingScreen from '../screens/PrintingScreen';
+// Printers, Templates, Print server and Wording are each their own screen
+// now (the "too many tabs" pass), not panes behind a tab row on one screen —
+// so these render the destination screens directly, the way the navigator
+// reaches them, rather than switching a tab inside PrintingScreen itself.
+import PrintingScreen, { PrintersScreen, PrintServerScreen } from '../screens/PrintingScreen';
 
 beforeEach(() => {
   mockPrintDoc.mockReset();
+  mockGo.mockReset();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   (global as any).fetch = jest.fn();
 });
 afterEach(() => { (Alert.alert as jest.Mock).mockRestore(); delete (global as any).fetch; });
 
+describe('the Printing hub', () => {
+  it('lists the four destinations rather than cramming them into tabs on one screen', () => {
+    render(<PrintingScreen />);
+    expect(screen.getByText('Printers')).toBeTruthy();
+    expect(screen.getByText('Templates')).toBeTruthy();
+    expect(screen.getByText('Print server')).toBeTruthy();
+    expect(screen.getByText('Wording')).toBeTruthy();
+  });
+
+  it('navigates to each destination as its own screen', () => {
+    render(<PrintingScreen />);
+    fireEvent.press(screen.getByText('Printers'));
+    expect(mockGo).toHaveBeenCalledWith('PrintingPrinters');
+    fireEvent.press(screen.getByText('Print server'));
+    expect(mockGo).toHaveBeenCalledWith('PrintingServer');
+  });
+});
+
 describe('"Test print"', () => {
   it('calls the real print engine for the default printer', async () => {
     mockPrintDoc.mockResolvedValue(undefined);
-    render(<PrintingScreen />);
+    render(<PrintersScreen />);
     await act(async () => {
       fireEvent.press(screen.getByText('Test print'));
     });
@@ -69,7 +95,7 @@ describe('"Test print"', () => {
 
   it('reports a real failure instead of claiming the page was queued', async () => {
     mockPrintDoc.mockRejectedValue(new Error('Printer offline'));
-    render(<PrintingScreen />);
+    render(<PrintersScreen />);
     await act(async () => {
       fireEvent.press(screen.getByText('Test print'));
     });
@@ -81,8 +107,7 @@ describe('"Test connection"', () => {
   it('actually asks the server, and reports a genuine answer', async () => {
     mockDb.printServer = { ...mockDb.printServer, host: '192.168.1.10', port: 6631, path: '/print' };
     ((global as any).fetch as jest.Mock).mockResolvedValue({ ok: true, status: 200 });
-    render(<PrintingScreen />);
-    fireEvent.press(screen.getByText('Print server'));
+    render(<PrintServerScreen />);
     await act(async () => {
       fireEvent.press(screen.getByText('Test connection'));
     });
@@ -93,8 +118,7 @@ describe('"Test connection"', () => {
   it('marks it unreachable on a real failure, not just an unchecked guess', async () => {
     mockDb.printServer = { ...mockDb.printServer, host: '192.168.1.10', port: 6631, path: '/print', status: 'unknown' };
     ((global as any).fetch as jest.Mock).mockRejectedValue(new Error('Network request failed'));
-    render(<PrintingScreen />);
-    fireEvent.press(screen.getByText('Print server'));
+    render(<PrintServerScreen />);
     await act(async () => {
       fireEvent.press(screen.getByText('Test connection'));
     });
