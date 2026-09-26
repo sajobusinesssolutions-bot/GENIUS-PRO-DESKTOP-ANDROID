@@ -349,4 +349,27 @@ describe('report export', () => {
       jest.restoreAllMocks();
     }
   });
+
+  it('carries the real reason the share sheet failed, instead of just "saved instead"', async () => {
+    // Not Android, so there is no content-URI fallback to try — this pins
+    // down that a genuine failure reports why, rather than silently landing
+    // on "no app accepted it" with the real cause thrown away.
+    const prev = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+    const sharing = require('expo-sharing');
+    jest.spyOn(sharing, 'isAvailableAsync').mockResolvedValue(true);
+    jest.spyOn(sharing, 'shareAsync').mockRejectedValue(new Error('Exposed beyond app'));
+    try {
+      const outcome = await shareTo({
+        title: 'Daily sales',
+        cols: [{ h: 'Date' }],
+        rows: [['2026-09-10']],
+      }, 'whatsapp', { firm: 'Amar Shop' });
+      expect(outcome.ok).toBe(false);
+      expect(outcome.reason).toBe('Exposed beyond app');
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: prev, configurable: true });
+      jest.restoreAllMocks();
+    }
+  });
 });

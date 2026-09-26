@@ -221,19 +221,29 @@ export default function ReportDetailScreen() {
         await preview(result, meta);
       } else if (what === 'pdf') {
         const uri = await toPdf(result, meta);
-        const ok = await shareFile(uri, 'application/pdf', result.title);
-        if (!ok) Alert.alert('Saved', 'PDF written to ' + uri);
+        const r = await shareFile(uri, 'application/pdf', result.title);
+        if (!r.ok) {
+          Alert.alert(
+            'Could not open the share sheet',
+            (r.reason ? r.reason + '\n\n' : '') + 'The PDF itself was created and saved to ' + uri + '.',
+          );
+        }
       } else if (what === 'excel') {
         const uri = await toExcel(result, meta);
-        const ok = await shareFile(
+        const r = await shareFile(
           uri,
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           result.title,
         );
-        if (!ok) Alert.alert('Saved', fileNameFor(result, 'xlsx') + ' written to your documents.');
+        if (!r.ok) {
+          Alert.alert(
+            'Could not open the share sheet',
+            (r.reason ? r.reason + '\n\n' : '') + fileNameFor(result, 'xlsx') + ' was still written to your documents.',
+          );
+        }
       } else {
         const r = await shareTo(result, 'whatsapp', meta);
-        if (!r.ok) Alert.alert('Could not share', 'No app on this phone accepted the report.');
+        if (!r.ok) Alert.alert('Could not share', r.reason || 'No app on this phone accepted the report.');
       }
       setExportOpen(false);
     } catch (e) {
