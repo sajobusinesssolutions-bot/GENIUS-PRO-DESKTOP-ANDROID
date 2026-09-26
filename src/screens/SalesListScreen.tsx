@@ -7,13 +7,11 @@
  * and more controls.
  */
 import React, { useMemo, useState } from 'react';
-import { View, FlatList, Pressable, Text } from 'react-native';
+import { View, FlatList, Pressable, Text, Alert } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
-import {
-  Empty, Badge, StatGrid, Search, FilterChips, SectionLabel, FAB, SegTabs,
-} from '../components/ui';
+import { Empty, Badge, StatGrid, Search, SectionLabel, FAB, SegTabs } from '../components/ui';
 import { AppBar, IconBtn } from '../components/AppBar';
 import { Icon, IconName } from '../components/icons';
 import PartiesScreen from './PartiesScreen';
@@ -21,9 +19,12 @@ import { DocActions, useDocBuilder } from '../components/DocActions';
 import type { DocMeta } from '../data/docPrint';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
+import { listRange, inRange } from '../data/helpers';
+import { ListFilters } from '../components/ListFilters';
 
 type Props = NativeStackScreenProps<RootStackParamList, any>;
 type Kind = 'all' | 'sale' | 'payment' | 'quote' | 'note' | 'return' | 'plan';
+const day = (n: number) => new Date(n).toISOString().slice(0, 10);
 
 interface Row {
   id: string;
@@ -35,6 +36,10 @@ interface Row {
   amount: number;
   amountTone?: string;
   badge: { label: string; tone: 'good' | 'warn' | 'danger' | 'accent' | 'neutral' };
+  userId?: string;
+  partyId?: string | null;
+  status?: string;
+  more?: { label: string; icon: 'cash' | 'clock' | 'trash'; onPress: () => void; tone?: 'accent' | 'good' | 'danger' }[];
   dim?: boolean;
   phone?: string;
   open?: () => void;
@@ -50,12 +55,18 @@ const KIND_TONE: Record<Exclude<Kind, 'all'>, 'good' | 'warn' | 'danger' | 'acce
 
 export default function SalesListScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party } = useAppData();
+  const { db, money, party, user, deleteSale, can } = useAppData();
   const { saleDoc, paymentDoc } = useDocBuilder();
 
   const [q, setQ] = useState('');
   const [kind, setKind] = useState<Kind>('all');
   const [tab, setTab] = useState<'txn' | 'parties'>('txn');
+  const initialRange = listRange('month');
+  const [from, setFrom] = useState(day(initialRange.from));
+  const [to, setTo] = useState(day(initialRange.to));
+  const [userFilter, setUserFilter] = useState('all');
+  const [partyFilter, setPartyFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const nameOf = (id: string | null | undefined) => (id ? party(id)?.name || 'Walk-in' : 'Walk-in');
   const phoneOf = (id: string | null | undefined) => (id ? party(id)?.phone : undefined);
@@ -81,8 +92,14 @@ export default function SalesListScreen({ navigation }: Props) {
             : s.due < s.total ? { label: money(s.due) + ' due', tone: 'accent' }
               : { label: 'Unpaid', tone: 'danger' },
         phone: phoneOf(s.partyId),
+        userId: s.userId, partyId: s.partyId, status: void_ ? 'void' : s.due <= 0.01 ? 'paid' : s.paid > 0 ? 'partial' : 'unpaid',
         open: () => navigation.navigate('SaleDetail', { saleId: s.id }),
         doc: () => saleDoc(s),
+        more: [
+          ...(s.due > 0.01 ? [{ label: 'Receive payment', icon: 'cash' as const, tone: 'good' as const, onPress: () => navigation.navigate('PaymentNew', { direction: 'in', partyId: s.partyId || undefined }) }] : []),
+          { label: 'Payment history', icon: 'clock' as const, tone: 'accent' as const, onPress: () => navigation.navigate('SaleDetail', { saleId: s.id }) },
+          ...(can('sales.delete') && !void_ ? [{ label: 'Delete', icon: 'trash' as const, tone: 'danger' as const, onPress: () => Alert.alert('Delete ' + s.no + '?', 'The bill will be reversed and remain in the audit trail.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => deleteSale(s.id, 'Deleted from sales overview') }]) }] : []),
+        ],
       });
     });
 
@@ -164,12 +181,39 @@ export default function SalesListScreen({ navigation }: Props) {
 
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
+    const range = { from: new Date(from + 'T00:00:00').getTime(), to: new Date(to + 'T23:59:59').getTime() };
     return rows.filter((r) => {
+      if (!inRange(r.ts, range.from, range.to)) return false;
       if (kind !== 'all' && r.kind !== kind) return false;
+      if (userFilter !== 'all' && r.userId !== userFilter) return false;
+      if (partyFilter !== 'all' && r.partyId !== partyFilter) return false;
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
       if (!needle) return true;
       return r.ref.toLowerCase().includes(needle) || r.title.toLowerCase().includes(needle);
     });
-  }, [rows, kind, q]);
+  }, [rows, kind, q, from, to, userFilter, partyFilter, statusFilter]);
+
+  const filterOptions = [
+    { v: 'all', l: 'All transactions' },
+    { v: 'status:paid', l: 'Status · Paid' }, { v: 'status:partial', l: 'Status · Partial' },
+    { v: 'status:unpaid', l: 'Status · Unpaid' }, { v: 'status:void', l: 'Status · Void' },
+    { v: 'kind:sale', l: 'Type · Bills' }, { v: 'kind:payment', l: 'Type · Payments' },
+    { v: 'kind:quote', l: 'Type · Quotations' }, { v: 'kind:return', l: 'Type · Returns' },
+    ...(db?.users || []).map((u) => ({ v: 'user:' + u.id, l: 'User · ' + u.name })),
+    ...(db?.parties || []).filter((p) => p.active).map((p) => ({ v: 'party:' + p.id, l: 'Party · ' + p.name })),
+  ];
+  const activeFilter = statusFilter !== 'all' ? 'status:' + statusFilter
+    : kind !== 'all' ? 'kind:' + kind
+      : userFilter !== 'all' ? 'user:' + userFilter
+        : partyFilter !== 'all' ? 'party:' + partyFilter : 'all';
+  function applyFilter(value: string) {
+    setStatusFilter('all'); setKind('all'); setUserFilter('all'); setPartyFilter('all');
+    const [group, selected] = value.split(':');
+    if (group === 'status') setStatusFilter(selected as any);
+    if (group === 'kind') setKind(selected as Kind);
+    if (group === 'user') setUserFilter(selected);
+    if (group === 'party') setPartyFilter(selected);
+  }
 
   const sales = db?.sales || [];
   const totalSales = sales.reduce((sum, s) => sum + (s.status === 'void' ? 0 : s.total), 0);
@@ -212,18 +256,13 @@ export default function SalesListScreen({ navigation }: Props) {
                 ]}
               />
               <Search value={q} onChange={setQ} placeholder="Search number or name" />
-              <FilterChips
-                value={kind}
-                onChange={setKind}
-                options={[
-                  { v: 'all', l: 'All ' + rows.length },
-                  { v: 'sale', l: 'Bills ' + (counts.sale || 0) },
-                  { v: 'payment', l: 'Payments ' + (counts.payment || 0) },
-                  { v: 'quote', l: 'Quotations ' + (counts.quote || 0) },
-                  { v: 'plan', l: 'Instalments ' + (counts.plan || 0) },
-                  { v: 'note', l: 'Delivery ' + (counts.note || 0) },
-                  { v: 'return', l: 'Returns ' + (counts.return || 0) },
-                ]}
+              <ListFilters
+                filterValue={activeFilter}
+                filterOptions={filterOptions}
+                onFilterChange={applyFilter}
+                from={from}
+                to={to}
+                onDateChange={(nextFrom, nextTo) => { setFrom(nextFrom); setTo(nextTo); }}
               />
               {list.length ? (
                 <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{list.length} shown</Text>}>
@@ -247,41 +286,38 @@ export default function SalesListScreen({ navigation }: Props) {
             return (
               <View
                 style={{
-                  backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 14, marginBottom: 10,
+                  backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9, marginBottom: 6,
                   shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
                   opacity: item.dim ? 0.6 : 1,
                 }}
               >
                 <Pressable onPress={item.open} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name={KIND_ICON[item.kind]} size={20} color={fg} />
+                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name={KIND_ICON[item.kind]} size={16} color={fg} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{item.title}</Text>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>{item.sub}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{item.title}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>{item.ref} · {item.sub}</Text>
                   </View>
                   {item.amount ? (
-                    <Text style={{ fontFamily: fonts.uiExtra, fontSize: 17, color: item.amountTone || colors.ink }}>
+                    <Text style={{ fontFamily: fonts.uiExtra, fontSize: 14.5, color: item.amountTone || colors.ink }}>
                       {money(item.amount)}
                     </Text>
                   ) : null}
                 </Pressable>
 
-                <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 12 }} />
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-                  <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12, color: colors.faint }}>{item.ref}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 5 }}>
                   <Badge label={item.badge.label} tone={item.badge.tone} />
                   <View style={{ flex: 1 }} />
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
-                    {new Date(item.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>
+                    {new Date(item.ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </Text>
                 </View>
 
                 {item.doc ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
                     <View style={{ flex: 1 }} />
-                    <DocActions doc={item.doc} phone={item.phone} compact />
+                      <DocActions doc={item.doc} phone={item.phone} more={item.more} compact />
                   </View>
                 ) : null}
               </View>

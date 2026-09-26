@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { scheduleSave, flushSave, saveIsPending } from '../storage';
+import { scheduleSave, flushSave, saveIsPending, validateBackup } from '../storage';
 
 jest.mock('@react-native-async-storage/async-storage', () => {
   const store: Record<string, string> = {};
@@ -68,5 +68,18 @@ describe('scheduleSave', () => {
   it('flushing with nothing queued writes nothing', async () => {
     await flushSave();
     expect(AS.setItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('validateBackup', () => {
+  it('accepts a complete book and migrates added fields', () => {
+    const result = validateBackup(JSON.stringify({ v: 1, firm: { id: 'f' }, products: [], sales: [], journal: [] }));
+    expect(result.ok).toBe(true);
+    expect(result.db?.archivedFinancialYears).toEqual([]);
+  });
+
+  it('rejects damaged or incomplete files', () => {
+    expect(validateBackup('{bad json').ok).toBe(false);
+    expect(validateBackup(JSON.stringify({ v: 1, products: [] })).reason).toMatch(/complete/);
   });
 });

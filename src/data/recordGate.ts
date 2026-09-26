@@ -23,7 +23,7 @@
 import type { DB } from './types';
 import { licState } from './logic';
 
-export type RefusalCode = 'licence' | 'offline' | 'branch';
+export type RefusalCode = 'licence' | 'offline' | 'branch' | 'period_lock';
 
 export interface Refusal {
   code: RefusalCode;
@@ -98,6 +98,19 @@ const RECORDING_STATES = Object.keys(LICENCE_WHY).filter((k) => k !== 'none');
  * the network layer.
  */
 export function mayRecord(d: DB, online: boolean, now = new Date()): Refusal | null {
+  const lock = d?.settings?.accountingLock;
+  if (lock && lock.from) {
+    const from = new Date(lock.from).getTime();
+    if (!Number.isNaN(from) && now.getTime() >= from) {
+      return {
+        code: 'period_lock',
+        title: 'Accounting period is locked',
+        why: (lock.reason || 'The current accounting period has been closed for review.') + ' No new records can be posted until the owner reopens it.',
+        route: 'Accounting',
+        action: 'Open accounting',
+      };
+    }
+  }
   // A disabled branch is closed for everyone, the owner included: nothing new
   // is recorded against it until it is enabled again under Branches.
   const here = d?.session?.warehouse && (d.warehouses || []).find((w) => w.id === d.session.warehouse);

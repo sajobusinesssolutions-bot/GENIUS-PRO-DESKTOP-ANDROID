@@ -81,16 +81,25 @@ function ToggleRow({ label, note, value, onChange, last }: {
  * type size, the logo/header/footer come from DB.printer, and the maker's
  * mark is printed always and cannot be switched off.
  */
-function ReceiptPreview() {
+function ReceiptPreview({ template }: { template?: PrintTemplate } = {}) {
   const { colors } = useTheme();
   const { db, templateFor } = useAppData();
   if (!db) return null;
   const pr = db.printer;
-  const tpl = templateFor('receipt');
+  const tpl = template || templateFor('receipt');
   const paper: Paper = tpl?.paper || pr.width;
   const narrow = paper === '58mm';
-  const size = narrow ? 10 : 11.5;
+  const size = narrow ? 9.5 : 11.5;
   const s = db.sales.filter((x) => x.status !== 'void').slice(-1)[0];
+
+  const showAddress = !!tpl?.showAddress || !!db.firm.address;
+  const showRate = !!tpl?.showRate;
+  const showUnit = !!tpl?.showUnit;
+  const showBatch = !!tpl?.showBatch;
+  const showExpiry = !!tpl?.showExpiry;
+  const showImei = !!tpl?.showImei;
+  const showWarranty = !!tpl?.showWarranty;
+  const showSalesperson = !!tpl?.showSalesperson;
 
   const sheet = (
     <View style={{
@@ -104,24 +113,33 @@ function ReceiptPreview() {
         </Text>
       ) : (
         <>
-          {pr.showLogo ? (
+          {tpl?.showLogo || pr.showLogo ? (
             <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size + 1.5, color: '#111' }}>{db.firm.name}</Text>
           ) : null}
-          {pr.header ? (
-            <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{pr.header}</Text>
-          ) : null}
-          <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{db.firm.address}</Text>
-          <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>TIN {db.firm.tin}</Text>
+          {pr.header ? <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{pr.header}</Text> : null}
+          {showAddress ? <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{db.firm.address}</Text> : null}
+          {db.firm.tin ? <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>TIN {db.firm.tin}</Text> : null}
           <View style={{ height: 1, backgroundColor: '#CCC', marginVertical: 7 }} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{s.no}</Text>
             <Text style={{ fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{fmtDate(s.ts)}</Text>
           </View>
+          {showSalesperson ? <Text style={{ fontFamily: fonts.mono, fontSize: size - 0.5, color: '#333' }}>Served by {db.users.find((u) => u.id === s.userId)?.name || 'Cashier'}</Text> : null}
           <View style={{ height: 1, backgroundColor: '#CCC', marginVertical: 7 }} />
           {s.lines.slice(0, 3).map((l, i) => (
-            <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-              <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{l.name}</Text>
-              <Text style={{ fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{money0(l.qty * l.price)}</Text>
+            <View key={i} style={{ marginBottom: 5 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{l.name}</Text>
+                <Text style={{ fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{money0(l.qty * l.price)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+                {showUnit ? <Text style={{ fontFamily: fonts.mono, fontSize: size - 1, color: '#666' }}>{l.qty} {l.unit}</Text> : null}
+                {showRate ? <Text style={{ fontFamily: fonts.mono, fontSize: size - 1, color: '#666' }}>{money0(l.price)} each</Text> : null}
+              </View>
+              {showBatch && l.batchNo ? <Text style={{ fontFamily: fonts.mono, fontSize: size - 1, color: '#666' }}>Batch {l.batchNo}</Text> : null}
+              {showExpiry && (l as any).expiry ? <Text style={{ fontFamily: fonts.mono, fontSize: size - 1, color: '#666' }}>Expiry {(l as any).expiry}</Text> : null}
+              {showImei && (l as any).serialNo ? <Text style={{ fontFamily: fonts.mono, fontSize: size - 1, color: '#666' }}>IMEI {(l as any).serialNo}</Text> : null}
+              {showWarranty && (l as any).warranty ? <Text style={{ fontFamily: fonts.mono, fontSize: size - 1, color: '#666' }}>Warranty {(l as any).warranty}</Text> : null}
             </View>
           ))}
           <View style={{ height: 1, backgroundColor: '#CCC', marginVertical: 7 }} />
@@ -141,22 +159,15 @@ function ReceiptPreview() {
           ))}
           {tpl && tpl.code !== 'none' ? (
             <View style={{ alignItems: 'center', marginTop: 10, gap: 3 }}>
-              <View style={{
-                flexDirection: 'row', gap: 1.5, height: narrow ? 30 : 38, alignItems: 'flex-end',
-              }}>
-                {/* a stand-in for the Code 128 / QR block the printer draws */}
+              <View style={{ flexDirection: 'row', gap: 1.5, height: narrow ? 30 : 38, alignItems: 'flex-end' }}>
                 {Array.from({ length: narrow ? 26 : 34 }).map((_, i) => (
                   <View key={i} style={{ width: i % 3 === 0 ? 2.4 : 1.2, height: '100%', backgroundColor: '#111' }} />
                 ))}
               </View>
-              {tpl.codeCaption ? (
-                <Text style={{ fontFamily: fonts.mono, fontSize: 8.5, color: '#666' }}>{s.no}</Text>
-              ) : null}
+              {tpl.codeCaption ? <Text style={{ fontFamily: fonts.mono, fontSize: 8.5, color: '#666' }}>{s.no}</Text> : null}
             </View>
           ) : null}
-          <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 9.5, color: '#666', marginTop: 6 }}>
-            {POWERED_BY}
-          </Text>
+          <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 9.5, color: '#666', marginTop: 6 }}>{POWERED_BY}</Text>
         </>
       )}
     </View>
@@ -198,6 +209,12 @@ function PrintersPane() {
   return (
     <View>
       <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+        <InfoBanner
+          tone="accent"
+          icon="bulb"
+          text="Choose the printer this phone should use. Tap Use this printer to make it the default."
+        />
+        <View style={{ height: 12 }} />
         <SectionLabel>Printers on this till</SectionLabel>
         <Panel flush>
           {db.printers.map((p, i) => (
@@ -227,7 +244,7 @@ function PrintersPane() {
               </Pressable>
               {p.dflt
                 ? <Icon name="check" size={20} color={colors.good} />
-                : <Button size="sm" label="Make default" onPress={() => makeDefaultPrinter(p.id)} />}
+                : <Button size="sm" label="Use this printer" onPress={() => makeDefaultPrinter(p.id)} />}
             </View>
           ))}
           {!db.printers.length ? (
@@ -256,8 +273,7 @@ function PrintersPane() {
           </View>
         </View>
         <Text style={{ fontFamily: fonts.ui, fontSize: 11, lineHeight: 16, color: colors.faint, marginTop: 9 }}>
-          The default is what every Print button uses. A printer on the server prints even when
-          this phone is not the one holding it.
+          Tap “Use this printer” once. It becomes the printer used by every Print button on this phone.
         </Text>
       </View>
 
@@ -369,9 +385,49 @@ function TemplatesPane() {
   const [pick, setPick] = useState<DocKind | null>(null);
   if (!db) return null;
 
+  const presets = [
+    { id: 'pos', name: 'POS receipt', blurb: 'Fast sales, clear totals, compact for the till', kind: 'thermal' as const },
+    { id: 'tally', name: 'Tally', blurb: 'Stock-friendly, classic ledger style', kind: 'page' as const },
+    { id: 'quickbooks', name: 'QuickBooks', blurb: 'Full invoice view with customer and tax detail', kind: 'page' as const },
+    { id: 'compact', name: 'Compact', blurb: 'Slim 58mm format for busy counters', kind: 'thermal' as const },
+  ];
+
+  const applyPreset = (preset: typeof presets[number]) => {
+    const source = db.templates.find((t) => t.paper === (preset.id === 'compact' ? '58mm' : preset.id === 'pos' ? '80mm' : 'A4') && t.name.toLowerCase().includes(preset.name.toLowerCase().split(' ')[0].toLowerCase()))
+      || db.templates.find((t) => t.paper === (preset.id === 'compact' ? '58mm' : preset.id === 'pos' ? '80mm' : 'A4'))
+      || db.templates[0];
+    setEdit({ ...source, name: preset.name, paper: preset.id === 'compact' ? '58mm' : preset.id === 'pos' ? '80mm' : 'A4', kind: preset.kind, showLogo: true, showTax: preset.id !== 'compact', showParty: preset.id !== 'compact', showServed: preset.id === 'pos', showSaved: preset.id === 'pos', showAddress: preset.id !== 'compact', showBatch: preset.id !== 'compact', showExpiry: preset.id !== 'compact', showRate: true, showUnit: true, showSalesperson: preset.id === 'quickbooks' || preset.id === 'tally' });
+  };
+
   return (
     <View>
       <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+        <InfoBanner
+          tone="accent"
+          icon="bulb"
+          text="Tap any template to preview it and change what appears on the printed document."
+        />
+        <View style={{ height: 12 }} />
+        <Cap style={{ marginBottom: 8 }}>Popular templates</Cap>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {presets.map((preset) => (
+            <Pressable
+              key={preset.id}
+              onPress={() => applyPreset(preset)}
+              style={{
+                width: '48%', backgroundColor: colors.surface, borderRadius: 14,
+                borderWidth: 1, borderColor: colors.line, padding: 12,
+                minHeight: 92,
+              }}
+            >
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{preset.name}</Text>
+              <Text style={{ marginTop: 4, fontFamily: fonts.ui, fontSize: 11, lineHeight: 15, color: colors.faint }}>{preset.blurb}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
         <Cap style={{ marginBottom: 8 }}>Templates</Cap>
         <Card>
           {db.templates.map((t, i) => {
@@ -423,11 +479,10 @@ function TemplatesPane() {
       </View>
 
       <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-        <Cap style={{ marginBottom: 8 }}>Preview</Cap>
+        <Cap style={{ marginBottom: 8 }}>Live preview</Cap>
         <ReceiptPreview />
       </View>
 
-      {/* pick the template one document kind uses */}
       <Sheet visible={!!pick} title="Which template?" icon="doc" onClose={() => setPick(null)}>
         {db.templates.map((t) => (
           <Pressable
@@ -445,7 +500,6 @@ function TemplatesPane() {
         ))}
       </Sheet>
 
-      {/* edit one template */}
       <Sheet
         visible={!!edit} title={edit?.name || 'Template'} onClose={() => setEdit(null)}
         icon="doc"
@@ -453,6 +507,13 @@ function TemplatesPane() {
       >
         {edit ? (
           <View>
+            <Cap style={{ marginBottom: 8 }}>Live preview</Cap>
+            <Card style={{ marginBottom: 14, paddingVertical: 14, backgroundColor: colors.sunk }}>
+              <ReceiptPreview template={edit} />
+              <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 8 }}>
+                This preview updates as you change the template.
+              </Text>
+            </Card>
             <Field label="What to call it" value={edit.name} onChangeText={(v) => setEdit({ ...edit, name: v })} />
             <Cap style={{ marginBottom: 8 }}>Paper</Cap>
             <View style={{ flexDirection: 'row', gap: 7, marginBottom: 12 }}>
@@ -463,10 +524,15 @@ function TemplatesPane() {
             <Cap style={{ marginBottom: 8 }}>What it shows</Cap>
             <Card style={{ marginBottom: 12 }}>
               <ToggleRow label="Business name" value={edit.showLogo} onChange={(v) => setEdit({ ...edit, showLogo: v })} />
+              <ToggleRow label="Address" value={edit.showAddress ?? false} onChange={(v) => setEdit({ ...edit, showAddress: v })} />
               <ToggleRow label="Tax line" value={edit.showTax} onChange={(v) => setEdit({ ...edit, showTax: v })} />
               <ToggleRow label="Who served" value={edit.showServed} onChange={(v) => setEdit({ ...edit, showServed: v })} />
-              <ToggleRow label="The customer" value={edit.showParty} onChange={(v) => setEdit({ ...edit, showParty: v })} />
-              <ToggleRow label="What they saved" value={edit.showSaved} onChange={(v) => setEdit({ ...edit, showSaved: v })} last />
+              <ToggleRow label="Customer" value={edit.showParty} onChange={(v) => setEdit({ ...edit, showParty: v })} />
+              <ToggleRow label="Saved / posted info" value={edit.showSaved} onChange={(v) => setEdit({ ...edit, showSaved: v })} />
+              <ToggleRow label="Item unit" value={edit.showUnit ?? true} onChange={(v) => setEdit({ ...edit, showUnit: v })} />
+              <ToggleRow label="Rate / price" value={edit.showRate ?? true} onChange={(v) => setEdit({ ...edit, showRate: v })} />
+              <ToggleRow label="Batch / expiry" value={edit.showBatch ?? false} onChange={(v) => setEdit({ ...edit, showBatch: v })} />
+              <ToggleRow label="IMEI / serial" value={edit.showImei ?? false} onChange={(v) => setEdit({ ...edit, showImei: v })} last />
             </Card>
             <Cap style={{ marginBottom: 8 }}>Code at the foot</Cap>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>

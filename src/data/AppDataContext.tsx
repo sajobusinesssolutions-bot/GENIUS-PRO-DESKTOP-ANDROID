@@ -5,7 +5,7 @@ import {
   Estimate, Challan, ChallanLine, CreditNote, CreditNoteLine, Offer, StockTake, PurchaseOrder, POLine,
   ProductionRun, RecurringInvoice, AuditLogEntry, Firm, User,
   InstalmentPlan, Printer, PrintServer, PrintTemplate, PrinterSettings, DocKind,
-  Subscription, Licence, SyncCfg, UpdateCfg, Revision, RoleDef, NumberingKey, Shift,
+  Subscription, Licence, SyncCfg, UpdateCfg, Revision, RoleDef, NumberingKey, Shift, BankStatementLine,
 } from './types';
 import { setCostHidden } from './perms';
 import { ensureRoles, setRoleRegistry, canWith, builtinRoles, allPermKeys, permCount } from './perms';
@@ -19,8 +19,10 @@ import { mayRecord, refusalMessage } from './recordGate';
 import { Refusal } from './refusal';
 import { refusalFor } from '../nav/routePerms';
 import { licenceFromToken, verifyLicenceSignature } from './licenceKey';
-import { fetchLicence } from './authApi';
+import { fetchLicence, normaliseLicenceResponse } from './authApi';
+import type { StoredOp } from './syncProtocol';
 import NetInfo from '@react-native-community/netinfo';
+import { importStatementLines, matchStatementLine, summarizeReconciliation, completeReconciliation, StatementInput, ReconciliationSummary } from './reconciliation';
 
 interface Ctx {
   db: DB | null;
@@ -42,10 +44,12 @@ interface Ctx {
   /** Empties the books if they belong to a different owner than the one signing in. */
   claimBooksFor: (email: string) => boolean;
   /** Replaces the books on this phone with a business's books from the account. */
-  adoptBook: (data: DB, o: { businessId: string; ownerEmail: string }) => void;
-  commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; userId?: string }) => Sale;
+  adoptBook: (data: DB, o: { businessId: string; ownerEmail: string; snapshotVersion?: number }) => void;
+  /** Replaces the local book with a validated backup selected on this phone. */
+  restoreBackup: (data: DB) => void;
+  commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string }) => Sale;
   voidSale: (saleId: string, reason?: string) => void;
-  createPurchase: (partyId: string, lines: PurchaseLine[], method: PayMethod, userId?: string) => Purchase;
+  createPurchase: (partyId: string, lines: PurchaseLine[], method: PayMethod, userId?: string, no?: string, when?: string) => Purchase;
   recordPayment: (o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; allocations?: Array<{ saleId: string; amount: number }>; userId?: string }) => Payment;
   recordEntry: (o: {
     direction: 'in' | 'out'; accountId: string; category: string; amount: number; note?: string;
@@ -60,10 +64,19 @@ interface Ctx {
   updateParty: (id: string, patch: Partial<Party>) => void;
   addParty: (p: Omit<Party, 'id'>) => Party;
   resetAll: () => Promise<void>;
+  startFinancialYear: (when?: Date) => logic.FinancialYearStart;
+  importBankStatement: (accountId: string, lines: StatementInput[]) => BankStatementLine[];
+  matchBankStatementLine: (lineId: string, journalId: string) => BankStatementLine | null;
+  bankReconciliationSummary: (accountId: string, from: string, to: string, closing: number) => ReconciliationSummary;
+  completeBankReconciliation: (accountId: string, from: string, to: string, closing: number) => boolean;
   setOnboarded: (v: boolean) => void;
   setSetting: (patch: Partial<DB['settings']>) => void;
   setLoyalty: (patch: Partial<DB['loyaltyRules']>) => void;
   setWarehouse: (warehouseId: string) => void;
+  lockAccountingPeriod: (reason?: string) => void;
+  unlockAccountingPeriod: () => void;
+  grantBusinessAccess: (userId: string, businessId: string, role?: 'owner' | 'manager' | 'staff') => void;
+  revokeBusinessAccess: (userId: string, businessId: string) => void;
   updateFirm: (patch: Partial<Firm>) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   addUser: (u: Omit<User, 'id'>) => User;
@@ -202,6 +215,7 @@ interface Ctx {
   setSync: (patch: Partial<SyncCfg>) => void;
   /** Drops queue entries the server has confirmed it holds. */
   dropQueued: (ids: string[]) => void;
+  applyRemoteOps: (ops: StoredOp[]) => number;
   setUpdateCfg: (patch: Partial<UpdateCfg>) => void;
   setNumbering: (mode: 'auto' | 'tag' | 'plain') => void;
   revisionsFor: (id: string) => Revision[];
@@ -395,6 +409,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ...defaultSync(till),
         on: true,
         businessId: o.businessId,
+        snapshotVersion: Number(o.snapshotVersion ?? data.sync?.snapshotVersion ?? 0),
         lastPull: new Date().toISOString(),
       };
       d.session = { ...d.session, till, userId: '', role: 'cashier' as any };
@@ -404,6 +419,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setDb(d);
       void flushSave();
       scheduleSave(d);
+    },
+    restoreBackup: (data) => {
+      const restored = migrate(JSON.parse(JSON.stringify(data))) as DB;
+      const till = dbRef.current?.session.till || restored.session.till;
+      restored.session = { ...restored.session, till };
+      restored.demo = false;
+      ensureRoles(restored);
+      dbRef.current = restored;
+      setRoleRegistry(restored.roles);
+      setDb(restored);
+      void flushSave();
+      scheduleSave(restored);
     },
     startFreshBook: (o) => {
       const fresh = emptyBook(o || {});
@@ -425,10 +452,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return sale;
     },
     voidSale: (saleId, reason) => { requireRecordable(); requirePerm('sales.void'); commit((d) => logic.voidSale(d, saleId, reason)); },
-    createPurchase: (partyId, lines, method, userId) => {
+    createPurchase: (partyId, lines, method, userId, no, when) => {
       requireRecordable();
       let pu!: Purchase;
-      commit((d) => { pu = logic.createPurchase(d, partyId, lines, method, new Date(), userId); });
+      commit((d) => { pu = logic.createPurchase(d, partyId, lines, method, when ? new Date(when) : new Date(), userId, no); });
       return pu;
     },
     recordPayment: (o) => {
@@ -525,6 +552,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setDb(fresh);
       await saveDB(fresh);
     },
+    startFinancialYear: (when) => {
+      let result!: logic.FinancialYearStart;
+      commit((d) => { result = logic.startFinancialYear(d, when || new Date()); });
+      return result;
+    },
+    importBankStatement: (accountId, lines) => {
+      let result: BankStatementLine[] = [];
+      commit((d) => { result = importStatementLines(d, accountId, lines); });
+      return result;
+    },
+    matchBankStatementLine: (lineId, journalId) => {
+      let result: BankStatementLine | null = null;
+      commit((d) => { result = matchStatementLine(d, lineId, journalId); });
+      return result;
+    },
+    bankReconciliationSummary: (accountId, from, to, closing) => {
+      const d = dbRef.current;
+      if (!d) return { statementClosing: closing, bookClosing: 0, difference: closing, matched: 0, unmatched: 0, ignored: 0 };
+      return summarizeReconciliation(d, accountId, from, to, closing);
+    },
+    completeBankReconciliation: (accountId, from, to, closing) => {
+      let result = false;
+      commit((d) => {
+        const done = completeReconciliation(d, accountId, from, to, closing, d.session.userId);
+        result = !!done;
+      });
+      return result;
+    },
     setOnboarded: (v) => commit((d) => { d.onboarded = v; }),
     setSetting: (patch) => commit((d) => { d.settings = { ...d.settings, ...patch }; }),
     setLoyalty: (patch) => commit((d) => { d.loyaltyRules = { ...d.loyaltyRules, ...patch }; }),
@@ -534,6 +589,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       commit((d) => { d.session.warehouse = warehouseId; });
     },
 
+    lockAccountingPeriod: (reason = 'Month-end close') => commit((d) => {
+      d.settings.accountingLock = { from: new Date().toISOString(), reason, lockedAt: new Date().toISOString(), approvedBy: d.session.userId };
+      audit(d, 'Accounting period locked', reason);
+    }),
+    unlockAccountingPeriod: () => commit((d) => {
+      d.settings.accountingLock = null;
+      audit(d, 'Accounting period reopened', 'The book was reopened for posting.');
+    }),
+    grantBusinessAccess: (userId, businessId, role = 'staff') => commit((d) => {
+      const exists = d.businessAccess.find((g) => g.userId === userId && g.businessId === businessId);
+      if (exists) { exists.role = role; exists.grantedAt = new Date().toISOString(); exists.grantedBy = d.session.userId; return; }
+      d.businessAccess.push({ userId, businessId, role, grantedAt: new Date().toISOString(), grantedBy: d.session.userId });
+      audit(d, 'Business access granted', 'User ' + (d.users.find((u) => u.id === userId)?.name || userId) + ' -> ' + businessId);
+    }),
+    revokeBusinessAccess: (userId, businessId) => commit((d) => {
+      d.businessAccess = d.businessAccess.filter((g) => !(g.userId === userId && g.businessId === businessId));
+      audit(d, 'Business access revoked', 'User ' + (d.users.find((u) => u.id === userId)?.name || userId) + ' removed from ' + businessId);
+    }),
     updateFirm: (patch) => commit((d) => {
       d.firm = { ...d.firm, ...patch };
       const i = d.firms.findIndex((f) => f.id === d.firm.id);
@@ -869,12 +942,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     // --- Multi-firm ---
     addFirm: (f) => {
       let nf!: Firm;
-      commit((d) => { nf = { ...f, id: uid('frm') }; d.firms.push(nf); audit(d, 'Firm added', nf.name); });
+      commit((d) => { nf = { ...f, id: uid('frm'), active: true }; d.firms.push(nf); audit(d, 'Firm added', nf.name); });
       return nf;
     },
     switchFirm: (firmId) => commit((d) => {
       const f = d.firms.find((x) => x.id === firmId);
-      if (f) { d.activeFirmId = f.id; d.firm = f; audit(d, 'Switched firm', f.name); }
+      if (f && f.active !== false) { d.activeFirmId = f.id; d.firm = f; audit(d, 'Switched firm', f.name); }
     }),
 
     // --- Correcting and removing posted documents (reference 17496-17790) ---
@@ -882,23 +955,26 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     canEditPurchase: (id) => { const d = dbRef.current; return d ? logic.canEditPurchase(d, id) : { ok: false, why: '' }; },
     canEditPayment: (id) => { const d = dbRef.current; return d ? logic.canEditPayment(d, id) : { ok: false, why: '' }; },
     editSale: (saleId, o, reason) => {
+      requireRecordable();
       let out: Sale | null = null;
       commit((d) => { out = logic.editSale(d, saleId, o, reason); });
       return out;
     },
-    deleteSale: (saleId, reason) => { let ok = false; commit((d) => { ok = logic.deleteSale(d, saleId, reason); }); return ok; },
+    deleteSale: (saleId, reason) => { requireRecordable(); let ok = false; commit((d) => { ok = logic.deleteSale(d, saleId, reason); }); return ok; },
     editPurchase: (purchaseId, o, reason) => {
+      requireRecordable();
       let out: Purchase | null = null;
       commit((d) => { out = logic.editPurchase(d, purchaseId, o, reason); });
       return out;
     },
-    deletePurchase: (purchaseId, reason) => { let ok = false; commit((d) => { ok = logic.deletePurchase(d, purchaseId, reason); }); return ok; },
+    deletePurchase: (purchaseId, reason) => { requireRecordable(); let ok = false; commit((d) => { ok = logic.deletePurchase(d, purchaseId, reason); }); return ok; },
     editPayment: (payId, patch) => {
+      requireRecordable();
       let out: Payment | null = null;
       commit((d) => { out = logic.editPayment(d, payId, patch); });
       return out;
     },
-    deletePayment: (payId, reason) => { let ok = false; commit((d) => { ok = logic.deletePayment(d, payId, reason); }); return ok; },
+    deletePayment: (payId, reason) => { requireRecordable(); let ok = false; commit((d) => { ok = logic.deletePayment(d, payId, reason); }); return ok; },
 
     // --- Audit log ---
     openBranch: (plan) => {
@@ -1073,9 +1149,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const r = await fetchLicence(access);
       const d = dbRef.current;
       if (!r.ok) return d ? logic.licState(d) : 'unknown';
+      const safe = normaliseLicenceResponse(r.value);
+      if (!safe.ok) return d ? logic.licState(d) : 'invalid';
       // a token that does not verify is ignored, never stored — forging one must buy nothing
-      if (!(await verifyLicenceSignature(r.value.token))) return d ? logic.licState(d) : 'invalid';
-      const next = licenceFromToken(r.value.token, accountId);
+      if (!(await verifyLicenceSignature(safe.token))) return d ? logic.licState(d) : 'invalid';
+      const next = licenceFromToken(safe.token, accountId);
       commit((db2) => { db2.licence = next; });
       return next.status;
     },
@@ -1113,6 +1191,56 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     // Only ids the server acknowledged are removed; anything it did not confirm stays queued.
     dropQueued: (ids) => commit((d) => { const gone = new Set(ids); d.queue = d.queue.filter((q) => !gone.has(q.id)); }),
+    applyRemoteOps: (ops) => {
+      let applied = 0;
+      commit((d) => {
+        const put = (list: any[], value: any) => {
+          if (!value?.id) return false;
+          const i = list.findIndex((x) => x.id === value.id);
+          if (i < 0) list.push(value); else list[i] = value;
+          applied++;
+          return i < 0;
+        };
+        ops.forEach((op) => {
+          const p: any = op.payload;
+          if (op.kind === 'record.upsert') {
+            if (p?.coll === 'products') {
+              const current = d.products.find((x) => x.id === p.doc?.id);
+              put(d.products, current ? { ...current, ...p.doc, stock: current.stock } : p.doc);
+            } else if (p?.coll === 'parties') {
+              put(d.parties, p.doc);
+            }
+          } else if (op.kind.startsWith('sale.')) put(d.sales, p);
+          else if (op.kind.startsWith('purchase.')) put(d.purchases, p);
+          else if (op.kind === 'entry.record') put(d.entries, p);
+          else if (op.kind === 'journal.post') put(d.journal, p);
+          else if (op.kind === 'stock.move') {
+            const fresh = put(d.movements, p);
+            const product = d.products.find((x) => x.id === p?.productId);
+            if (fresh && product && p.wh) {
+              product.stock[p.wh] = (product.stock[p.wh] || 0) + (Number(p.qty) || 0);
+              if (p.batchNo && product.batches) {
+                const batch = product.batches.find((x) => x.no === p.batchNo);
+                if (batch) batch.qty += Number(p.qty) || 0;
+              }
+            }
+          }
+          else if (op.kind === 'payment.record') {
+            const fresh = put(d.payments, p);
+            if (!fresh) return;
+            (p?.allocations || []).forEach((a: any) => {
+              const sale = d.sales.find((x) => x.id === a.docId);
+              if (sale) { sale.due = Math.max(0, sale.due - a.amount); sale.paid += a.amount; return; }
+              const purchase = d.purchases.find((x) => x.id === a.docId);
+              if (purchase) { purchase.due = Math.max(0, purchase.due - a.amount); purchase.paid += a.amount; }
+            });
+          }
+          else if (op.kind.startsWith('shift.')) put(d.shifts, p);
+          else if (op.kind === 'creditnote.create') put(d.creditNotes, p);
+        });
+      });
+      return applied;
+    },
     setUpdateCfg: (patch) => commit((d) => { d.update = { ...d.update, ...patch }; }),
     setNumbering: (mode) => commit((d) => { d.numberSafe = { mode }; }),
     revisionsFor: (id) => { const d = dbRef.current; return d ? logic.revisionsFor(d, id) : []; },

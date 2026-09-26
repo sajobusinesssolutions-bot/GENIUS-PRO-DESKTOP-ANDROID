@@ -51,8 +51,8 @@ export default function KeyboardSafe({ children, style }: { children: React.Reac
   }, []);
 
   return (
-    <View ref={outer} testID="keyboard-safe" collapsable={false} style={[{ flex: 1 }, style]}>
-      <View testID="keyboard-safe-body" style={{ flex: 1, marginBottom: lift }}>{children}</View>
+    <View ref={outer} testID="keyboard-safe" collapsable={false} style={[{ flex: 1, marginBottom: lift }, style]}>
+      <View testID="keyboard-safe-body" style={{ flex: 1 }}>{children}</View>
     </View>
   );
 }

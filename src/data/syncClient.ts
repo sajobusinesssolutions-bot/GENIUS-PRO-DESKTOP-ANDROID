@@ -40,7 +40,7 @@ export function newOpId(): string {
 
 /* ---------------------------------------------------------------- */
 
-async function call<T>(path: string, access: string, body?: unknown, method = 'POST'): Promise<Result<T>> {
+async function call<T>(path: string, access: string, body?: unknown, method = 'POST', onProgress?: (pct: number) => void): Promise<Result<T>> {
   if (!serverConfigured()) return { ok: false, error: authError('notConfigured') };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
@@ -54,7 +54,26 @@ async function call<T>(path: string, access: string, body?: unknown, method = 'P
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
-    const text = await res.text();
+    let text = '';
+    const total = Number(res.headers?.get?.('content-length') || 0);
+    if (onProgress && total > 0 && res.body?.getReader) {
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      for (;;) {
+        const part = await reader.read();
+        if (part.done) break;
+        chunks.push(part.value);
+        received += part.value.length;
+        onProgress(Math.min(95, Math.max(10, Math.round(received / total * 100))));
+      }
+      const bytes = new Uint8Array(received);
+      let offset = 0;
+      chunks.forEach((chunk) => { bytes.set(chunk, offset); offset += chunk.length; });
+      text = new TextDecoder().decode(bytes);
+    } else {
+      text = await res.text();
+    }
     const json = text ? JSON.parse(text) : {};
     if (res.ok) return { ok: true, value: json as T };
     return { ok: false, error: authError(json?.error || 'server', json?.message) };
@@ -125,27 +144,67 @@ export interface RemoteBusiness {
   created_at: string;
   snapshot_at: string | null;
   snapshot_bytes: number | null;
+  role?: 'owner' | 'manager' | 'staff';
+  active?: boolean;
+}
+
+export async function createBusiness(access: string, input: { name: string; tin?: string; phone?: string; localId: string }): Promise<Result<{ id: string; name: string; local_id: string }>> {
+  return call<{ id: string; name: string; local_id: string }>('/v1/businesses', access, input);
 }
 
 /** The businesses on this account, as the server knows them. */
-export async function listBusinesses(access: string): Promise<Result<RemoteBusiness[]>> {
-  const r = await call<{ businesses: RemoteBusiness[] }>('/v1/businesses', access, undefined, 'GET');
+export async function listBusinesses(access: string, includeInactive = false): Promise<Result<RemoteBusiness[]>> {
+  const r = await call<{ businesses: RemoteBusiness[] }>('/v1/businesses' + (includeInactive ? '?all=true' : ''), access, undefined, 'GET');
   return r.ok ? { ok: true, value: r.value.businesses || [] } : r;
+}
+
+export async function setBusinessStatus(access: string, businessId: string, active: boolean): Promise<Result<{ active: boolean }>> {
+  return call<{ active: boolean }>('/v1/businesses/' + businessId, access, { active }, 'PATCH');
+}
+
+export function filterVisibleBusinesses(list: RemoteBusiness[], currentBusinessId?: string | null, currentLocalId?: string | null): RemoteBusiness[] {
+  const current = new Set<string>();
+  if (currentBusinessId) current.add(currentBusinessId);
+  if (currentLocalId) current.add(currentLocalId);
+  return list.filter((b) => {
+    if (current.has(b.id) || (currentLocalId && (b as any).local_id === currentLocalId)) return true;
+    return !!b.snapshot_at && Number(b.snapshot_bytes || 0) > 0;
+  });
+}
+
+export interface BusinessMember { id: string; email: string; name: string; role: string; created_at?: string }
+
+export async function listBusinessMembers(access: string, businessId: string): Promise<Result<BusinessMember[]>> {
+  const r = await call<{ members: BusinessMember[] }>('/v1/businesses/' + businessId + '/members', access, undefined, 'GET');
+  return r.ok ? { ok: true, value: r.value.members || [] } : r;
+}
+
+export async function grantBusinessAccess(access: string, businessId: string, email: string, role = 'staff'): Promise<Result<BusinessMember>> {
+  const r = await call<{ member: BusinessMember }>('/v1/businesses/' + businessId + '/members', access, { email, role });
+  return r.ok ? { ok: true, value: r.value.member } : r;
+}
+
+export async function revokeBusinessAccess(access: string, businessId: string, accountId: string): Promise<Result<{ removed: boolean }>> {
+  return call<{ removed: boolean }>('/v1/businesses/' + businessId + '/members/' + accountId, access, undefined, 'DELETE');
 }
 
 /**
  * Sends a whole copy of the books, so this business can be opened on another
  * phone. The queue is left out — it is this phone's unsent work, not the books.
  */
-export async function uploadSnapshot(d: DB, access: string, wiring: Wiring): Promise<Result<{ bytes: number }>> {
-  const data = { ...d, sync: { ...d.sync, pending: [], log: [] } };
-  return call<{ bytes: number }>('/v1/businesses/' + wiring.businessId + '/snapshot', access,
-    { data, device: wiring.deviceId }, 'PUT');
+export async function uploadSnapshot(d: DB, access: string, wiring: Wiring): Promise<Result<{ bytes: number; version: number }>> {
+  const version = Number(d.sync?.snapshotVersion || 0);
+  const data = { ...d, sync: { ...d.sync, pending: [], log: [], snapshotVersion: version } };
+  return call<{ bytes: number; version: number }>('/v1/businesses/' + wiring.businessId + '/snapshot', access,
+    { data, device: wiring.deviceId, version }, 'PUT');
 }
 
 /** The last copy of a business's books that any phone sent up. */
-export async function downloadSnapshot(access: string, businessId: string): Promise<Result<{ data: DB; updatedAt: string }>> {
-  return call<{ data: DB; updatedAt: string }>('/v1/businesses/' + businessId + '/snapshot', access, undefined, 'GET');
+export async function downloadSnapshot(access: string, businessId: string, onProgress?: (pct: number) => void): Promise<Result<{ data: DB; updatedAt: string; version: number }>> {
+  onProgress?.(10);
+  const result = await call<{ data: DB; updatedAt: string; version: number }>('/v1/businesses/' + businessId + '/snapshot', access, undefined, 'GET', onProgress);
+  onProgress?.(result.ok ? 100 : 0);
+  return result;
 }
 
 /** What kind of operation a queued record becomes. */
@@ -153,6 +212,8 @@ const KIND_OF: Record<string, OpKind> = {
   sale: 'sale.commit',
   purchase: 'purchase.create',
   payment: 'payment.record',
+  'shift.open': 'shift.open',
+  'shift.close': 'shift.close',
   entry: 'entry.record',
   journal: 'journal.post',
   movement: 'stock.move',
@@ -167,6 +228,8 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
     case 'sale': return d.sales.find((x) => x.id === ref);
     case 'purchase': return d.purchases.find((x) => x.id === ref);
     case 'payment': return d.payments.find((x) => x.id === ref);
+    case 'shift.open':
+    case 'shift.close': return d.shifts.find((x) => x.id === ref);
     case 'entry': return d.entries.find((x) => x.id === ref);
     case 'journal': return d.journal.find((x) => x.id === ref);
     case 'movement': return d.movements.find((x) => x.id === ref);
@@ -223,6 +286,8 @@ export interface PushOutcome {
   sent: number;
   skipped: number;
   rejected: number;
+  /** Full rejection details from the server, including stale-revision reasons. */
+  rejections: Array<{ opId: string; reason: string; note?: string }>;
   /** The business's sequence on the server after this push. */
   seq: number;
   /** Queue entry ids that may now be dropped. */
@@ -239,10 +304,10 @@ export interface PushOutcome {
 export async function pushQueue(d: DB, access: string, wiring: Wiring): Promise<Result<PushOutcome>> {
   const { ops, skipped, queueIds } = opsFrom(d, wiring);
   if (!ops.length) {
-    return { ok: true, value: { sent: 0, skipped: skipped.length, rejected: 0, seq: d.sync?.cursor || 0, done: skipped } };
+    return { ok: true, value: { sent: 0, skipped: skipped.length, rejected: 0, rejections: [], seq: d.sync?.cursor || 0, done: skipped } };
   }
 
-  const r = await call<{ accepted: string[]; rejected: Array<{ opId: string }>; seq: number }>(
+  const r = await call<{ accepted: string[]; rejected: Array<{ opId: string; reason: string; note?: string }>; seq: number }>(
     '/v1/sync/push', access, { ops },
   );
   if (!r.ok) return r;
@@ -253,16 +318,22 @@ export async function pushQueue(d: DB, access: string, wiring: Wiring): Promise<
   // queue would otherwise shift every later one and drop the wrong records.
   ops.forEach((op, i) => { if (acceptedIds.has(op.opId)) done.push(queueIds[i]); });
 
+  const rejections = r.value.rejected || [];
   return {
     ok: true,
     value: {
       sent: acceptedIds.size,
       skipped: skipped.length,
-      rejected: (r.value.rejected || []).length,
+      rejected: rejections.length,
+      rejections,
       seq: r.value.seq,
       done,
     },
   };
+}
+
+export async function pullOps(access: string, businessId: string, since: number, limit = 500): Promise<Result<{ ops: import('./syncProtocol').StoredOp[]; seq: number; more: boolean }>> {
+  return call<{ ops: import('./syncProtocol').StoredOp[]; seq: number; more: boolean }>('/v1/sync/pull?business=' + encodeURIComponent(businessId) + '&since=' + since + '&limit=' + limit, access, undefined, 'GET');
 }
 
 /** What the server holds for this business. Used to show a real figure. */

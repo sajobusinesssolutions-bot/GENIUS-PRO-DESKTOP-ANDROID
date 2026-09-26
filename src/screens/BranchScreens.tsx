@@ -6,7 +6,7 @@
  * is derived per warehouse from the same records the rest of the app uses, so a
  * branch column and the shop total can never disagree.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -19,7 +19,10 @@ import { Icon, IconName } from '../components/icons';
 import Sheet from '../components/Sheet';
 import { useGo } from '../nav/navigate';
 import { finRange, FIN_PERIODS, inRange } from '../data/helpers';
-import type { Warehouse } from '../data/types';
+import type { DB, Warehouse } from '../data/types';
+import { useAuthSafe } from '../data/AuthContext';
+import { refreshSession } from '../data/authApi';
+import { filterVisibleBusinesses, listBusinesses, downloadSnapshot, RemoteBusiness } from '../data/syncClient';
 
 /** Owner-only gate, used by both screens in this module. */
 function useOwnerOnly() {
@@ -42,11 +45,43 @@ function Denied() {
   );
 }
 
+type AnalysisRange = { from: number; to: number };
+
+function businessMetrics(book: DB, business: { id: string; name: string; active?: boolean }, range: AnalysisRange) {
+  const sales = (book.sales || []).filter((s) => s.status !== 'void' && inRange(s.ts, range.from, range.to));
+  const revenue = sales.reduce((n, s) => n + s.total, 0);
+  const cogs = sales.reduce((n, s) => n + s.cogs, 0);
+  const due = sales.reduce((n, s) => n + Math.max(0, s.due), 0);
+  const units = sales.reduce((n, s) => n + s.lines.reduce((q, l) => q + l.qty, 0), 0);
+  let stockQty = 0;
+  let stockCost = 0;
+  let stockRetail = 0;
+  let lowLines = 0;
+  (book.products || []).forEach((p) => {
+    const q = Object.values(p.stock || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    stockQty += q;
+    stockCost += q * p.cost;
+    stockRetail += q * p.price;
+    if (p.active && q <= p.reorder) lowLines += 1;
+  });
+  const moves = (book.movements || []).filter((m) => inRange(m.ts, range.from, range.to));
+  return {
+    w: { id: business.id, name: business.name, active: business.active !== false } as Warehouse,
+    revenue, cogs, gross: revenue - cogs,
+    margin: revenue ? ((revenue - cogs) / revenue) * 100 : 0,
+    due, bills: sales.length, avg: sales.length ? revenue / sales.length : 0, units,
+    stockQty, stockCost, stockRetail, lowLines,
+    movesIn: moves.filter((m) => m.qty > 0).reduce((n, m) => n + m.qty, 0),
+    movesOut: moves.filter((m) => m.qty < 0).reduce((n, m) => n - m.qty, 0),
+  };
+}
+
 /* ================= the branch list ================= */
 
 export function BranchesScreen() {
   const { colors } = useTheme();
-  const { db, money, stockOf, updateWarehouse, removeWarehouse, setWarehouse } = useAppData();
+  const { db, money, stockOf, updateWarehouse, removeWarehouse } = useAppData();
+  const account = useAuthSafe()?.account;
   const { success, error } = useToast();
   const go = useGo();
   const owner = useOwnerOnly();
@@ -55,8 +90,21 @@ export function BranchesScreen() {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
+  const [businesses, setBusinesses] = useState<RemoteBusiness[]>([]);
 
   const branches = db?.warehouses || [];
+  const accountBranches = businesses.filter((business) => business.id !== db?.sync.businessId && (business as any).local_id !== db?.firm.id);
+
+  useEffect(() => {
+    const refresh = account?.refresh;
+    if (!refresh) return;
+    void (async () => {
+      const token = await refreshSession(refresh);
+      if (!token.ok) return;
+      const result = await listBusinesses(token.value.access, true);
+      if (result.ok) setBusinesses(result.value);
+    })();
+  }, [account?.refresh]);
 
   /** Per-branch figures, from the same records the reports read. */
   const figures = useMemo(() => {
@@ -125,7 +173,7 @@ export function BranchesScreen() {
           <ListRow
             icon="chart"
             tone="accent"
-            title="Compare branches"
+            title="Compare businesses"
             subtitle="Money, stock and trading side by side"
             onPress={() => go('BranchAnalysis')}
             last
@@ -169,11 +217,6 @@ export function BranchesScreen() {
               <DetailRow label="Bills raised" value={String(f.bills)} last />
 
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-                {!off && !here ? (
-                  <View style={{ flex: 1 }}>
-                    <Button size="sm" label="Sell from here" onPress={() => { setWarehouse(w.id); success('Now selling from ' + w.name); }} />
-                  </View>
-                ) : null}
                 <View style={{ flex: 1 }}>
                   <Button
                     size="sm"
@@ -186,6 +229,25 @@ export function BranchesScreen() {
             </Panel>
           );
         })}
+
+        {accountBranches.length ? (
+          <>
+            <SectionLabel style={{ marginTop: 8 }} right={<Badge label={accountBranches.length + ' account branches'} tone="neutral" />}>Other branches on your account</SectionLabel>
+            <Panel flush>
+              {accountBranches.map((b, i) => (
+                <ListRow
+                  key={b.id}
+                  icon="factory"
+                  tone={b.active === false ? 'neutral' : 'accent'}
+                  title={b.name}
+                  subtitle={'Account branch · ID ' + b.id.slice(0, 8).toUpperCase() + (b.active === false ? ' · Disabled' : ' · Available to compare')}
+                  badge={b.active === false ? <Badge label="Disabled" tone="neutral" /> : <Badge label="Business" tone="accent" />}
+                  last={i === businesses.length - 1}
+                />
+              ))}
+            </Panel>
+          </>
+        ) : null}
       </ScrollView>
 
       <StickyBar>
@@ -276,9 +338,44 @@ type Lens = 'finance' | 'stock' | 'trade';
 export function BranchAnalysisScreen() {
   const { colors } = useTheme();
   const { db, money } = useAppData();
+  const account = useAuthSafe()?.account;
   const owner = useOwnerOnly();
   const [lens, setLens] = useState<Lens>('finance');
   const [period, setPeriod] = useState('month');
+  const [accountBusinesses, setAccountBusinesses] = useState<RemoteBusiness[]>([]);
+  const [remoteBooks, setRemoteBooks] = useState<Record<string, DB>>({});
+
+  useEffect(() => {
+    const refresh = account?.refresh;
+    if (!refresh) return;
+    void (async () => {
+      const token = await refreshSession(refresh);
+      if (!token.ok) return;
+      const result = await listBusinesses(token.value.access);
+      if (result.ok) setAccountBusinesses(result.value);
+    })();
+  }, [account?.refresh]);
+
+  useEffect(() => {
+    if (!account?.refresh || !accountBusinesses.length) return;
+    const currentId = db?.sync.businessId;
+    const otherBusinesses = filterVisibleBusinesses(accountBusinesses, currentId, db?.firm.id)
+      .filter((business) => business.id !== currentId && !remoteBooks[business.id]);
+    if (!otherBusinesses.length) return;
+    void (async () => {
+      const token = await refreshSession(account.refresh!);
+      if (!token.ok) return;
+      const loaded = await Promise.all(otherBusinesses.map(async (business) => {
+        const snapshot = await downloadSnapshot(token.value.access, business.id);
+        return snapshot.ok ? [business.id, snapshot.value.data] as const : null;
+      }));
+      setRemoteBooks((previous) => {
+        const next = { ...previous };
+        loaded.forEach((item) => { if (item) next[item[0]] = item[1]; });
+        return next;
+      });
+    })();
+  }, [account?.refresh, accountBusinesses, db?.sync.businessId, db?.firm.id, remoteBooks]);
 
   const d = useMemo(() => {
     if (!db) return null;
@@ -325,10 +422,16 @@ export function BranchAnalysisScreen() {
       };
     });
 
-    const sum = (k: keyof typeof rows[number]) => rows.reduce((n, r) => n + (Number(r[k]) || 0), 0);
+    const localBusinessId = db.sync.businessId;
+    const remoteRows = filterVisibleBusinesses(accountBusinesses, localBusinessId, db.firm.id)
+      .filter((business) => business.id !== localBusinessId)
+      .map((business) => remoteBooks[business.id] ? businessMetrics(remoteBooks[business.id], business, R) : null)
+      .filter((row): row is NonNullable<typeof row> => !!row);
+    const allRows = [...rows, ...remoteRows];
+    const sum = (k: keyof typeof allRows[number]) => allRows.reduce((n, r) => n + (Number(r[k]) || 0), 0);
     return {
       R,
-      rows,
+      rows: allRows,
       total: {
         revenue: sum('revenue'), cogs: sum('cogs'), gross: sum('gross'), due: sum('due'),
         bills: sum('bills'), units: sum('units'),
@@ -336,13 +439,14 @@ export function BranchAnalysisScreen() {
         lowLines: sum('lowLines'), movesIn: sum('movesIn'), movesOut: sum('movesOut'),
       },
     };
-  }, [db, period]);
+  }, [db, period, accountBusinesses, remoteBooks]);
 
   if (!db) return null;
   if (!owner) return <Denied />;
   if (!d) return null;
 
-  const best = [...d.rows].sort((a, b) => b.revenue - a.revenue)[0];
+  const compareValue = (r: typeof d.rows[number]) => lens === 'stock' ? r.stockCost : lens === 'trade' ? r.bills : r.revenue;
+  const best = [...d.rows].sort((a, b) => compareValue(b) - compareValue(a))[0];
 
   /** The figures shown per branch, by lens. */
   const lines = (r: typeof d.rows[number]): Array<{ l: string; v: string; tone?: string; bold?: boolean }> => {
@@ -401,6 +505,14 @@ export function BranchAnalysisScreen() {
         <FilterChips value={period} onChange={setPeriod} options={FIN_PERIODS.map(([v, l]) => ({ v, l }))} />
 
         <View style={{ height: 16 }} />
+        {accountBusinesses.length > 1 ? (
+          <InfoBanner
+            tone="accent"
+            icon="cloud"
+            text={(accountBusinesses.length - 1) + ' other account branch' + (accountBusinesses.length - 1 === 1 ? '' : 'es') + ' are included when saved snapshots finish loading.'}
+          />
+        ) : null}
+        {accountBusinesses.length > 1 ? <View style={{ height: 12 }} /> : null}
         <Panel>
           <View style={{ alignItems: 'center', gap: 4 }}>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
@@ -412,7 +524,7 @@ export function BranchAnalysisScreen() {
               {grandHeadline}
             </Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
-              across {d.rows.length} branch{d.rows.length === 1 ? '' : 'es'}
+              across {d.rows.length} business{d.rows.length === 1 ? '' : 'es'}
             </Text>
           </View>
         </Panel>
@@ -442,13 +554,14 @@ export function BranchAnalysisScreen() {
         />
 
         <View style={{ height: 20 }} />
-        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>share of total</Text>}>
-          By branch
+        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>share of total · ranked</Text>}>
+          Branch comparison
         </SectionLabel>
 
         {d.rows.map((r) => {
           const share = shareOf(r);
           const top = best && r.w.id === best.w.id && r.revenue > 0;
+          const accountBranch = accountBusinesses.some((business) => business.id === r.w.id);
           return (
             <Panel key={r.w.id} style={{ marginBottom: 12, opacity: r.w.active === false ? 0.6 : 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -462,6 +575,7 @@ export function BranchAnalysisScreen() {
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                     <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{r.w.name}</Text>
+                    {accountBranch ? <Badge label="Account branch" tone="accent" /> : null}
                     {r.w.active === false ? <Badge label="Disabled" tone="neutral" /> : null}
                   </View>
                   <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
@@ -519,7 +633,7 @@ export function BranchAnalysisScreen() {
             <InfoBanner
               tone="neutral"
               icon="bulb"
-              text={best.w.name + ' took ' + Math.round(shareOf(best)) + '% of revenue this period. Before reading that as performance, check whether the branches carry comparable stock and opening hours.'}
+              text={best.w.name + ' took ' + Math.round(shareOf(best)) + '% of revenue this period. Before reading that as performance, check whether the businesses carry comparable stock and opening hours.'}
             />
           </View>
         ) : null}

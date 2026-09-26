@@ -13,7 +13,7 @@ import { useAuth } from './AuthContext';
 import { useSyncRun } from './useSyncRun';
 
 /** How often to try while changes are waiting. */
-const EVERY_MS = 3 * 60 * 1000;
+const EVERY_MS = 15 * 1000;
 /** A copy of the books goes up at least this often even with nothing queued. */
 const SNAPSHOT_EVERY_MS = 30 * 60 * 1000;
 
@@ -26,19 +26,27 @@ export default function SyncKeeper() {
   const on = !!db?.sync.on && !!account && !account.localOnly && licFeature('sync');
   const online = db?.session.online !== false;
   const waiting = db?.queue.length || 0;
+  const previousWaiting = useRef(waiting);
 
   const tick = useRef<() => void>(() => {});
   tick.current = () => {
     if (!ready || !on || !online) return;
     const since = Date.now() - last.current;
-    if (waiting === 0 && since < SNAPSHOT_EVERY_MS) return;
-    if (since < 20 * 1000) return;
+    if (since < 5 * 1000) return;
     last.current = Date.now();
     void run('auto');
   };
 
-  // open, sign-in, back online
-  useEffect(() => { tick.current(); }, [ready, on, online]);
+  // open, sign-in, back online, or the moment a new local operation appears
+  useEffect(() => {
+    if (!ready || !on || !online) return;
+    if (waiting > previousWaiting.current) {
+      last.current = 0;
+      void run('auto');
+    }
+    previousWaiting.current = waiting;
+    tick.current();
+  }, [ready, on, online, waiting, run]);
 
   useEffect(() => {
     const t = setInterval(() => tick.current(), EVERY_MS);

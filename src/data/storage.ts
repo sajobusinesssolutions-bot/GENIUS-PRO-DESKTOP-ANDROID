@@ -35,6 +35,10 @@ export function migrate(d: any): any {
   d.productionRuns = d.productionRuns || [];
   d.recurringInvoices = d.recurringInvoices || [];
   d.auditLog = d.auditLog || [];
+  d.businessAccess = d.businessAccess || [];
+  d.bankStatementLines = d.bankStatementLines || [];
+  d.bankReconciliations = d.bankReconciliations || [];
+  d.archivedFinancialYears = d.archivedFinancialYears || [];
   ensureCoa(d);
   (d.warehouses || []).forEach((w: any) => {
     if (w.active === undefined) w.active = true;
@@ -114,6 +118,19 @@ export async function saveDB(db: DB): Promise<void> {
     await AsyncStorage.setItem(KEY, JSON.stringify(db));
   } catch {
     // storage full / unavailable — app still works for this session
+  }
+}
+
+export function validateBackup(raw: string): { ok: boolean; reason: string; db?: DB } {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.v !== 1 || !parsed.firm || !Array.isArray(parsed.products)
+      || !Array.isArray(parsed.sales) || !Array.isArray(parsed.journal)) {
+      return { ok: false, reason: 'This file is not a complete Genius POS backup.' };
+    }
+    return { ok: true, reason: '', db: migrate(parsed) as DB };
+  } catch {
+    return { ok: false, reason: 'The backup file is damaged or is not JSON.' };
   }
 }
 

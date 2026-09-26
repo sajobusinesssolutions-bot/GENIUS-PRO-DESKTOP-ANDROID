@@ -78,7 +78,7 @@ function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: st
   };
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={() => onDismiss(toasts[0].id)}>
+    <Modal visible transparent animationType="fade" statusBarTranslucent pointerEvents="box-none" onRequestClose={() => onDismiss(toasts[0].id)}>
       <View
         pointerEvents="box-none"
         style={{ position: 'absolute', top: insets.top + 10, left: 12, right: 12 }}

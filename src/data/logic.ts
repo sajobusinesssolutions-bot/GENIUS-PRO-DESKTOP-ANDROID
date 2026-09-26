@@ -100,6 +100,7 @@ export function journal(d: DB, when: Date, memo: string, ref: string, lines: Jou
     // a branch keeps its own books, so the posting is stamped where it happened
     branch: activeBranchId(d),
   });
+  if (d.sync?.on) enqueue(d, 'journal', d.journal[d.journal.length - 1].id);
 }
 
 export function move(d: DB, productId: string, wh: string, qty: number, type: string, ref: string, when: Date, batchNo?: string, userId?: string) {
@@ -110,7 +111,9 @@ export function move(d: DB, productId: string, wh: string, qty: number, type: st
     const batch = prod.batches.find((x) => x.no === batchNo);
     if (batch) batch.qty += qty;
   }
-  d.movements.push({ id: uid('mv'), ts: iso(when), productId, wh, qty, type, ref, batchNo, userId: userId || d.session.userId });
+  const movement = { id: uid('mv'), ts: iso(when), productId, wh, qty, type, ref, batchNo, userId: userId || d.session.userId };
+  d.movements.push(movement);
+  if (d.sync?.on) enqueue(d, 'movement', movement.id);
 }
 
 export const AUDIT_KEEP = 5000;
@@ -168,10 +171,12 @@ export function stockQty(l: { qty: number; unitFactor?: number }): number {
 
 export function enqueue(d: DB, kind: string, ref: string) {
   if (d.session.online && !d.sync?.on) return;
+  if (!d.queue) d.queue = [];
+  if (d.queue.some((q) => q.kind === kind && q.ref === ref)) return;
   d.queue.push({ id: uid('q'), ts: iso(new Date()), kind, ref });
 }
 
-export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; userId?: string }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
+export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
   if (!canWith(ensureRoles(d), d.session.role, 'sales.create')) {
     throw new Error('Permission denied: sales.create');
   }
@@ -231,6 +236,10 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     additionalCharges: charges, terms: o.terms, note: o.description,
     method: o.method,
     ...(o.method === 'credit' && finalPaidNow > 0 ? { receivedVia: o.receivedVia || 'cash' } : {}),
+    ...(o.method === 'momo' || (o.method === 'credit' && o.receivedVia === 'momo') ? {
+      momoNetwork: o.momoNetwork || 'mtn',
+      momoRef: o.momoRef || undefined,
+    } : {}),
     paid: finalPaidNow + redeemed, paidAtSale: finalPaidNow + redeemed, due: finalTotal - finalPaidNow - redeemed,
     ...(useSplitTender && { methods: o.methods }),
     status: 'complete', synced: d.session.online, fiscal: d.settings.efris ? (d.session.online ? 'sent' : 'pending') : 'off',
@@ -311,7 +320,7 @@ export function voidSale(d: DB, saleId: string, reason?: string, when = new Date
   touch(d, s, 'Voided' + (reason ? ' — ' + reason : ''), 'sales');
 }
 
-export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], method: PayMethod, when = new Date(), userId?: string): Purchase {
+export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], method: PayMethod, when = new Date(), userId?: string, no?: string): Purchase {
   if (!canWith(ensureRoles(d), d.session.role, 'purchases.create')) {
     throw new Error('Permission denied: purchases.create');
   }
@@ -321,7 +330,7 @@ export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], me
   d.counters.purchase += 1;
   const total = lines.reduce((s, l) => s + l.qty * l.cost, 0);
   const wh = d.session.warehouse || 'w1';
-  const pu: Purchase = { id: uid('pur'), no: 'PUR-' + String(100000 + d.counters.purchase).slice(1), ts: iso(when), partyId, lines, total, method, paid: method === 'credit' ? 0 : total, due: method === 'credit' ? total : 0, status: 'complete', userId: userId || d.session.userId, branch: activeBranchId(d) };
+  const pu: Purchase = { id: uid('pur'), no: (no || '').trim() || 'PUR-' + String(100000 + d.counters.purchase).slice(1), ts: iso(when), partyId, lines, total, method, paid: method === 'credit' ? 0 : total, due: method === 'credit' ? total : 0, status: 'complete', userId: userId || d.session.userId, branch: activeBranchId(d) };
   d.purchases.push(pu);
   lines.forEach((l) => {
     const prod = d.products.find((x) => x.id === l.productId);
@@ -340,18 +349,21 @@ export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], me
     // a new selling price set while buying, as happens when a supplier's price moves
     if (prod && l.price !== undefined && l.price > 0) prod.price = l.price;
 
-    // A batch-tracked delivery opens its lot before the stock moves, so the
-    // quantity lands on the batch as well as the warehouse.
-    if (prod?.trackBatches && l.batchNo) {
+    const allocations = l.batchAllocations?.length
+      ? l.batchAllocations
+      : l.batchNo ? [{ batchNo: l.batchNo, qty: l.qty, expiry: l.expiry }] : [];
+    if (prod?.trackBatches && allocations.length) {
       prod.batches = prod.batches || [];
-      if (!prod.batches.some((b) => b.no === l.batchNo)) {
-        prod.batches.push({ no: l.batchNo, expiry: l.expiry || '', qty: 0 });
-      } else if (l.expiry) {
-        const b = prod.batches.find((x) => x.no === l.batchNo)!;
-        if (!b.expiry) b.expiry = l.expiry;
-      }
+      allocations.forEach((allocation) => {
+        if (allocation.qty <= 0) return;
+        const existing = prod.batches!.find((b) => b.no === allocation.batchNo);
+        if (!existing) prod.batches!.push({ no: allocation.batchNo, expiry: allocation.expiry || '', qty: 0 });
+        else if (allocation.expiry && !existing.expiry) existing.expiry = allocation.expiry;
+        move(d, l.productId, wh, allocation.qty, 'purchase', pu.no, when, allocation.batchNo);
+      });
+    } else {
+      move(d, l.productId, wh, l.qty, 'purchase', pu.no, when);
     }
-    move(d, l.productId, wh, l.qty, 'purchase', pu.no, when, prod?.trackBatches ? l.batchNo : undefined);
   });
   const jl: JournalLine[] = [{ acc: 'n_inventory', dr: total }];
   if (method === 'credit') jl.push({ acc: 'n_ap', cr: total });
@@ -417,6 +429,65 @@ export function partyBalance(d: DB, id: string): number {
   d.sales.forEach((s) => { if (s.partyId === id && s.status !== 'void') b += s.due; });
   d.purchases.forEach((x) => { if (x.partyId === id && x.status !== 'void') b -= x.due; });
   return b;
+}
+
+export interface FinancialYearStart {
+  start: string;
+  openingLines: number;
+  customersCarried: number;
+  suppliersCarried: number;
+}
+
+/**
+ * Starts a clean reporting year without destroying the shop's setup.
+ * Products retain their stock, parties retain their closing balances, and the
+ * closing ledger net is represented by one balanced opening journal entry.
+ */
+export function startFinancialYear(d: DB, when = new Date()): FinancialYearStart {
+  if (d.queue.length) throw new Error('Send the waiting sync changes before starting a new financial year.');
+  const start = iso(when);
+  const previousStart = d.financialYear?.start;
+  const balances = new Map<string, number>();
+  d.journal.forEach((entry) => entry.lines.forEach((line) => {
+    balances.set(line.acc, (balances.get(line.acc) || 0) + (line.dr || 0) - (line.cr || 0));
+  }));
+  const openingLines = [...balances.entries()]
+    .filter(([, value]) => Math.abs(value) >= 0.005)
+    .map(([acc, value]) => value > 0 ? { acc, dr: value } : { acc, cr: -value });
+
+  if (d.financialYear) {
+    if (!d.archivedFinancialYears) d.archivedFinancialYears = [];
+    d.archivedFinancialYears.push({
+      id: uid('fy'), start: d.financialYear.start, endedAt: start, openingLines,
+      customerBalances: d.parties.filter((p) => p.type === 'customer' && partyBalance(d, p.id) !== 0).length,
+      supplierBalances: d.parties.filter((p) => p.type === 'supplier' && partyBalance(d, p.id) !== 0).length,
+      stockValue: d.products.reduce((sum, p) => sum + Object.values(p.stock || {}).reduce((n, q) => n + q, 0) * p.cost, 0),
+      transactionCounts: { sales: d.sales.length, purchases: d.purchases.length, payments: d.payments.length, journal: d.journal.length },
+    });
+  }
+
+  const partyBalances = new Map(d.parties.map((party) => [party.id, partyBalance(d, party.id)]));
+  d.parties.forEach((party) => { party.openingBalance = partyBalances.get(party.id) || 0; });
+
+  d.sales = [];
+  d.purchases = [];
+  d.payments = [];
+  d.entries = [];
+  d.movements = [];
+  d.creditNotes = [];
+  d.journal = [];
+  d.shifts = [];
+  d.queue = [];
+  if (openingLines.length) journal(d, when, 'Opening balances · ' + start.slice(0, 10), 'OPENING', openingLines);
+  d.financialYear = { start, openedAt: start, previousStart };
+  audit(d, 'Financial year started', start.slice(0, 10) + ' · ' + openingLines.length + ' opening balance(s)');
+
+  return {
+    start,
+    openingLines: openingLines.length,
+    customersCarried: d.parties.filter((p) => p.type === 'customer' && (p.openingBalance || 0) !== 0).length,
+    suppliersCarried: d.parties.filter((p) => p.type === 'supplier' && (p.openingBalance || 0) !== 0).length,
+  };
 }
 
 /**
@@ -933,6 +1004,16 @@ export function touch(d: DB, rec: unknown, why: string, coll: string): void {
     why: why || '', changed, no: String(r.no || r.name || ''),
   });
   if (d.revisions.length > 600) d.revisions = d.revisions.slice(-500);
+  const kind = coll === 'sales' ? 'sale'
+    : coll === 'purchases' ? 'purchase'
+      : coll === 'payments' ? 'payment'
+        : coll === 'entries' ? 'entry'
+          : coll === 'journal' ? 'journal'
+            : coll === 'movements' ? 'movement'
+              : coll === 'creditNotes' ? 'creditNote'
+                : coll === 'products' ? 'product'
+                  : coll === 'parties' ? 'party' : '';
+  if (kind) enqueue(d, kind, r.id);
 }
 
 export function revisionsFor(d: DB, id: string): Revision[] {
@@ -1019,17 +1100,17 @@ export function shiftTotals(d: DB, shift: Shift): ShiftTotals {
   const credit = sales.filter((s) => s.method === 'credit').reduce((n, s) => n + s.due, 0);
 
   const recv = d.payments
-    .filter((p) => p.direction === 'in' && cashAccs.indexOf(p.accountId) > -1 && within(p.ts))
+    .filter((p) => p.direction === 'in' && p.userId === shift.userId && cashAccs.indexOf(p.accountId) > -1 && within(p.ts))
     .reduce((n, p) => n + p.amount, 0);
 
   const paidOutPayments = d.payments
-    .filter((p) => p.direction === 'out' && cashAccs.indexOf(p.accountId) > -1 && within(p.ts))
+    .filter((p) => p.direction === 'out' && p.userId === shift.userId && cashAccs.indexOf(p.accountId) > -1 && within(p.ts))
     .reduce((n, p) => n + p.amount, 0);
   const paidOutEntries = d.entries
-    .filter((e) => e.direction === 'out' && cashAccs.indexOf(e.accountId) > -1 && within(e.ts))
+    .filter((e) => e.direction === 'out' && e.userId === shift.userId && cashAccs.indexOf(e.accountId) > -1 && within(e.ts))
     .reduce((n, e) => n + e.amount, 0);
   const cashIn = d.entries
-    .filter((e) => e.direction === 'in' && cashAccs.indexOf(e.accountId) > -1 && within(e.ts))
+    .filter((e) => e.direction === 'in' && e.userId === shift.userId && cashAccs.indexOf(e.accountId) > -1 && within(e.ts))
     .reduce((n, e) => n + e.amount, 0);
 
   const paidOut = paidOutPayments + paidOutEntries;
@@ -1083,6 +1164,7 @@ export function closeShift(d: DB, shiftId: string, countedCash: number, note = '
   }
   audit(d, 'Shift closed', 'Counted ' + Math.round(countedCash) + ' · ' +
     (v.state === 'balanced' ? 'balanced' : v.state + ' ' + Math.abs(v.diff)));
+  enqueue(d, 'shift.close', s.id);
   return s;
 }
 
@@ -1095,6 +1177,7 @@ export function openShiftFor(d: DB, openingFloat: number, till?: string, when = 
   };
   d.shifts.push(s);
   audit(d, 'Shift opened', 'Float ' + Math.round(openingFloat));
+  enqueue(d, 'shift.open', s.id);
   return s;
 }
 

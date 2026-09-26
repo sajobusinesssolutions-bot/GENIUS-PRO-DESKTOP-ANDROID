@@ -90,6 +90,7 @@ export default function BatchPicker({
       subtitle={productName + ' · ' + qty + ' needed'}
       icon="box"
       iconTone="warn"
+      full
       onClose={cancel}
       footer={
         <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -209,7 +210,12 @@ export default function BatchPicker({
                         <Text style={{ fontFamily: fonts.uiBold, fontSize: 19, color: colors.ink }}>+</Text>
                       </Pressable>
                       <Pressable
-                        onPress={() => setManual((p) => ({ ...p, [b.no]: Math.min(b.qty, qty - (taken - n)) }))}
+                        onPress={() => setManual((prev) => {
+                          const total = Object.values(prev).reduce((sum, value) => sum + value, 0);
+                          const needed = Math.max(0, qty - total);
+                          const fill = Math.min(b.qty, Math.max(0, needed));
+                          return { ...prev, [b.no]: Math.min(b.qty, (prev[b.no] || 0) + fill) };
+                        })}
                         style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 11, backgroundColor: colors.surface, borderWidth: 1.4, borderColor: colors.line }}
                       >
                         <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Fill</Text>

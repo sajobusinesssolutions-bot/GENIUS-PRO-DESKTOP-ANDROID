@@ -91,19 +91,19 @@ const fail = <T>(failure: AuthFailure, message?: string): Result<T> =>
 
 /* ---------------------------------------------------------------- */
 
-async function request<T>(path: string, body: unknown, token?: string): Promise<Result<T>> {
+async function request<T>(path: string, body: unknown, token?: string, method: 'POST' | 'GET' | 'DELETE' | 'PATCH' = 'POST'): Promise<Result<T>> {
   if (!serverConfigured()) return fail<T>('notConfigured');
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(SERVER_URL.replace(/\/$/, '') + path, {
-      method: 'POST',
+      method,
       headers: {
-        'content-type': 'application/json',
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(token ? { authorization: 'Bearer ' + token } : {}),
       },
-      body: JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
 
@@ -136,7 +136,14 @@ export interface Session {
 
 export interface LicenceResponse {
   token: string;
-  claims: LicenceClaims;
+  claims?: LicenceClaims;
+}
+
+export function normaliseLicenceResponse(value: unknown): { ok: true; token: string } | { ok: false } {
+  if (!value || typeof value !== 'object') return { ok: false };
+  const token = (value as { token?: unknown }).token;
+  if (typeof token !== 'string' || token.trim().length === 0) return { ok: false };
+  return { ok: true, token };
 }
 
 /** Starts a sign-up. The server sends a six-digit code to the address. */
@@ -214,7 +221,15 @@ export function refreshSession(refresh: string) {
 
 /** Claims a device seat. Refused with `seatsFull` when the licence has none left. */
 export function registerDevice(access: string, o: { name: string; kind: string; platform: string }) {
-  return request<{ deviceId: string; token: string }>('/v1/devices', o, access);
+  return request<{ deviceId: string; token: string; replacedDevice?: { id: string; name: string } }>('/v1/devices', o, access);
+}
+
+export function listDevices(access: string) {
+  return request<{ devices: Array<{ id: string; name: string; kind: string; platform: string; created_at: string; last_seen: string }> }>('/v1/devices', undefined, access, 'GET');
+}
+
+export function revokeDevice(access: string, id: string) {
+  return request<{ revoked: boolean }>('/v1/devices/' + id, undefined, access, 'DELETE');
 }
 
 export function fetchLicence(access: string) {

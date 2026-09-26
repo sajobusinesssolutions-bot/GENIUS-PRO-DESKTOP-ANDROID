@@ -37,7 +37,7 @@ const BUSINESS_TYPES = [
 
 export default function OnboardingScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { setOnboarded, db, updateUser, updateFirm, me } = useAppData();
+  const { setOnboarded, db, updateUser, updateFirm, updateWarehouse, me } = useAppData();
   const [step, setStep] = useState(0);
   const [businessType, setBusinessType] = useState('retail');
   const [name, setName] = useState(db?.firm.name || '');
@@ -46,11 +46,16 @@ export default function OnboardingScreen({ navigation }: Props) {
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
 
-  const canNext = step === 1 ? name.trim().length > 0 : step === 4 ? pin.length === 4 && pin === pinConfirm : true;
+  const canNext = step === 1 ? name.trim().length > 0
+    : step === 2 ? branchName.trim().length > 0
+      : step === 4 ? pin.length === 4 && pin === pinConfirm : true;
   const head = STEP_HEAD[step];
 
   function next() {
     if (step === 1) updateFirm({ name, phone, businessType });
+    if (step === 2 && db?.warehouses[0] && branchName.trim()) {
+      updateWarehouse(db.warehouses[0].id, { name: branchName.trim() });
+    }
     if (step === 4 && pin.length === 4 && me()) updateUser(me()!.id, { pin });
     if (step < STEPS.length - 1) setStep(step + 1);
     else {

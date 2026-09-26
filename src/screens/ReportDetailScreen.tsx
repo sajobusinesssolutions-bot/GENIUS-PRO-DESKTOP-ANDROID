@@ -15,11 +15,12 @@ import { useGo } from '../nav/navigate';
 import { canFor } from '../data/perms';
 import { startOfDay, endOfDay, daysAgo, fmtDay } from '../data/helpers';
 import {
-  runReport, reportById, sortRows, cellText, cellTone,
+  runReport, reportById, sortRows, cellText, cellTone, stockMovementDrill, inventoryMetricDrill,
+  INVENTORY_METRIC_REPORTS, InventoryMetricReport,
   Cell, CellTone, ReportResult, RowRef, SortDir,
 } from '../data/reports';
 import { toPdf, preview, toExcel, shareTo, shareFile, fileNameFor } from '../data/exporters';
-import { Card, Cap, Pad, EmptyState, Button, FilterChips, StatGrid, ListRow, InfoBanner } from '../components/ui';
+import { Card, Cap, Pad, EmptyState, Button, StatGrid, ListRow, InfoBanner } from '../components/ui';
 import { Field } from '../components/form';
 import { Sheet } from '../components/Sheet';
 import { IconBtn } from '../components/AppBar';
@@ -31,10 +32,6 @@ type Rt = RouteProp<RootStackParamList, 'ReportDetail'>;
 /* --- date range ---------------------------------------------------- */
 
 type RangeKey = 'today' | '7' | '30' | 'all' | 'custom';
-
-const CHIPS: [RangeKey, string][] = [
-  ['today', 'Today'], ['7', '7 days'], ['30', '30 days'], ['all', 'All time'],
-];
 
 interface Span { from: number; to: number; label: string }
 
@@ -90,7 +87,11 @@ export default function ReportDetailScreen() {
 
   const [rangeKey, setRangeKey] = useState<RangeKey>('30');
   const [custom, setCustom] = useState<{ from: number; to: number } | null>(null);
+  const [rowFilter, setRowFilter] = useState<'all' | 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month'>('all');
+  const [search, setSearch] = useState('');
   const [sort, setSort] = useState<{ i: number; dir: SortDir } | null>(null);
+  const [drillProductId, setDrillProductId] = useState<string | null>(null);
+  const [drillMonthKey, setDrillMonthKey] = useState<string | null>(null);
   const { width } = useWindowDimensions();
   const [layout, setLayout] = useState<'cards' | 'table'>(width < 520 ? 'cards' : 'table');
   const [exportOpen, setExportOpen] = useState(false);
@@ -107,8 +108,14 @@ export default function ReportDetailScreen() {
 
   const result = useMemo<ReportResult | null>(() => {
     if (!db || !allowed) return null;
+    if (id === 'stock-movement' && drillProductId) {
+      return stockMovementDrill(db, drillProductId, span.from, span.to, drillMonthKey || undefined);
+    }
+    if (INVENTORY_METRIC_REPORTS.includes(id as InventoryMetricReport) && drillProductId) {
+      return inventoryMetricDrill(db, id as InventoryMetricReport, drillProductId, span.from, span.to, drillMonthKey || undefined);
+    }
     return runReport(db, id, span.from, span.to, money);
-  }, [db, allowed, id, span.from, span.to, money]);
+  }, [db, allowed, id, span.from, span.to, money, drillProductId, drillMonthKey]);
 
   const view = useMemo(() => {
     if (!result) return null;
@@ -116,12 +123,64 @@ export default function ReportDetailScreen() {
     return sortRows(result, sort.i, sort.dir);
   }, [result, sort]);
 
+  const rowFilterOptions = useMemo(() => {
+    const kinds = new Set<string>();
+    (view?.rowRefs || []).forEach((ref) => { if (ref) kinds.add(ref.kind); });
+    const options: { v: string; l: string }[] = [{ v: 'all', l: 'All rows' }];
+    if (kinds.has('sale')) options.push({ v: 'sale', l: 'Sales' });
+    if (kinds.has('purchase')) options.push({ v: 'purchase', l: 'Purchases' });
+    if (kinds.has('payment')) options.push({ v: 'payment', l: 'Payments' });
+    if (kinds.has('entry')) options.push({ v: 'entry', l: 'Entries' });
+    if (kinds.has('creditNote')) options.push({ v: 'creditNote', l: 'Credit notes' });
+    if (kinds.has('product')) options.push({ v: 'product', l: 'Items' });
+    if (kinds.has('month')) options.push({ v: 'month', l: 'Months' });
+    return options.length > 1 ? options : [{ v: 'all', l: 'All rows' }];
+  }, [view]);
+
+  const filteredView = useMemo(() => {
+    if (!view) return { rows: [], rowRefs: [] as (RowRef | null)[] };
+    const rows = view.rows.filter((row, idx) => {
+      const ref = view.rowRefs?.[idx];
+      const passesFilter = rowFilter === 'all' || ref?.kind === rowFilter;
+      if (!passesFilter) return false;
+      if (!search.trim()) return true;
+      const needle = search.toLowerCase();
+      return row.some((cell) => cellText(cell).toLowerCase().includes(needle));
+    });
+    const rowRefs = (view.rowRefs || []).filter((_, idx) => rowFilter === 'all' || view.rowRefs?.[idx]?.kind === rowFilter).filter((_, idx) => {
+      if (!search.trim()) return true;
+      const cellList = view.rows[idx] || [];
+      const needle = search.toLowerCase();
+      return cellList.some((cell) => cellText(cell).toLowerCase().includes(needle));
+    });
+    return { rows, rowRefs };
+  }, [view, rowFilter, search]);
+
   const meta = useMemo(
     () => ({ firm: db?.firm?.name, range: span.label }),
     [db?.firm?.name, span.label],
   );
 
   useEffect(() => { setSort(null); }, [id]);
+  useEffect(() => {
+    setDrillProductId(null);
+    setDrillMonthKey(null);
+  }, [id]);
+
+  const isInventoryReport = id === 'stock-movement' || INVENTORY_METRIC_REPORTS.includes(id as InventoryMetricReport);
+
+  useEffect(() => nav.addListener('beforeRemove', (event: { preventDefault: () => void }) => {
+    if (!isInventoryReport) return;
+    if (drillMonthKey) {
+      event.preventDefault();
+      setDrillMonthKey(null);
+      setSort(null);
+    } else if (drillProductId) {
+      event.preventDefault();
+      setDrillProductId(null);
+      setSort(null);
+    }
+  }), [nav, isInventoryReport, drillMonthKey, drillProductId]);
 
   /* header export button */
   useEffect(() => {
@@ -183,6 +242,18 @@ export default function ReportDetailScreen() {
     else if (ref.kind === 'creditNote') go('CreditNotes');
     else if (ref.kind === 'payment') go('PaymentDetail', { paymentId: ref.id });
     else if (ref.kind === 'entry') go('Money');
+    else if (ref.kind === 'product') {
+      if (!db) return;
+      setDrillProductId(ref.id);
+      setDrillMonthKey(null);
+      setSort(null);
+      setRowFilter('all');
+    } else if (ref.kind === 'month') {
+      if (!drillProductId) return;
+      setDrillMonthKey(ref.id);
+      setSort(null);
+      setRowFilter('all');
+    }
   };
 
   const applyCustom = () => {
@@ -198,6 +269,18 @@ export default function ReportDetailScreen() {
     setRangeOpen(false);
   };
 
+  const applyRange = (nextFrom: string, nextTo: string) => {
+    const f = parseDay(nextFrom);
+    const t = parseDay(nextTo);
+    if (f == null || t == null) return;
+    if (f > t) {
+      Alert.alert('Dates', 'The first date must come before the second.');
+      return;
+    }
+    setCustom({ from: startOfDay(f), to: endOfDay(t) });
+    setRangeKey('custom');
+  };
+
   if (!db) return null;
 
   if (!allowed) {
@@ -211,17 +294,20 @@ export default function ReportDetailScreen() {
   if (!result || !view) return null;
 
   const widths = widthsFor(result);
+  const drillProduct = drillProductId ? db.products.find((p) => p.id === drillProductId) : null;
+  const isInventoryDrill = isInventoryReport && !!drillProduct;
+  const isAccountingLedger = true;
   const toneColor = (t?: CellTone) =>
     t === 'good' ? colors.good : t === 'warn' ? colors.warn : t === 'danger' ? colors.danger
       : t === 'accent' ? colors.accent : t === 'muted' ? colors.faint : colors.ink;
 
   const cellStyle = (i: number, bold?: boolean) => ({
     width: widths[i],
-    paddingVertical: 9,
-    paddingHorizontal: 9,
+    paddingVertical: isAccountingLedger ? 8 : 9,
+    paddingHorizontal: isAccountingLedger ? 8 : 9,
     textAlign: (result.cols[i].r ? 'right' : 'left') as 'right' | 'left',
     fontFamily: result.cols[i].r ? (bold ? fonts.monoSemi : fonts.mono) : (bold ? fonts.uiSemi : fonts.ui),
-    fontSize: 12,
+    fontSize: isAccountingLedger ? 11.5 : 12,
   });
 
   const renderCell = (c: Cell, i: number, bold?: boolean) => (
@@ -237,23 +323,105 @@ export default function ReportDetailScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 18 }}>
-        {/* date range — the reference's pill filter strip sits on the page, not in a bar */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
-          <FilterChips
-            value={rangeKey}
-            onChange={(k) => {
-              if (k === 'custom') { setRangeOpen(true); return; }
-              setRangeKey(k); setCustom(null);
-            }}
-            options={[
-              ...CHIPS.map(([v, l]) => ({ v, l })),
-              { v: 'custom' as RangeKey, l: rangeKey === 'custom' ? span.label : 'Custom', i: 'calendar' as const },
-            ]}
-          />
+        <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
+          <View style={{
+            backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line,
+            paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, letterSpacing: 0.65, textTransform: 'uppercase' }}>
+                  {def?.cat || 'Report'}
+                </Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink, marginTop: 2 }} numberOfLines={1}>
+                  {def?.name || result.title}
+                </Text>
+              </View>
+              <Button
+                label="Export"
+                variant="pri"
+                icon={<Icon name="print" size={15} color={colors.accentInk} />}
+                onPress={() => setExportOpen(true)}
+              />
+            </View>
+
+            {isInventoryDrill ? (
+              <View style={{
+                marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line,
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+              }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                    {drillMonthKey ? 'Item / month' : 'Item'}
+                  </Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink, marginTop: 2 }} numberOfLines={1}>
+                    {drillProduct?.name}
+                  </Text>
+                  {drillMonthKey ? (
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 3 }}>
+                      {drillMonthKey} · {span.label}
+                    </Text>
+                  ) : (
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 3 }}>
+                      Period · {span.label}
+                    </Text>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                  {drillMonthKey ? (
+                    <Pressable
+                      onPress={() => { setDrillMonthKey(null); setSort(null); }}
+                      style={{ paddingHorizontal: 8, paddingVertical: 6 }}
+                    >
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.accent }}>Back to months</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={{ marginTop: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, textTransform: 'uppercase', letterSpacing: 0.4 }}>Range</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: colors.ink }}>{span.label}</Text>
+                  <Pressable
+                    onPress={() => setRangeOpen(true)}
+                    style={({ pressed }) => ({
+                      minHeight: 30, paddingHorizontal: 8, borderRadius: 8,
+                      borderWidth: 1, borderColor: colors.line,
+                      backgroundColor: pressed ? colors.sunk : colors.surface,
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                    })}
+                  >
+                    <Icon name="calendar" size={13} color={colors.faint} />
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint }}>Custom</Text>
+                  </Pressable>
+                </View>
+                {rowFilterOptions.length > 1 ? (
+                  <Pressable
+                    onPress={() => {
+                      const idx = rowFilterOptions.findIndex((x) => x.v === rowFilter);
+                      const next = rowFilterOptions[(idx + 1) % rowFilterOptions.length];
+                      setRowFilter(next.v as typeof rowFilter);
+                    }}
+                    style={{
+                      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+                      borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface,
+                    }}
+                  >
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint }}>
+                      {rowFilterOptions.find((x) => x.v === rowFilter)?.l || 'All rows'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          </View>
         </View>
 
         {result.stats && result.stats.length ? (
-          <Pad style={{ paddingTop: 12, paddingBottom: 6 }}>
+          <Pad style={{ paddingTop: 8, paddingBottom: 6 }}>
             <StatGrid
               items={result.stats.map((s) => ({
                 label: s.k,
@@ -272,186 +440,88 @@ export default function ReportDetailScreen() {
             subtitle={result.error || result.note || 'No data in this period. Try a wider date range.'}
           />
         ) : (
-          <Pad style={{ paddingTop: 12, paddingBottom: 6 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <Cap style={{ flex: 1 }}>{span.label} — {result.rows.length} row{result.rows.length === 1 ? '' : 's'}</Cap>
-              {/* a wide table cannot be read on a phone, so cards are the default */}
-              <Pressable
-                onPress={() => setLayout(layout === 'cards' ? 'table' : 'cards')}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-                  borderWidth: 1.4, borderColor: colors.line, backgroundColor: colors.surface,
-                }}
-              >
-                <Icon name={layout === 'cards' ? 'chart' : 'doc'} size={15} color={colors.accent} />
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>
-                  {layout === 'cards' ? 'Table' : 'Cards'}
-                </Text>
-              </Pressable>
-            </View>
-
-            {layout === 'cards' ? (
-              <>
-                {/* sort is still reachable without a header row */}
-                <View style={{ marginBottom: 12 }}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                    {result.cols.map((c, i) => {
-                      const on = sort?.i === i;
-                      return (
-                        <Pressable
-                          key={i}
-                          onPress={() => tapHeader(i)}
-                          style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 5,
-                            paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
-                            borderWidth: 1.4,
-                            borderColor: on ? colors.accent : colors.line,
-                            backgroundColor: on ? colors.accentSoft : colors.surface,
-                          }}
-                        >
-                          <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>
-                            {c.h}
-                          </Text>
-                          {on ? <Icon name={sort!.dir === 'asc' ? 'up' : 'down'} size={13} color={colors.accent} /> : null}
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-
-                {view.rows.map((r, ri) => {
-                  const ref = view.rowRefs ? view.rowRefs[ri] : null;
-                  // the first column reads as the card's title; the rest are label/value lines
-                  const head = cellText(r[0] ?? '');
-                  const rest = result.cols.map((c, i) => ({ c, i })).slice(1)
-                    .filter(({ i }) => cellText(r[i] ?? '') !== '');
-                  const Wrap: any = ref ? Pressable : View;
-                  return (
-                    <Wrap
-                      key={ri}
-                      onPress={ref ? () => openRef(ref) : undefined}
-                      style={{
-                        backgroundColor: colors.surface, borderRadius: 16,
-                        paddingHorizontal: 15, paddingVertical: 14, marginBottom: 10,
-                        shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }} numberOfLines={2}>
-                          {head}
-                        </Text>
-                        {ref ? <Icon name="chev" size={17} color={colors.faint} /> : null}
-                      </View>
-
-                      {rest.length ? <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 12 }} /> : null}
-
-                      {rest.map(({ c, i }) => (
-                        <View
-                          key={i}
-                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14, paddingVertical: 6 }}
-                        >
-                          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, flexShrink: 1 }}>{c.h}</Text>
-                          <Text
-                            style={{
-                              fontFamily: c.r ? fonts.monoSemi : fonts.uiSemi,
-                              fontSize: 13.5,
-                              color: toneColor(cellTone(r[i])),
-                              textAlign: 'right',
-                            }}
-                          >
-                            {cellText(r[i] ?? '')}
-                          </Text>
-                        </View>
-                      ))}
-                    </Wrap>
-                  );
-                })}
-
-                {/* the totals line, as its own emphasised card */}
-                {result.foot ? (
-                  <View style={{ backgroundColor: colors.sunk, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 14, borderWidth: 1.4, borderColor: colors.lineHard }}>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.7, color: colors.faint, textTransform: 'uppercase', marginBottom: 8 }}>
-                      Total
-                    </Text>
-                    {result.cols.map((c, i) => {
-                      const t = cellText(result.foot![i] ?? '');
-                      if (!t) return null;
-                      return (
-                        <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 14, paddingVertical: 5 }}>
-                          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>{c.h}</Text>
-                          <Text style={{ fontFamily: c.r ? fonts.monoSemi : fonts.uiBold, fontSize: 14, color: colors.ink }}>{t}</Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : null}
-              </>
-            ) : (
-            <Card>
+          <Pad style={{ paddingTop: 8, paddingBottom: 20 }}>
+            <Card style={{
+              overflow: 'hidden', borderWidth: 1, borderColor: isAccountingLedger ? colors.ink : colors.lineHard,
+              borderRadius: isAccountingLedger ? 10 : 18,
+            }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View>
-                  {/* header */}
-                  <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderBottomWidth: 1, borderBottomColor: colors.lineHard }}>
+                <View style={{ width: widths.reduce((total, width) => total + width, 0), backgroundColor: isAccountingLedger ? colors.surface : undefined }}>
+                  <View style={{
+                    flexDirection: 'row', backgroundColor: isAccountingLedger ? colors.ink : colors.sunk,
+                    borderBottomWidth: isAccountingLedger ? 2 : 1,
+                    borderBottomColor: isAccountingLedger ? colors.ink : colors.lineHard,
+                  }}>
                     {result.cols.map((c, i) => (
                       <Pressable
                         key={i}
                         onPress={() => tapHeader(i)}
                         style={{
-                          width: widths[i], paddingVertical: 8, paddingHorizontal: 9,
-                          flexDirection: 'row', alignItems: 'center', gap: 3,
-                          justifyContent: c.r ? 'flex-end' : 'flex-start',
+                          width: widths[i], paddingVertical: 10, paddingHorizontal: 10,
+                          flexDirection: 'row', alignItems: 'center', justifyContent: c.r ? 'flex-end' : 'flex-start',
+                          gap: 4,
                         }}
                       >
                         <Text
                           numberOfLines={1}
                           style={{
-                            fontFamily: fonts.uiBold, fontSize: 9.5, letterSpacing: 0.55,
-                            textTransform: 'uppercase',
-                            color: sort?.i === i ? colors.accent : colors.faint,
+                            fontFamily: fonts.uiBold, fontSize: 10, letterSpacing: 0.45,
+                            textTransform: 'uppercase', color: isAccountingLedger ? colors.surface : (sort?.i === i ? colors.accent : colors.faint),
                           }}
                         >
                           {c.h}
                         </Text>
-                        {sort?.i === i ? (
-                          <Icon name={sort.dir === 'asc' ? 'up' : 'down'} size={11} color={colors.accent} />
-                        ) : null}
+                        {sort?.i === i ? <Icon name={sort.dir === 'asc' ? 'up' : 'down'} size={11} color={colors.accent} /> : null}
                       </Pressable>
                     ))}
                   </View>
 
-                  {/* body */}
-                  {view.rows.map((r, ri) => {
-                    const ref = view.rowRefs ? view.rowRefs[ri] : null;
-                    const body = (
-                      <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.line, alignItems: 'center' }}>
-                        {result.cols.map((_, i) => renderCell(r[i] ?? '', i))}
+                  {filteredView.rows.map((r, ri) => {
+                    const ref = filteredView.rowRefs ? filteredView.rowRefs[ri] : null;
+                    const isOpening = isAccountingLedger && cellText(r[1]) === 'Opening Balance';
+                    const row = (
+                      <View style={{
+                        flexDirection: 'row',
+                        backgroundColor: isOpening ? colors.sunk : colors.surface,
+                        borderBottomWidth: 1, borderBottomColor: colors.line,
+                        alignItems: 'center',
+                      }}>
+                        {result.cols.map((_, i) => renderCell(r[i] ?? '', i, isOpening))}
                       </View>
                     );
-                    if (!ref) return <View key={ri}>{body}</View>;
+                    if (!ref) return <View key={ri}>{row}</View>;
                     return (
                       <Pressable
                         key={ri}
                         onPress={() => openRef(ref)}
-                        style={({ pressed }) => ({ backgroundColor: pressed ? colors.sunk : 'transparent' })}
+                        style={({ pressed }) => ({ backgroundColor: pressed ? colors.sunk : undefined })}
                       >
-                        {body}
+                        {row}
                       </Pressable>
                     );
                   })}
 
                   {result.foot ? (
                     <View style={{
-                      flexDirection: 'row', backgroundColor: colors.sunk,
-                      borderTopWidth: 1, borderTopColor: colors.lineHard, alignItems: 'center',
+                      flexDirection: 'row', backgroundColor: isAccountingLedger ? colors.ink : colors.sunk,
+                      borderTopWidth: isAccountingLedger ? 2 : 1, borderTopColor: isAccountingLedger ? colors.ink : colors.lineHard,
+                      alignItems: 'center',
                     }}>
-                      {result.cols.map((_, i) => renderCell(result.foot![i] ?? '', i, true))}
+                      {result.cols.map((_, i) => (
+                        <Text
+                          key={i}
+                          numberOfLines={2}
+                          style={[cellStyle(i, true), { color: isAccountingLedger ? colors.surface : colors.ink }]}
+                        >
+                          {cellText(result.foot![i] ?? '')}
+                        </Text>
+                      ))}
                     </View>
                   ) : null}
                 </View>
               </ScrollView>
             </Card>
-            )}
+
             {result.note ? (
               <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, lineHeight: 17, color: colors.faint, marginTop: 10 }}>
                 {result.note}

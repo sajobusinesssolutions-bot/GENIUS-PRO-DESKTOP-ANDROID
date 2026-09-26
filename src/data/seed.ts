@@ -79,10 +79,10 @@ export function seed(): DB {
     categories: defaultCategories(),
     loyaltyRules: { enabled: true, earnPer: 1000, pointValue: 5, redeemMin: 200 },
     warehouses, products, parties, users, accounts,
-    sales: [], purchases: [], payments: [], entries: [], journal: [], movements: [],
+    sales: [], purchases: [], payments: [], bankStatementLines: [], bankReconciliations: [], entries: [], journal: [], movements: [],
     shifts: [], warranties: [], claims: [],
     estimates: [], challans: [], creditNotes: [], offers: [], stockTakes: [],
-    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], queue: [],
+    purchaseOrders: [], productionRuns: [], recurringInvoices: [], auditLog: [], businessAccess: [], queue: [],
     plans: [
       { id: 'pln_basic', name: 'Basic', price: 40000, period: 'month', features: ['1 till', 'Sales & stock', 'Basic reports'] },
       { id: 'pln_pro', name: 'Pro', price: 90000, period: 'month', features: ['Up to 3 tills', 'EFRIS e-invoicing', 'Full reports', 'Multi-branch'], highlight: true },

@@ -14,8 +14,10 @@
  * the shop set itself up on this device alone rather than pretending to sign
  * in. Nothing here invents a code or reports a sign-in that did not happen.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { Easing, Extrapolation, interpolate, interpolateColor, useAnimatedProps, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useTheme, fonts, radius } from '../theme';
 import { useToast } from '../components/Toast';
 import {
@@ -31,6 +33,8 @@ import {
 import * as api from '../data/authApi';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
+
+const AnimatedIcon = Animated.createAnimatedComponent(Icon);
 
 /* ================================================================
    Shared furniture
@@ -74,43 +78,106 @@ function NoServerNote({ what }: { what: string }) {
 
 type GateProps = NativeStackScreenProps<RootStackParamList, 'AuthGate'>;
 
+type LaunchWord = { label: string; icon: IconName };
+
+function CarouselWord({ word, index, progress }: { word: LaunchWord; index: number; progress: { value: number } }) {
+  const style = useAnimatedStyle(() => {
+    // Keep the phase centred around zero. A centred modulo avoids the old
+    // 0 -> 2.9 jump, which skipped the visible fade when a word left centre.
+    const phase = ((index - progress.value + 1.5) % 3 + 3) % 3 - 1.5;
+    return {
+      opacity: interpolate(phase, [-1.5, -1, 0, 1, 1.5], [0, 0.42, 1, 0.42, 0], Extrapolation.CLAMP),
+      transform: [
+        { translateY: interpolate(phase, [-1.5, -1, 0, 1, 1.5], [-87, -58, 0, 58, 87], Extrapolation.CLAMP) },
+        { scale: interpolate(phase, [-1.5, -1, 0, 1, 1.5], [0.72, 0.86, 1.04, 0.86, 0.72], Extrapolation.CLAMP) },
+      ],
+    };
+  });
+
+  const iconStyle = useAnimatedStyle(() => {
+    const phase = ((index - progress.value + 1.5) % 3 + 3) % 3 - 1.5;
+    return {
+      backgroundColor: interpolateColor(phase, [-1, 0, 1], ['rgba(91,145,206,0.18)', '#D7F7FF', 'rgba(91,145,206,0.18)']),
+    };
+  });
+
+  const iconProps = useAnimatedProps(() => {
+    const phase = ((index - progress.value + 1.5) % 3 + 3) % 3 - 1.5;
+    return { color: interpolateColor(phase, [-1, 0, 1], ['#6B8FB9', '#176AC9', '#6B8FB9']) };
+  });
+
+  const textStyle = useAnimatedStyle(() => {
+    const phase = ((index - progress.value + 1.5) % 3 + 3) % 3 - 1.5;
+    return { color: interpolateColor(phase, [-1, 0, 1], ['#6485AD', '#123B79', '#6485AD']) };
+  });
+
+  return (
+    <Animated.View style={[{ position: 'absolute', top: 88, left: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }, style]}>
+      <Animated.View style={[{ width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, iconStyle]}>
+        <AnimatedIcon name={word.icon} size={20} animatedProps={iconProps} />
+      </Animated.View>
+      <Animated.Text style={[{ fontFamily: fonts.uiExtra, fontSize: 40, letterSpacing: -1.1, lineHeight: 46 }, textStyle]}>
+        {word.label}
+      </Animated.Text>
+    </Animated.View>
+  );
+}
+
 export function AuthGateScreen({ navigation }: GateProps) {
   const { colors } = useTheme();
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{
-        flex: 1, margin: 12, borderRadius: 26, padding: 26,
-        justifyContent: 'flex-end', gap: 12, backgroundColor: colors.rail,
-      }}>
-        <View style={{
-          width: 60, height: 60, borderRadius: 19, marginBottom: 'auto',
-          backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Icon name="till" size={30} color="#fff" />
-        </View>
-        <Text style={{ color: '#fff', fontFamily: fonts.uiExtra, fontSize: 34, letterSpacing: -0.8 }}>
-          Genius POS
-        </Text>
-        <Text style={{ color: 'rgba(255,255,255,0.86)', fontFamily: fonts.ui, fontSize: 14.5, maxWidth: 300, lineHeight: 21 }}>
-          Billing, stock and money for your shop. Sign in with the email that owns
-          the business, or start a new account.
-        </Text>
-      </View>
+  const words: LaunchWord[] = [
+    { label: 'Sell', icon: 'cart' },
+    { label: 'Stock', icon: 'box' },
+    { label: 'Profit', icon: 'coins' },
+  ];
+  const progress = useSharedValue(1);
 
-      <View style={{ padding: 16, gap: 10 }}>
-        <Button
-          label="Create an account"
-          variant="pri"
-          icon={<Icon name="plus" size={17} color={colors.accentInk} />}
-          onPress={() => navigation.navigate('CreateAccount')}
-        />
-        <Button
-          label="I already have one"
-          icon={<Icon name="user" size={17} color={colors.ink} />}
-          onPress={() => navigation.navigate('SignIn')}
-        />
-      </View>
+  useEffect(() => {
+    progress.value = withRepeat(withTiming(4, { duration: 4800, easing: Easing.inOut(Easing.cubic) }), -1, false);
+  }, [progress]);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+      <LinearGradient
+        colors={['#FFFFFF', '#FAFDFF', '#B9F7FF', '#11C5EB', '#0874E7', '#2E1992']}
+        locations={[0, 0.26, 0.48, 0.66, 0.86, 1]}
+        style={{ flex: 1 }}
+      >
+        <View style={{ flex: 1, paddingHorizontal: 26, paddingTop: 78, paddingBottom: 28 }}>
+          <View style={{ height: 220, alignItems: 'flex-start', paddingLeft: 6, paddingTop: 12, overflow: 'hidden' }}>
+            {words.map((word, index) => <CarouselWord key={word.label} word={word} index={index} progress={progress} />)}
+          </View>
+
+          <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+            <View style={{ paddingBottom: 12 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                <Icon name="till" size={20} color="#171A22" />
+              </View>
+              <Text style={{ color: '#FFFFFF', fontFamily: fonts.uiExtra, fontSize: 38, letterSpacing: -1.2, lineHeight: 43 }}>
+                Genius Pro
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,0.78)', fontFamily: fonts.uiSemi, fontSize: 15, lineHeight: 20, marginTop: 7, maxWidth: 245 }}>
+                Your money, upgraded.
+              </Text>
+            </View>
+
+            <View style={{ gap: 10 }}>
+              <Button
+                label="Sign in with account"
+                variant="default"
+                icon={<Icon name="user" size={16} color={colors.ink} />}
+                onPress={() => navigation.navigate('SignIn')}
+              />
+              <Button
+                label="Create account"
+                variant="pri"
+                icon={<Icon name="plus" size={16} color={colors.accentInk} />}
+                onPress={() => navigation.navigate('CreateAccount')}
+              />
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
     </View>
   );
 }

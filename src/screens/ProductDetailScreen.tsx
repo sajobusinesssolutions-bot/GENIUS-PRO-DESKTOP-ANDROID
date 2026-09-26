@@ -287,38 +287,14 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         />
       ) : null}
 
-      {/* the media zone — a real photo, or a picked glyph */}
-      {photo ? (
-        <View style={{ marginBottom: 16 }}>
-          <Image
-            source={{ uri: photo }}
-            style={{ width: '100%', height: 190, borderRadius: radius.md, backgroundColor: colors.sunk }}
-            resizeMode="cover"
-          />
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-            <View style={{ flex: 1 }}>
-              <Button label="Replace" icon={<Icon name="tag" size={16} color={colors.ink} />} onPress={pickPhoto} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Button label="Remove" variant="dngr" icon={<Icon name="trash" size={16} color={colors.danger} />} onPress={() => setPhoto('')} />
-            </View>
-          </View>
-        </View>
-      ) : (
-        <>
-          <DropZone label="Tap to add product image" onPress={pickPhoto}>
-            <Text style={{ fontSize: 40 }}>🖼️</Text>
-          </DropZone>
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: -6, marginBottom: 16 }}>
-            <View style={{ flex: 1 }}>
-              <Button size="sm" label="Take a photo" icon={<Icon name="phone" size={15} color={colors.ink} />} onPress={takePhoto} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Button size="sm" label={'Use a glyph  ' + (image || '📦')} onPress={() => setSheet('emoji')} />
-            </View>
-          </View>
-        </>
-      )}
+      <View style={{ marginBottom: 12 }}>
+        <Button
+          size="sm"
+          label={photo ? 'Replace photo' : 'Add photo'}
+          icon={<Icon name="phone" size={15} color={colors.ink} />}
+          onPress={photo ? pickPhoto : pickPhoto}
+        />
+      </View>
 
       <Field icon="tag" label="Name" value={name} onChangeText={setName} placeholder={svc ? 'What the service is called' : 'What the item is called'} />
       <Field icon="doc" label="Item code" value={sku} onChangeText={setSku} placeholder="Left blank, one is made for you" />

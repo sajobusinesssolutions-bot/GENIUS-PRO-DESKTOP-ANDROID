@@ -40,7 +40,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   function onEdit() {
     if (!can('sales.edit')) return refuse('Your role cannot change a raised bill.');
     if (!gate.ok) return refuse(gate.why);
-    const open = () => navigation.navigate('EditSale', { saleId: sale!.id });
+    const open = () => navigation.navigate('NewSale', { editSaleId: sale!.id });
     // Settings → "A PIN is needed to edit a transaction"
     if (db?.settings.requirePinToEdit) { ownerPin.ask('Edit ' + sale!.no, open); return; }
     open();

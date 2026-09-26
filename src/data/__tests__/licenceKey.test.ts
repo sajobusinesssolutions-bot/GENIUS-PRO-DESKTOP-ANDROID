@@ -90,6 +90,13 @@ describe('readLicenceToken', () => {
 describe('licenceFromToken honours what the server says', () => {
   const { licenceFromToken } = require('../licenceKey');
 
+  it('normalises a valid licence response without crashing on missing fields', () => {
+    const { normaliseLicenceResponse } = require('../authApi');
+    expect(normaliseLicenceResponse({ token: 'abc' })).toEqual({ ok: true, token: 'abc' });
+    expect(normaliseLicenceResponse({})).toEqual({ ok: false });
+    expect(normaliseLicenceResponse(null)).toEqual({ ok: false });
+  });
+
   it('stops a blocked account even while its token is still in date', () => {
     const l = licenceFromToken(token({ alg: 'EdDSA' }, claims({ status: 'blocked' })));
     expect(l.status).toBe('blocked');

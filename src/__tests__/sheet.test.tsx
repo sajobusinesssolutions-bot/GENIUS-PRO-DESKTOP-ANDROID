@@ -50,6 +50,21 @@ describe('Sheet', () => {
     expect(screen.UNSAFE_getAllByType(ScrollView).length).toBeGreaterThan(0);
   });
 
+  it('gives the scrolling body a bounded sheet height', () => {
+    setup();
+    const body = screen.getByText('a line in the cart');
+    const sheet = ancestors(body).find((node) => {
+      const styles = [].concat(node?.props?.style || {}).reduce((out: any, style: any) => ({ ...out, ...(style || {}) }), {});
+      return styles.height === '88%';
+    });
+    expect(sheet).toBeTruthy();
+  });
+
+  it('keeps keyboard handling local to the sheet instead of lifting the whole modal stack', () => {
+    setup();
+    expect(screen.queryByTestId('keyboard-safe')).toBeNull();
+  });
+
   it('does not wrap the scrolling body in the scrim, which stole the drag', () => {
     setup();
     const scrim = screen.getByTestId('sheet-scrim');

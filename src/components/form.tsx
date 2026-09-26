@@ -69,13 +69,13 @@ export function FieldNote({ children }: { children: React.ReactNode }) {
  */
 export function Field({
   label, value, onChangeText, placeholder, numeric, decimal, multiline, readOnly, right, style,
-  compact, error, icon, secure, maxLength, autoCapitalize, onFocus, onBlur, suffix,
+  compact, error, icon, secure, maxLength, autoCapitalize, onFocus, onBlur, suffix, autoFocus, inputRef,
 }: {
   label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string;
   numeric?: boolean; decimal?: boolean; multiline?: boolean; readOnly?: boolean; right?: React.ReactNode;
   style?: ViewStyle; compact?: boolean; error?: string; icon?: IconName;
   secure?: boolean; maxLength?: number; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
-  onFocus?: () => void; onBlur?: () => void; suffix?: string;
+  onFocus?: () => void; onBlur?: () => void; suffix?: string; autoFocus?: boolean; inputRef?: React.Ref<TextInput>;
 }) {
   const { colors } = useTheme();
   const [focused, setFocused] = React.useState(false);
@@ -103,6 +103,7 @@ export function Field({
           ) : null}
 
           <TextInput
+            ref={inputRef}
             value={value}
             onChangeText={onChangeText}
             editable={!readOnly}
@@ -113,6 +114,7 @@ export function Field({
             secureTextEntry={secure}
             maxLength={maxLength}
             autoCapitalize={autoCapitalize}
+            autoFocus={autoFocus}
             onFocus={() => { setFocused(true); onFocus?.(); }}
             onBlur={() => { setFocused(false); onBlur?.(); }}
             style={{

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, Pressable, FlatList } from 'react-native';
 import { useTheme, fonts, spacing } from '../theme';
-import { Button } from './ui';
+import { Button, Field } from './ui';
 import { Sale } from '../data/types';
 
 interface PaymentAllocationSheetProps {
@@ -76,21 +76,19 @@ export default function PaymentAllocationSheet({ amount, money, bills, onConfirm
                     <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12, color: colors.faint }}>Due: {money(item.due)}</Text>
                   </View>
                   <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
-                    <Pressable
-                      onPress={() => setAllocations((p) => ({ ...p, [item.id]: Math.max(0, (p[item.id] || 0) - 1000) }))}
-                      style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Text style={{ fontFamily: fonts.uiBold, color: colors.faint }}>−</Text>
-                    </Pressable>
-                    <Text style={{ flex: 1, fontFamily: fonts.monoSemi, fontSize: 13, color: colors.ink, textAlign: 'center' }}>
-                      {money(alloc)}
-                    </Text>
-                    <Pressable
-                      onPress={() => setAllocations((p) => ({ ...p, [item.id]: Math.min(item.due, (p[item.id] || 0) + 1000) }))}
-                      style={{ width: 32, height: 32, borderRadius: 6, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Text style={{ fontFamily: fonts.uiBold, color: colors.faint }}>+</Text>
-                    </Pressable>
+                    <View style={{ flex: 1 }}>
+                      <Field
+                        label="Amount to apply"
+                        value={alloc ? String(alloc) : ''}
+                        onChangeText={(text) => {
+                          const next = Math.min(item.due, Math.max(0, Number(text.replace(/[^0-9.]/g, '')) || 0));
+                          setAllocations((p) => ({ ...p, [item.id]: next }));
+                        }}
+                        numeric
+                        decimal
+                        compact
+                      />
+                    </View>
                   </View>
                 </View>
               );

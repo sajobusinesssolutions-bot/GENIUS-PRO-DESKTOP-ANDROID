@@ -5,19 +5,37 @@
  * cannot load), the barcode (drawn with background colours, which printers
  * drop), and the templates — paper, QR, copies — which were saved and ignored.
  */
-jest.mock('expo-print', () => ({ printAsync: jest.fn(), printToFileAsync: jest.fn(), selectPrinterAsync: jest.fn() }));
+jest.mock('expo-print', () => ({
+  printAsync: jest.fn(),
+  printToFileAsync: jest.fn().mockResolvedValue({ uri: 'file:///tmp/report.pdf' }),
+  selectPrinterAsync: jest.fn(),
+}));
 jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn(), shareAsync: jest.fn() }));
+jest.mock('expo-intent-launcher', () => ({ startActivityAsync: jest.fn() }));
 jest.mock('expo-file-system', () => ({
-  File: jest.fn().mockImplementation((uri: string) => ({
-    base64: async () => (uri.includes('missing') ? Promise.reject(new Error('gone')) : 'QUJD'),
-  })),
-  Paths: { cache: {} },
+  File: jest.fn().mockImplementation((a: any, b?: string) => {
+    const uri = typeof a === 'string' ? a : (b || 'file:///tmp/generated.pdf');
+    const file = {
+      base64: async () => (uri.includes('missing') ? Promise.reject(new Error('gone')) : 'QUJD'),
+      exists: false,
+      delete: jest.fn(),
+      move: jest.fn(function (dest: any) { this.uri = dest?.uri || dest || uri; return this; }),
+      contentUri: uri.replace('file://', 'content://'),
+      uri,
+    };
+    return file;
+  }),
+  Paths: { cache: { uri: 'file:///cache' }, document: { uri: 'file:///document' } },
 }));
 
 import { docHtml, qrSvg, inlineImage, pageSize, DocMeta } from '../docPrint';
 import { printOptsFor, docKindOf, paperOf } from '../printSetup';
 import { defaultTemplates, defaultTemplateFor } from '../defaults';
 import { tagHtml } from '../../screens/PriceTagScreen';
+import { preview, reportShareMessage, shareTo } from '../exporters';
+import * as Print from 'expo-print';
+import * as IntentLauncher from 'expo-intent-launcher';
+import { Platform } from 'react-native';
 
 const money = (n: number) => 'UGX ' + n;
 const doc: DocMeta = {
@@ -138,5 +156,75 @@ describe('price tags', () => {
 
   it('uses the item\'s own barcode when it has one', () => {
     expect(tagHtml([{ p, n: 1 }], style, 'Shop', money, 'A4')).toContain('6001234567890');
+  });
+});
+
+describe('report export', () => {
+  it('opens a native A4 preview when asked for print preview', async () => {
+    const spy = jest.spyOn(Print, 'printAsync');
+    await preview({
+      title: 'Daily sales',
+      cols: [{ h: 'Date' }, { h: 'Total' }],
+      rows: [['2026-09-10', 1200]],
+      foot: ['Total', 1200],
+    }, { firm: 'Amar Shop', range: 'Last 30 days' });
+
+    expect(spy).toHaveBeenCalledWith({ html: expect.stringContaining('Daily sales'), width: 595, height: 842 });
+  });
+
+  it('uses the share sheet for WhatsApp PDF exports instead of an unsupported Android send intent', async () => {
+    const prev = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    const intentSpy = jest.spyOn(IntentLauncher, 'startActivityAsync').mockResolvedValue(undefined as any);
+    const shareSpy = jest.spyOn(require('expo-sharing'), 'shareAsync').mockResolvedValue(undefined as any);
+    try {
+      const result = {
+        title: 'Daily sales',
+        cols: [{ h: 'Date' }, { h: 'Total' }],
+        rows: [['2026-09-10', 1200]],
+        foot: ['Total', 1200],
+        stats: [{ k: 'Cash', v: 'UGX 1,200' }],
+      };
+
+      const text = reportShareMessage(result, { firm: 'Amar Shop', range: 'Last 30 days' });
+      expect(text).toContain('Hello,');
+      expect(text).toContain('Document amount/total: 1200');
+      expect(text).toContain('Regards,');
+
+      const outcome = await shareTo(result, 'whatsapp', { firm: 'Amar Shop', range: 'Last 30 days' });
+      expect(outcome.ok).toBe(true);
+      expect(intentSpy).not.toHaveBeenCalled();
+      expect(shareSpy).toHaveBeenCalledWith(expect.stringMatching(/.*\.pdf$/), expect.objectContaining({ mimeType: 'application/pdf' }));
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: prev, configurable: true });
+      jest.restoreAllMocks();
+    }
+  });
+
+  it('falls back to an Android content-URI send when the share sheet rejects the PDF', async () => {
+    const prev = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    const intentSpy = jest.spyOn(IntentLauncher, 'startActivityAsync').mockResolvedValue(undefined as any);
+    const sharing = require('expo-sharing');
+    jest.spyOn(sharing, 'isAvailableAsync').mockResolvedValue(true);
+    jest.spyOn(sharing, 'shareAsync').mockRejectedValue(new Error('No app can handle this file'));
+    try {
+      const outcome = await shareTo({
+        title: 'Daily sales',
+        cols: [{ h: 'Date' }],
+        rows: [['2026-09-10']],
+      }, 'whatsapp', { firm: 'Amar Shop' });
+      expect(outcome.ok).toBe(true);
+      expect(intentSpy).toHaveBeenCalledWith('android.intent.action.SEND', expect.objectContaining({
+        type: 'application/pdf',
+        extra: expect.objectContaining({
+          'android.intent.extra.STREAM': expect.stringContaining('content://'),
+          'android.intent.extra.TEXT': expect.stringContaining('Hello,'),
+        }),
+      }));
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: prev, configurable: true });
+      jest.restoreAllMocks();
+    }
   });
 });

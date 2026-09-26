@@ -33,7 +33,7 @@ import PriceTagScreen from '../screens/PriceTagScreen';
 import NewBranchScreen from '../screens/NewBranchScreen';
 import DeveloperScreen from '../screens/DeveloperScreen';
 import {
-  AccountingHubScreen, ChartOfAccountsScreen, LedgerDetailScreen, JournalEntryScreen, TrialBalanceScreen,
+  AccountingHubScreen, ChartOfAccountsScreen, LedgerDetailScreen, JournalEntryScreen, TrialBalanceScreen, ReconciliationScreen,
 } from '../screens/AccountingScreens';
 import PartyDetailScreen from '../screens/PartyDetailScreen';
 import PartyEditScreen from '../screens/PartyEditScreen';
@@ -196,6 +196,7 @@ export default function RootNavigator() {
         <Stack.Screen name="NewBranch" component={NewBranchScreen} options={{ title: "Open a branch" }} />
         <Stack.Screen name="BranchAnalysis" component={BranchAnalysisScreen} options={{ title: 'Branch analysis' }} />
         <Stack.Screen name="AccountingHub" component={AccountingHubScreen} options={{ title: 'Accounting' }} />
+        <Stack.Screen name="Reconciliation" component={ReconciliationScreen} options={{ title: 'Bank reconciliation' }} />
         <Stack.Screen name="ChartOfAccounts" component={ChartOfAccountsScreen} options={{ title: 'Chart of accounts' }} />
         <Stack.Screen name="LedgerDetail" component={LedgerDetailScreen} options={{ title: 'Ledger' }} />
         <Stack.Screen name="JournalEntry" component={JournalEntryScreen} options={{ title: 'New journal entry' }} />
