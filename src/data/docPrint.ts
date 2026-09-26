@@ -176,6 +176,13 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
   const showTax = tpl ? tpl.showTax : true;
   const showServed = tpl ? tpl.showServed : true;
   const showParty = tpl ? tpl.showParty : true;
+  // Independent toggles: a lot number can matter with no expiry date worth
+  // printing (hardware, building supplies) and the reverse (perishables
+  // dated by the supplier with no lot code of their own).
+  const showBatch = tpl ? tpl.showBatch : true;
+  const showExpiry = tpl ? tpl.showExpiry : true;
+  const boxed = !!tpl?.boxed && paper === 'A4';
+  const accent = tpl?.accentColor && paper === 'A4' ? tpl.accentColor : '';
   const tight = tpl?.density === 'tight';
   const head = (tpl?.head || '').trim();
   const foot = (tpl?.foot || '').trim();
@@ -183,9 +190,13 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
   const code = codeBlock(d, tpl, money, paper);
   const date = new Date(d.ts);
 
-  const batchSub = (l: DocLine) => (l.batchNo || l.expiry
-    ? `<div class="sub">${l.batchNo ? 'Batch ' + esc(l.batchNo) : ''}${l.batchNo && l.expiry ? ' · ' : ''}${l.expiry ? 'Exp ' + esc(new Date(l.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })) : ''}</div>`
-    : '');
+  const batchSub = (l: DocLine) => {
+    const b = showBatch && l.batchNo ? 'Batch ' + esc(l.batchNo) : '';
+    const e = showExpiry && l.expiry
+      ? 'Exp ' + esc(new Date(l.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }))
+      : '';
+    return b || e ? `<div class="sub">${b}${b && e ? ' · ' : ''}${e}</div>` : '';
+  };
 
   const totalRow = (label: string, value: string, strong = false) =>
     `<tr class="${strong ? 'strong' : ''}"><td class="l">${esc(label)}</td><td class="r">${esc(value)}</td></tr>`;
@@ -221,7 +232,8 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
       <td class="r">${esc(money(l.price))}</td>
       <td class="r">${esc(money(l.qty * l.price))}</td>
     </tr>`).join('');
-    doc = `<div class="doc a4">
+    doc = `<div class="doc a4${boxed ? ' boxed' : ''}"${accent ? ` style="--accent: ${esc(accent)}"` : ''}>
+      ${accent ? '<div class="bar"></div>' : ''}
       <div class="top">
         <div class="firm">
           ${showLogo && d.logo ? `<img class="logo" src="${esc(d.logo)}" />` : ''}
@@ -277,13 +289,14 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
   const css = paper === 'A4' ? `
   @page { size: A4; margin: 14mm; }
   body { font-size: ${base}px; }
+  .bar { height: 6px; border-radius: 3px; background: var(--accent); margin-bottom: 16px; }
   .top { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
   .firm { display: flex; gap: 14px; align-items: flex-start; }
   .firm .logo { max-width: 38mm; max-height: 24mm; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   .muted { color: #555; font-size: 11px; margin-top: 1px; }
   .title { text-align: right; min-width: 60mm; }
-  .kind { font-size: 18px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+  .kind { font-size: 18px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; color: var(--accent, #000); }
   .kv { display: flex; justify-content: space-between; gap: 16px; font-size: 11.5px; padding: 1px 0; }
   .head { margin-top: 14px; font-size: 11.5px; color: #333; }
   .party { margin-top: 18px; padding: 10px 12px; background: #f4f4f4; border-radius: 6px; font-size: 12px; }
@@ -304,7 +317,16 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
   .cap { font-size: 9.5px; color: #555; margin-top: 3px; }
   .sign { margin-top: 26px; text-align: right; }
   .sign img { max-width: 50mm; max-height: 18mm; }
-  .signline { border-top: 1px solid #999; width: 55mm; margin-left: auto; margin-top: 2px; padding-top: 3px; text-align: center; color: #666; font-size: 10px; }`
+  .signline { border-top: 1px solid #999; width: 55mm; margin-left: auto; margin-top: 2px; padding-top: 3px; text-align: center; color: #666; font-size: 10px; }
+  /* "boxed": the classic ledger look — every block ruled off, like a printed
+     account book page, rather than the airy default. */
+  .boxed .top { border: 1.4px solid #000; padding: 10px 14px; }
+  .boxed .party { background: none; border: 1.4px solid #000; border-radius: 0; border-top: none; margin-top: 0; }
+  .boxed table.lines { border: 1.4px solid #000; margin-top: 0; }
+  .boxed table.lines th, .boxed table.lines td { border: 1px solid #000; }
+  .boxed .sum { justify-content: stretch; }
+  .boxed .sum table { width: 100%; border: 1.4px solid #000; border-top: none; }
+  .boxed .sum td { padding: 4px 10px; }`
   : `
   @page { size: ${narrow ? 58 : 80}mm auto; margin: ${narrow ? 1.5 : 3}mm; }
   body { font-size: ${base}px; }
