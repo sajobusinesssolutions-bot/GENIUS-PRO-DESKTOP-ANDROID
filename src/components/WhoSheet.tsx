@@ -11,6 +11,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { verifyPin } from '../data/pinHash';
 import { Button, SectionLabel, InfoBanner, Avatar } from './ui';
 import { Icon } from './icons';
 import Sheet from './Sheet';
@@ -98,7 +99,7 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
     setPin(next);
     if (next.length < 4) return;
     const u = staff.find((x) => x.id === pinFor);
-    if (u && u.pin === next) {
+    if (u && verifyPin(next, u.pin)) {
       close();
       onPick({ userId: u.id, userName: u.name });
     } else {
