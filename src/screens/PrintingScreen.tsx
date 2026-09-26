@@ -18,7 +18,7 @@ import {
   Card, Cap, KV, KVNode, Button, Chip, ChipStrip, EmptyState, IconTile, Pill, Grid,
   Panel, Badge, TopTabs, SectionLabel, InfoBanner,
 } from '../components/ui';
-import { Icon } from '../components/icons';
+import { Icon, IconName } from '../components/icons';
 import { Sheet } from '../components/Sheet';
 import {
   PRINTER_KINDS, kindLabel, CODE_KINDS, CODE_DATA, DOC_KINDS_TPL, POWERED_BY,
@@ -394,11 +394,11 @@ function TemplatesPane() {
   const [pick, setPick] = useState<DocKind | null>(null);
   if (!db) return null;
 
-  const presets = [
-    { id: 'pos', name: 'POS receipt', blurb: 'Fast sales, clear totals, who served — compact for the till', kind: 'thermal' as const },
-    { id: 'tally', name: 'Tally', blurb: 'Boxed ledger grid with batch and expiry per line', kind: 'page' as const },
-    { id: 'quickbooks', name: 'QuickBooks', blurb: 'Clean invoice with a coloured accent bar', kind: 'page' as const },
-    { id: 'compact', name: 'Compact', blurb: 'Slim 58mm format for busy counters', kind: 'thermal' as const },
+  const presets: Array<{ id: string; name: string; blurb: string; kind: 'thermal' | 'page'; icon: IconName; swatch?: string }> = [
+    { id: 'pos', name: 'POS receipt', blurb: 'Fast sales, clear totals, who served — compact for the till', kind: 'thermal', icon: 'print' },
+    { id: 'tally', name: 'Tally', blurb: 'Boxed ledger grid with batch and expiry per line', kind: 'page', icon: 'doc' },
+    { id: 'quickbooks', name: 'QuickBooks', blurb: 'Clean invoice with a coloured accent bar', kind: 'page', icon: 'doc', swatch: '#1DA362' },
+    { id: 'compact', name: 'Compact', blurb: 'Slim 58mm format for busy counters', kind: 'thermal', icon: 'print' },
   ];
 
   const applyPreset = (preset: typeof presets[number]) => {
@@ -435,14 +435,21 @@ function TemplatesPane() {
             <Pressable
               key={preset.id}
               onPress={() => applyPreset(preset)}
-              style={{
+              style={({ pressed }) => ({
                 width: '48%', backgroundColor: colors.surface, borderRadius: 14,
                 borderWidth: 1, borderColor: colors.line, padding: 12,
-                minHeight: 92,
-              }}
+                minHeight: 108, opacity: pressed ? 0.85 : 1,
+              })}
             >
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{preset.name}</Text>
-              <Text style={{ marginTop: 4, fontFamily: fonts.ui, fontSize: 11, lineHeight: 15, color: colors.faint }}>{preset.blurb}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <IconTile icon={preset.icon} bg={preset.swatch ? preset.swatch + '22' : colors.sunk} color={preset.swatch || colors.rail} size={30} round={9} iconSize={15} />
+                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{preset.name}</Text>
+                {preset.swatch ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: preset.swatch }} /> : null}
+              </View>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 11, lineHeight: 15, color: colors.faint }}>{preset.blurb}</Text>
+              <Text style={{ marginTop: 6, fontFamily: fonts.uiSemi, fontSize: 10, letterSpacing: 0.4, color: colors.faint, textTransform: 'uppercase' }}>
+                {preset.kind === 'thermal' ? 'Roll printer' : 'A4 page'}
+              </Text>
             </Pressable>
           ))}
         </View>
@@ -453,6 +460,7 @@ function TemplatesPane() {
         <Card>
           {db.templates.map((t, i) => {
             const code = CODE_KINDS.find((c) => c[0] === t.code)?.[1] || 'Nothing';
+            const style = [t.boxed ? 'Boxed' : '', t.accentColor ? 'Accent' : ''].filter(Boolean).join(' · ');
             return (
               <Pressable
                 key={t.id}
@@ -462,11 +470,14 @@ function TemplatesPane() {
                   borderBottomWidth: i === db.templates.length - 1 ? 0 : 1, borderBottomColor: colors.line,
                 }}
               >
-                <IconTile icon="doc" bg={colors.sunk} color={colors.rail} size={32} />
+                <IconTile icon="doc" bg={t.accentColor ? t.accentColor + '22' : colors.sunk} color={t.accentColor || colors.rail} size={32} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{t.name}</Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>{t.paper} · {code}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>
+                    {t.paper} · {code}{style ? ' · ' + style : ''}
+                  </Text>
                 </View>
+                {t.accentColor ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: t.accentColor, marginRight: 2 }} /> : null}
                 <Icon name="chev" size={14} color={colors.faint} />
               </Pressable>
             );
@@ -542,14 +553,17 @@ function TemplatesPane() {
                 <Chip key={w} label={w} on={edit.paper === w} onPress={() => setEdit({ ...edit, paper: w, kind: w === 'A4' ? 'page' : 'thermal' })} />
               ))}
             </View>
-            <Cap style={{ marginBottom: 8 }}>What it shows</Cap>
+            <Cap style={{ marginBottom: 8 }}>Shop and sale details</Cap>
             <Card style={{ marginBottom: 12 }}>
               <ToggleRow label="Business name" value={edit.showLogo} onChange={(v) => setEdit({ ...edit, showLogo: v })} />
               <ToggleRow label="Address" value={edit.showAddress ?? false} onChange={(v) => setEdit({ ...edit, showAddress: v })} />
               <ToggleRow label="Tax line" value={edit.showTax} onChange={(v) => setEdit({ ...edit, showTax: v })} />
               <ToggleRow label="Salesperson (who served)" value={edit.showServed} onChange={(v) => setEdit({ ...edit, showServed: v })} />
               <ToggleRow label="Customer" value={edit.showParty} onChange={(v) => setEdit({ ...edit, showParty: v })} />
-              <ToggleRow label="Saved / posted info" value={edit.showSaved} onChange={(v) => setEdit({ ...edit, showSaved: v })} />
+              <ToggleRow label="Saved / posted info" value={edit.showSaved} onChange={(v) => setEdit({ ...edit, showSaved: v })} last />
+            </Card>
+            <Cap style={{ marginBottom: 8 }}>Per item</Cap>
+            <Card style={{ marginBottom: 12 }}>
               <ToggleRow label="Item unit" value={edit.showUnit ?? true} onChange={(v) => setEdit({ ...edit, showUnit: v })} />
               <ToggleRow label="Rate / price" value={edit.showRate ?? true} onChange={(v) => setEdit({ ...edit, showRate: v })} />
               <ToggleRow label="Batch number" note="Which lot an item shipped in" value={edit.showBatch ?? false} onChange={(v) => setEdit({ ...edit, showBatch: v })} />
