@@ -577,28 +577,49 @@ without asking.
 
 ## 11. What the client still needs
 
-Honest accounting of the gap, because this design does not drop into the app as
-it stands:
+This section was written before any of it existed. Most of it now does; kept
+here as a record of what shipped and how it actually maps onto the design
+above, since the two are meant to never drift apart:
 
-1. **The app has no operation log.** `commit()` mutates the single DB blob. Each
-   mutator in `logic.ts` needs to emit an operation alongside the mutation —
-   ideally by having `commit()` take an optional operation, so emitting one is
-   the default path rather than something a new mutator can forget.
-2. **`DB.queue` becomes the outbound buffer.** It already exists and already
-   holds `{ id, ts, kind, ref }`; it needs the full envelope.
-3. **Applying pulled operations** is new work: a reducer that takes an operation
-   and applies it to the local DB, which is the mirror image of each mutator.
-   This is the largest single piece.
-4. **`flushQueue()` becomes a real push** instead of marking sales `synced` and
-   clearing the queue.
-5. **Folds must be recomputed after a pull** — stock from movements, balances
-   from the journal — rather than trusted from the payload.
-6. **Licence verification** needs the Ed25519 public key embedded and a verifier;
-   `Licence.status` and `offlineSince` are already the right shape to receive it.
+1. **The operation log.** Not built the way originally sketched here (`commit()`
+   taking an optional operation) — instead, individual mutators in `logic.ts`
+   call a small `enqueue(d, kind, ref)` helper that appends `{ id, ts, kind,
+   ref }` to `DB.queue`. The full envelope described in §4 is built lazily, at
+   push time, by `opsFrom()` in `syncClient.ts`, which looks the record up by
+   `ref` and wraps it with `buildOp()`. Net effect is the same — nothing can
+   mutate without a queue entry — just assembled later than planned.
+2. **`DB.queue` is the outbound buffer.** Done, as sketched.
+3. **Applying pulled operations.** Done: `applyRemoteOps()` in
+   `AppDataContext.tsx` is the reducer, one `if`/`else if` per operation kind,
+   upserting into the matching collection and folding `stock.move` into
+   `product.stock[branch]` as it applies each one.
+4. **A real push.** Done via `pushQueue()` / `pullOps()` / `uploadSnapshot()`
+   in `syncClient.ts`, orchestrated by `useSyncRun()`. Worth recording since it
+   went wrong once: three places in the UI (`DataToolsScreen`'s "Send anything
+   waiting", `OnlineScreen`'s "Sync now", and `toggleOnline()` on reconnect)
+   were still calling an older `flushQueue()` that marked every sale `synced`
+   and emptied the queue *without sending anything* — a leftover from before
+   this existed. Fixed to call the real push; `flushQueue()` itself is gone.
+5. **Folds after a pull.** Handled incrementally rather than by recomputing
+   from scratch: `applyRemoteOps()` adds each pulled `stock.move`'s quantity
+   onto the local `product.stock[branch]` as it goes, the same way a local
+   sale already does, rather than trusting a stock number in the payload.
+   Account and ledger balances were never stored as a number to begin with —
+   `accountBalance()` sums journal lines on every call — so a pulled
+   `journal.post` needs no special handling at all.
+6. **Licence verification.** Done: the Ed25519 public key is embedded in
+   `licenceKey.ts`, which verifies offline and rejects any token whose `alg`
+   is not `EdDSA`. `Licence.status` and `offlineSince` drive the grace window
+   exactly as planned.
 
-Rough order of work: snapshots first (it is the backup, it is small, and it
-removes the worst risk on its own), then pull-only sync for a second read-only
-device, then push, then multi-device write, then licensing.
+What is not yet real: **document number leases (§8)**. The server side exists
+— `POST /v1/sync/numbers/lease` is implemented in `server/src/sync.js` — but
+nothing on the client calls it. `counters.sale` is still a local integer, so
+two offline tills in one branch can still issue the same invoice number;
+`numberSafe.mode` exists to fall back to a tagged number, but only once the
+client is actually leasing blocks and can notice it has run out. And **field-
+level conflict resolution** beyond last-write-wins is not attempted; a
+rejected push is simply handed the current server row per §3.
 
 ---
 

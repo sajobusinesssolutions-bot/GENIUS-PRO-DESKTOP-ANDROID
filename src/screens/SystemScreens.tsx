@@ -26,6 +26,7 @@ import Constants from 'expo-constants';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
+import { useSyncRun } from '../data/useSyncRun';
 import { refreshSession } from '../data/authApi';
 import { canFor } from '../data/perms';
 import {
@@ -645,7 +646,9 @@ export function UpdateScreen() {
 export function OnlineScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, setSync, licFeature, toggleOnline, flushQueue } = useAppData();
+  const { db, setSync, licFeature, toggleOnline } = useAppData();
+  const { run } = useSyncRun();
+  const [syncing, setSyncing] = useState(false);
 
   if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   if (!licFeature('sync')) {
@@ -677,13 +680,23 @@ export function OnlineScreen() {
       ? { t: 'Live', tone: 'good', n: 'Every change is going straight up' }
       : { t: 'No line', tone: 'danger', n: 'This device cannot reach the cloud' };
 
+  const syncNow = async () => {
+    setSyncing(true);
+    try {
+      const r = await run('manual');
+      Alert.alert('Sync', r.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: 24 }}>
       <StateCard
         tone={st.tone} cap={st.t} icon="cloud" note={st.n}
         headline={on ? (pend ? plural(pend, 'change') + ' waiting' : 'Everything is up') : 'This device only'}
       >
-        {on ? <Button variant="pri" label="Sync now" onPress={() => { flushQueue(); setSync({ lastPush: new Date().toISOString(), lastAt: new Date().toISOString() }); }} /> : null}
+        {on ? <Button variant="pri" label="Sync now" onPress={syncNow} loading={syncing} /> : null}
       </StateCard>
 
       <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>

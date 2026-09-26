@@ -179,7 +179,6 @@ interface Ctx {
 
   // Offline queue
   toggleOnline: () => void;
-  flushQueue: () => void;
 
   // --- Instalment plans (reference SCREENS.instalments 11919 / planDetail 11869) ---
   createInstalmentPlan: (o: {
@@ -1061,9 +1060,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     toggleOnline: () => commit((d) => {
       d.session.online = !d.session.online;
       audit(d, d.session.online ? 'Went online' : 'Went offline', '');
-      if (d.session.online && d.queue.length) logic.flushQueue(d);
+      // Coming back online used to call flushQueue(), which marked every
+      // waiting sale as sent and emptied the queue without ever contacting
+      // the server — the queue is the real outbound buffer for cloud sync
+      // now (see syncClient.ts), so that only ever pretended the books were
+      // backed up. SyncKeeper already reacts to this flag flipping and
+      // starts a real sync; there is nothing for this to do beyond record it.
     }),
-    flushQueue: () => commit((d) => logic.flushQueue(d)),
 
     // --- Instalment plans ---
     createInstalmentPlan: (o) => {
