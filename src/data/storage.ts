@@ -121,11 +121,55 @@ export function migrate(d: any): any {
   return d;
 }
 
-export async function saveDB(db: DB): Promise<void> {
+/* ------------------------------------------------------------------
+   Whether writes are actually landing.
+
+   A failed write used to just be swallowed — the app kept working for the
+   rest of the session, but whatever was just done (a sale, a payment, a
+   stock count) only ever existed in memory and was gone the moment the app
+   closed, with nothing on screen to say so. One blip is not worth alarming
+   anyone over — a phone's storage hiccups occasionally and the very next
+   write usually lands fine — but a run of them means something is actually
+   wrong (storage full, permission revoked), and that is worth surfacing.
+   See StorageKeeper.tsx, which turns this into a toast.
+   ------------------------------------------------------------------ */
+
+export type SaveStatus = 'ok' | 'failing';
+
+const SAVE_FAILURE_THRESHOLD = 2;
+
+let saveStatus: SaveStatus = 'ok';
+let consecutiveFailures = 0;
+const statusListeners = new Set<(status: SaveStatus) => void>();
+
+function setSaveStatus(next: SaveStatus): void {
+  if (next === saveStatus) return;
+  saveStatus = next;
+  statusListeners.forEach((l) => l(next));
+}
+
+/** For a "saving is stuck" banner. Fires again once resolved. */
+export function onSaveStatus(cb: (status: SaveStatus) => void): () => void {
+  statusListeners.add(cb);
+  return () => { statusListeners.delete(cb); };
+}
+
+export function currentSaveStatus(): SaveStatus {
+  return saveStatus;
+}
+
+export async function saveDB(db: DB): Promise<boolean> {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify(db));
+    consecutiveFailures = 0;
+    setSaveStatus('ok');
+    return true;
   } catch {
-    // storage full / unavailable — app still works for this session
+    // storage full / unavailable — the app still works for this session,
+    // but repeated failures are reported rather than swallowed outright
+    consecutiveFailures += 1;
+    if (consecutiveFailures >= SAVE_FAILURE_THRESHOLD) setSaveStatus('failing');
+    return false;
   }
 }
 
@@ -198,8 +242,11 @@ export function saveIsPending(): boolean {
   return pending !== null || writing || timer !== null;
 }
 
-export async function clearDB(): Promise<void> {
+export async function clearDB(): Promise<boolean> {
   try {
     await AsyncStorage.removeItem(KEY);
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
