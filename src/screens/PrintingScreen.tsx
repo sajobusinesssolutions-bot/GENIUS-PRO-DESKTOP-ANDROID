@@ -17,15 +17,16 @@ import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
 import {
   Card, Cap, KV, KVNode, Button, Chip, ChipStrip, EmptyState, IconTile, Pill, Grid,
-  Panel, Badge, TopTabs, SectionLabel, InfoBanner,
+  Panel, Badge, TopTabs, SectionLabel, InfoBanner, ListRow,
 } from '../components/ui';
 import { Icon, IconName } from '../components/icons';
 import { Sheet } from '../components/Sheet';
+import { useGo } from '../nav/navigate';
 import {
   PRINTER_KINDS, kindLabel, CODE_KINDS, CODE_DATA, DOC_KINDS_TPL, POWERED_BY,
 } from '../data/defaults';
 import type { Printer, PrintTemplate, Paper, DocKind } from '../data/types';
-import { fmtDate, money0 } from '../data/helpers';
+import { fmtDate, money0, plural } from '../data/helpers';
 
 /** A4 templates only — the coloured bar under the shop name (PrintTemplate.accentColor). */
 const ACCENT_COLORS = ['#1A7AE6', '#1DA362', '#D97706', '#DC2626', '#7C3AED', '#111827'];
@@ -770,7 +771,7 @@ function WordingPane() {
 export default function PrintingScreen() {
   const { colors } = useTheme();
   const { db } = useAppData();
-  const [tab, setTab] = useState('printers');
+  const go = useGo();
 
   if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   if (!canFor(db.session.role, 'settings')) {
@@ -778,9 +779,11 @@ export default function PrintingScreen() {
   }
 
   const dp = db.printers.find((p) => p.dflt) || db.printers[0];
+  const s = db.printServer;
+  const wordingSet = !!(db.printer.header || db.printer.footer);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: 24 }}>
       <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
         <Card style={{ paddingVertical: 13, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 11 }}>
           <IconTile icon="print" bg={colors.goodSoft} color={colors.good} size={36} round={9} iconSize={18} />
@@ -794,23 +797,59 @@ export default function PrintingScreen() {
         </Card>
       </View>
 
-      <View style={{ paddingBottom: 12 }}>
-        <TopTabs
-          value={tab}
-          onChange={setTab}
-          options={[
-            { v: 'printers', l: 'Printers', i: 'print' },
-            { v: 'templates', l: 'Templates', i: 'doc' },
-            { v: 'server', l: 'Print server', i: 'cloud' },
-            { v: 'wording', l: 'Wording', i: 'pencil' },
-          ]}
-        />
+      <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+        <SectionLabel>Set up</SectionLabel>
+        <Panel flush>
+          <ListRow
+            icon="print" tone="accent"
+            title="Printers"
+            subtitle={db.printers.length ? plural(db.printers.length, 'printer') + (dp ? ' · default ' + dp.name : '') : 'None added yet'}
+            onPress={() => go('PrintingPrinters')}
+          />
+          <ListRow
+            icon="doc" tone="accent"
+            title="Templates"
+            subtitle={plural(db.templates.length, 'template') + ' — what a receipt or invoice shows'}
+            onPress={() => go('PrintingTemplates')}
+          />
+          <ListRow
+            icon="cloud" tone={s.on ? 'good' : 'neutral'}
+            title="Print server"
+            subtitle={s.on ? 'On · ' + (s.status === 'ok' ? 'reachable' : s.status === 'bad' ? 'not answering' : 'not checked') : 'Off — every printer prints from this device'}
+            onPress={() => go('PrintingServer')}
+          />
+          <ListRow
+            icon="pencil" tone="accent"
+            title="Wording"
+            subtitle={wordingSet ? 'A header or footer line is set' : 'Nothing extra printed yet'}
+            onPress={() => go('PrintingWording')}
+            last
+          />
+        </Panel>
       </View>
-
-      {tab === 'printers' ? <PrintersPane />
-        : tab === 'templates' ? <TemplatesPane />
-          : tab === 'server' ? <ServerPane />
-            : <WordingPane />}
     </ScrollView>
   );
 }
+
+/* ---------------- the four destinations — each its own screen, not a tab ---------------- */
+
+function paneShell(Pane: () => React.ReactElement | null) {
+  return function Shell() {
+    const { colors } = useTheme();
+    const { db } = useAppData();
+    if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+    if (!canFor(db.session.role, 'settings')) {
+      return <EmptyState icon="print" title="Not available" subtitle="Your role does not include settings." />;
+    }
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+        <Pane />
+      </ScrollView>
+    );
+  };
+}
+
+export const PrintersScreen = paneShell(PrintersPane);
+export const PrintingTemplatesScreen = paneShell(TemplatesPane);
+export const PrintServerScreen = paneShell(ServerPane);
+export const PrintWordingScreen = paneShell(WordingPane);
