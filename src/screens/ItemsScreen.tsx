@@ -1,22 +1,27 @@
 /**
- * ITEMS — the live definition. `SCREENS.items` at reference line 5675 is replaced
- * at line 13154 by `SCREENS.stock.body` (aliased back with `SCREENS.items = SCREENS.stock`
- * at 13209), which adds the period bar, the units-moved stats and the "Moved" filter.
- * The right-hand side is `SCREENS.items.right` at 17146: "+" plus a bulk-changes button.
+ * ITEMS — list first (design 1b).
+ * One summary line, one filter row, a restock nudge only when needed, then the list.
+ * Stock tools (Adjust, Transfer, Stock take, Batches) moved into the ⋯ sheet.
+ *
+ * The list itself is a FlatList rather than the ScrollView + .map() this design
+ * was drafted with: a big catalog rendered that way keeps every row mounted
+ * regardless of scroll position (this screen hit exactly that bug before, see
+ * git history). FlatList only keeps what is near the viewport mounted, so each
+ * row below fakes the single rounded "grouped card" look — shared background,
+ * rounded only at the first and last row, a border between rows but not after
+ * the last — since a FlatList can't wrap its rows in one literal container.
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, FlatList, Pressable } from 'react-native';
-import { useTheme, fonts } from '../theme';
+import { useTheme, fonts, shadow } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
-import {
-  EmptyState, Button, Search, FilterChips, StatGrid, SectionLabel, Badge, ListRow, InfoBanner, FAB,
-} from '../components/ui';
+import { EmptyState, Button, Search, FilterChips, ListRow, FAB } from '../components/ui';
 import { AppBar, IconBtn } from '../components/AppBar';
 import { Sheet } from '../components/Sheet';
 import { Icon } from '../components/icons';
 import { useGo } from '../nav/navigate';
-import { BULK_ACTIONS, sharePriceTags } from './BulkScreens';
+import { BULK_ACTIONS } from './BulkScreens';
 
 export default function ItemsScreen() {
   const { colors } = useTheme();
@@ -24,9 +29,7 @@ export default function ItemsScreen() {
   const { db, money, stockOf } = useAppData();
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
-  const [category, setCategory] = useState('all');
-  const [unit, setUnit] = useState('all');
-  const [bulk, setBulk] = useState(false);
+  const [sheet, setSheet] = useState(false);
 
   const role = db?.session.role;
   const allowed = canFor(role, 'items');
@@ -36,39 +39,30 @@ export default function ItemsScreen() {
     const value = db.products.reduce((s, x) => s + stockOf(x) * x.price, 0);
     const cost = db.products.reduce((s, x) => s + stockOf(x) * x.cost, 0);
     const active = db.products.filter((x) => x.active);
-    const low = active.filter((x) => stockOf(x) <= x.reorder).length;
+    const goods = active.filter((x) => x.kind !== 'service');
+    const low = goods.filter((x) => stockOf(x) <= x.reorder).length;
+    const out = goods.filter((x) => stockOf(x) <= 0).length;
     const term = q.toLowerCase();
-    const categories = Array.from(new Set(active.map((x) => x.category).filter(Boolean))).sort();
-    const units = Array.from(new Set(active.map((x) => x.unit).filter(Boolean))).sort();
     const list = active.filter((x) => {
-      if (filter === 'products' && x.kind === 'service') return false;
-      if (filter === 'services' && x.kind !== 'service') return false;
-      if (filter === 'low' && (x.kind === 'service' || stockOf(x) > x.reorder)) return false;
-      if (filter === 'out' && (x.kind === 'service' || stockOf(x) > 0)) return false;
-      if (category !== 'all' && x.category !== category) return false;
-      if (unit !== 'all' && x.unit !== unit) return false;
+      const svc = x.kind === 'service';
+      if (filter === 'products' && svc) return false;
+      if (filter === 'services' && !svc) return false;
+      if (filter === 'low' && (svc || stockOf(x) > x.reorder)) return false;
+      if (filter === 'out' && (svc || stockOf(x) > 0)) return false;
       if (term && (x.name + ' ' + x.sku + ' ' + x.category + ' ' + x.unit).toLowerCase().indexOf(term) < 0) return false;
       return true;
     });
-    const chips: [string, string][] = [
-      ['all', 'All ' + active.length], ['products', 'Products ' + active.filter((x) => x.kind !== 'service').length],
-      ['services', 'Services ' + active.filter((x) => x.kind === 'service').length], ['low', 'Low ' + low], ['out', 'Out'],
+    const chips = [
+      { v: 'all', l: 'All ' + active.length },
+      { v: 'products', l: 'Products ' + goods.length },
+      { v: 'services', l: 'Services ' + (active.length - goods.length) },
+      { v: 'low', l: 'Low ' + low },
+      { v: 'out', l: 'Out ' + out },
     ];
-    return { categories, units, value, cost, list, chips };
-  }, [db, q, filter, category, unit]);
+    return { value, cost, list, chips, low };
+  }, [db, q, filter]);
 
-  const right = (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      {/*
-        The plus has moved to a floating button: adding an item is the most
-        common thing on this screen and the top-right corner is the hardest
-        place on a phone to reach one-handed. What is left is the overflow,
-        sized so it can actually be hit — 20px of icon in a small tap target
-        was a miss as often as a hit.
-      */}
-      <IconBtn name="dots" size={26} color={colors.soft} onPress={() => setBulk(true)} />
-    </View>
-  );
+  const right = <IconBtn name="dots" size={26} color={colors.soft} onPress={() => setSheet(true)} />;
 
   if (!db || !d) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 
@@ -81,115 +75,89 @@ export default function ItemsScreen() {
     );
   }
 
+  const open = (route: string, params?: any) => { setSheet(false); setTimeout(() => go(route as any, params), 120); };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AppBar title="Items" right={right} />
       <FlatList
         data={d.list}
         keyExtractor={(x) => x.id}
-        contentContainerStyle={{ paddingBottom: 16 }}
+        contentContainerStyle={{ paddingBottom: 96 }}
         keyboardShouldPersistTaps="handled"
-        // a big catalog scrolled fine as a ScrollView + .map() until it didn't:
-        // nothing off-screen was ever unmounted, so every row's views stayed
-        // alive at once. FlatList only keeps what is near the viewport mounted.
         ListHeaderComponent={
           <View>
-            <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>
-              <Search value={q} onChange={setQ} placeholder="Search by name, code or category" />
-            </View>
+            <Text style={{ paddingHorizontal: 16, paddingTop: 4, fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>
+              {money(d.value)} in stock at sale · {money(d.cost)} at cost
+            </Text>
 
-            <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
-              <StatGrid
-                items={[
-                  { icon: 'coins', label: 'Stock value (sale)', value: money(d.value), tone: 'good' },
-                  { icon: 'money', label: 'At cost', value: money(d.cost), tone: 'accent' },
-                  { icon: 'box', label: 'Categories', value: String(d.categories.length), tone: 'good' },
-                  { icon: 'tag', label: 'Units used', value: String(d.units.length), tone: 'accent' },
-                ]}
-              />
+            <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 }}>
+              <Search value={q} onChange={setQ} placeholder="Search name, code or category" />
             </View>
 
             <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-              <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{category !== 'all' ? 'Category: ' + category : unit !== 'all' ? 'Unit: ' + unit : 'Quick filters'}</Text>}>
-                Filters
-              </SectionLabel>
-              <FilterChips value={filter} onChange={setFilter} options={d.chips.map(([v, l]) => ({ v, l }))} />
+              <FilterChips value={filter} onChange={setFilter} options={d.chips} />
             </View>
 
-            <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-              <SectionLabel>Stock tools</SectionLabel>
-              <View style={{ flexDirection: 'row', gap: 9 }}>
-                {([
-                  { label: 'Adjust', icon: 'swap', route: 'StockAdjust' },
-                  { label: 'Transfer', icon: 'arrow', route: 'StockTransfer' },
-                  { label: 'Stock take', icon: 'check', route: 'StockTakes' },
-                  { label: 'Batches', icon: 'calendar', route: 'Batches' },
-                ] as const).map((tile) => (
-                  <Pressable
-                    key={tile.label}
-                    onPress={() => go(tile.route as any, undefined as any)}
-                    style={{
-                      flex: 1, backgroundColor: colors.surface, borderRadius: 14,
-                      paddingVertical: 13, alignItems: 'center', justifyContent: 'center', gap: 7, minHeight: 76,
-                      shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
-                    }}
-                  >
-                    <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                      <Icon name={tile.icon} size={18} color={colors.accent} />
-                    </View>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.ink, textAlign: 'center' }}>{tile.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-
-            <View style={{ paddingHorizontal: 16 }}>
-              <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{d.list.length} shown</Text>}>
-                Items & services
-              </SectionLabel>
-            </View>
+            {filter === 'all' && d.low > 0 ? (
+              <Pressable
+                onPress={() => setFilter('low')}
+                style={{
+                  marginHorizontal: 16, marginBottom: 12, backgroundColor: colors.warnSoft, borderRadius: 13,
+                  paddingVertical: 11, paddingHorizontal: 14, flexDirection: 'row', justifyContent: 'space-between',
+                }}
+              >
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.warn }}>
+                  {d.low} {d.low === 1 ? 'item' : 'items'} at or below reorder level
+                </Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.warn }}>Restock →</Text>
+              </Pressable>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
           <EmptyState
             icon="box"
-            title="Nothing here"
-            subtitle="Change the filters, or add an item or service."
+            title="Nothing matches"
+            subtitle="Change the filter, or add an item or service."
             action={<Button size="sm" variant="pri" label="Add item" onPress={() => go('ProductDetail', {})} />}
           />
         }
-        renderItem={({ item: x }) => {
+        renderItem={({ item: x, index: i }) => {
           const st = stockOf(x);
-          const out = st <= 0, low = st <= x.reorder;
-          const service = x.kind === 'service';
+          const svc = x.kind === 'service';
+          const out = !svc && st <= 0, low = !svc && st <= x.reorder;
+          const fg = svc ? colors.accent : out ? colors.danger : low ? colors.warn : colors.ink;
+          const pill = svc ? colors.accentSoft : out ? colors.dangerSoft : low ? colors.warnSoft : colors.sunk;
+          const tileBg = svc ? colors.accentSoft : out ? colors.dangerSoft : colors.goodSoft;
+          const tileFg = svc ? colors.accent : out ? colors.danger : colors.good;
+          const first = i === 0;
+          const last = i === d.list.length - 1;
           return (
             <Pressable
               onPress={() => go('ItemDetail', { productId: x.id })}
               style={{
-                flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12,
-                backgroundColor: colors.surface, borderRadius: 16,
-                marginHorizontal: 16, marginBottom: 7, minHeight: 64,
-                shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
+                flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14,
+                minHeight: 64, marginHorizontal: 16, backgroundColor: colors.surface,
+                borderTopLeftRadius: first ? 16 : 0, borderTopRightRadius: first ? 16 : 0,
+                borderBottomLeftRadius: last ? 16 : 0, borderBottomRightRadius: last ? 16 : 0,
+                borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
+                ...(first ? shadow.card : null),
               }}
             >
-              <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: service ? colors.accentSoft : out ? colors.dangerSoft : colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name={service ? 'tools' : 'box'} size={17} color={service ? colors.accent : out ? colors.danger : colors.good} />
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: tileBg, alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name={svc ? 'tools' : 'box'} size={18} color={tileFg} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{x.name}</Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, marginTop: 2 }}>
-                  {x.sku}{service ? ' · Service' : ' · ' + x.category}
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{x.name}</Text>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
+                  {money(x.price)} · {svc ? 'Service' : x.category}
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ alignItems: 'flex-end', minWidth: 58 }}>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: colors.faint }}>SELL</Text>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.good }}>{money(x.price)}</Text>
-                </View>
-                {!service ? <View style={{ alignItems: 'flex-end', minWidth: 48 }}>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: colors.faint }}>STOCK</Text>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: out ? colors.danger : low ? colors.warn : colors.ink }}>{st}</Text>
-                </View> : <Badge label="Service" tone="accent" />}
+              <View style={{ paddingVertical: 5, paddingHorizontal: 9, borderRadius: 999, backgroundColor: pill }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: fg }}>
+                  {svc ? 'Service' : out ? 'Out' : st + ' left'}
+                </Text>
               </View>
             </Pressable>
           );
@@ -197,63 +165,23 @@ export default function ItemsScreen() {
       />
 
       <Sheet
-        visible={bulk}
+        visible={sheet}
         title="Item actions"
         subtitle={db.products.filter((p) => p.active).length + ' active items'}
         icon="tools"
-        onClose={() => setBulk(false)}
+        onClose={() => setSheet(false)}
       >
-        <InfoBanner tone="accent" text="Keep the list clean and focus on the stock work that matters." />
-        <View style={{ height: 14 }} />
-        <ListRow
-          card
-          icon="plus"
-          tone="good"
-          title="New item"
-          subtitle="Create a product or service"
-          onPress={() => { setBulk(false); setTimeout(() => go('ProductDetail', {}), 120); }}
-        />
-        <ListRow
-          card
-          icon="tag"
-          tone="accent"
-          title="Units & categories"
-          subtitle="Manage, create and remove item lists"
-          onPress={() => { setBulk(false); setTimeout(() => go('UnitsCategories'), 120); }}
-        />
-        <ListRow
-          card
-          icon="coins"
-          tone="accent"
-          title="Price list"
-          subtitle="Edit cost and sell across items and services"
-          onPress={() => { setBulk(false); setTimeout(() => go('PriceList'), 120); }}
-        />
-        <ListRow
-          card
-          icon="check"
-          tone="good"
-          title="On sale / off sale"
-          subtitle="Take a group off the till, or bring it back"
-          onPress={() => { setBulk(false); setTimeout(() => go('ActivateItems'), 120); }}
-        />
-        <ListRow
-          card
-          icon="tag"
-          tone="warn"
-          title="Price tags"
-          subtitle="Choose items, design the tag, then print"
-          onPress={() => { setBulk(false); setTimeout(() => go('PriceTags'), 120); }}
-        />
+        <ListRow card icon="swap" tone="accent" title="Adjust stock" subtitle="Correct counts, record damage or loss" onPress={() => open('StockAdjust')} />
+        <ListRow card icon="arrow" tone="accent" title="Transfer" subtitle="Move stock between branches" onPress={() => open('StockTransfer')} />
+        <ListRow card icon="check" tone="good" title="Stock take" subtitle="Count the shelf against the books" onPress={() => open('StockTakes')} />
+        <ListRow card icon="calendar" tone="accent" title="Batches" subtitle="Expiry and lot tracking" onPress={() => open('Batches')} />
+        <View style={{ height: 10 }} />
+        <ListRow card icon="tag" tone="accent" title="Units & categories" subtitle="Manage, create and remove item lists" onPress={() => open('UnitsCategories')} />
+        <ListRow card icon="coins" tone="accent" title="Price list" subtitle="Edit cost and sell across items and services" onPress={() => open('PriceList')} />
+        <ListRow card icon="check" tone="good" title="On sale / off sale" subtitle="Take a group off the till, or bring it back" onPress={() => open('ActivateItems')} />
+        <ListRow card icon="tag" tone="warn" title="Price tags" subtitle="Choose items, design the tag, then print" onPress={() => open('PriceTags')} />
         {BULK_ACTIONS.filter((a) => a.kind === 'bulkTags').map((a) => (
-          <ListRow
-            key={a.kind}
-            card
-            icon={a.icon}
-            title={a.title}
-            subtitle={a.sub}
-            onPress={() => { setBulk(false); setTimeout(() => go('BulkChange', { kind: a.kind }), 120); }}
-          />
+          <ListRow key={a.kind} card icon={a.icon} title={a.title} subtitle={a.sub} onPress={() => open('BulkChange', { kind: a.kind })} />
         ))}
       </Sheet>
 
