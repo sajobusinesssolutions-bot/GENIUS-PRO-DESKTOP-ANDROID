@@ -6,10 +6,10 @@
  * The list itself is a FlatList rather than the ScrollView + .map() this design
  * was drafted with: a big catalog rendered that way keeps every row mounted
  * regardless of scroll position (this screen hit exactly that bug before, see
- * git history). FlatList only keeps what is near the viewport mounted, so each
- * row below fakes the single rounded "grouped card" look — shared background,
- * rounded only at the first and last row, a border between rows but not after
- * the last — since a FlatList can't wrap its rows in one literal container.
+ * git history). Each row is its own rounded card with a small gap, the same
+ * pattern PartiesScreen already uses — not one shared "grouped" container,
+ * which a FlatList can't wrap its rows in anyway without every row but the
+ * first ending up with no shadow under it.
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, FlatList, Pressable } from 'react-native';
@@ -110,7 +110,10 @@ export default function ItemsScreen() {
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.warn }}>
                   {d.low} {d.low === 1 ? 'item' : 'items'} at or below reorder level
                 </Text>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.warn }}>Restock →</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.warn }}>Restock</Text>
+                  <Icon name="chev" size={14} color={colors.warn} />
+                </View>
               </Pressable>
             ) : null}
           </View>
@@ -123,7 +126,7 @@ export default function ItemsScreen() {
             action={<Button size="sm" variant="pri" label="Add item" onPress={() => go('ProductDetail', {})} />}
           />
         }
-        renderItem={({ item: x, index: i }) => {
+        renderItem={({ item: x }) => {
           const st = stockOf(x);
           const svc = x.kind === 'service';
           const out = !svc && st <= 0, low = !svc && st <= x.reorder;
@@ -131,18 +134,13 @@ export default function ItemsScreen() {
           const pill = svc ? colors.accentSoft : out ? colors.dangerSoft : low ? colors.warnSoft : colors.sunk;
           const tileBg = svc ? colors.accentSoft : out ? colors.dangerSoft : colors.goodSoft;
           const tileFg = svc ? colors.accent : out ? colors.danger : colors.good;
-          const first = i === 0;
-          const last = i === d.list.length - 1;
           return (
             <Pressable
               onPress={() => go('ItemDetail', { productId: x.id })}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14,
-                minHeight: 64, marginHorizontal: 16, backgroundColor: colors.surface,
-                borderTopLeftRadius: first ? 16 : 0, borderTopRightRadius: first ? 16 : 0,
-                borderBottomLeftRadius: last ? 16 : 0, borderBottomRightRadius: last ? 16 : 0,
-                borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
-                ...(first ? shadow.card : null),
+                minHeight: 64, marginHorizontal: 16, marginBottom: 7, borderRadius: 16,
+                backgroundColor: colors.surface, ...shadow.card,
               }}
             >
               <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: tileBg, alignItems: 'center', justifyContent: 'center' }}>
