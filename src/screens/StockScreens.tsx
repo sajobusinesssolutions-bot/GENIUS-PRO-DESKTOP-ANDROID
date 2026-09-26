@@ -3,7 +3,7 @@
  * Batches & expiry (reference QUICK "Stock" group, lines 5484-5494).
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TextInput, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, FlatList, TextInput, Pressable, Alert } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Card, Cap, Button, Chip, SearchBar, EmptyState, IconTile, Grid, Stat } from '../components/ui';
@@ -34,9 +34,15 @@ export function StockAdjustScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SearchBar value={q} onChange={setQ} placeholder="Search product or code" />
-      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-        {list.length ? list.map((p, i) => (
-          <View key={p.id} style={{
+      <FlatList
+        data={list}
+        keyExtractor={(p) => p.id}
+        contentContainerStyle={{ paddingBottom: 24 }}
+        // the same catalog as ItemsScreen, so the same reason: nothing off
+        // screen should stay mounted just because a ScrollView never unmounts it
+        ListEmptyComponent={<EmptyState icon="box" title="Nothing here" subtitle="Clear the search, or add a product first." />}
+        renderItem={({ item: p, index: i }) => (
+          <View style={{
             backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 11,
             borderBottomWidth: i === list.length - 1 ? 0 : 1, borderBottomColor: colors.line,
           }}>
@@ -74,8 +80,8 @@ export function StockAdjustScreen() {
               </View>
             ) : null}
           </View>
-        )) : <EmptyState icon="box" title="Nothing here" subtitle="Clear the search, or add a product first." />}
-      </ScrollView>
+        )}
+      />
     </View>
   );
 }
