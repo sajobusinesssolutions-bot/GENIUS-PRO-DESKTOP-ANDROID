@@ -10,7 +10,8 @@
  */
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TextInput, Switch, Pressable, Alert, Platform } from 'react-native';
-import { pickSystemPrinter } from '../data/printSetup';
+import { pickSystemPrinter, printOptsFor, paperOf } from '../data/printSetup';
+import { printDoc, DocMeta } from '../data/docPrint';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
@@ -25,11 +26,6 @@ import {
 } from '../data/defaults';
 import type { Printer, PrintTemplate, Paper, DocKind } from '../data/types';
 import { fmtDate, money0 } from '../data/helpers';
-
-const TABS: [string, string][] = [
-  ['printers', 'Printers'], ['templates', 'Templates'],
-  ['server', 'Print server'], ['wording', 'Wording'],
-];
 
 /** A4 templates only — the coloured bar under the shop name (PrintTemplate.accentColor). */
 const ACCENT_COLORS = ['#1A7AE6', '#1DA362', '#D97706', '#DC2626', '#7C3AED', '#111827'];
@@ -196,10 +192,31 @@ function ReceiptPreview({ template }: { template?: PrintTemplate } = {}) {
 
 function PrintersPane() {
   const { colors } = useTheme();
-  const { db, setPrinter, makeDefaultPrinter, removePrinter, addPrinter, updatePrinter } = useAppData();
+  const { db, money, setPrinter, makeDefaultPrinter, removePrinter, addPrinter, updatePrinter } = useAppData();
   const [edit, setEdit] = useState<Partial<Printer> | null>(null);
+  const [testing, setTesting] = useState(false);
   if (!db) return null;
   const pr = db.printer;
+
+  const testPrint = async () => {
+    const def = db.printers.find((x) => x.dflt) || db.printers[0];
+    if (!def) { Alert.alert('Test print', 'No printer is set up on this till yet.'); return; }
+    const doc: DocMeta = {
+      kind: 'Test Print', no: 'TEST-0001', ts: new Date().toISOString(),
+      firmName: db.firm.name, firmAddress: db.firm.address, firmPhone: db.firm.phone,
+      lines: [{ name: 'Sample item', qty: 2, price: 5000, unit: 'pc' }],
+      subtotal: 10000, total: 10000,
+      footer: 'This confirms ' + def.name + ' (' + kindLabel(def.kind) + ', ' + paperOf(def) + ') is set up correctly.',
+    };
+    setTesting(true);
+    try {
+      await printDoc(doc, money, printOptsFor(db, 'receipt', def));
+    } catch (e: any) {
+      Alert.alert('Test print', e?.message || 'The test page could not be sent to ' + def.name + '.');
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const save = () => {
     if (!edit) return;
@@ -270,15 +287,7 @@ function PrintersPane() {
               onPress={() => setEdit({ kind: 'wifi', width: '80mm', port: 9100, online: true })} />
           </View>
           <View style={{ flex: 1 }}>
-            <Button
-              size="sm" label="Test print"
-              onPress={() => {
-                const def = db.printers.find((x) => x.dflt) || db.printers[0];
-                Alert.alert('Test print', def
-                  ? 'A test page has been queued to ' + def.name + ' (' + kindLabel(def.kind) + ', ' + def.width + ').'
-                  : 'No printer is set up on this till yet.');
-              }}
-            />
+            <Button size="sm" label="Test print" loading={testing} onPress={testPrint} />
           </View>
         </View>
         <Text style={{ fontFamily: fonts.ui, fontSize: 11, lineHeight: 16, color: colors.faint, marginTop: 9 }}>
@@ -294,31 +303,26 @@ function PrintersPane() {
           <ToggleRow label="Print the business name at the top" value={pr.showLogo} onChange={(v) => setPrinter({ showLogo: v })} last />
         </Card>
 
-        <Card style={{ marginTop: 9, paddingVertical: 11, paddingHorizontal: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Cap style={{ marginBottom: 8, marginTop: 14 }}>Defaults</Cap>
+        <Card style={{ paddingVertical: 11, paddingHorizontal: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.line }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>Copies per bill</Text>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink, marginTop: 1 }}>{pr.copies}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>Copies per bill</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.accent, marginTop: 1 }}>{pr.copies}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Button size="sm" label="−" onPress={() => setPrinter({ copies: Math.max(1, pr.copies - 1) })} />
               <Button size="sm" label="+" onPress={() => setPrinter({ copies: Math.min(5, pr.copies + 1) })} />
             </View>
           </View>
+          <KVNode label="Receipts print at" last>
+            <View style={{ flexDirection: 'row', gap: 7 }}>
+              {(['58mm', '80mm'] as Paper[]).map((w) => (
+                <Chip key={w} label={w} on={pr.width === w} onPress={() => setPrinter({ width: w })} />
+              ))}
+            </View>
+          </KVNode>
         </Card>
-
-        <View style={{ marginTop: 14 }}>
-          <Cap style={{ marginBottom: 8 }}>Paper width</Cap>
-          <Card style={{ paddingVertical: 11, paddingHorizontal: 16 }}>
-            <KVNode label="Receipts print at" last>
-              <View style={{ flexDirection: 'row', gap: 7 }}>
-                {(['58mm', '80mm'] as Paper[]).map((w) => (
-                  <Chip key={w} label={w} on={pr.width === w} onPress={() => setPrinter({ width: w })} />
-                ))}
-              </View>
-            </KVNode>
-          </Card>
-        </View>
       </View>
 
       <Sheet visible={!!edit} title={edit?.id ? 'Edit printer' : 'Add a printer'} icon="print" onClose={() => setEdit(null)}
@@ -638,20 +642,33 @@ function ServerPane() {
   const { colors } = useTheme();
   const { db, setPrintServer } = useAppData();
   const [draft, setDraft] = useState(() => db?.printServer);
+  const [testing, setTesting] = useState(false);
   if (!db || !draft) return null;
   const s = db.printServer;
   const url = (draft.secure ? 'https://' : 'http://') + (draft.host || '') + (draft.port ? ':' + draft.port : '') + (draft.path || '');
   const tone = s.status === 'ok' ? 'g' : s.status === 'bad' ? 'd' : 'w';
 
-  const test = () => {
+  // A real reachability check, not a canned message: this used to save the
+  // draft and describe what *would* happen without ever actually asking the
+  // server anything, so "Not checked" could sit there forever looking tested.
+  const test = async () => {
     setPrintServer({ ...draft });
-    Alert.alert(
-      'Print server',
-      'Genius POS will try ' + url + ' the next time a job is sent. ' +
-      'If it does not answer, jobs ' +
-      (draft.queue === 'retry' ? 'are held and retried.'
-        : draft.queue === 'local' ? 'fall back to this phone.' : 'are dropped and you are told.'),
-    );
+    if (!draft.host) { Alert.alert('Print server', 'Give it a host or IP first.'); return; }
+    setTesting(true);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(1, draft.timeout || 8) * 1000);
+    try {
+      const res = await fetch(url, { method: 'GET', signal: controller.signal });
+      const ok = res.ok;
+      setPrintServer({ status: ok ? 'ok' : 'bad', lastSeen: new Date().toISOString() });
+      Alert.alert('Print server', ok ? url + ' answered.' : url + ' answered with an error (' + res.status + ').');
+    } catch (e: any) {
+      setPrintServer({ status: 'bad', lastSeen: new Date().toISOString() });
+      Alert.alert('Print server', 'Could not reach ' + url + (e?.name === 'AbortError' ? ' — no answer within ' + draft.timeout + 's.' : '.'));
+    } finally {
+      clearTimeout(timer);
+      setTesting(false);
+    }
   };
 
   return (
@@ -703,7 +720,7 @@ function ServerPane() {
 
         <View style={{ flexDirection: 'row', gap: 9 }}>
           <View style={{ flex: 1 }}><Button size="sm" label="Save" onPress={() => { setPrintServer({ ...draft }); Alert.alert('Print server', 'Saved.'); }} /></View>
-          <View style={{ flex: 1 }}><Button size="sm" variant="pri" label="Test connection" onPress={test} /></View>
+          <View style={{ flex: 1 }}><Button size="sm" variant="pri" label="Test connection" loading={testing} onPress={test} /></View>
         </View>
       </Card>
 
@@ -711,8 +728,8 @@ function ServerPane() {
         <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 8 }}>Last answered {fmtDate(s.lastSeen)}</Text>
       ) : null}
       <Text style={{ fontFamily: fonts.ui, fontSize: 11, lineHeight: 16, color: colors.faint, marginTop: 8 }}>
-        Printers set to “On the print server” send their jobs here. Everything else prints straight
-        from this device.
+        “Test connection” only checks that this address answers. Sending print jobs
+        through it is not built yet — every printer still prints straight from this device.
       </Text>
     </View>
   );
@@ -731,7 +748,7 @@ function WordingPane() {
       <Card style={{ paddingVertical: 12, paddingHorizontal: 14 }}>
         <Field label="Extra line at the top" value={header} onChangeText={setHeader} placeholder="Branch, phone, anything" />
         <Field label="Footer" value={footer} onChangeText={setFooter} multiline />
-        <Button size="sm" variant="pri" label="Save wording" onPress={() => setPrinter({ header, footer })} />
+        <Button size="sm" variant="pri" label="Save wording" onPress={() => { setPrinter({ header, footer }); Alert.alert('Wording', 'Saved.'); }} />
       </Card>
 
       <Card style={{ marginTop: 10, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: colors.sunk, borderColor: 'transparent' }}>
