@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { verifyPin } from '../data/pinHash';
 import { Button, InfoBanner, Avatar, SectionLabel } from './ui';
 import { Icon } from './icons';
 import Sheet from './Sheet';
@@ -67,7 +68,7 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
     const next = pin + d;
     setPin(next);
     if (next.length < 4) return;
-    if (owners.some((o) => o.pin === next)) {
+    if (owners.some((o) => verifyPin(next, o.pin))) {
       setPin(''); setWrong(false);
       onOk();
     } else {
