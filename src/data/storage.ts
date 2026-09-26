@@ -7,6 +7,7 @@ import {
 } from './defaults';
 import { ensureRoles } from './perms';
 import { ensureCoa } from './coa';
+import { hashPin, isPinHashed } from './pinHash';
 
 export const KEY = 'genius.pos.v1';
 export const PIN_UNLOCK_KEY = 'genius.pos.session.unlocked';
@@ -44,6 +45,13 @@ export function migrate(d: any): any {
     if (w.active === undefined) w.active = true;
   });
   d.queue = d.queue || [];
+
+  // PINs used to be stored as the raw digits someone typed. A book saved
+  // before hashing existed still has them that way; rehash on this one load
+  // so every PIN at rest is a salted hash from here on (see pinHash.ts).
+  (d.users || []).forEach((u: any) => {
+    if (u.pin && !isPinHashed(u.pin)) u.pin = hashPin(u.pin);
+  });
   if (!d.firm.id) d.firm.id = 'frm_1';
   d.firms = d.firms && d.firms.length ? d.firms : [d.firm];
   d.activeFirmId = d.activeFirmId || d.firm.id;

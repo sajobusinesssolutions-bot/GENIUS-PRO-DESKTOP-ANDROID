@@ -559,7 +559,9 @@ function UserSheet({ state, onClose, roles, onSave }: {
     setSeeded(key);
     setName(existing?.name || '');
     setRoleId(existing?.role || 'cashier');
-    setPin(existing?.pin || '');
+    // never prefill with the stored value — it is a hash now, not the PIN
+    // itself, so there is nothing real to show. Blank means "leave it as is".
+    setPin('');
     setActive(existing?.active !== false);
   }
   if (!state) { if (seeded !== null) setSeeded(null); return null; }
@@ -577,7 +579,13 @@ function UserSheet({ state, onClose, roles, onSave }: {
         <Button
           variant="pri"
           label="Save"
-          onPress={() => onSave(state.id, { name: name.trim(), role: roleId, pin, active })}
+          onPress={() => {
+            const patch: Partial<User> = { name: name.trim(), role: roleId, active };
+            // editing: blank means "keep the current PIN", so it is left out
+            // of the patch rather than sent and overwriting it with nothing
+            if (!existing || pin) patch.pin = pin;
+            onSave(state.id, patch);
+          }}
         />
       }
     >
@@ -601,7 +609,16 @@ function UserSheet({ state, onClose, roles, onSave }: {
         options={roles.map((r) => ({ v: r.id, l: r.name + ' — ' + permCount(r) + ' permissions' }))}
         onChange={setRoleId}
       />
-      <Field icon="lock" label="4-digit PIN" value={pin} onChangeText={setPin} placeholder="0000" numeric secure maxLength={4} />
+      <Field
+        icon="lock"
+        label="4-digit PIN"
+        value={pin}
+        onChangeText={setPin}
+        placeholder={existing ? 'Leave blank to keep it' : '0000'}
+        numeric
+        secure
+        maxLength={4}
+      />
       <SelectField
         icon="check"
         label="Status"
@@ -609,7 +626,11 @@ function UserSheet({ state, onClose, roles, onSave }: {
         options={[{ v: 'true', l: 'Active' }, { v: 'false', l: 'Disabled' }]}
         onChange={(v) => setActive(v === 'true')}
       />
-      <FieldNote>The PIN is what they type on the lock screen.</FieldNote>
+      <FieldNote>
+        {existing
+          ? 'The PIN is what they type on the lock screen. It is stored hashed, so what they currently have cannot be shown here — leave this blank to keep it, or type four digits to set a new one.'
+          : 'The PIN is what they type on the lock screen.'}
+      </FieldNote>
     </Sheet>
   );
 }
