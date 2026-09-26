@@ -72,3 +72,31 @@ describe('"Sync now"', () => {
     expect(Alert.alert).toHaveBeenCalledWith('Sync', 'Your session has expired. Sign out and in again.');
   });
 });
+
+describe('turning on "Keep this shop\'s books in the cloud"', () => {
+  it('backs the books up right away, rather than waiting for the next automatic tick', async () => {
+    mockDb.sync = { ...mockDb.sync, on: false };
+    mockRun.mockResolvedValue({ ok: true, sent: 3, message: '3 changes sent' });
+    render(<OnlineScreen />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Keep this shop’s books in the cloud'));
+    });
+
+    expect(mockSetSync).toHaveBeenCalledWith({ on: true });
+    expect(mockRun).toHaveBeenCalledWith('manual');
+  });
+
+  it('does not run a sync when turning it off', async () => {
+    mockDb.sync = { ...mockDb.sync, on: true, pending: [] };
+    mockDb.queue = [];
+    render(<OnlineScreen />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Keep this shop’s books in the cloud'));
+    });
+
+    expect(mockSetSync).toHaveBeenCalledWith({ on: false });
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+});
