@@ -40,7 +40,7 @@ export default function SettingsScreen() {
   const { colors } = useTheme();
   const go = useGo();
   const {
-    db, setSetting, updateFirm, toggleOnline, can, setDocNumbering, isPro,
+    db, setSetting, updateFirm, can, setDocNumbering, isPro,
   } = useAppData();
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [tab, setTab] = useState<SettingsTab>('general');
@@ -245,7 +245,7 @@ export default function SettingsScreen() {
             <SettingGroup title="This device">
               <SettingRow icon="till" label="Till name" value={db.session.till} onPress={() => setSheet('device')} />
               <SettingRow icon="print" label="Printer" value={db.printer.device || '—'} onPress={() => go('Printing')} />
-              <SettingRow icon="cloud" label="Connection" value={db.session.online ? 'Online' : 'Offline'} onPress={() => toggleOnline()} />
+              <SettingRow icon="cloud" label="Connection" value={db.session.online ? 'Online' : 'Offline'} />
               <SettingRow icon="swap" label="Backup & data tools" value="Export, restore, health check" onPress={() => go('DataTools')} />
             </SettingGroup>
 
@@ -262,11 +262,6 @@ export default function SettingsScreen() {
                 value={!isPro() ? 'On Pro' : db.sync.on ? (db.sync.pending.length ? plural(db.sync.pending.length, 'change') + ' waiting' : 'On this phone only') : 'Off'}
                 onPress={() => go('Sync')}
               />
-            </SettingGroup>
-
-            <SettingGroup title="This phone">
-              <SettingRow icon="phone" label="Install" value="Add to home screen" onPress={() => go('Install')} />
-              <SettingRow icon="arrow" label="Updates" value={db.update.on ? 'Checked automatically' : 'Off'} onPress={() => go('Update')} />
             </SettingGroup>
 
             <SettingGroup title="About">
