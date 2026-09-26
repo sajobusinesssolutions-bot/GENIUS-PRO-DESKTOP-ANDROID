@@ -716,6 +716,11 @@ export function OnlineScreen() {
               }
               if (v && !canFor(db.session.role, 'settings')) { Alert.alert('Online mode', 'Only the owner can turn this on.'); return; }
               setSync({ on: v });
+              // Switching on queues the backlog (see setSync), but nothing
+              // sent it up yet — without this it sat waiting for the next
+              // automatic tick, so the very moment a shop turns this on
+              // looked like nothing had happened.
+              if (v) void run('manual');
             }}
             last={!on}
           />
