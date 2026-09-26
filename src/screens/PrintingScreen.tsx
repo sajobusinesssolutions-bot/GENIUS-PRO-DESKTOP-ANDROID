@@ -31,6 +31,9 @@ const TABS: [string, string][] = [
   ['server', 'Print server'], ['wording', 'Wording'],
 ];
 
+/** A4 templates only — the coloured bar under the shop name (PrintTemplate.accentColor). */
+const ACCENT_COLORS = ['#1A7AE6', '#1DA362', '#D97706', '#DC2626', '#7C3AED', '#111827'];
+
 function Field({ label, value, onChangeText, placeholder, numeric, multiline }: {
   label: string; value: string; onChangeText: (v: string) => void;
   placeholder?: string; numeric?: boolean; multiline?: boolean;
@@ -99,14 +102,20 @@ function ReceiptPreview({ template }: { template?: PrintTemplate } = {}) {
   const showExpiry = !!tpl?.showExpiry;
   const showImei = !!tpl?.showImei;
   const showWarranty = !!tpl?.showWarranty;
-  const showSalesperson = !!tpl?.showSalesperson;
+  const showServed = !!tpl?.showServed;
+  // Only meaningful on A4 — the two things that make an invoice look like a
+  // classic ledger page (boxed) or a modern branded one (an accent colour).
+  const boxed = paper === 'A4' && !!tpl?.boxed;
+  const accent = paper === 'A4' ? tpl?.accentColor : undefined;
 
   const sheet = (
     <View style={{
-      backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: colors.lineHard,
+      backgroundColor: '#FFFFFF', borderRadius: boxed ? 2 : 8,
+      borderWidth: boxed ? 1.6 : 1, borderColor: boxed ? '#000' : colors.lineHard,
       paddingVertical: 14, paddingHorizontal: narrow ? 12 : 16,
       width: narrow ? 210 : 280, alignSelf: 'center',
     }}>
+      {accent ? <View style={{ height: 4, borderRadius: 2, backgroundColor: accent, marginBottom: 8 }} /> : null}
       {!s ? (
         <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>
           Nothing sold yet
@@ -114,7 +123,7 @@ function ReceiptPreview({ template }: { template?: PrintTemplate } = {}) {
       ) : (
         <>
           {tpl?.showLogo || pr.showLogo ? (
-            <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size + 1.5, color: '#111' }}>{db.firm.name}</Text>
+            <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size + 1.5, color: accent || '#111' }}>{db.firm.name}</Text>
           ) : null}
           {pr.header ? <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{pr.header}</Text> : null}
           {showAddress ? <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{db.firm.address}</Text> : null}
@@ -124,7 +133,7 @@ function ReceiptPreview({ template }: { template?: PrintTemplate } = {}) {
             <Text style={{ fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{s.no}</Text>
             <Text style={{ fontFamily: fonts.mono, fontSize: size, color: '#333' }}>{fmtDate(s.ts)}</Text>
           </View>
-          {showSalesperson ? <Text style={{ fontFamily: fonts.mono, fontSize: size - 0.5, color: '#333' }}>Served by {db.users.find((u) => u.id === s.userId)?.name || 'Cashier'}</Text> : null}
+          {showServed ? <Text style={{ fontFamily: fonts.mono, fontSize: size - 0.5, color: '#333' }}>Served by {db.users.find((u) => u.id === s.userId)?.name || 'Cashier'}</Text> : null}
           <View style={{ height: 1, backgroundColor: '#CCC', marginVertical: 7 }} />
           {s.lines.slice(0, 3).map((l, i) => (
             <View key={i} style={{ marginBottom: 5 }}>
@@ -386,9 +395,9 @@ function TemplatesPane() {
   if (!db) return null;
 
   const presets = [
-    { id: 'pos', name: 'POS receipt', blurb: 'Fast sales, clear totals, compact for the till', kind: 'thermal' as const },
-    { id: 'tally', name: 'Tally', blurb: 'Stock-friendly, classic ledger style', kind: 'page' as const },
-    { id: 'quickbooks', name: 'QuickBooks', blurb: 'Full invoice view with customer and tax detail', kind: 'page' as const },
+    { id: 'pos', name: 'POS receipt', blurb: 'Fast sales, clear totals, who served — compact for the till', kind: 'thermal' as const },
+    { id: 'tally', name: 'Tally', blurb: 'Boxed ledger grid with batch and expiry per line', kind: 'page' as const },
+    { id: 'quickbooks', name: 'QuickBooks', blurb: 'Clean invoice with a coloured accent bar', kind: 'page' as const },
     { id: 'compact', name: 'Compact', blurb: 'Slim 58mm format for busy counters', kind: 'thermal' as const },
   ];
 
@@ -396,7 +405,19 @@ function TemplatesPane() {
     const source = db.templates.find((t) => t.paper === (preset.id === 'compact' ? '58mm' : preset.id === 'pos' ? '80mm' : 'A4') && t.name.toLowerCase().includes(preset.name.toLowerCase().split(' ')[0].toLowerCase()))
       || db.templates.find((t) => t.paper === (preset.id === 'compact' ? '58mm' : preset.id === 'pos' ? '80mm' : 'A4'))
       || db.templates[0];
-    setEdit({ ...source, name: preset.name, paper: preset.id === 'compact' ? '58mm' : preset.id === 'pos' ? '80mm' : 'A4', kind: preset.kind, showLogo: true, showTax: preset.id !== 'compact', showParty: preset.id !== 'compact', showServed: preset.id === 'pos', showSaved: preset.id === 'pos', showAddress: preset.id !== 'compact', showBatch: preset.id !== 'compact', showExpiry: preset.id !== 'compact', showRate: true, showUnit: true, showSalesperson: preset.id === 'quickbooks' || preset.id === 'tally' });
+    // Batch and expiry matter for a stock-heavy paper trail (Tally) and less
+    // for a fast counter sale (POS) or a service-style invoice (QuickBooks) —
+    // still one tap away in "What it shows" either way.
+    setEdit({
+      ...source, name: preset.name,
+      paper: preset.id === 'compact' ? '58mm' : preset.id === 'pos' ? '80mm' : 'A4', kind: preset.kind,
+      showLogo: true, showTax: preset.id !== 'compact', showParty: preset.id !== 'compact',
+      showServed: preset.id !== 'compact', showSaved: preset.id === 'pos',
+      showAddress: preset.id !== 'compact', showBatch: preset.id === 'tally', showExpiry: preset.id === 'tally',
+      showRate: true, showUnit: true,
+      boxed: preset.id === 'tally',
+      accentColor: preset.id === 'quickbooks' ? '#1DA362' : undefined,
+    });
   };
 
   return (
@@ -526,14 +547,51 @@ function TemplatesPane() {
               <ToggleRow label="Business name" value={edit.showLogo} onChange={(v) => setEdit({ ...edit, showLogo: v })} />
               <ToggleRow label="Address" value={edit.showAddress ?? false} onChange={(v) => setEdit({ ...edit, showAddress: v })} />
               <ToggleRow label="Tax line" value={edit.showTax} onChange={(v) => setEdit({ ...edit, showTax: v })} />
-              <ToggleRow label="Who served" value={edit.showServed} onChange={(v) => setEdit({ ...edit, showServed: v })} />
+              <ToggleRow label="Salesperson (who served)" value={edit.showServed} onChange={(v) => setEdit({ ...edit, showServed: v })} />
               <ToggleRow label="Customer" value={edit.showParty} onChange={(v) => setEdit({ ...edit, showParty: v })} />
               <ToggleRow label="Saved / posted info" value={edit.showSaved} onChange={(v) => setEdit({ ...edit, showSaved: v })} />
               <ToggleRow label="Item unit" value={edit.showUnit ?? true} onChange={(v) => setEdit({ ...edit, showUnit: v })} />
               <ToggleRow label="Rate / price" value={edit.showRate ?? true} onChange={(v) => setEdit({ ...edit, showRate: v })} />
-              <ToggleRow label="Batch / expiry" value={edit.showBatch ?? false} onChange={(v) => setEdit({ ...edit, showBatch: v })} />
+              <ToggleRow label="Batch number" note="Which lot an item shipped in" value={edit.showBatch ?? false} onChange={(v) => setEdit({ ...edit, showBatch: v })} />
+              <ToggleRow label="Expiry date" note="For perishables and pharmacy stock" value={edit.showExpiry ?? false} onChange={(v) => setEdit({ ...edit, showExpiry: v })} />
               <ToggleRow label="IMEI / serial" value={edit.showImei ?? false} onChange={(v) => setEdit({ ...edit, showImei: v })} last />
             </Card>
+            {edit.paper === 'A4' ? (
+              <>
+                <Cap style={{ marginBottom: 8 }}>Style</Cap>
+                <Card style={{ marginBottom: 12 }}>
+                  <ToggleRow
+                    label="Boxed, ledger-style"
+                    note="Ruled borders around every block, like a classic printed account book"
+                    value={!!edit.boxed}
+                    onChange={(v) => setEdit({ ...edit, boxed: v })}
+                    last
+                  />
+                </Card>
+                <Cap style={{ marginBottom: 8 }}>Accent colour</Cap>
+                <View style={{ flexDirection: 'row', gap: 9, marginBottom: 12 }}>
+                  <Pressable
+                    onPress={() => setEdit({ ...edit, accentColor: undefined })}
+                    style={{
+                      width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
+                      borderWidth: 1.5, borderColor: !edit.accentColor ? colors.ink : colors.line, backgroundColor: colors.surface,
+                    }}
+                  >
+                    <Icon name="x" size={14} color={colors.faint} />
+                  </Pressable>
+                  {ACCENT_COLORS.map((c) => (
+                    <Pressable
+                      key={c}
+                      onPress={() => setEdit({ ...edit, accentColor: c })}
+                      style={{
+                        width: 34, height: 34, borderRadius: 17, backgroundColor: c,
+                        borderWidth: edit.accentColor === c ? 2.5 : 0, borderColor: colors.ink,
+                      }}
+                    />
+                  ))}
+                </View>
+              </>
+            ) : null}
             <Cap style={{ marginBottom: 8 }}>Code at the foot</Cap>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
               {CODE_KINDS.map(([v, l]) => (

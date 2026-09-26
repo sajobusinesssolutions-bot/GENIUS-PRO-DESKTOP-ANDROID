@@ -267,9 +267,17 @@ export type CodeData = 'no' | 'total' | 'verify' | 'party' | 'custom';
 
 export interface PrintTemplate {
   id: string; name: string; paper: Paper; kind: 'thermal' | 'page';
+  // `showServed` is the one flag for naming who made the sale — a separate,
+  // unwired `showSalesperson` used to exist alongside it (see git history):
+  // it changed the settings-screen preview but nothing the printer actually
+  // produced, which is worse than not having the setting at all.
   showLogo: boolean; showTax: boolean; showServed: boolean; showParty: boolean; showSaved: boolean;
   showAddress: boolean; showBatch: boolean; showExpiry: boolean; showImei: boolean;
-  showWarranty: boolean; showUnit: boolean; showRate: boolean; showSalesperson: boolean;
+  showWarranty: boolean; showUnit: boolean; showRate: boolean;
+  /** A4/page templates only: a coloured bar under the shop name, e.g. '#1A7AE6'. */
+  accentColor?: string;
+  /** A4/page templates only: visible borders around every field and cell, ledger-style. */
+  boxed?: boolean;
   code: CodeKind; codeData: CodeData; codeCaption: boolean;
   density: 'normal' | 'tight'; head: string; foot: string; copies: number;
 }

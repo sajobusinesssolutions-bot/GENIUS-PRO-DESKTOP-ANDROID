@@ -96,6 +96,64 @@ describe('the template', () => {
   });
 });
 
+describe('batch, expiry and salesperson', () => {
+  // These three used to be settings-screen decoration: the toggle changed
+  // the preview on the Templates pane but docHtml() — what actually reaches
+  // the printer — never looked at any of them, so switching one off changed
+  // nothing about the printed page.
+  const withBatch: DocMeta = { ...doc, lines: [{ ...doc.lines[0], batchNo: 'B12', expiry: '2027-06-01' }] };
+
+  it('shows the batch number only when the template says to', () => {
+    expect(docHtml(withBatch, money, { paper: '80mm', tpl: tpl({ showBatch: true, showExpiry: false }) })).toContain('Batch B12');
+    expect(docHtml(withBatch, money, { paper: '80mm', tpl: tpl({ showBatch: false, showExpiry: false }) })).not.toContain('Batch B12');
+  });
+
+  it('shows the expiry date only when the template says to, independently of batch', () => {
+    const html = docHtml(withBatch, money, { paper: '80mm', tpl: tpl({ showBatch: false, showExpiry: true }) });
+    expect(html).not.toContain('Batch B12');
+    expect(html).toContain('Exp');
+  });
+
+  it('prints nothing extra under the line when neither is on, even if the sale carries them', () => {
+    const html = docHtml(withBatch, money, { paper: '80mm', tpl: tpl({ showBatch: false, showExpiry: false }) });
+    expect(html).not.toContain('Batch');
+    expect(html).not.toContain('Exp ');
+  });
+
+  it('names the salesperson only when the template says to', () => {
+    const served: DocMeta = { ...doc, servedBy: 'Amina' };
+    const on = docHtml(served, money, { paper: '80mm', tpl: tpl({ showServed: true }) });
+    expect(on).toContain('Served by');
+    expect(on).toContain('Amina');
+    expect(docHtml(served, money, { paper: '80mm', tpl: tpl({ showServed: false }) })).not.toContain('Amina');
+  });
+});
+
+describe('A4 look — boxed and accent colour', () => {
+  it('rules every block off when boxed, for the classic ledger look', () => {
+    const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true }) });
+    expect(html).toContain('class="doc a4 boxed"');
+    expect(html).toContain('.boxed table.lines');
+  });
+
+  it('leaves A4 borderless by default', () => {
+    const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: false }) });
+    expect(html).toContain('class="doc a4"');
+  });
+
+  it('draws the accent bar and colours the heading in the chosen colour', () => {
+    const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', accentColor: '#1DA362' }) });
+    expect(html).toContain('--accent: #1DA362');
+    expect(html).toContain('<div class="bar"></div>');
+  });
+
+  it('never draws an accent bar or boxed grid on thermal paper, whatever the template says', () => {
+    const html = docHtml(doc, money, { paper: '80mm', tpl: tpl({ paper: 'A4', boxed: true, accentColor: '#1DA362' }) });
+    expect(html).not.toContain('class="bar"');
+    expect(html).not.toContain('boxed');
+  });
+});
+
 describe('pictures', () => {
   it('embeds a picture from the phone, since the print view cannot open file paths', async () => {
     expect(await inlineImage('file:///doc/logo.png')).toBe('data:image/png;base64,QUJD');
