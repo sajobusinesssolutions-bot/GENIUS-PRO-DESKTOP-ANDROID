@@ -1,21 +1,37 @@
 /**
- * New / edit item — the full-screen item editor.
+ * New / edit item — the full-screen item editor (redesign 3a / 3b).
  *
- * Reference: SCREENS.itemEdit (line 9192) with the wrapper that gives a service
- * its own Delivery tab and a product its second unit / batches / serials block
- * (16886), plus itemTabBody (9217), togRow (9346), A.markup (9369), the barcode
- * actions (9384-9420), SHEETS.pickEmoji (9378), SHEETS.newUnit / newCategory
- * (9424-9437) and marginCard / stockBits from the live SHEETS.product (6983).
+ *  - Basics opens with a Product / Service switch, so the kind is chosen first
+ *    and can still be changed.
+ *  - Products get two small "Track" chips (Batches, IMEI / serial) right under
+ *    the switch; their editors live on the Stock tab.
+ *  - Four tabs: Basics · Price · Stock (Delivery for a service) · More.
+ *  - Save is pinned on every tab. Only the name is required; a missing name
+ *    jumps back to Basics and marks the field. A row of summary chips above the
+ *    buttons shows what will be saved.
+ *  - The second unit, previously on both Pricing and Stock, is now in one place
+ *    (Price). The batch toggle, previously on Basics and Stock, is one state
+ *    driven from both the chip and the Stock tab.
+ *
+ * The second unit's own math is kept exactly as LineEditSheet.tsx's unitsFor()
+ * already expects it, not re-derived here: `unit` is the item's own selling
+ * unit and `price` is set for it, `secondaryUnit` is a smaller breakdown (a
+ * piece off a carton), and `conversionRate` is how many of those fit in one
+ * `unit` — so the secondary price is the main price divided down. Asking the
+ * other way round, or multiplying, would price a carton at a fraction of a
+ * piece the moment nobody types an explicit override.
+ *
+ * Every field, sheet and rule from the previous editor is kept.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert, Image } from 'react-native';
+import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
 import {
-  Card, Cap, Button, Stat, Grid, KV, EmptyState, Pill, ChipStrip, TopTabs,
-  TypeChips, HighlightToggle, DropZone, InfoBanner,
-  Seg, Field, SelectField, ChipRow, ActionChip, FieldNote, ToggleRow, Swatch,
+  Card, Cap, Button, Grid, KV, Pill, ChipStrip, TopTabs,
+  TypeChips, HighlightToggle, InfoBanner,
+  Field, SelectField, ChipRow, ActionChip, FieldNote, ToggleRow, Swatch,
 } from '../components/ui';
 import { Icon, CAT_ICON, IconName } from '../components/icons';
 import { Sheet } from '../components/Sheet';
@@ -31,6 +47,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProductDetail'>;
+type Tab = 'basics' | 'pricing' | 'stock' | 'more';
 
 const num = (v: string) => Number(String(v).replace(/[^0-9.\-]/g, '')) || 0;
 
@@ -85,6 +102,36 @@ function ScanBox() {
   );
 }
 
+/** A small on/off chip — the "Track" line under the kind switch. */
+function TrackChip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      style={{
+        paddingVertical: 6, paddingHorizontal: 11, borderRadius: radius.pill,
+        backgroundColor: on ? colors.accentSoft : colors.surface,
+        borderWidth: 1, borderColor: on ? colors.accent : colors.line,
+      }}
+    >
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: on ? colors.accent : colors.soft }}>
+        {(on ? '✓ ' : '+ ') + label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Summary chip above the save buttons. */
+function SumChip({ label, on }: { label: string; on: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ paddingVertical: 4, paddingHorizontal: 8, borderRadius: radius.pill, backgroundColor: on ? colors.goodSoft : colors.sunk }}>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: on ? colors.good : colors.faint }}>{label}</Text>
+    </View>
+  );
+}
+
 export default function ProductDetailScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const ctx = useAppData();
@@ -93,7 +140,8 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   const existing = route.params?.productId ? product(route.params.productId) : undefined;
 
   /* ---- the form, reference UI.itemForm seeded by A.newItem / A.editItem ---- */
-  const [tab, setTab] = useState<'basics' | 'pricing' | 'stock' | 'more'>('basics');
+  const [tab, setTab] = useState<Tab>('basics');
+  const [nameErr, setNameErr] = useState(false);
   const [kind, setKind] = useState<ProductKind>(existing?.kind || 'product');
   const [name, setName] = useState(existing?.name || '');
   const [sku, setSku] = useState(existing?.sku || '');
@@ -191,9 +239,27 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     setPrice(String(Math.round(c * (1 + pct / 100) / 50) * 50));
   }
 
+  /** Turning batches on from the Basics chip: keep counting on, which batches need. */
+  function toggleBatches() {
+    const next = !trackBatches;
+    setTrackBatches(next);
+    if (next && !trackInventory) setTrackInventory(true);
+  }
+  function toggleSerials() {
+    const next = !trackSerials;
+    setTrackSerials(next);
+    if (next && !trackInventory) setTrackInventory(true);
+  }
+
   function save() {
-    if (!name.trim()) { error('Give it a name.'); return; }
+    if (!name.trim()) {
+      setNameErr(true);
+      setTab('basics');
+      error('Give it a name.');
+      return;
+    }
     if (!svc && trackBatches && batchTarget > 0 && batchTotal > batchTarget) {
+      setTab('stock');
       error('The batches add up to ' + batchTotal + ' but the item holds ' + batchTarget + '. Reduce a batch before saving.');
       return;
     }
@@ -261,42 +327,50 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     if (!r.canceled && r.assets?.[0]?.uri) setPhoto(keepPhoto(r.assets[0].uri, 'item'));
   }
 
-  /* ================= tab bodies — reference itemTabBody(), 9217 ================= */
+  /* ================= tab bodies ================= */
 
   const basics = (
     <>
-      <View style={{ height: 10 }} />
-      {/* the outlined type pills — reference sheet, top of Edit Item */}
+      <View style={{ height: 12 }} />
+      {/* 1 — what is it */}
       <TypeChips
         value={kind}
         options={[
-          { v: 'product' as ProductKind, l: 'Simple', i: 'box' as IconName },
+          { v: 'product' as ProductKind, l: 'Product', i: 'box' as IconName },
           { v: 'service' as ProductKind, l: 'Service', i: 'tools' as IconName },
         ]}
-        onChange={setKind}
-        style={{ marginBottom: 16 }}
+        onChange={(k: ProductKind) => { setKind(k); if (k === 'service' && tab === 'stock') setTab('basics'); }}
+        style={{ marginBottom: 10 }}
       />
 
-      {/* the tinted highlight card — reference sheet, "This product has variations" */}
+      {/* 2 — small tracking chips, products only; editors are on the Stock tab */}
       {!svc ? (
-        <HighlightToggle
-          title="This item is tracked by batch"
-          sub="Each delivery keeps its own lot number and expiry date"
-          on={trackBatches}
-          onChange={setTrackBatches}
-        />
-      ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 }}>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint, marginRight: 2 }}>Track</Text>
+          <TrackChip label="Batches" on={trackBatches} onPress={toggleBatches} />
+          <TrackChip label="IMEI / serial" on={trackSerials} onPress={toggleSerials} />
+        </View>
+      ) : <View style={{ height: 6 }} />}
 
-      <View style={{ marginBottom: 12 }}>
-        <Button
-          size="sm"
-          label={photo ? 'Replace photo' : 'Add photo'}
-          icon={<Icon name="phone" size={15} color={colors.ink} />}
-          onPress={photo ? pickPhoto : pickPhoto}
-        />
+      {/* photo: camera, gallery or a picture from the emoji set */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <Button size="sm" label={photo ? 'Retake' : 'Camera'} icon={<Icon name="phone" size={15} color={colors.ink} />} onPress={takePhoto} />
+        <Button size="sm" label={photo ? 'Replace' : 'Gallery'} onPress={pickPhoto} />
+        <Button size="sm" label={image ? 'Emoji ' + image : 'Emoji'} onPress={() => setSheet('emoji')} />
       </View>
 
-      <Field icon="tag" label="Name" value={name} onChangeText={setName} placeholder={svc ? 'What the service is called' : 'What the item is called'} />
+      <Field
+        icon="tag"
+        label="Name *"
+        value={name}
+        onChangeText={(v: string) => { setName(v); if (nameErr && v.trim()) setNameErr(false); }}
+        placeholder={svc ? 'What the service is called' : 'What the item is called'}
+      />
+      {nameErr ? (
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.danger, marginTop: -6, marginBottom: 10 }}>
+          Give it a name.
+        </Text>
+      ) : null}
       <Field icon="doc" label="Item code" value={sku} onChangeText={setSku} placeholder="Left blank, one is made for you" />
 
       <SelectField
@@ -310,6 +384,10 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       <View style={{ marginTop: -4, marginBottom: 6 }}>
         <Button size="sm" label="New category" icon={<Icon name="plus" size={15} color={colors.ink} />} onPress={() => setSheet('category')} />
       </View>
+
+      <View style={{ height: 8 }} />
+      <SelectField label="Sold by" value={unit} options={units.map((u) => ({ v: u, l: u }))} onChange={setUnit} />
+      <Button size="sm" label="+ New unit" onPress={() => setSheet('unit')} />
 
       {svc ? null : (
         <>
@@ -340,31 +418,33 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           </Grid>
         </>
       )}
-
-      <View style={{ height: 14 }} />
-      <SelectField label="Sold by" value={unit} options={units.map((u) => ({ v: u, l: u }))} onChange={setUnit} />
-      <Button size="sm" label="+ New unit" onPress={() => setSheet('unit')} />
     </>
   );
 
   const pricing = (
     <>
+      <View style={{ height: 14 }} />
+      {svc ? (
+        <>
+          <SectionCap>How it is priced</SectionCap>
+          <ChipRow
+            value={rateType}
+            options={SERVICE_RATE.map((r) => ({ v: r[0], l: r[1] }))}
+            onChange={setRateType}
+            style={{ marginBottom: 8 }}
+          />
+          <FieldNote>{(SERVICE_RATE.find((r) => r[0] === rateType) || SERVICE_RATE[0])[2]}</FieldNote>
+        </>
+      ) : null}
+
       {showCost ? (
         <>
-          <View style={{ height: 14 }} />
           <SectionCap>Pricing</SectionCap>
           <Grid cols={2} gap={12}>
             <Field icon="money" label={svc ? 'What it costs you' : 'Cost price'} value={cost} onChangeText={setCost} numeric decimal placeholder="0" />
             <Field icon="coins" label="Sale price" value={price} onChangeText={setPrice} numeric decimal placeholder="0" />
           </Grid>
-        </>
-      ) : (
-        <Field icon="coins" label="Sale price" value={price} onChangeText={setPrice} numeric placeholder="0" />
-      )}
-
-      {showCost ? (
-        <>
-          <SectionCap style={{ marginTop: 12 }}>Set the price from a markup</SectionCap>
+          <SectionCap style={{ marginTop: 4 }}>Set the price from a markup</SectionCap>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
             {[10, 15, 20, 25, 30, 50, 100].map((m) => (
               <ActionChip key={m} label={m + '%'} onPress={() => applyMarkup(m)} />
@@ -372,13 +452,15 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           </View>
           <MarginCard cost={num(cost)} price={num(price)} />
         </>
-      ) : null}
+      ) : (
+        <Field icon="coins" label="Sale price" value={price} onChangeText={setPrice} numeric placeholder="0" />
+      )}
 
       {db.settings.taxEnabled === false ? (
         <InfoBanner
           tone="neutral"
           icon="bank"
-          text={'Tax is switched off for the whole shop, so nothing is charged on this item. Turn it on under Settings \u2192 Selling \u2192 Tax.'}
+          text={'Tax is switched off for the whole shop, so nothing is charged on this item. Turn it on under Settings → Selling → Tax.'}
         />
       ) : (
         <>
@@ -390,67 +472,58 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
             onChange={setTaxExempt}
           />
           {!taxExempt ? (
-            <Field
-              icon="pie"
-              label={(db.settings.taxName || 'VAT') + ' %'}
-              value={taxRate}
-              onChangeText={setTaxRate}
-              numeric
-              decimal
-            />
+            <Field icon="pie" label={(db.settings.taxName || 'VAT') + ' %'} value={taxRate} onChangeText={setTaxRate} numeric decimal />
           ) : null}
         </>
       )}
+      <ToggleRow label="Staff may change the price at the till" on={priceChangeAllowed} onChange={setPriceChangeAllowed} />
 
-      <View style={{ height: 9 }} />
-      <SectionCap>Second unit &amp; price</SectionCap>
-      <FieldNote>Sell the same item two ways — a carton and a piece, a sack and a kilo.</FieldNote>
-      <Grid cols={2}>
-        <SelectField
-          label="Second unit"
-          value={secondaryUnit}
-          options={[{ v: '', l: '— none —' }].concat(units.map((u) => ({ v: u, l: u })))}
-          onChange={setSecondaryUnit}
-        />
-        <Field label={'How many in one ' + (unit || 'unit')} value={conversionRate} onChangeText={setConversionRate} numeric placeholder="A number, such as 24" />
-      </Grid>
-      {secondaryUnit && num(conversionRate) > 0 ? (
+      {/* the one second-unit block (was on both Pricing and Stock). Kept in
+          the exact direction LineEditSheet.tsx's unitsFor() expects: `unit`
+          is what `price` is for, `secondaryUnit` is the smaller breakdown,
+          and the secondary price divides down rather than multiplies up —
+          a piece must never come out priced above the carton it came from. */}
+      {!svc ? (
         <>
-          <Field
-            label={'Price for one ' + secondaryUnit}
-            value={secondaryPrice}
-            onChangeText={setSecondaryPrice}
-            numeric
-            placeholder={String(Math.round(num(price) / num(conversionRate)))}
-          />
-          <View style={{ backgroundColor: colors.accentSoft, borderRadius: radius.md, padding: 12, marginBottom: 12 }}>
-            <Cap style={{ color: colors.accent }}>Works out as</Cap>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent, marginTop: 3 }}>
-              1 {unit} = {num(conversionRate)} {secondaryUnit} · {money(num(price))} vs{' '}
-              {money(num(secondaryPrice) || Math.round(num(price) / num(conversionRate)))} each
-            </Text>
-          </View>
+          <View style={{ height: 9 }} />
+          <SectionCap>Second unit &amp; price</SectionCap>
+          <FieldNote>Sell the same item two ways — a carton and a piece, a sack and a kilo.</FieldNote>
+          <Grid cols={2}>
+            <SelectField
+              label="Second unit"
+              value={secondaryUnit}
+              options={[{ v: '', l: '— none —' }].concat(units.map((u) => ({ v: u, l: u })))}
+              onChange={setSecondaryUnit}
+            />
+            <Field label={'How many in one ' + (unit || 'unit')} value={conversionRate} onChangeText={setConversionRate} numeric placeholder="A number, such as 24" />
+          </Grid>
+          {secondaryUnit && num(conversionRate) > 0 ? (
+            <>
+              <Field
+                label={'Price for one ' + secondaryUnit}
+                value={secondaryPrice}
+                onChangeText={setSecondaryPrice}
+                numeric
+                placeholder={String(Math.round(num(price) / num(conversionRate)))}
+              />
+              <View style={{ backgroundColor: colors.accentSoft, borderRadius: radius.md, padding: 12, marginBottom: 12 }}>
+                <Cap style={{ color: colors.accent }}>Works out as</Cap>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent, marginTop: 3 }}>
+                  1 {unit} = {num(conversionRate)} {secondaryUnit} · {money(num(price))} vs{' '}
+                  {money(num(secondaryPrice) || Math.round(num(price) / num(conversionRate)))} each
+                </Text>
+              </View>
+            </>
+          ) : null}
         </>
       ) : null}
-      <ToggleRow label="Staff may change the price at the till" on={priceChangeAllowed} onChange={setPriceChangeAllowed} />
     </>
   );
 
   /** Reference the service Delivery tab injected by the wrapper at 16893. */
   const delivery = (
     <>
-      <SectionCap>How it is priced</SectionCap>
-      <ChipRow
-        value={rateType}
-        options={SERVICE_RATE.map((r) => ({ v: r[0], l: r[1] }))}
-        onChange={setRateType}
-        style={{ marginBottom: 10 }}
-      />
-      <Card style={{ padding: 12, marginBottom: 12 }}>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, lineHeight: 17, color: colors.faint }}>
-          {(SERVICE_RATE.find((r) => r[0] === rateType) || SERVICE_RATE[0])[2]}
-        </Text>
-      </Card>
+      <View style={{ height: 14 }} />
       <Field icon="clock" label="How long it usually takes" value={duration} onChangeText={setDuration} placeholder={rateType === 'hour' ? '2 hours' : 'Half a day'} />
       <SelectField
         label="Who normally does it"
@@ -463,11 +536,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         <View style={{ height: 1, backgroundColor: colors.line }} />
         <ToggleRow label="Materials billed separately" on={materials} onChange={setMaterials} bare />
       </Card>
-      <View style={{ height: 14 }} />
-      <Grid cols={2} gap={12}>
-        <Field icon="money" label="Cost to deliver" value={cost} onChangeText={setCost} numeric decimal />
-        <Field icon="shield" label="Warranty (months)" value={warrantyMonths} onChangeText={setWarrantyMonths} numeric />
-      </Grid>
+      <Field icon="shield" label="Warranty (months)" value={warrantyMonths} onChangeText={setWarrantyMonths} numeric />
       <FieldNote>
         A service has no shelf, so there is nothing to count — but it still has a cost, and it can still carry a guarantee.
       </FieldNote>
@@ -476,6 +545,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
 
   const stock = (
     <>
+      <View style={{ height: 10 }} />
       <ToggleRow label="Keep count of this item" on={trackInventory} onChange={setTrackInventory} />
       {!trackInventory ? (
         <FieldNote>Off means you sell it without counting — handy for things bought fresh each morning.</FieldNote>
@@ -493,7 +563,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
                     <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{w.name}</Text>
                     <Field
                       value={opening[w.id] || '0'}
-                      onChangeText={(v) => setOpening({ ...opening, [w.id]: v })}
+                      onChangeText={(v: string) => setOpening({ ...opening, [w.id]: v })}
                       numeric compact
                       style={{ width: 96, marginBottom: 0 }}
                     />
@@ -527,65 +597,45 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
             <Field icon="alert" label="Reorder at" value={reorder} onChangeText={setReorder} numeric />
             <Field icon="shield" label="Warranty (months)" value={warrantyMonths} onChangeText={setWarrantyMonths} numeric />
           </Grid>
-
-          {/* the wrapper's second-unit block — reference 16924 */}
-          <View style={{ height: 6 }} />
-          {db.settings.useSecondaryUnit ? (
-            <>
-              <SectionCap>Second unit</SectionCap>
-              <Grid cols={2} gap={12}>
-                <Field icon="swap" label="Also sold as" value={secondaryUnit} onChangeText={setSecondaryUnit} placeholder={unit === 'PC' ? 'box' : 'carton'} />
-                <Field label="One holds" value={conversionRate} onChangeText={setConversionRate} numeric placeholder="12" />
-              </Grid>
-              {secondaryUnit && num(conversionRate) > 0 ? (
-                <Card style={{ padding: 12, marginBottom: 12 }}>
-                  <KV label={'1 ' + secondaryUnit} value={num(conversionRate) + ' ' + unit} last={!num(price)} />
-                  {num(price) ? <KV label={'Price per ' + secondaryUnit} value={money(num(price) * num(conversionRate))} last /> : null}
-                </Card>
-              ) : (
-                <FieldNote>Sell in cartons but count in pieces — stock stays in the base unit.</FieldNote>
-              )}
-            </>
-          ) : (
-            <Card style={{ padding: 12, marginBottom: 12 }}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, lineHeight: 17, color: colors.faint }}>
-                A second unit is switched off. Turn it on under Settings → Stock if you buy in cartons and sell in pieces.
-              </Text>
-            </Card>
-          )}
-
-          <Card style={{ paddingHorizontal: 13 }}>
-            <ToggleRow label="Track batches and expiry" on={trackBatches} onChange={setTrackBatches} bare />
-            {trackBatches ? (
-              <View style={{ marginTop: 14 }}>
-                <BatchEditor
-                  batches={batchList}
-                  onChange={setBatchList}
-                  target={batchTarget}
-                  unit={unit || 'pcs'}
-                  suggestNo={() => (sku || 'B').toUpperCase().slice(0, 4) + '-' + String(batchList.length + 1).padStart(3, '0')}
-                />
-              </View>
-            ) : null}
-            <View style={{ height: 1, backgroundColor: colors.line }} />
-            <ToggleRow label="Track serial numbers or IMEIs" on={trackSerials} onChange={setTrackSerials} bare />
-            {trackSerials ? (
-              <View style={{ marginTop: 14 }}>
-                <SerialEditor
-                  serials={serialList}
-                  onChange={setSerialList}
-                  expected={existing ? Object.values(existing.stock || {}).reduce((a, b) => a + (b || 0), 0) : undefined}
-                />
-              </View>
-            ) : null}
-          </Card>
         </>
       )}
+
+      <View style={{ height: 6 }} />
+      <SectionCap>Batches</SectionCap>
+      <Card style={{ paddingHorizontal: 13, marginBottom: 12 }}>
+        <ToggleRow label="Track batches and expiry" on={trackBatches} onChange={() => toggleBatches()} bare />
+        {trackBatches ? (
+          <View style={{ marginTop: 14, marginBottom: 12 }}>
+            <BatchEditor
+              batches={batchList}
+              onChange={setBatchList}
+              target={batchTarget}
+              unit={unit || 'pcs'}
+              suggestNo={() => (sku || 'B').toUpperCase().slice(0, 4) + '-' + String(batchList.length + 1).padStart(3, '0')}
+            />
+          </View>
+        ) : null}
+      </Card>
+
+      <SectionCap>IMEI / serial numbers</SectionCap>
+      <Card style={{ paddingHorizontal: 13 }}>
+        <ToggleRow label="Track serial numbers or IMEIs" on={trackSerials} onChange={() => toggleSerials()} bare />
+        {trackSerials ? (
+          <View style={{ marginTop: 14, marginBottom: 12 }}>
+            <SerialEditor
+              serials={serialList}
+              onChange={setSerialList}
+              expected={existing ? Object.values(existing.stock || {}).reduce((a, b) => a + (b || 0), 0) : undefined}
+            />
+          </View>
+        ) : null}
+      </Card>
     </>
   );
 
   const more = (
     <>
+      <View style={{ height: 14 }} />
       <SectionCap>Colour tag</SectionCap>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
         {ITEM_COLOR.map((c) => <Swatch key={c || 'none'} color={c} on={color === c} onPress={() => setColor(c)} />)}
@@ -610,6 +660,11 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         />
       </Grid>
       <ToggleRow label="Active — offer it for sale" on={active} onChange={setActive} />
+      {existing ? (
+        <View style={{ marginTop: 16 }}>
+          <Button variant="dngr" label="Remove this item" onPress={remove} />
+        </View>
+      ) : null}
     </>
   );
 
@@ -618,14 +673,27 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       : tab === 'stock' ? (svc ? delivery : stock)
         : more;
 
+  /* what will be saved — a glance, so nobody has to open every tab before saving */
+  const summary: { l: string; on: boolean }[] = [
+    { l: num(price) ? money(num(price)) : 'No price', on: !!num(price) },
+  ];
+  if (svc) {
+    summary.push({ l: (SERVICE_RATE.find((r) => r[0] === rateType) || SERVICE_RATE[0])[1], on: true });
+    summary.push({ l: bookable ? 'Booking' : 'Walk-in', on: bookable });
+  } else {
+    summary.push({ l: trackInventory ? (existing ? 'Counted' : totalOpening + ' ' + unit + ' opening') : 'Not counted', on: trackInventory });
+    summary.push({ l: trackBatches ? 'Batches on' : 'Batches off', on: trackBatches });
+    summary.push({ l: trackSerials ? 'IMEI on' : 'IMEI off', on: trackSerials });
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <TopTabs
         value={tab}
-        onChange={(v) => setTab(v as any)}
+        onChange={(v) => setTab(v as Tab)}
         options={[
-          { v: 'basics', l: 'Basics', i: 'doc' },
-          { v: 'pricing', l: 'Pricing', i: 'coins' },
+          { v: 'basics', l: nameErr ? 'Basics •' : 'Basics', i: 'doc' },
+          { v: 'pricing', l: 'Price', i: 'coins' },
           { v: 'stock', l: svc ? 'Delivery' : 'Stock', i: 'box' },
           { v: 'more', l: 'More', i: 'dots' },
         ]}
@@ -633,14 +701,12 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
         {body}
-        {existing ? (
-          <View style={{ marginTop: 16 }}>
-            <Button variant="dngr" label="Remove this item" onPress={remove} />
-          </View>
-        ) : null}
       </ScrollView>
 
       <Foot>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 9 }}>
+          {summary.map((c) => <SumChip key={c.l} label={c.l} on={c.on} />)}
+        </View>
         <View style={{ flexDirection: 'row', gap: 9 }}>
           <View style={{ flex: 1 }}><Button label="Cancel" onPress={() => navigation.goBack()} /></View>
           <View style={{ flex: 1.5 }}>
@@ -734,7 +800,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   );
 }
 
-/** Units & categories — reference SCREENS.unitsCats, line 9440. */
+/** Units & categories — reference SCREENS.unitsCats, line 9440. Unchanged. */
 export function UnitsCategoriesScreen() {
   const { colors } = useTheme();
   const { db, removeUnit, removeCategory, addUnit, addCategory, money, stockOf } = useAppData();
