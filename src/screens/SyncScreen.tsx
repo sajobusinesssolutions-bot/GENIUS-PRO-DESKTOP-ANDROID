@@ -22,7 +22,7 @@ import { Icon, IconName } from '../components/icons';
 import { useGo } from '../nav/navigate';
 import { plural, fmtDate } from '../data/helpers';
 import { useSyncRun } from '../data/useSyncRun';
-import { listDevices, revokeDevice } from '../data/authApi';
+import { listDevices, revokeDevice, refreshSession } from '../data/authApi';
 
 type Health = 'locked' | 'noAccount' | 'off' | 'offline' | 'behind' | 'safe';
 
@@ -87,18 +87,39 @@ export default function SyncScreen() {
     }
   }
 
-  async function refreshAccountLicence() {
+  /**
+   * What "Refresh licence" used to do, renamed to what an owner actually
+   * presses it for: seeing which devices are on the account, so an old
+   * phone can be removed. It used to fetch a fresh access token twice — once
+   * here, then again inside loadDevices() — for what is one button press;
+   * now it fetches the token once and runs the licence check and the device
+   * list at the same time instead of one after the other.
+   *
+   * refreshSession() used to be reached through a dynamic import() here —
+   * pointless, since this file already statically imports the same module
+   * for listDevices()/revokeDevice(), and a local module has no reason to be
+   * lazy-loaded. It also could not be exercised in tests at all: Jest's CJS
+   * environment threw "a dynamic import callback was invoked without
+   * --experimental-vm-modules" the moment it ran, which is the same shape of
+   * failure ("cannot read property of undefined") a bundler-level hiccup in
+   * a dynamic import of a local file could plausibly produce at runtime too.
+   */
+  async function checkDevicesLinked() {
     const refreshToken = account?.refresh;
     if (!refreshToken) return;
     setBusy(true);
     try {
-      const r = await import('../data/authApi').then((m) => m.refreshSession(refreshToken));
+      const r = await refreshSession(refreshToken);
       if (!r.ok) { error(r.error.message); return; }
-      const next = await refreshLicence(r.value.access, account.id);
-      success(next === 'active' || next === 'trial' ? 'Licence refreshed.' : 'Licence refreshed: ' + next);
-      await loadDevices();
+      const [licStatus, devicesResult] = await Promise.all([
+        refreshLicence(r.value.access, account.id),
+        listDevices(r.value.access),
+      ]);
+      if (devicesResult.ok) setDevices(devicesResult.value.devices || []);
+      else error(devicesResult.error.message);
+      success(licStatus === 'active' || licStatus === 'trial' ? 'Devices refreshed.' : 'Devices refreshed — licence: ' + licStatus);
     } catch (e: any) {
-      error(e?.message || 'The licence could not be refreshed.');
+      error(e?.message || 'Could not check linked devices.');
     } finally {
       setBusy(false);
     }
@@ -108,7 +129,7 @@ export default function SyncScreen() {
     const refreshToken = account?.refresh;
     if (!refreshToken || !isOwner) return;
     try {
-      const r = await import('../data/authApi').then((m) => m.refreshSession(refreshToken));
+      const r = await refreshSession(refreshToken);
       if (!r.ok) { error(r.error.message); return; }
       const devicesResult = await listDevices(r.value.access);
       if (!devicesResult.ok) { error(devicesResult.error.message); return; }
@@ -128,7 +149,7 @@ export default function SyncScreen() {
         onPress: async () => {
           setDeviceBusy(id);
           try {
-            const r = await import('../data/authApi').then((m) => m.refreshSession(refreshToken));
+            const r = await refreshSession(refreshToken);
             if (!r.ok) { error(r.error.message); return; }
             const res = await revokeDevice(r.value.access, id);
             if (!res.ok) { error(res.error.message); return; }
@@ -237,7 +258,7 @@ export default function SyncScreen() {
               )}
             </Panel>
             <View style={{ marginTop: 12 }}>
-              <Button label="Refresh licence" variant="default" onPress={refreshAccountLicence} />
+              <Button label="Check devices linked" variant="default" loading={busy} onPress={checkDevicesLinked} />
             </View>
           </View>
         ) : null}
