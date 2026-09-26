@@ -38,6 +38,7 @@ export function useDocBuilder() {
       partyName: pt?.name,
       partyPhone: pt?.phone,
       partyAddress: pt?.address,
+      currencyName: db?.settings.currencyName,
       lines: sale.lines.map((l) => {
         const p = product(l.productId);
         const b = l.batchNo ? (p?.batches || []).find((x) => x.no === l.batchNo) : undefined;
@@ -77,6 +78,7 @@ export function useDocBuilder() {
       footer: db?.firm.footer,
       partyName: pt?.name,
       partyPhone: pt?.phone,
+      currencyName: db?.settings.currencyName,
       lines: x.lines.map((l) => ({
         name: product(l.productId)?.name || l.productId,
         qty: l.qty, price: l.cost, unit: product(l.productId)?.unit,
@@ -109,6 +111,7 @@ export function useDocBuilder() {
       footer: db?.firm.footer,
       partyName: pt?.name,
       partyPhone: pt?.phone,
+      currencyName: db?.settings.currencyName,
       // the printed receipt names each invoice it paid, so the customer's copy traces too
       lines: p.allocations && p.allocations.length
         ? [

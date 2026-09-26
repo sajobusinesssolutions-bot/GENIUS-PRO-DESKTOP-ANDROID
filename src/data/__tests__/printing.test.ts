@@ -28,7 +28,7 @@ jest.mock('expo-file-system', () => ({
   Paths: { cache: { uri: 'file:///cache' }, document: { uri: 'file:///document' } },
 }));
 
-import { docHtml, qrSvg, inlineImage, pageSize, DocMeta } from '../docPrint';
+import { docHtml, qrSvg, inlineImage, pageSize, numberToWords, DocMeta } from '../docPrint';
 import { printOptsFor, docKindOf, paperOf } from '../printSetup';
 import { defaultTemplates, defaultTemplateFor } from '../defaults';
 import { tagHtml } from '../../screens/PriceTagScreen';
@@ -129,28 +129,92 @@ describe('batch, expiry and salesperson', () => {
   });
 });
 
-describe('A4 look — boxed and accent colour', () => {
-  it('rules every block off when boxed, for the classic ledger look', () => {
-    const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true }) });
-    expect(html).toContain('class="doc a4 boxed"');
-    expect(html).toContain('.boxed table.lines');
+describe('numberToWords — the classic invoice\'s "amount in words" line', () => {
+  it('spells out a plain number', () => {
+    expect(numberToWords(42)).toBe('Forty-Two');
+    expect(numberToWords(7)).toBe('Seven');
   });
 
-  it('leaves A4 borderless by default', () => {
+  it('handles the teens, which do not follow the tens-and-ones pattern', () => {
+    expect(numberToWords(13)).toBe('Thirteen');
+    expect(numberToWords(19)).toBe('Nineteen');
+  });
+
+  it('handles hundreds and thousands together', () => {
+    expect(numberToWords(185600)).toBe('One Hundred Eighty-Five Thousand Six Hundred');
+  });
+
+  it('skips a zero chunk rather than saying "Zero Thousand"', () => {
+    expect(numberToWords(1000000)).toBe('One Million');
+    expect(numberToWords(1000050)).toBe('One Million Fifty');
+  });
+
+  it('is zero for zero, and rounds a fractional amount to the nearest whole unit', () => {
+    expect(numberToWords(0)).toBe('Zero');
+    expect(numberToWords(99.6)).toBe('One Hundred');
+  });
+});
+
+describe('the classic boxed ledger invoice (Tally / GST style)', () => {
+  const withTax: DocMeta = { ...doc, tax: 1800, currencyName: 'Ugandan shilling', firmTin: '0125178M' };
+
+  it('is a genuinely different layout, not the plain A4 doc with borders added', () => {
+    const html = docHtml(withTax, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true }) });
+    expect(html).toContain('class="doc a4 classic"');
+    expect(html).toContain('Sl No.');
+    expect(html).toContain('Description of Goods');
+    expect(html).toContain('Amount Chargeable (in words)');
+    expect(html).toContain('Declaration');
+    expect(html).toContain('Authorised Signatory');
+    expect(html).toContain('This is a Computer Generated');
+  });
+
+  it('spells the total out in words, in the shop\'s own currency name', () => {
+    const html = docHtml(withTax, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true }) });
+    expect(html).toContain('Ugandan shilling Ten Thousand Only');
+  });
+
+  it('names the tax line "VAT" and shows the TIN, matching the reference invoices', () => {
+    const html = docHtml(withTax, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true, showTax: true }) });
+    expect(html).toContain('VAT');
+    expect(html).toContain("Company's TIN : 0125178M");
+  });
+
+  it('leaves A4 as the plain airy layout by default', () => {
     const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: false }) });
     expect(html).toContain('class="doc a4"');
+    expect(html).not.toContain('class="doc a4 classic"');
   });
+});
 
-  it('draws the accent bar and colours the heading in the chosen colour', () => {
+describe('the modern accent-coloured invoice (QuickBooks style)', () => {
+  it('is a genuinely different layout, with the bar, a boxed grey panel and a clean table', () => {
     const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', accentColor: '#1DA362' }) });
+    expect(html).toContain('class="doc a4 modern"');
     expect(html).toContain('--accent: #1DA362');
     expect(html).toContain('<div class="bar"></div>');
+    expect(html).toContain('table class="mgrid"');
+    expect(html).toContain('Product/service');
   });
 
-  it('never draws an accent bar or boxed grid on thermal paper, whatever the template says', () => {
+  it('shows who the bill is to inside the grey panel', () => {
+    const withParty: DocMeta = { ...doc, partyName: 'Taylor & Company' };
+    const html = docHtml(withParty, money, { paper: 'A4', tpl: tpl({ paper: 'A4', accentColor: '#1DA362', showParty: true }) });
+    expect(html).toContain('Taylor &amp; Company');
+  });
+});
+
+describe('choosing between the three A4 looks', () => {
+  it('never draws the classic grid or the accent bar on thermal paper, whatever the template says', () => {
     const html = docHtml(doc, money, { paper: '80mm', tpl: tpl({ paper: 'A4', boxed: true, accentColor: '#1DA362' }) });
+    expect(html).not.toContain('classic');
     expect(html).not.toContain('class="bar"');
-    expect(html).not.toContain('boxed');
+  });
+
+  it('prefers the classic grid over the accent look when a template somehow sets both', () => {
+    const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true, accentColor: '#1DA362' }) });
+    expect(html).toContain('class="doc a4 classic"');
+    expect(html).not.toContain('class="doc a4 modern"');
   });
 });
 
