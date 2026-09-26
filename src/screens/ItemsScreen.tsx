@@ -5,7 +5,7 @@
  * The right-hand side is `SCREENS.items.right` at 17146: "+" plus a bulk-changes button.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, FlatList, Pressable } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
@@ -84,73 +84,86 @@ export default function ItemsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AppBar title="Items" right={right} />
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
-        <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>
-          <Search value={q} onChange={setQ} placeholder="Search by name, code or category" />
-        </View>
+      <FlatList
+        data={d.list}
+        keyExtractor={(x) => x.id}
+        contentContainerStyle={{ paddingBottom: 16 }}
+        keyboardShouldPersistTaps="handled"
+        // a big catalog scrolled fine as a ScrollView + .map() until it didn't:
+        // nothing off-screen was ever unmounted, so every row's views stayed
+        // alive at once. FlatList only keeps what is near the viewport mounted.
+        ListHeaderComponent={
+          <View>
+            <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>
+              <Search value={q} onChange={setQ} placeholder="Search by name, code or category" />
+            </View>
 
-        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-          <FilterChips value={filter} onChange={setFilter} options={d.chips.map(([v, l]) => ({ v, l }))} />
-        </View>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
+              <StatGrid
+                items={[
+                  { icon: 'coins', label: 'Stock value (sale)', value: money(d.value), tone: 'good' },
+                  { icon: 'money', label: 'At cost', value: money(d.cost), tone: 'accent' },
+                  { icon: 'box', label: 'Categories', value: String(d.categories.length), tone: 'good' },
+                  { icon: 'tag', label: 'Units used', value: String(d.units.length), tone: 'accent' },
+                ]}
+              />
+            </View>
 
-        <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
-          <StatGrid
-            items={[
-              { icon: 'coins', label: 'Stock value (sale)', value: money(d.value), tone: 'good' },
-              { icon: 'money', label: 'At cost', value: money(d.cost), tone: 'accent' },
-              { icon: 'box', label: 'Categories', value: String(d.categories.length), tone: 'good' },
-              { icon: 'tag', label: 'Units used', value: String(d.units.length), tone: 'accent' },
-            ]}
-          />
-        </View>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+              <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{category !== 'all' ? 'Category: ' + category : unit !== 'all' ? 'Unit: ' + unit : 'Quick filters'}</Text>}>
+                Filters
+              </SectionLabel>
+              <FilterChips value={filter} onChange={setFilter} options={d.chips.map(([v, l]) => ({ v, l }))} />
+            </View>
 
-        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-          <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{category !== 'all' ? 'Category: ' + category : unit !== 'all' ? 'Unit: ' + unit : 'Quick filters'}</Text>}>
-            Filters
-          </SectionLabel>
-          <FilterChips value={filter} onChange={setFilter} options={d.chips.map(([v, l]) => ({ v, l }))} />
-        </View>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+              <SectionLabel>Stock tools</SectionLabel>
+              <View style={{ flexDirection: 'row', gap: 9 }}>
+                {([
+                  { label: 'Adjust', icon: 'swap', route: 'StockAdjust' },
+                  { label: 'Transfer', icon: 'arrow', route: 'StockTransfer' },
+                  { label: 'Stock take', icon: 'check', route: 'StockTakes' },
+                  { label: 'Batches', icon: 'calendar', route: 'Batches' },
+                ] as const).map((tile) => (
+                  <Pressable
+                    key={tile.label}
+                    onPress={() => go(tile.route as any, undefined as any)}
+                    style={{
+                      flex: 1, backgroundColor: colors.surface, borderRadius: 14,
+                      paddingVertical: 13, alignItems: 'center', justifyContent: 'center', gap: 7, minHeight: 76,
+                      shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
+                    }}
+                  >
+                    <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name={tile.icon} size={18} color={colors.accent} />
+                    </View>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.ink, textAlign: 'center' }}>{tile.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
 
-        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-          <SectionLabel>Stock tools</SectionLabel>
-          <View style={{ flexDirection: 'row', gap: 9 }}>
-            {([
-              { label: 'Adjust', icon: 'swap', route: 'StockAdjust' },
-              { label: 'Transfer', icon: 'arrow', route: 'StockTransfer' },
-              { label: 'Stock take', icon: 'check', route: 'StockTakes' },
-              { label: 'Batches', icon: 'calendar', route: 'Batches' },
-            ] as const).map((tile) => (
-              <Pressable
-                key={tile.label}
-                onPress={() => go(tile.route as any, undefined as any)}
-                style={{
-                  flex: 1, backgroundColor: colors.surface, borderRadius: 14,
-                  paddingVertical: 13, alignItems: 'center', justifyContent: 'center', gap: 7, minHeight: 76,
-                  shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
-                }}
-              >
-                <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon name={tile.icon} size={18} color={colors.accent} />
-                </View>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.ink, textAlign: 'center' }}>{tile.label}</Text>
-              </Pressable>
-            ))}
+            <View style={{ paddingHorizontal: 16 }}>
+              <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{d.list.length} shown</Text>}>
+                Items & services
+              </SectionLabel>
+            </View>
           </View>
-        </View>
-
-        <View style={{ paddingHorizontal: 16 }}>
-          <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{d.list.length} shown</Text>}>
-            Items & services
-          </SectionLabel>
-        </View>
-
-        {d.list.length ? d.list.map((x) => {
+        }
+        ListEmptyComponent={
+          <EmptyState
+            icon="box"
+            title="Nothing here"
+            subtitle="Change the filters, or add an item or service."
+            action={<Button size="sm" variant="pri" label="Add item" onPress={() => go('ProductDetail', {})} />}
+          />
+        }
+        renderItem={({ item: x }) => {
           const st = stockOf(x);
           const out = st <= 0, low = st <= x.reorder;
           const service = x.kind === 'service';
           return (
             <Pressable
-              key={x.id}
               onPress={() => go('ItemDetail', { productId: x.id })}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12,
@@ -180,15 +193,8 @@ export default function ItemsScreen() {
               </View>
             </Pressable>
           );
-        }) : (
-          <EmptyState
-            icon="box"
-            title="Nothing here"
-            subtitle="Change the filters, or add an item or service."
-            action={<Button size="sm" variant="pri" label="Add item" onPress={() => go('ProductDetail', {})} />}
-          />
-        )}
-      </ScrollView>
+        }}
+      />
 
       <Sheet
         visible={bulk}
