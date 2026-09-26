@@ -19,6 +19,7 @@ import { mayRecord, refusalMessage } from './recordGate';
 import { Refusal } from './refusal';
 import { refusalFor } from '../nav/routePerms';
 import { licenceFromToken, verifyLicenceSignature } from './licenceKey';
+import { hashPin, verifyPin } from './pinHash';
 import { fetchLicence, normaliseLicenceResponse } from './authApi';
 import type { StoredOp } from './syncProtocol';
 import NetInfo from '@react-native-community/netinfo';
@@ -364,7 +365,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     login: (userId, pin) => {
       const d = dbRef.current; if (!d) return false;
       const u = d.users.find((x) => x.id === userId);
-      if (!u || !u.active || u.pin !== pin) return false;
+      if (!u || !u.active || !verifyPin(pin, u.pin)) return false;
       commit((db2) => { db2.session.userId = u.id; db2.session.role = u.role; });
       return true;
     },
@@ -615,6 +616,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     updateUser: (id, patch) => commit((d) => {
       const i = d.users.findIndex((u) => u.id === id);
       if (i < 0) return;
+      // a caller always hands over the PIN someone just typed, never a hash
+      if (patch.pin !== undefined) patch = { ...patch, pin: hashPin(patch.pin) };
       // never let the last full administrator be demoted or switched off
       if (patch.role !== undefined || patch.active !== undefined) {
         const rs = ensureRoles(d);
@@ -631,7 +634,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }),
     addUser: (u) => {
       let nu!: User;
-      commit((d) => { nu = { ...u, id: uid('usr') }; d.users.push(nu); audit(d, 'User added', nu.name + ' (' + nu.role + ')'); });
+      commit((d) => { nu = { ...u, id: uid('usr'), pin: hashPin(u.pin) }; d.users.push(nu); audit(d, 'User added', nu.name + ' (' + nu.role + ')'); });
       return nu;
     },
 

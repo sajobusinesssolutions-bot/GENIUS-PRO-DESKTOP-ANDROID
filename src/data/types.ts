@@ -81,6 +81,9 @@ export interface Party {
   address?: string; email?: string; gstin?: string;
 }
 
+// `pin` is a salted hash (see pinHash.ts), or '' when none has been chosen
+// yet — never the raw digits someone typed. Set it through addUser/updateUser,
+// which hash it on the way in; never compare it with `===`, use verifyPin().
 export interface User { id: string; name: string; role: Role; pin: string; active: boolean; }
 
 export interface Account {

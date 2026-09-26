@@ -8,6 +8,7 @@ import {
 } from './defaults';
 import { builtinRoles } from './perms';
 import { ensureCoa } from './coa';
+import { hashPin } from './pinHash';
 
 function p(sku: string, name: string, unit: string, cat: string, cost: number, price: number,
   stock: Record<string, number>, reorder: number, warranty = 0, emoji = '📦'): Product {
@@ -51,10 +52,10 @@ export function seed(): DB {
   ];
 
   const users: User[] = [
-    { id: uid('usr'), name: 'Ronald Okello', role: 'owner', pin: '1234', active: true },
-    { id: uid('usr'), name: 'Grace Namono', role: 'cashier', pin: '1111', active: true },
-    { id: uid('usr'), name: 'Julius Okello', role: 'cashier', pin: '2222', active: true },
-    { id: uid('usr'), name: 'Sarah Apio', role: 'manager', pin: '3333', active: false },
+    { id: uid('usr'), name: 'Ronald Okello', role: 'owner', pin: hashPin('1234'), active: true },
+    { id: uid('usr'), name: 'Grace Namono', role: 'cashier', pin: hashPin('1111'), active: true },
+    { id: uid('usr'), name: 'Julius Okello', role: 'cashier', pin: hashPin('2222'), active: true },
+    { id: uid('usr'), name: 'Sarah Apio', role: 'manager', pin: hashPin('3333'), active: false },
   ];
 
   const accounts: Account[] = [
