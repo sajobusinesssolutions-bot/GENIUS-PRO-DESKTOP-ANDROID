@@ -66,6 +66,10 @@ export function Button({ label, onPress, variant = 'default', size = 'md', disab
   return (
     <Pressable
       onPress={isDisabled ? undefined : onPress}
+      disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: isDisabled, busy: !!loading }}
       android_ripple={{ color: variant === 'pri' ? colors.accentInk : colors.accentSoft }}
       style={({ pressed }) => ({
         width: '100%', alignSelf: 'stretch',
