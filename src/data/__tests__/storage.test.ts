@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { scheduleSave, flushSave, saveIsPending, validateBackup } from '../storage';
+import { scheduleSave, flushSave, saveIsPending, validateBackup, saveDB, onSaveStatus, currentSaveStatus } from '../storage';
 
 jest.mock('@react-native-async-storage/async-storage', () => {
   const store: Record<string, string> = {};
@@ -8,6 +8,10 @@ jest.mock('@react-native-async-storage/async-storage', () => {
     __esModule: true,
     default: {
       setItem: jest.fn(async (k: string, v: string) => {
+        if ((global as any).__failNext > 0) {
+          (global as any).__failNext -= 1;
+          throw new Error('disk full');
+        }
         calls.push(v);
         // a real write takes a moment; this is where two in flight would race
         await new Promise((r) => setTimeout(r, 5));
@@ -31,6 +35,7 @@ function book(n: number): any {
 beforeEach(() => {
   AS.setItem.mockClear();
   AS.__calls.length = 0;
+  (global as any).__failNext = 0;
 });
 
 describe('scheduleSave', () => {
@@ -68,6 +73,54 @@ describe('scheduleSave', () => {
   it('flushing with nothing queued writes nothing', async () => {
     await flushSave();
     expect(AS.setItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('save-status tracking', () => {
+  // saveDB() used to swallow a failed write outright, with nothing anywhere
+  // to say a change had not actually been kept. These pin down what replaced
+  // that: one blip is not reported (storage hiccups occasionally and usually
+  // recovers on the very next write), but a run of them is, and it clears
+  // again the moment a write lands.
+  afterEach(async () => {
+    // leave the module's status clean for whichever test runs next
+    (global as any).__failNext = 0;
+    await saveDB(book(0));
+  });
+
+  it('reports true and stays "ok" on an ordinary write', async () => {
+    expect(await saveDB(book(1))).toBe(true);
+    expect(currentSaveStatus()).toBe('ok');
+  });
+
+  it('reports the write failed, but does not flag a single blip', async () => {
+    (global as any).__failNext = 1;
+    expect(await saveDB(book(2))).toBe(false);
+    expect(currentSaveStatus()).toBe('ok');
+  });
+
+  it('flags it once failures run in a row', async () => {
+    const seen: string[] = [];
+    const off = onSaveStatus((s) => seen.push(s));
+    (global as any).__failNext = 2;
+    await saveDB(book(3));
+    await saveDB(book(4));
+    expect(currentSaveStatus()).toBe('failing');
+    expect(seen).toEqual(['failing']);
+    off();
+  });
+
+  it('clears the moment a write lands again', async () => {
+    const seen: string[] = [];
+    const off = onSaveStatus((s) => seen.push(s));
+    (global as any).__failNext = 2;
+    await saveDB(book(5));
+    await saveDB(book(6));
+    expect(currentSaveStatus()).toBe('failing');
+    await saveDB(book(7));
+    expect(currentSaveStatus()).toBe('ok');
+    expect(seen).toEqual(['failing', 'ok']);
+    off();
   });
 });
 
