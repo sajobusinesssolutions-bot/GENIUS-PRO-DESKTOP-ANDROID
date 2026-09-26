@@ -253,15 +253,24 @@ export function reportShareMessage(result: ReportResult, meta: ExportMeta = {}):
   ].filter(Boolean).join('\n');
 }
 
-/** Hand a generated file to the system share sheet. */
-export async function shareFile(uri: string, mime: string, title: string): Promise<boolean> {
+/**
+ * Hand a generated file to the system share sheet.
+ *
+ * A failure here used to come back as a bare `false`, so every caller could
+ * only ever say "it was saved instead" — never *why* the share sheet did not
+ * open. On Android that swallowed the real reason (most often the file's
+ * `file://` URI not being one the share target is allowed to read), leaving
+ * "PDF written to file://…" as the only thing anyone ever saw, indistinguishable
+ * from sharing genuinely being unavailable.
+ */
+export async function shareFile(uri: string, mime: string, title: string): Promise<{ ok: boolean; reason?: string }> {
   const available = await Sharing.isAvailableAsync();
-  if (available === false) return false;
+  if (available === false) return { ok: false, reason: 'Sharing is not available on this device.' };
   try {
     await Sharing.shareAsync(uri, { mimeType: mime, dialogTitle: title, UTI: mime === 'application/pdf' ? 'com.adobe.pdf' : undefined });
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, reason: e?.message || 'The share sheet could not be opened.' };
   }
 }
 
@@ -296,14 +305,15 @@ export async function shareTo(
   result: ReportResult,
   target: ShareTarget = 'system',
   meta: ExportMeta = {},
-): Promise<{ ok: boolean; how: 'whatsapp' | 'sheet' | 'none' }> {
+): Promise<{ ok: boolean; how: 'whatsapp' | 'sheet' | 'none'; reason?: string }> {
   const uri = await toPdf(result, meta);
-  if (!uri) return { ok: false, how: 'none' };
+  if (!uri) return { ok: false, how: 'none', reason: 'The PDF could not be created.' };
 
   // Android's direct SEND intent is unreliable for PDFs and loses the attachment in
   // WhatsApp / email share flows; the system share sheet preserves the file and lets the
-  // user choose the destination app, which is what the app and tests expect.
-  const ok = await shareFile(uri, 'application/pdf', result.title)
-    || await sharePdfWithAndroidIntent(uri, result, meta);
-  return { ok, how: ok ? (target === 'whatsapp' ? 'whatsapp' : 'sheet') : 'none' };
+  // user choose the destination app, which is what the app and tests expect. The intent
+  // is only a fallback for when the share sheet itself could not open at all.
+  const shared = await shareFile(uri, 'application/pdf', result.title);
+  const ok = shared.ok || await sharePdfWithAndroidIntent(uri, result, meta);
+  return { ok, how: ok ? (target === 'whatsapp' ? 'whatsapp' : 'sheet') : 'none', reason: ok ? undefined : shared.reason };
 }
