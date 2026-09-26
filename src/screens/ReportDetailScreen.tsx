@@ -63,8 +63,17 @@ function isoDay(ts: number): string {
 /* --- table --------------------------------------------------------- */
 
 /** Column widths from content, so header, body and the pinned totals line up. */
-function widthsFor(result: ReportResult): number[] {
-  return result.cols.map((c, i) => {
+/**
+ * Each column is sized to its own longest value, so a report with only two
+ * or three narrow columns (a Z report — "Line" and "Amount") used to come out
+ * far short of the phone's width. The bordered card around the table always
+ * filled the screen; the table inside it did not, leaving a blank strip down
+ * the right side rather than an oddly-cramped one. `minTotal`, when given, is
+ * handed the leftover so the table actually fills the space the eye expects
+ * a table to fill, the same as a table with enough columns already does.
+ */
+export function widthsFor(result: ReportResult, minTotal = 0): number[] {
+  const widths = result.cols.map((c, i) => {
     let longest = c.h.length;
     result.rows.slice(0, 120).forEach((r) => {
       const n = cellText(r[i]).length;
@@ -73,6 +82,14 @@ function widthsFor(result: ReportResult): number[] {
     if (result.foot) longest = Math.max(longest, cellText(result.foot[i]).length);
     return Math.max(c.r ? 84 : 104, Math.min(210, longest * 7.6 + 22));
   });
+  const shortBy = minTotal - widths.reduce((a, b) => a + b, 0);
+  if (shortBy > 0) {
+    // a left-aligned column stretching is a table growing to fit its page;
+    // a right-aligned one stretching just strands its digits in empty space
+    const target = result.cols.findIndex((c) => !c.r);
+    widths[target >= 0 ? target : widths.length - 1] += shortBy;
+  }
+  return widths;
 }
 
 export default function ReportDetailScreen() {
@@ -293,7 +310,8 @@ export default function ReportDetailScreen() {
 
   if (!result || !view) return null;
 
-  const widths = widthsFor(result);
+  // 16px of Pad on each side, 1px of card border on each side
+  const widths = widthsFor(result, width - 34);
   const drillProduct = drillProductId ? db.products.find((p) => p.id === drillProductId) : null;
   const isInventoryDrill = isInventoryReport && !!drillProduct;
   const isAccountingLedger = true;
