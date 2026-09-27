@@ -412,7 +412,7 @@ export interface Settings {
   theme: 'auto' | 'light' | 'dark';
   // ui
   favReports?: string[];
-  backupSchedule?: 'off' | 'daily' | 'weekly';
+  backupSchedule?: 'off' | 'daily' | 'weekly' | 'monthly';
   lastBackupAt?: string;
 }
 

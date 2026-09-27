@@ -13,10 +13,11 @@ import { useTheme, fonts } from '../theme';
 import { Panel, ListRow } from '../components/kit';
 import { useGo } from '../nav/navigate';
 import type { RootStackParamList } from '../nav/types';
+import { SUPPORT_EMAIL } from '../data/support';
 
 export const LEGAL_UPDATED = '27 September 2026';
 /** Where people write to about privacy. Empty hides the line. */
-export const LEGAL_CONTACT = '';
+export const LEGAL_CONTACT = SUPPORT_EMAIL;
 
 type Block = { h: string; p: string[] };
 

@@ -163,29 +163,34 @@ export const MENU_GROUPS: MenuGroupDef[] = [
         route: 'Sync', i: 'cloud', n: 'Cloud sync', perm: 'settings', alt: 'online backup upload devices',
         b: (c) => (c.db.sync.on ? 'On · ' + c.db.sync.freq : 'Kept on this phone'),
       },
+    ],
+  },
+  {
+    // Legal pages, the app and its plan, and every way to reach support —
+    // opened as one screen; the rows below are what the menu search finds.
+    id: 'help', n: 'Help & about', i: 'bulb', tone: 'soft', perm: null,
+    b: () => 'Support, FAQs, plan, legal',
+    open: 'Help',
+    items: [
+      { route: 'Faq', i: 'bulb', n: 'FAQs & help', b: () => 'Answers to common questions', alt: 'faq questions how to guide' },
+      { route: 'Help', i: 'phone', n: 'WhatsApp support', b: () => 'Chat with support', alt: 'contact help whatsapp call' },
+      { route: 'Help', i: 'mail', n: 'Email support', b: () => 'Write to support', alt: 'contact help email mail' },
+      { route: 'Help', i: 'pencil', n: 'Feature request', b: () => 'Ask for something new', alt: 'suggestion idea feedback' },
+      { route: 'Help', i: 'up', n: 'Share the app', b: () => 'Tell another shop', alt: 'invite recommend share' },
       {
-        // Licence and plan were two rows about paying for the app.
+        route: 'About', i: 'shield', n: 'App & updates', alt: 'version build update install about',
+        b: (c) => 'Version ' + BUILD + ' · data v' + SCHEMA_VERSION + (c.db.update.lastCheck ? '' : ' · not checked'),
+      },
+      {
         route: 'Plans', i: 'money', n: 'Plan & licence', alt: 'billing subscription pro upgrade key',
         b: (c) => {
           const pro = isProOf(c.db);
           const st = licStateOf(c.db);
-          const lic = st === 'active'
-            ? (c.db.licence.licence ? 'licensed' : 'licensed')
+          const lic = st === 'active' ? 'licensed'
             : st === 'none' ? 'not licensed' : (LIC_WORDS[st] || LIC_WORDS.none)[0].toLowerCase();
           return (pro ? PLANS.pro.name : PLANS.starter.name) + ' · ' + lic;
         },
       },
-      {
-        // About, Install and Updates were three rows about this one build.
-        route: 'About', i: 'shield', n: 'App & updates', alt: 'version build update install about',
-        b: (c) => 'Version ' + BUILD + ' · data v' + SCHEMA_VERSION + (c.db.update.lastCheck ? '' : ' · not checked'),
-      },
-    ],
-  },
-  {
-    id: 'legal', n: 'Legal', i: 'shield', tone: 'soft', perm: null,
-    b: () => 'Privacy policy · terms',
-    items: [
       { route: 'Legal', params: { doc: 'privacy' }, i: 'shield', n: 'Privacy policy', b: () => 'What the app stores, and where', alt: 'privacy data gdpr legal' },
       { route: 'Legal', params: { doc: 'terms' }, i: 'doc', n: 'Terms and conditions', b: () => 'The rules for using Genius POS', alt: 'terms conditions agreement legal eula' },
     ],

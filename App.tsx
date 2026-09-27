@@ -10,6 +10,7 @@ import { AuthProvider } from './src/data/AuthContext';
 import LicenceKeeper from './src/data/LicenceKeeper';
 import SyncKeeper from './src/data/SyncKeeper';
 import StorageKeeper from './src/data/StorageKeeper';
+import BackupKeeper from './src/data/BackupKeeper';
 import { installRefusalHandler } from './src/data/refusal';
 
 // a refusal nothing caught is shown to the person rather than crashing the app
@@ -39,6 +40,7 @@ export default function App() {
             <LicenceKeeper />
             <SyncKeeper />
             <StorageKeeper />
+            <BackupKeeper />
             <RootNavigator />
             <StatusBar style="auto" />
           </ToastProvider>
