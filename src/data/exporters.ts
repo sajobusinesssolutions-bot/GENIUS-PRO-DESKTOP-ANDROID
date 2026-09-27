@@ -11,6 +11,7 @@ import { File, Paths } from 'expo-file-system';
 import * as XLSX from 'xlsx';
 import { Platform } from 'react-native';
 import { ReportResult, Cell, cellText, cellTone } from './reports';
+import { printPdfToCache } from './docPrint';
 
 export interface ExportMeta {
   /** The shop name printed at the head of the sheet. */
@@ -141,25 +142,7 @@ export function toHtml(result: ReportResult, meta: ExportMeta = {}): string {
 export async function toPdf(result: ReportResult, meta: ExportMeta = {}): Promise<string> {
   // PDF reports are shared documents, so keep them on a predictable A4 page
   // instead of letting the platform choose a device-specific paper size.
-  const printed = await Print.printToFileAsync({ html: toHtml(result, meta), width: 595, height: 842 });
-  const uri = printed?.uri || '';
-  if (!uri) return '';
-  // Expo Print writes to its own cache directory, and on Android that URI is
-  // not always one another app's share intent is allowed to read — exactly
-  // the "Not allowed to read file under given URL" Sharing.shareAsync() threw
-  // when handed it directly. docPrint.ts's shareDoc() already solved this for
-  // documents by moving the file into this app's own File-API cache
-  // directory first, which is one that is readable; reports never got the
-  // same treatment. A move that fails is not worth losing the file over, so
-  // it falls back to the original path exactly as before.
-  try {
-    const dest = new File(Paths.cache, fileNameFor(result, 'pdf'));
-    if (dest.exists) dest.delete();
-    new File(uri).move(dest);
-    return dest.uri;
-  } catch {
-    return uri;
-  }
+  return printPdfToCache({ html: toHtml(result, meta), width: 595, height: 842 }, fileNameFor(result, 'pdf'));
 }
 
 /** Open the system print/preview dialog. */

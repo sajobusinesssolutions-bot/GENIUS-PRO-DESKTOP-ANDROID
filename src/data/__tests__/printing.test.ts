@@ -24,6 +24,8 @@ jest.mock('expo-file-system', () => ({
       base64: async () => (uri.includes('missing') ? Promise.reject(new Error('gone')) : 'QUJD'),
       exists: false,
       delete: jest.fn(),
+      create: jest.fn(),
+      write: jest.fn(),
       move: jest.fn(function (dest: any) { this.uri = dest?.uri || dest || uri; return this; }),
       contentUri: uri.replace('file://', 'content://'),
       uri,
@@ -305,6 +307,18 @@ describe('report PDF — where the file actually ends up', () => {
   it('names the moved file after the report, not the print engine\'s random name', async () => {
     const uri = await toPdf(rep);
     expect(uri).toMatch(/daily-sales-\d{8}-\d{4}\.pdf$/);
+  });
+
+  it('writes the PDF bytes into its own cache file, never touching the print engine\'s path ("Missing READ permission")', async () => {
+    const fs = require('expo-file-system');
+    (Print.printToFileAsync as jest.Mock).mockResolvedValueOnce({ uri: 'file:///print/x.pdf', base64: 'JVBERi0=' });
+    fs.File.mockClear();
+    const uri = await toPdf(rep);
+    expect(uri).toMatch(/^file:\/\/\/cache\/daily-sales-.*\.pdf$/);
+    expect(Print.printToFileAsync).toHaveBeenLastCalledWith(expect.objectContaining({ base64: true }));
+    const made = fs.File.mock.results.map((r: any) => r.value);
+    expect(made.find((f: any) => f.uri.startsWith('file:///cache/')).write).toHaveBeenCalledWith('JVBERi0=', { encoding: 'base64' });
+    expect(made.some((f: any) => f.uri === 'file:///print/x.pdf')).toBe(false);
   });
 
   it('falls back to the print engine\'s own path rather than losing the file if the move fails', async () => {
