@@ -10,6 +10,35 @@ import qrcode from 'qrcode-generator';
 import { code128Html } from './code128';
 import type { Paper, PrintTemplate, DocKind } from './types';
 
+/**
+ * Renders a PDF and returns a URI in this app's own cache that sharing can read.
+ * The print engine's own output path is refused on some Android builds ("Missing
+ * READ permission"), even for a move — so the bytes are written out here instead.
+ */
+export async function printPdfToCache(opts: Print.FilePrintOptions, name: string): Promise<string> {
+  const printed = await Print.printToFileAsync({ ...opts, base64: true });
+  const dest = new File(Paths.cache, name);
+  if (printed?.base64) {
+    try {
+      if (dest.exists) dest.delete();
+      dest.create({ overwrite: true, intermediates: true });
+      dest.write(printed.base64, { encoding: 'base64' });
+      return dest.uri;
+    } catch {
+      // fall through to moving the printed file
+    }
+  }
+  const uri = printed?.uri || '';
+  if (!uri) return '';
+  try {
+    if (dest.exists) dest.delete();
+    new File(uri).move(dest);
+    return dest.uri;
+  } catch {
+    return uri;
+  }
+}
+
 export interface DocLine {
   name: string;
   qty: number;
@@ -576,23 +605,11 @@ export async function shareDoc(d: DocMeta, money: (n: number) => string, opts: P
   // a shared PDF is read on a screen or printed on an office printer: A4, unless a roll was asked for
   const paper: Paper = opts.paper || 'A4';
   const full = await ready(d, opts);
-  const { uri } = await Print.printToFileAsync({
+  // named after the document number, which is what the recipient sees in WhatsApp
+  const target = await printPdfToCache({
     html: docHtml(full, money, { ...opts, paper, tpl: opts.tpl ? { ...opts.tpl, copies: 1 } : undefined }),
     ...pageSize(paper, d.lines.length),
-  });
-  // The printer writes to a random file name, which is what the recipient
-  // would see in WhatsApp, so the PDF is renamed to the document number first.
-  // The legacy file-system helpers throw outright on SDK 57, so this uses the
-  // File API; a rename that fails is not worth cancelling the share for.
-  let target = uri;
-  try {
-    const dest = new File(Paths.cache, safeName(d.kind + '-' + d.no) + '.pdf');
-    if (dest.exists) dest.delete();
-    new File(uri).move(dest);
-    target = dest.uri;
-  } catch {
-    // keep the printer's own path
-  }
+  }, safeName(d.kind + '-' + d.no) + '.pdf');
   if (!(await Sharing.isAvailableAsync())) return false;
   await Sharing.shareAsync(target, {
     mimeType: 'application/pdf',
