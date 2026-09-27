@@ -1,20 +1,21 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, ViewStyle, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { useTheme, spacing, radius, fonts, shadow, control } from '../theme';
 import { avatarFor } from '../data/helpers';
 import { Icon, IconName } from './icons';
+import { Tap, Rise } from './Tap';
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
   const { colors } = useTheme();
   return (
-    <View style={[{
+    <Rise style={[{
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
       overflow: 'visible',
       ...shadow.card,
     }, style]}>
       {children}
-    </View>
+    </Rise>
   );
 }
 
@@ -22,7 +23,7 @@ export function Row({ title, subtitle, right, onPress, left, last }: {
   title: string; subtitle?: string; right?: React.ReactNode; onPress?: () => void; left?: React.ReactNode; last?: boolean;
 }) {
   const { colors } = useTheme();
-  const Comp: any = onPress ? Pressable : View;
+  const Comp: any = onPress ? Tap : View;
   const rowStyle = {
     flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.md, paddingVertical: 13, paddingHorizontal: spacing.lg,
     minHeight: control.row,
@@ -64,13 +65,14 @@ export function Button({ label, onPress, variant = 'default', size = 'md', disab
   const fg = variant === 'pri' ? colors.accentInk : variant === 'dngr' ? colors.danger : colors.ink;
   const isDisabled = disabled || loading;
   return (
-    <Pressable
+    <Tap
+      feel={variant === 'default' ? 'spring' : 'burst'}
+      burstColor={variant === 'dngr' ? colors.danger : '#FFFFFF'}
       onPress={isDisabled ? undefined : onPress}
       disabled={isDisabled}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: isDisabled, busy: !!loading }}
-      android_ripple={{ color: variant === 'pri' ? colors.accentInk : colors.accentSoft }}
       style={({ pressed }) => ({
         width: '100%', alignSelf: 'stretch',
         height: size === 'sm' ? control.buttonSm : control.button,
@@ -78,8 +80,7 @@ export function Button({ label, onPress, variant = 'default', size = 'md', disab
         backgroundColor: bg, borderWidth: variant === 'default' ? 1.4 : 1, borderColor: border,
         alignItems: 'center', justifyContent: 'center',
         flexDirection: 'row', gap: 8, paddingHorizontal: size === 'sm' ? 14 : 18,
-        opacity: isDisabled ? 0.45 : pressed ? 0.82 : 1,
-        transform: [{ scale: pressed && !isDisabled ? 0.985 : 1 }],
+        opacity: isDisabled ? 0.45 : pressed ? 0.92 : 1,
         shadowColor: variant === 'pri' ? colors.accent : '#0B1D2A',
         shadowOpacity: variant === 'pri' ? 0.22 : 0.04,
         shadowRadius: variant === 'pri' ? 14 : 6,
@@ -93,7 +94,7 @@ export function Button({ label, onPress, variant = 'default', size = 'md', disab
         icon
       )}
       {!loading && <Text numberOfLines={1} style={{ color: fg, fontFamily: fonts.uiBold, fontSize: size === 'sm' ? 13.5 : 15 }}>{label}</Text>}
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -114,14 +115,14 @@ export function Empty({ title, subtitle, actionLabel, onAction }: { title: strin
 export function Chip({ label, on, onPress }: { label: string; on?: boolean; onPress?: () => void }) {
   const { colors } = useTheme();
   return (
-    <Pressable onPress={onPress} style={{
+    <Tap onPress={onPress} style={{
       paddingVertical: 9, paddingHorizontal: 15, borderRadius: radius.pill, borderWidth: 1,
       borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accent : colors.surface,
       flexDirection: 'row', alignItems: 'center', gap: 6,
     }}>
       {on ? <Icon name="check" size={13} color={colors.accentInk} /> : null}
       <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13, color: on ? colors.accentInk : colors.soft }}>{label}</Text>
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -245,7 +246,7 @@ export function IconTile({ icon, bg, color, size = 34, round = 9, iconSize = 16 
 }) {
   return (
     <View style={{ width: size, height: size, borderRadius: round, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-      <Icon name={icon} size={iconSize} color={color} />
+      <Icon name={icon} size={iconSize} color={color} weight="duotone" />
     </View>
   );
 }
@@ -256,7 +257,7 @@ export function Tile({ icon, iconColor, name, sub, onPress, horizontal }: {
 }) {
   const { colors } = useTheme();
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({
+    <Tap onPress={onPress} style={({ pressed }) => ({
       backgroundColor: pressed ? colors.accentSoft : colors.surface,
       borderWidth: 1, borderColor: pressed ? colors.accent : colors.line, borderRadius: 12,
       paddingVertical: horizontal ? 11 : 12, paddingHorizontal: horizontal ? 12 : 11,
@@ -268,7 +269,7 @@ export function Tile({ icon, iconColor, name, sub, onPress, horizontal }: {
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.ink, lineHeight: 15 }}>{name}</Text>
         {sub ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 10, color: colors.faint, marginTop: 1 }}>{sub}</Text> : null}
       </View>
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -288,7 +289,7 @@ export function SearchBar({ value, onChange, placeholder }: {
           placeholderTextColor={colors.faint}
           style={{ flex: 1, height: 48, padding: 0, fontSize: 15, fontFamily: fonts.ui, color: colors.ink }}
         />
-        {value ? <Pressable onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Pressable> : null}
+        {value ? <Tap onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Tap> : null}
       </View>
     </View>
   );

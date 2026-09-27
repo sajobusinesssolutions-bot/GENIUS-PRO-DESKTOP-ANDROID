@@ -25,6 +25,7 @@
     "expo-document-picker": "~57.0.2",
     "expo-file-system": "~57.0.7",
     "expo-font": "~57.0.4",
+    "expo-haptics": "~57.0.3",
     "expo-image-picker": "~57.0.19",
     "expo-intent-launcher": "~57.0.1",
     "expo-linear-gradient": "~57.0.2",
@@ -32,6 +33,7 @@
     "expo-sharing": "~57.0.21",
     "expo-status-bar": "~57.0.1",
     "expo-web-browser": "~57.0.3",
+    "phosphor-react-native": "^3.0.6",
     "qrcode-generator": "^1.4.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -71,7 +73,7 @@
       "<rootDir>/jest.setup.js"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!(?:.pnpm/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|react-native-svg|@noble/.*))"
+      "node_modules/(?!(?:.pnpm/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|react-native-svg|phosphor-react-native|@noble/.*))"
     ]
   }
 }

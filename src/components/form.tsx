@@ -9,9 +9,12 @@
  * them without a cycle.
  */
 import React from 'react';
-import { View, Text, Pressable, TextInput, ViewStyle } from 'react-native';
+import { View, Text, TextInput, ViewStyle } from 'react-native';
 import { useTheme, radius, fonts } from '../theme';
 import { Icon, IconName } from './icons';
+import { Tap, TapProps } from './Tap';
+
+const SoftTap = (p: TapProps) => <Tap feel="soft" {...p} />;
 
 function CapText({ children, style }: { children: React.ReactNode; style?: any }) {
   const { colors } = useTheme();
@@ -32,7 +35,7 @@ export function Seg<T extends string>({ value, options, onChange, style }: {
       {options.map((o) => {
         const on = o.v === value;
         return (
-          <Pressable
+          <Tap feel="soft"
             key={o.v}
             onPress={() => onChange(o.v)}
             style={{
@@ -44,7 +47,7 @@ export function Seg<T extends string>({ value, options, onChange, style }: {
             <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accentInk : colors.faint }}>
               {o.l}
             </Text>
-          </Pressable>
+          </Tap>
         );
       })}
     </View>
@@ -157,7 +160,7 @@ export function FieldShell({ label, icon, children, onPress, right, style, tone,
   right?: React.ReactNode; style?: ViewStyle; tone?: string; error?: boolean;
 }) {
   const { colors } = useTheme();
-  const Comp: any = onPress ? Pressable : View;
+  const Comp: any = onPress ? SoftTap : View;
   const border = error ? colors.danger : tone || colors.line;
   return (
     <View style={[{ marginBottom: 14 }, style]}>
@@ -193,7 +196,7 @@ export function TypeChips<T extends string>({ value, options, onChange, style }:
       {options.map((o) => {
         const on = o.v === value;
         return (
-          <Pressable
+          <Tap feel="soft"
             key={o.v}
             onPress={() => onChange(o.v)}
             style={{
@@ -207,7 +210,7 @@ export function TypeChips<T extends string>({ value, options, onChange, style }:
             <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 15, color: on ? colors.good : colors.ink }}>
               {o.l}
             </Text>
-          </Pressable>
+          </Tap>
         );
       })}
     </View>
@@ -223,7 +226,7 @@ export function HighlightToggle({ title, sub, on, onChange, tone = 'good' }: {
   const fg = tone === 'accent' ? colors.accent : tone === 'warn' ? colors.warn : colors.good;
   const bg = tone === 'accent' ? colors.accentSoft : tone === 'warn' ? colors.warnSoft : colors.goodSoft;
   return (
-    <Pressable
+    <Tap feel="soft"
       onPress={() => onChange(!on)}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16,
@@ -238,7 +241,7 @@ export function HighlightToggle({ title, sub, on, onChange, tone = 'good' }: {
         ) : null}
       </View>
       <Sw on={on} onPress={() => onChange(!on)} />
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -250,7 +253,7 @@ export function DropZone({ label, onPress, children, tone = 'good' }: {
   const fg = tone === 'accent' ? colors.accent : colors.good;
   const bg = tone === 'accent' ? colors.accentSoft : colors.goodSoft;
   return (
-    <Pressable
+    <Tap feel="soft"
       onPress={onPress}
       style={{
         borderRadius: radius.md, borderWidth: 1.4, borderColor: fg, backgroundColor: bg,
@@ -259,7 +262,7 @@ export function DropZone({ label, onPress, children, tone = 'good' }: {
     >
       {children ?? <Icon name="plus" size={34} color={fg} />}
       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: fg }}>{label}</Text>
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -274,7 +277,7 @@ export function SelectField<T extends string>({ label, value, options, onChange,
   const border = open ? colors.accent : colors.line;
   return (
     <View style={[{ marginBottom: 14 }, style]}>
-      <Pressable
+      <Tap feel="soft"
         onPress={() => setOpen((o) => !o)}
         style={{
           minHeight: 62, borderRadius: radius.md, borderWidth: 1.4, borderColor: border,
@@ -293,11 +296,11 @@ export function SelectField<T extends string>({ label, value, options, onChange,
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: open ? colors.accent : colors.faint }}>{label}</Text>
           </View>
         ) : null}
-      </Pressable>
+      </Tap>
       {open ? (
         <View style={{ marginTop: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, overflow: 'hidden' }}>
           {options.map((o, i) => (
-            <Pressable
+            <Tap feel="soft"
               key={o.v}
               onPress={() => { onChange(o.v); setOpen(false); }}
               style={{
@@ -308,7 +311,7 @@ export function SelectField<T extends string>({ label, value, options, onChange,
             >
               <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{o.l}</Text>
               {o.v === value ? <Icon name="check" size={17} color={colors.accent} /> : null}
-            </Pressable>
+            </Tap>
           ))}
         </View>
       ) : null}
@@ -326,7 +329,7 @@ export function ChipRow<T extends string>({ value, options, onChange, style }: {
       {options.map((o) => {
         const on = o.v === value;
         return (
-          <Pressable
+          <Tap feel="soft"
             key={o.v}
             onPress={() => onChange(o.v)}
             style={{
@@ -337,7 +340,7 @@ export function ChipRow<T extends string>({ value, options, onChange, style }: {
           >
             {o.i ? <Icon name={o.i} size={13} color={on ? colors.bg : colors.faint} /> : null}
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: on ? colors.bg : colors.soft }}>{o.l}</Text>
-          </Pressable>
+          </Tap>
         );
       })}
     </View>
@@ -348,12 +351,12 @@ export function ChipRow<T extends string>({ value, options, onChange, style }: {
 export function ActionChip({ label, onPress }: { label: string; onPress: () => void }) {
   const { colors } = useTheme();
   return (
-    <Pressable onPress={onPress} style={{
+    <Tap feel="soft" onPress={onPress} style={{
       paddingVertical: 7, paddingHorizontal: 11, borderRadius: radius.pill,
       borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface,
     }}>
       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.soft }}>{label}</Text>
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -391,7 +394,7 @@ export function BigAmount({ caption, value, onChangeText, hint, currency }: {
 export function Sw({ on, onPress }: { on: boolean; onPress?: () => void }) {
   const { colors } = useTheme();
   return (
-    <Pressable
+    <Tap feel="soft"
       onPress={onPress}
       hitSlop={6}
       style={{
@@ -401,7 +404,7 @@ export function Sw({ on, onPress }: { on: boolean; onPress?: () => void }) {
       }}
     >
       <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff' }} />
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -411,7 +414,7 @@ export function ToggleRow({ label, sub, on, onChange, bare }: {
 }) {
   const { colors } = useTheme();
   return (
-    <Pressable
+    <Tap feel="soft"
       onPress={() => onChange(!on)}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -427,7 +430,7 @@ export function ToggleRow({ label, sub, on, onChange, bare }: {
         {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>{sub}</Text> : null}
       </View>
       <Sw on={on} onPress={() => onChange(!on)} />
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -435,7 +438,7 @@ export function ToggleRow({ label, sub, on, onChange, bare }: {
 export function Checkbox({ on, onPress, size = 19 }: { on: boolean; onPress?: () => void; size?: number }) {
   const { colors } = useTheme();
   return (
-    <Pressable
+    <Tap feel="soft"
       onPress={onPress}
       hitSlop={6}
       style={{
@@ -446,7 +449,7 @@ export function Checkbox({ on, onPress, size = 19 }: { on: boolean; onPress?: ()
       }}
     >
       {on ? <Icon name="check" size={size - 8} color={colors.accentInk} /> : null}
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -454,7 +457,7 @@ export function Checkbox({ on, onPress, size = 19 }: { on: boolean; onPress?: ()
 export function Swatch({ color, on, onPress }: { color: string; on: boolean; onPress: () => void }) {
   const { colors } = useTheme();
   return (
-    <Pressable
+    <Tap feel="soft"
       onPress={onPress}
       style={{
         width: 34, height: 34, borderRadius: 10,
@@ -465,7 +468,7 @@ export function Swatch({ color, on, onPress }: { color: string; on: boolean; onP
       }}
     >
       {color ? null : <Text style={{ color: colors.faint, fontFamily: fonts.uiSemi, fontSize: 13 }}>—</Text>}
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -496,7 +499,7 @@ export function SettingRow({ label, value, onPress, danger, icon, sub }: {
   label: string; value?: string; onPress?: () => void; danger?: boolean; icon?: IconName; sub?: string;
 }) {
   const { colors } = useTheme();
-  const Comp: any = onPress ? Pressable : View;
+  const Comp: any = onPress ? SoftTap : View;
   const fg = danger ? colors.danger : colors.accent;
   return (
     <Comp onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 15, minHeight: 60 }}>
@@ -525,13 +528,13 @@ export function SettingToggle({ label, sub, on, onChange }: {
 }) {
   const { colors } = useTheme();
   return (
-    <Pressable onPress={() => onChange(!on)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 15, minHeight: 60 }}>
+    <Tap feel="soft" onPress={() => onChange(!on)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 15, minHeight: 60 }}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{label}</Text>
         {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{sub}</Text> : null}
       </View>
       <Sw on={on} onPress={() => onChange(!on)} />
-    </Pressable>
+    </Tap>
   );
 }
 
