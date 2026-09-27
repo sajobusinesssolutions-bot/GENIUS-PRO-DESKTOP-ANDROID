@@ -184,8 +184,8 @@ export default function BusinessScreen() {
 
   /** Copies the picked image somewhere it will survive, then keeps it. */
   function takeImage(setter: (u: string | undefined) => void, current: string | undefined, prefix: string) {
-    return (uri: string) => {
-      const kept = keepPhoto(uri, prefix);
+    return async (uri: string) => {
+      const kept = await keepPhoto(uri, prefix);
       if (current && current !== kept) dropPhoto(current);
       setter(kept);
     };

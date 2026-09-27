@@ -278,6 +278,8 @@ export interface PrintTemplate {
   accentColor?: string;
   /** A4/page templates only: visible borders around every field and cell, ledger-style. */
   boxed?: boolean;
+  /** A4 layout. Absent on older templates, which fall back to boxed → tally, accentColor → quickbooks. */
+  style?: 'plain' | 'tally' | 'quickbooks' | 'gst';
   code: CodeKind; codeData: CodeData; codeCaption: boolean;
   density: 'normal' | 'tight'; head: string; foot: string; copies: number;
 }
@@ -438,6 +440,11 @@ export interface Firm {
   signature?: string;
   /** Words printed at the bottom of every document — terms, thanks, a slogan. */
   footer?: string;
+  website?: string;
+  /** Bank name, account number, branch — printed on the GST-style invoice. */
+  bankDetails?: string;
+  /** Standing terms and conditions printed on invoices without their own. */
+  terms?: string;
 }
 
 // --- Estimates / quotations ---

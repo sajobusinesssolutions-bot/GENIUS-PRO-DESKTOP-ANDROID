@@ -154,24 +154,65 @@ describe('Receipt settings', () => {
 });
 
 describe('Invoice PDF settings', () => {
-  it('saves the modern layout with its accent colour on an A4 template', () => {
+  it('offers the Tally, QuickBooks, GST and plain templates', () => {
     wrap(<InvoiceSettingsScreen />);
-    fireEvent.press(screen.getByText('Modern'));
+    for (const t of ['Tally', 'QuickBooks', 'GST tax invoice', 'Plain']) expect(screen.getByText(t)).toBeTruthy();
+  });
+
+  it('saves QuickBooks with its accent colour on an A4 template', () => {
+    wrap(<InvoiceSettingsScreen />);
+    fireEvent.press(screen.getByText('QuickBooks'));
     fireEvent.press(screen.getByLabelText('Accent #DC2626'));
     fireEvent.changeText(screen.getByPlaceholderText('Business tagline'), 'Hardware and paint');
     fireEvent.press(screen.getByText('Save settings'));
-
-    expect(mockFns.updateTemplate).toHaveBeenCalledWith('tpl_a4', expect.objectContaining({
-      accentColor: '#DC2626', boxed: false, paper: 'A4', kind: 'page',
-    }));
-    expect(mockFns.updateFirm).toHaveBeenCalledWith(expect.objectContaining({ description: 'Hardware and paint' }));
+    return Promise.resolve().then(() => {
+      expect(mockFns.updateTemplate).toHaveBeenCalledWith('tpl_a4', expect.objectContaining({
+        style: 'quickbooks', accentColor: '#DC2626', boxed: false, paper: 'A4', kind: 'page',
+      }));
+      expect(mockFns.updateFirm).toHaveBeenCalledWith(expect.objectContaining({ description: 'Hardware and paint' }));
+    });
   });
 
-  it('does not turn a template shared with receipts into an A4 page', () => {
+  it('saves the GST template with bank details, website and terms on the business', async () => {
+    wrap(<InvoiceSettingsScreen />);
+    fireEvent.press(screen.getByText('GST tax invoice'));
+    fireEvent.changeText(screen.getByPlaceholderText('Website'), 'www.corner.shop');
+    fireEvent.changeText(screen.getByPlaceholderText('Bank, account name and number, branch'), 'Stanbic 9030001234');
+    fireEvent.changeText(screen.getByPlaceholderText('Goods once sold will not be taken back.'), 'No returns');
+    await act(async () => { fireEvent.press(screen.getByText('Save settings')); });
+    expect(mockFns.updateTemplate).toHaveBeenCalledWith('tpl_a4', expect.objectContaining({ style: 'gst', accentColor: '#1E2A78' }));
+    expect(mockFns.updateFirm).toHaveBeenCalledWith(expect.objectContaining({
+      website: 'www.corner.shop', bankDetails: 'Stanbic 9030001234', terms: 'No returns',
+    }));
+  });
+
+  it('opens the real page from the print engine with the settings on screen, batch and expiry included', async () => {
+    mockFns.printDoc.mockResolvedValue(undefined);
+    wrap(<InvoiceSettingsScreen />);
+    fireEvent.press(screen.getByText('Tally'));
+    fireEvent.press(screen.getByText('Batch column'));
+    await act(async () => { fireEvent.press(screen.getByText('See the real page')); });
+    const [doc, , opts] = mockFns.printDoc.mock.calls[0];
+    expect(opts.paper).toBe('A4');
+    expect(opts.tpl).toEqual(expect.objectContaining({ style: 'tally', boxed: true, showBatch: true }));
+    expect(doc.lines[0].batchNo).toBeTruthy();
+    expect(mockFns.updateTemplate).not.toHaveBeenCalled();
+  });
+
+  it('shows Batch and Expiry as their own columns in the preview', () => {
+    wrap(<InvoiceSettingsScreen />);
+    fireEvent.press(screen.getByText('Batch column'));
+    fireEvent.press(screen.getByText('Expiry column'));
+    expect(screen.getByText('Batch')).toBeTruthy();
+    expect(screen.getByText('Expiry')).toBeTruthy();
+    expect(screen.getByText('B-102')).toBeTruthy();
+  });
+
+  it('does not turn a template shared with receipts into an A4 page', async () => {
     mockDb.templateFor.invoice = 'tpl_receipt';
     wrap(<InvoiceSettingsScreen />);
-    fireEvent.press(screen.getByText('Classic'));
-    fireEvent.press(screen.getByText('Save settings'));
+    fireEvent.press(screen.getByText('Tally'));
+    await act(async () => { fireEvent.press(screen.getByText('Save settings')); });
     const patch = mockFns.updateTemplate.mock.calls[0][1];
     expect(patch.boxed).toBe(true);
     expect(patch.paper).toBeUndefined();
