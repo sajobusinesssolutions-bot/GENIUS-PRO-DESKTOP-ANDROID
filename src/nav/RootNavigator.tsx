@@ -75,9 +75,8 @@ import { AccountingScreen, JournalsScreen, TaxScreen, AccountDetailScreen } from
 import {
   SettingsScreen, DataToolsScreen, LoyaltyScreen, NotificationsScreen,
 } from '../screens/AdminScreens';
-import PrintingScreen, {
-  PrintersScreen, PrintingTemplatesScreen, PrintServerScreen, PrintWordingScreen,
-} from '../screens/PrintingScreen';
+import PrintingScreen, { ReceiptSettingsScreen, InvoiceSettingsScreen } from '../screens/PrintingScreen';
+import LegalScreen from '../screens/LegalScreen';
 import { InstalmentsScreen, PlanDetailScreen, PlanNewScreen } from '../screens/InstalmentScreens';
 import { BulkChangeScreen, BulkPreviewScreen } from '../screens/BulkScreens';
 import {
@@ -226,10 +225,9 @@ export default function RootNavigator() {
         <Stack.Screen name="Shift" component={ShiftScreen} options={{ title: 'Shifts & day close' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
         <Stack.Screen name="Printing" component={PrintingScreen} options={{ title: 'Printing' }} />
-        <Stack.Screen name="PrintingPrinters" component={PrintersScreen} options={{ title: 'Printers' }} />
-        <Stack.Screen name="PrintingTemplates" component={PrintingTemplatesScreen} options={{ title: 'Templates' }} />
-        <Stack.Screen name="PrintingServer" component={PrintServerScreen} options={{ title: 'Print server' }} />
-        <Stack.Screen name="PrintingWording" component={PrintWordingScreen} options={{ title: 'Wording' }} />
+        <Stack.Screen name="PrintingReceipt" component={ReceiptSettingsScreen} options={{ title: 'Receipt settings' }} />
+        <Stack.Screen name="PrintingInvoice" component={InvoiceSettingsScreen} options={{ title: 'Invoice settings' }} />
+        <Stack.Screen name="Legal" component={LegalScreen} options={({ route }: any) => ({ title: route.params?.doc === 'privacy' ? 'Privacy policy' : route.params?.doc === 'terms' ? 'Terms and conditions' : 'Legal' })} />
         <Stack.Screen name="DataTools" component={DataToolsScreen} options={{ title: 'Data tools' }} />
         <Stack.Screen name="Business" component={BusinessScreen} options={{ title: 'Business & branches' }} />
         <Stack.Screen name="Firms" component={FirmsScreen} options={{ title: 'Businesses' }} />

@@ -225,6 +225,25 @@ describe('choosing between the three A4 looks', () => {
   });
 });
 
+describe('what Receipt and Invoice settings put on paper', () => {
+  it('calls the tax line by the shop\'s own tax name', () => {
+    const d = { ...doc, tax: 1800, taxLabel: 'GST' };
+    expect(docHtml(d, money, { paper: '80mm', tpl: tpl() })).toContain('>GST<');
+    expect(docHtml(d, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true }) })).toContain('>GST<');
+  });
+
+  it('prints the WhatsApp number under the shop name', () => {
+    expect(docHtml({ ...doc, firmWhatsapp: '0777 123456' }, money, { paper: '80mm', tpl: tpl() })).toContain('WhatsApp 0777 123456');
+  });
+
+  it('prints the template footer in place of the default thank-you, not as well as it', () => {
+    const html = docHtml({ ...doc, footer: 'Shop footer' }, money, { paper: '80mm', tpl: tpl({ foot: 'No returns\nafter 7 days' }) });
+    expect(html).toContain('No returns<br/>after 7 days');
+    expect(html).not.toContain('Shop footer');
+    expect(docHtml({ ...doc, footer: 'Shop footer' }, money, { paper: '80mm', tpl: tpl({ foot: '' }) })).toContain('Shop footer');
+  });
+});
+
 describe('pictures', () => {
   it('embeds a picture from the phone, since the print view cannot open file paths', async () => {
     expect(await inlineImage('file:///doc/logo.png')).toBe('data:image/png;base64,QUJD');

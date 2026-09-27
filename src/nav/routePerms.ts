@@ -18,7 +18,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   // getting in, and the shell
   AuthGate: null, SignIn: null, CreateAccount: null, GoogleSignIn: null, Welcome: null,
   Onboarding: null, PinLock: null, Businesses: null, Main: null, MenuGroup: null, Notifications: null,
-  About: null, Install: null, Update: null, Versions: null, LicenceStop: null,
+  About: null, Legal: null, Install: null, Update: null, Versions: null, LicenceStop: null,
 
   // selling
   NewSale: 'sales.create',
@@ -106,10 +106,8 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   Settings: 'settings.view',
   Business: 'settings.view',
   Printing: 'settings.manage',
-  PrintingPrinters: 'settings.manage',
-  PrintingTemplates: 'settings.manage',
-  PrintingServer: 'settings.manage',
-  PrintingWording: 'settings.manage',
+  PrintingReceipt: 'settings.manage',
+  PrintingInvoice: 'settings.manage',
   DataTools: 'settings.manage',
   Firms: 'settings.manage',
   AuditLog: 'settings.view',
