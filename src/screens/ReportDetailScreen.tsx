@@ -19,15 +19,22 @@ import {
   INVENTORY_METRIC_REPORTS, InventoryMetricReport,
   Cell, CellTone, ReportResult, RowRef, SortDir,
 } from '../data/reports';
-import { toPdf, preview, toExcel, shareTo, shareFile, fileNameFor } from '../data/exporters';
+import { toPdf, preview, toExcel, shareTo, shareFile, fileNameFor, pickColumns, ExportMeta } from '../data/exporters';
 import { Card, Cap, Pad, EmptyState, Button, StatGrid, ListRow, InfoBanner } from '../components/ui';
-import { Field } from '../components/form';
+import { Field, Checkbox } from '../components/form';
 import { Sheet } from '../components/Sheet';
 import { IconBtn } from '../components/AppBar';
 import Icon from '../components/icons';
 import type { RootStackParamList } from '../nav/types';
 
 type Rt = RouteProp<RootStackParamList, 'ReportDetail'>;
+type ExportKind = 'pdf' | 'preview' | 'excel' | 'whatsapp';
+
+/** What was ticked last time for each report, so the next export starts from it. */
+const CHOSEN = new Map<string, { keep: boolean[]; showGenerated: boolean; showTotals: boolean }>();
+const ASK: Record<ExportKind, string> = {
+  pdf: 'What to display on PDF?', preview: 'What to print?', excel: 'What to put in Excel?', whatsapp: 'What to send?',
+};
 
 /* --- date range ---------------------------------------------------- */
 
@@ -116,6 +123,13 @@ export default function ReportDetailScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [fromText, setFromText] = useState(isoDay(startOfDay(daysAgo(29))));
   const [toText, setToText] = useState(isoDay(Date.now()));
+  const [ask, setAsk] = useState<ExportKind | null>(null);
+  const [keep, setKeep] = useState<boolean[]>([]);
+  const [showGenerated, setShowGenerated] = useState(true);
+  const [showTotals, setShowTotals] = useState(true);
+  const [fileName, setFileName] = useState('');
+  const [nameEdited, setNameEdited] = useState(false);
+  const [editingName, setEditingName] = useState(false);
 
   const role = db?.session.role;
   const allowed = canFor(role, 'reports');
@@ -174,8 +188,11 @@ export default function ReportDetailScreen() {
   }, [view, rowFilter, search]);
 
   const meta = useMemo(
-    () => ({ firm: db?.firm?.name, range: span.label }),
-    [db?.firm?.name, span.label],
+    (): ExportMeta => ({
+      firm: db?.firm?.name, range: span.label, from: span.from, to: span.to, user: 'All Users',
+      firmAddress: db?.firm?.address, firmPhone: db?.firm?.phone, firmEmail: db?.firm?.email,
+    }),
+    [db?.firm, span.label, span.from, span.to],
   );
 
   useEffect(() => { setSort(null); }, [id]);
@@ -209,8 +226,7 @@ export default function ReportDetailScreen() {
     });
   }, [nav, def]);
 
-  const runExport = useCallback(async (what: 'pdf' | 'preview' | 'excel' | 'whatsapp') => {
-    if (!result) return;
+  const runExport = useCallback(async (what: ExportKind, result: ReportResult, meta: ExportMeta) => {
     if (!canExport && what !== 'preview') {
       Alert.alert('Not allowed', 'Your role cannot download or share reports.');
       return;
@@ -238,20 +254,49 @@ export default function ReportDetailScreen() {
         if (!r.ok) {
           Alert.alert(
             'Could not open the share sheet',
-            (r.reason ? r.reason + '\n\n' : '') + fileNameFor(result, 'xlsx') + ' was still written to your documents.',
+            (r.reason ? r.reason + '\n\n' : '') + fileNameFor(result, 'xlsx', meta) + ' was still written to your documents.',
           );
         }
       } else {
         const r = await shareTo(result, 'whatsapp', meta);
         if (!r.ok) Alert.alert('Could not share', r.reason || 'No app on this phone accepted the report.');
       }
-      setExportOpen(false);
     } catch (e) {
       Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
-  }, [result, meta, canExport]);
+  }, [canExport]);
+
+  /** Before anything is exported or printed, ask which columns to include. */
+  const chooseColumns = (what: ExportKind) => {
+    if (!result) return;
+    if (!canExport && what !== 'preview') {
+      Alert.alert('Not allowed', 'Your role cannot download or share reports.');
+      return;
+    }
+    const key = id + ':' + result.cols.map((c) => c.h).join('|');
+    const last = CHOSEN.get(key);
+    setKeep(last && last.keep.length === result.cols.length ? last.keep : result.cols.map(() => true));
+    setShowGenerated(last ? last.showGenerated : true);
+    setShowTotals(last ? last.showTotals : true);
+    if (!nameEdited) setFileName(fileNameFor(result, 'pdf', meta).replace(/.pdf$/, ''));
+    setEditingName(false);
+    setExportOpen(false);
+    // one sheet closes before the next opens; two modals at once can leave the second hidden
+    setTimeout(() => setAsk(what), 250);
+  };
+
+  const applyColumns = () => {
+    if (!result || !ask) return;
+    if (!keep.some(Boolean)) { Alert.alert('Choose a column', 'Tick at least one column to include.'); return; }
+    CHOSEN.set(id + ':' + result.cols.map((c) => c.h).join('|'), { keep, showGenerated, showTotals });
+    let picked = pickColumns(result, keep);
+    if (!showTotals) picked = { ...picked, foot: undefined, stats: undefined };
+    const what = ask;
+    setAsk(null);
+    void runExport(what, picked, { ...meta, fileName: nameEdited ? fileName : undefined, showGenerated, showTotals });
+  };
 
   const tapHeader = (i: number) => {
     setSort((s) => {
@@ -589,13 +634,81 @@ export default function ReportDetailScreen() {
               tone={tone}
               title={label}
               subtitle={sub}
-              onPress={busy ? undefined : () => runExport(key)}
+              onPress={busy ? undefined : () => chooseColumns(key)}
               right={busy === key ? <ActivityIndicator color={colors.accent} /> : undefined}
             />
           </View>
         ))}
         {!canExport ? (
           <InfoBanner tone="warn" text="Your role can preview but not download or share." />
+        ) : null}
+      </Sheet>
+
+      {/* which columns go on the page */}
+      <Sheet
+        visible={!!ask}
+        title={ask ? ASK[ask] : ''}
+        onClose={() => setAsk(null)}
+        footer={(
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}><Button label="Cancel" onPress={() => setAsk(null)} /></View>
+            <View style={{ flex: 1 }}><Button variant="pri" label="Apply" onPress={applyColumns} /></View>
+          </View>
+        )}
+      >
+        {ask !== 'preview' ? (
+          <View style={{ backgroundColor: colors.sunk, borderRadius: 10, paddingHorizontal: 12, paddingVertical: editingName ? 8 : 12, marginBottom: 6 }}>
+            {editingName ? (
+              <Field
+                label="File name"
+                value={fileName}
+                autoFocus
+                onChangeText={(v) => { setFileName(v); setNameEdited(true); }}
+                onBlur={() => setEditingName(false)}
+              />
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>{fileName}</Text>
+                <Pressable hitSlop={8} onPress={() => setEditingName(true)}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent }}>Edit Name</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        ) : null}
+        {result.cols.map((c, i) => (
+          <Pressable
+            key={c.h + i}
+            onPress={() => setKeep((k) => k.map((v, j) => (j === i ? !v : v)))}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: !!keep[i] }}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.line }}
+          >
+            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15.5, color: colors.ink }}>{c.h}</Text>
+            <Checkbox on={!!keep[i]} size={22} onPress={() => setKeep((k) => k.map((v, j) => (j === i ? !v : v)))} />
+          </Pressable>
+        ))}
+        {result.foot || (result.stats && result.stats.length) ? (
+          <Pressable
+            onPress={() => setShowTotals((v) => !v)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: showTotals }}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.line }}
+          >
+            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15.5, color: colors.ink }}>Totals</Text>
+            <Checkbox on={showTotals} size={22} onPress={() => setShowTotals((v) => !v)} />
+          </Pressable>
+        ) : null}
+        {ask === 'pdf' || ask === 'preview' || ask === 'whatsapp' ? (
+          <Pressable
+            onPress={() => setShowGenerated((v) => !v)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: showGenerated }}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15 }}
+          >
+            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15.5, color: colors.ink }}>Date &amp; Time</Text>
+            <Checkbox on={showGenerated} size={22} onPress={() => setShowGenerated((v) => !v)} />
+          </Pressable>
         ) : null}
       </Sheet>
     </View>

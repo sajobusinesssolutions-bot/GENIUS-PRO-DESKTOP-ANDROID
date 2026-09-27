@@ -32,11 +32,22 @@ describe('Legal', () => {
     expect(screen.getByText('1. Agreement')).toBeTruthy();
   });
 
-  it('is in the menu for everyone, findable by search, and needs no permission', () => {
-    const g = MENU_GROUPS.find((x) => x.id === 'legal');
+  it('sits in Help & about, open to everyone and findable by search', () => {
+    const g = MENU_GROUPS.find((x) => x.id === 'help');
     expect(g?.perm).toBeNull();
-    expect(g?.items.map((i) => i.n)).toEqual(['Privacy policy', 'Terms and conditions']);
+    expect(g?.open).toBe('Help');
+    const names = g?.items.map((i) => i.n);
+    for (const n of ['Privacy policy', 'Terms and conditions', 'App & updates', 'Plan & licence', 'Share the app',
+      'Email support', 'WhatsApp support', 'Feature request', 'FAQs & help']) expect(names).toContain(n);
     expect(searchMenu('privacy').some((h) => h.item.route === 'Legal')).toBe(true);
+    expect(searchMenu('faq').some((h) => h.item.route === 'Faq')).toBe(true);
     expect(ROUTE_PERMS.Legal).toBeNull();
+    expect(ROUTE_PERMS.Help).toBeNull();
+    expect(ROUTE_PERMS.Faq).toBeNull();
+  });
+
+  it('App & updates and Plan & licence are no longer duplicated under Settings', () => {
+    const admin = MENU_GROUPS.find((x) => x.id === 'admin');
+    expect(admin?.items.some((i) => i.route === 'About' || i.route === 'Plans')).toBe(false);
   });
 });

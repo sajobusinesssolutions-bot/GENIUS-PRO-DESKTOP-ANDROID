@@ -1,292 +1,345 @@
 /**
- * CLOUD SYNC.
+ * CLOUD SYNC — the connection, the queue's health, the devices on the account,
+ * and the cloud copy of the books.
  *
- * One card that says where the books are, and one button. The first press
- * turns sync on — from then on it runs by itself (see SyncKeeper) — and later
- * presses send whatever is waiting straight away. Everything that was here
- * before and changed nothing a shopkeeper could see (Wi-Fi only, online mode,
- * server counters, a separate on/off toggle) is gone.
+ * Sync runs by itself once it is on (see SyncKeeper). "Back up now" sends
+ * whatever is queued and then a whole copy of the books; "Load cloud backup"
+ * fetches that copy so it can be checked or restored. Cloud sync is a Pro
+ * feature, so a till on Starter sees why rather than a switch that does nothing.
  *
- * Cloud sync is a Pro feature. The licence comes from the account and only the
- * developer can grant or remove it, so a till on Starter sees why the button is
- * locked rather than a switch that silently does nothing.
+ * refreshSession() is a plain static import. It used to be reached through a
+ * dynamic import(), which threw "a dynamic import callback was invoked
+ * without --experimental-vm-modules" under Jest and could plausibly fail the
+ * same way under the bundler.
  */
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, Alert, Pressable } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
 import { useToast } from '../components/Toast';
-import { Panel, Button, SectionLabel, ListRow, ProgressBar } from '../components/ui';
-import { Icon, IconName } from '../components/icons';
+import { Button } from '../components/ui';
+import { Icon } from '../components/icons';
+import { ToolCard, CountPill, SectionCap } from '../components/ToolCard';
 import { useGo } from '../nav/navigate';
 import { plural, fmtDate } from '../data/helpers';
 import { useSyncRun } from '../data/useSyncRun';
 import { listDevices, revokeDevice, refreshSession } from '../data/authApi';
+import { downloadSnapshot } from '../data/syncClient';
+import { writeBackup } from '../data/deviceBackup';
+import { validateBackup } from '../data/storage';
 
-type Health = 'locked' | 'noAccount' | 'off' | 'offline' | 'behind' | 'safe';
+interface Device { id: string; name: string; kind: string; platform: string; created_at: string; last_seen: string }
+interface CloudCopy { version: number; updatedAt: string; data: any }
 
-const LOOK: Record<Health, { tone: 'good' | 'warn' | 'danger' | 'accent'; icon: IconName; head: string }> = {
-  locked: { tone: 'warn', icon: 'lock', head: 'Cloud sync is part of Pro' },
-  noAccount: { tone: 'danger', icon: 'user', head: 'No account signed in' },
-  off: { tone: 'warn', icon: 'cloud', head: 'Kept on this phone only' },
-  offline: { tone: 'warn', icon: 'cloud', head: 'Waiting for a connection' },
-  behind: { tone: 'accent', icon: 'up', head: 'Changes waiting to go up' },
-  safe: { tone: 'good', icon: 'shield', head: 'Backed up to your account' },
-};
+/** Failed runs since the last one that worked. */
+export function failedRuns(log: { ok: boolean }[] = []): number {
+  let n = 0;
+  for (let i = log.length - 1; i >= 0 && !log[i].ok; i -= 1) n += 1;
+  return n;
+}
 
 export default function SyncScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, setSync, licFeature, refreshLicence } = useAppData();
+  const { db, setSync, licFeature, refreshLicence, restoreBackup } = useAppData();
   const { account } = useAuth();
   const { success, error } = useToast();
   const { run } = useSyncRun();
-  const [busy, setBusy] = useState(false);
-  const [devices, setDevices] = useState<Array<{ id: string; name: string; kind: string; platform: string; created_at: string; last_seen: string }>>([]);
-  const [deviceBusy, setDeviceBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [devices, setDevices] = useState<Device[] | null>(null);
+  const [copy, setCopy] = useState<CloudCopy | null>(null);
+
+  const isOwner = db?.session.role === 'owner';
+  const signedIn = !!account && !account.localOnly;
+  const pro = licFeature('sync');
+
+  const token = useCallback(async () => {
+    if (!account?.refresh) throw new Error('Sign in to your account first.');
+    const r = await refreshSession(account.refresh);
+    if (!r.ok) throw new Error(r.error.message);
+    return r.value.access;
+  }, [account?.refresh]);
+
+  const loadDevices = useCallback(async (withLicence = false) => {
+    setBusy('devices');
+    try {
+      const access = await token();
+      const [list] = await Promise.all([
+        listDevices(access),
+        withLicence && account ? refreshLicence(access, account.id) : Promise.resolve(null),
+      ]);
+      if (!list.ok) throw new Error(list.error.message);
+      setDevices(list.value.devices || []);
+    } catch (e: any) {
+      error(e?.message || 'Could not load the linked devices.');
+    } finally {
+      setBusy(null);
+    }
+  }, [token, account, refreshLicence, error]);
+
+  useEffect(() => {
+    if (isOwner && signedIn && pro) void loadDevices();
+    // only on first open
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   const s = db.sync;
-  const isOwner = db.session.role === 'owner';
   const online = db.session.online !== false;
-  const waiting = db.queue.length;
-  const pro = licFeature('sync');
-  const signedIn = !!account && !account.localOnly;
+  const pending = db.queue.length;
+  const deferred = (s.pending || []).length;
+  const failed = failedRuns(s.log);
+  const lastFail = failed ? [...(s.log || [])].reverse().find((l) => !l.ok) : undefined;
+  const max = db.licence.licence?.limits?.devices;
 
-  const health: Health = !pro ? 'locked'
-    : !signedIn ? 'noAccount'
-      : !s.on ? 'off'
-        : !online ? 'offline'
-          : waiting > 0 ? 'behind' : 'safe';
+  async function turnOn() {
+    if (!isOwner) { Alert.alert('Owner only', 'Only the owner can switch cloud sync on.'); return; }
+    try { setSync({ on: true }); } catch (e: any) { error(e?.message || 'Sync could not be switched on.'); return; }
+    await backUpNow();
+  }
 
-  const note = {
-    locked: 'Your licence does not include cloud sync. The developer switches it on when you move to Pro.',
-    noAccount: 'Sign in to the owner\'s account so the books have somewhere to go.',
-    off: 'Nothing leaves this phone. If it is lost or stolen, the books go with it.',
-    offline: plural(waiting, 'change') + ' is queued. Automatic sync will retry as soon as the connection is back.',
-    behind: plural(waiting, 'change') + ' queued for automatic sync. It retries in the background and keeps the books current.',
-    safe: s.lastPush ? 'Automatic sync is running. Last sent ' + fmtDate(s.lastPush) + '.' : 'Automatic sync is running.',
-  }[health];
+  function turnOff() {
+    Alert.alert(
+      'Disconnect from the cloud?',
+      'The books stay on this phone and nothing more goes to your account until you connect again.'
+        + (pending ? ' ' + plural(pending, 'change') + ' not yet sent will wait here.' : ''),
+      [
+        { text: 'Stay connected', style: 'cancel' },
+        { text: 'Disconnect', style: 'destructive', onPress: () => setSync({ on: false }) },
+      ],
+    );
+  }
 
-  const look = LOOK[health];
-  const fg = { good: colors.good, danger: colors.danger, warn: colors.warn, accent: colors.accent }[look.tone];
-  const bg = { good: colors.goodSoft, danger: colors.dangerSoft, warn: colors.warnSoft, accent: colors.accentSoft }[look.tone];
-
-  async function syncNow() {
-    if (!s.on) {
-      if (!isOwner) { Alert.alert('Owner only', 'Only the owner can switch cloud sync on.'); return; }
-      try { setSync({ on: true }); } catch (e: any) { error(e?.message || 'Sync could not be switched on.'); return; }
-    }
-    setBusy(true);
+  async function backUpNow() {
+    setBusy('backup');
     try {
       const r = await run('manual');
       if (r.ok) success(r.message); else error(r.message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  /**
-   * What "Refresh licence" used to do, renamed to what an owner actually
-   * presses it for: seeing which devices are on the account, so an old
-   * phone can be removed. It used to fetch a fresh access token twice — once
-   * here, then again inside loadDevices() — for what is one button press;
-   * now it fetches the token once and runs the licence check and the device
-   * list at the same time instead of one after the other.
-   *
-   * refreshSession() used to be reached through a dynamic import() here —
-   * pointless, since this file already statically imports the same module
-   * for listDevices()/revokeDevice(), and a local module has no reason to be
-   * lazy-loaded. It also could not be exercised in tests at all: Jest's CJS
-   * environment threw "a dynamic import callback was invoked without
-   * --experimental-vm-modules" the moment it ran, which is the same shape of
-   * failure ("cannot read property of undefined") a bundler-level hiccup in
-   * a dynamic import of a local file could plausibly produce at runtime too.
-   */
-  async function checkDevicesLinked() {
-    const refreshToken = account?.refresh;
-    if (!refreshToken) return;
-    setBusy(true);
+  async function loadCloudCopy() {
+    if (!db) return;
+    setBusy('load');
     try {
-      const r = await refreshSession(refreshToken);
-      if (!r.ok) { error(r.error.message); return; }
-      const [licStatus, devicesResult] = await Promise.all([
-        refreshLicence(r.value.access, account.id),
-        listDevices(r.value.access),
-      ]);
-      if (devicesResult.ok) setDevices(devicesResult.value.devices || []);
-      else error(devicesResult.error.message);
-      success(licStatus === 'active' || licStatus === 'trial' ? 'Devices refreshed.' : 'Devices refreshed — licence: ' + licStatus);
+      const businessId = db.sync.businessId;
+      if (!businessId) throw new Error('This shop has not been backed up to the cloud yet. Tap Back up now first.');
+      const r = await downloadSnapshot(await token(), businessId);
+      if (!r.ok) throw new Error(r.error.message);
+      setCopy({ version: r.value.version, updatedAt: r.value.updatedAt, data: r.value.data });
     } catch (e: any) {
-      error(e?.message || 'Could not check linked devices.');
+      error(e?.message || 'The cloud backup could not be loaded.');
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  async function loadDevices() {
-    const refreshToken = account?.refresh;
-    if (!refreshToken || !isOwner) return;
-    try {
-      const r = await refreshSession(refreshToken);
-      if (!r.ok) { error(r.error.message); return; }
-      const devicesResult = await listDevices(r.value.access);
-      if (!devicesResult.ok) { error(devicesResult.error.message); return; }
-      setDevices(devicesResult.value.devices || []);
-    } catch (e: any) {
-      error(e?.message || 'Could not load devices.');
-    }
+  function restoreCopy() {
+    if (!copy || !db) return;
+    Alert.alert(
+      'Restore the cloud backup?',
+      'This replaces the books on this phone with the copy from ' + fmtDate(copy.updatedAt)
+        + '. An encrypted backup of the books as they are now is saved on this phone first.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore', style: 'destructive',
+          onPress: () => {
+            try {
+              const checked = validateBackup(JSON.stringify(copy.data));
+              if (!checked.ok || !checked.db) throw new Error(checked.reason);
+              writeBackup(db, false);
+              restoreBackup(checked.db);
+              setCopy(null);
+              success('Cloud backup restored');
+            } catch (e: any) {
+              error(e?.message || 'The cloud backup could not be restored.');
+            }
+          },
+        },
+      ],
+    );
   }
 
-  async function removeDevice(id: string, name: string) {
-    const refreshToken = account?.refresh;
-    if (!refreshToken) return;
-    Alert.alert('Remove device?', 'This removes ' + name + ' from the account licence count.', [
+  function removeDevice(d: Device) {
+    Alert.alert('Remove ' + (d.name || 'this device') + '?', 'It is signed out of the account and frees a place on the licence.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive',
         onPress: async () => {
-          setDeviceBusy(id);
+          setBusy('dev:' + d.id);
           try {
-            const r = await refreshSession(refreshToken);
-            if (!r.ok) { error(r.error.message); return; }
-            const res = await revokeDevice(r.value.access, id);
-            if (!res.ok) { error(res.error.message); return; }
-            success('Device removed.');
-            setDevices((current) => current.filter((d) => d.id !== id));
+            const res = await revokeDevice(await token(), d.id);
+            if (!res.ok) throw new Error(res.error.message);
+            setDevices((cur) => (cur || []).filter((x) => x.id !== d.id));
+            success('Device removed');
           } catch (e: any) {
             error(e?.message || 'The device could not be removed.');
           } finally {
-            setDeviceBusy(null);
+            setBusy(null);
           }
         },
       },
     ]);
   }
 
-  function turnOff() {
-    Alert.alert(
-      'Stop syncing?',
-      'The books stay on this phone and nothing more goes to your account until you sync again.'
-        + (waiting ? ' ' + plural(waiting, 'change') + ' not yet sent will wait here.' : ''),
-      [
-        { text: 'Keep syncing', style: 'cancel' },
-        { text: 'Stop', style: 'destructive', onPress: () => setSync({ on: false }) },
-      ],
+  /* ---- not ready: Pro, account, switched off ---- */
+  if (!pro || !signedIn) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16 }}>
+        <ToolCard
+          icon={!pro ? 'lock' : 'user'} tone="warn"
+          title={!pro ? 'Cloud sync is part of Pro' : 'No account signed in'}
+          sub={!pro ? 'Your licence does not include cloud sync.' : 'Sign in so the books have somewhere to go.'}
+        >
+          <Button
+            variant="pri"
+            label={!pro ? 'See plans and licence' : 'Sign in'}
+            onPress={() => go(!pro ? 'Plans' : 'AuthGate')}
+          />
+        </ToolCard>
+      </ScrollView>
     );
   }
 
-  const button = !pro ? (
-    <Button label="See what Pro includes" variant="pri" icon={<Icon name="lock" size={17} color={colors.accentInk} />} onPress={() => go('Licence')} />
-  ) : !signedIn ? (
-    <Button label="Sign in" variant="pri" icon={<Icon name="user" size={17} color={colors.accentInk} />} onPress={() => go('AuthGate')} />
-  ) : (
-    <Button
-      label={!s.on ? 'Turn on automatic sync' : waiting ? 'Queued for auto sync' : 'Sync now'}
-      variant="pri"
-      loading={busy}
-      disabled={busy || !online}
-      icon={<Icon name="cloud" size={17} color={colors.accentInk} />}
-      onPress={syncNow}
-    />
-  );
+  const connected = s.on && online;
+  const head = !s.on ? 'Cloud sync is off' : !online ? 'Waiting for a connection' : 'Connected to the cloud';
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-        <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: colors.line, alignItems: 'center' }}>
-          <View style={{ width: 64, height: 64, borderRadius: 22, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name={busy ? 'cloud' : look.icon} size={30} color={fg} />
-          </View>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: colors.ink, marginTop: 14, textAlign: 'center' }}>
-            {busy ? 'Syncing…' : look.head}
-          </Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, lineHeight: 20, color: colors.faint, marginTop: 6, textAlign: 'center' }}>
-            {note}
-          </Text>
-          {busy ? <View style={{ alignSelf: 'stretch', marginTop: 14 }}><ProgressBar pct={100} /></View> : null}
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+      <ToolCard
+        icon="cloud"
+        tone={connected ? 'good' : 'warn'}
+        title={head}
+        titleColor={connected ? colors.good : undefined}
+        sub={s.lastPush ? 'Last sent ' + fmtDate(s.lastPush) : account?.email}
+        border={connected ? colors.good : undefined}
+        action={s.on && isOwner ? { icon: 'x', label: 'Disconnect', onPress: turnOff } : undefined}
+      >
+        {!s.on ? (
+          <Button variant="pri" label="Connect and back up" loading={busy === 'backup'} icon={<Icon name="cloud" size={17} color={colors.accentInk} />} onPress={turnOn} />
+        ) : null}
+      </ToolCard>
 
-          <View style={{ flexDirection: 'row', alignSelf: 'stretch', marginTop: 18, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 14 }}>
-            {[
-              ['Waiting', waiting ? String(waiting) : '0'],
-              ['Last sent', s.lastPush ? fmtDate(s.lastPush) : 'Never'],
-              ['Automatic', s.on && pro ? 'On' : 'Off'],
-            ].map(([k, v], i) => (
-              <View key={k} style={{ flex: 1, alignItems: 'center', borderLeftWidth: i ? 1 : 0, borderLeftColor: colors.line }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }} numberOfLines={1}>{v}</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{k}</Text>
+      {s.on ? (
+        <ToolCard
+          icon="shield" tone={failed ? 'danger' : 'good'} title="Queue health"
+          border={failed ? colors.danger : colors.good}
+          action={{ icon: 'swap', label: 'Sync the queue now', onPress: backUpNow, busy: busy === 'backup' }}
+        >
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <CountPill label="Pending" n={pending} tone="accent" />
+            <CountPill label="Deferred" n={deferred} tone="warn" />
+            <CountPill label="Failed" n={failed} tone="danger" />
+          </View>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.faint, marginTop: 12 }}>
+            {failed && lastFail
+              ? 'The last ' + plural(failed, 'attempt') + ' failed: ' + lastFail.note
+              : pending || deferred
+                ? plural(pending + deferred, 'change') + ' waiting — sent automatically when the phone is online.'
+                : 'Queue is healthy. No pending, deferred or failed items.'}
+          </Text>
+        </ToolCard>
+      ) : null}
+
+      {isOwner ? (
+        <View style={{ marginBottom: 16 }}>
+          <SectionCap
+            right={(
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint }}>
+                  {(devices ? devices.length : '–') + (max ? ' / ' + max : '')}
+                </Text>
+                <Pressable hitSlop={10} accessibilityLabel="Check devices linked" onPress={() => loadDevices(true)}>
+                  <Icon name="swap" size={19} color={colors.faint} />
+                </Pressable>
               </View>
-            ))}
+            )}
+          >
+            Linked devices
+          </SectionCap>
+          {(devices || []).map((d) => {
+            const me = d.id === s.deviceId;
+            return (
+              <View key={d.id} style={{
+                flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 18, marginBottom: 10,
+                backgroundColor: colors.surface, borderWidth: 1.2, borderColor: me ? colors.good : colors.line,
+              }}>
+                <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="phone" size={20} color={colors.good} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{d.name || 'Device'}</Text>
+                    {me ? (
+                      <View style={{ backgroundColor: colors.goodSoft, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
+                        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.good }}>This device</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
+                    {(d.platform && d.platform !== 'app' ? d.platform : d.kind || 'phone') + ' · Linked ' + fmtDate(d.created_at)}
+                  </Text>
+                </View>
+                <Pressable
+                  hitSlop={10}
+                  accessibilityLabel={'Remove ' + (d.name || 'device')}
+                  disabled={busy === 'dev:' + d.id}
+                  onPress={() => removeDevice(d)}
+                >
+                  <Icon name="arrow" size={20} color={colors.faint} />
+                </Pressable>
+              </View>
+            );
+          })}
+          {devices && !devices.length ? (
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>No devices are linked yet.</Text>
+          ) : null}
+          {!devices ? (
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>{busy === 'devices' ? 'Checking…' : 'Tap refresh to check the linked devices.'}</Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      <ToolCard icon="up" tone="danger" title="Cloud backup" sub="A full copy of the books kept with your account">
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 2 }}>
+            <Button variant="pri" label="Back up now" loading={busy === 'backup'} disabled={!s.on || !online} icon={<Icon name="up" size={17} color={colors.accentInk} />} onPress={backUpNow} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button label="Refresh" disabled={!!busy} onPress={loadCloudCopy} />
           </View>
         </View>
-
-        <View style={{ marginTop: 16 }}>{button}</View>
-        {pro && signedIn && s.on && isOwner ? (
-          <Pressable onPress={turnOff} hitSlop={8} style={{ alignSelf: 'center', marginTop: 14 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.faint }}>Stop syncing</Text>
-          </Pressable>
-        ) : null}
-
-        {isOwner && signedIn && pro ? (
-          <View style={{ marginTop: 20 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Devices on this account</Text>
-              <Pressable onPress={loadDevices} hitSlop={8}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.accent }}>Refresh</Text>
-              </Pressable>
-            </View>
-            <Panel flush>
-              {devices.length ? devices.map((device, index) => (
-                <View key={device.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: index === devices.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{device.name || 'This phone'}</Text>
-                    <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 2 }}>{device.kind || 'phone'} · {fmtDate(device.last_seen || device.created_at)}</Text>
-                  </View>
-                  <Button
-                    size="sm"
-                    label={deviceBusy === device.id ? 'Removing…' : 'Remove'}
-                    variant="dngr"
-                    disabled={deviceBusy !== null}
-                    onPress={() => removeDevice(device.id, device.name || 'This phone')}
-                  />
-                </View>
-              )) : (
-                <View style={{ padding: 16 }}>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>No devices are registered yet.</Text>
-                </View>
-              )}
-            </Panel>
-            <View style={{ marginTop: 12 }}>
-              <Button label="Check devices linked" variant="default" loading={busy} onPress={checkDevicesLinked} />
-            </View>
+        <View style={{ height: 10 }} />
+        <Button label="Load cloud backup" loading={busy === 'load'} icon={<Icon name="down" size={17} color={colors.ink} />} onPress={loadCloudCopy} />
+        {copy ? (
+          <View style={{ marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: colors.sunk, gap: 4 }}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Latest cloud copy · version {copy.version}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
+              {'Saved ' + fmtDate(copy.updatedAt) + ' · ' + plural((copy.data?.sales || []).length, 'sale') + ' · ' + plural((copy.data?.products || []).length, 'item')}
+            </Text>
+            {isOwner ? <View style={{ marginTop: 8 }}><Button variant="dngr" label="Restore this copy" onPress={restoreCopy} /></View> : null}
           </View>
         ) : null}
+      </ToolCard>
 
-        {account ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, textAlign: 'center', marginTop: 18 }}>
-            {account.email}{s.businessId ? ' · business ' + s.businessId.slice(0, 8).toUpperCase() : ''}
-          </Text>
-        ) : null}
-
-        {(s.log || []).length ? (
-          <View style={{ marginTop: 22 }}>
-            <SectionLabel>Recent</SectionLabel>
-            <Panel flush>
-              {[...(s.log || [])].reverse().slice(0, 5).map((l, i, a) => (
-                <ListRow
-                  key={l.id}
-                  icon={l.ok ? 'check' : 'alert'}
-                  tone={l.ok ? 'good' : 'danger'}
-                  title={l.note}
-                  subtitle={fmtDate(l.ts) + (l.how === 'auto' ? ' · automatic' : l.by ? ' · ' + l.by : '')}
-                  last={i === a.length - 1}
-                />
-              ))}
-            </Panel>
-          </View>
-        ) : null}
-      </ScrollView>
-    </View>
+      {(s.log || []).length ? (
+        <View>
+          <SectionCap>Recent activity</SectionCap>
+          {[...(s.log || [])].reverse().slice(0, 5).map((l) => (
+            <View key={l.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9 }}>
+              <Icon name={l.ok ? 'check' : 'alert'} size={16} color={l.ok ? colors.good : colors.danger} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{l.note}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{fmtDate(l.ts) + (l.how === 'auto' ? ' · automatic' : l.by ? ' · ' + l.by : '')}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </ScrollView>
   );
 }

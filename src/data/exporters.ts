@@ -18,6 +18,39 @@ export interface ExportMeta {
   firm?: string;
   /** "Last 30 days", "1 Jan 2026 – 31 Jan 2026" — printed under the title. */
   range?: string;
+  firmAddress?: string;
+  firmPhone?: string;
+  firmEmail?: string;
+  /** Whose records the report covers — "All Users" unless narrowed. */
+  user?: string;
+  /** The period as timestamps; 0 for "from the beginning". Drives "Duration" and the file name. */
+  from?: number;
+  to?: number;
+  /** A name the person typed for the file, without the extension. */
+  fileName?: string;
+  /** Print "Generated on …" at the foot of each page. Default on. */
+  showGenerated?: boolean;
+  /** Print the summary figures and the totals row. Default on. */
+  showTotals?: boolean;
+}
+
+/** The report cut down to the columns the person ticked. Nothing ticked keeps them all. */
+export function pickColumns(result: ReportResult, keep?: boolean[]): ReportResult {
+  if (!keep || !keep.some(Boolean) || keep.length !== result.cols.length || keep.every(Boolean)) return result;
+  const idx = result.cols.map((_, i) => i).filter((i) => keep[i]);
+  return {
+    ...result,
+    cols: idx.map((i) => result.cols[i]),
+    rows: result.rows.map((r) => idx.map((i) => r[i])),
+    foot: result.foot ? idx.map((i) => result.foot![i]) : undefined,
+  };
+}
+
+/** 01/09/2026 */
+export function dmySlash(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => (n < 10 ? '0' + n : String(n));
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
 }
 
 export type ShareTarget = 'whatsapp' | 'system';
@@ -36,7 +69,18 @@ function stamp(): string {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
-export function fileNameFor(result: ReportResult, ext: string): string {
+/**
+ * "Sale_Report_01-09-2026_to_30-09-2026.pdf" when the period is known, the
+ * name the person typed when they edited it, a dated slug otherwise.
+ */
+export function fileNameFor(result: ReportResult, ext: string, meta: ExportMeta = {}): string {
+  const typed = (meta.fileName || '').trim().replace(/\.[A-Za-z0-9]{2,4}$/, '').replace(/[^A-Za-z0-9 _.-]+/g, '_').replace(/\s+/g, '_');
+  if (typed) return `${typed}.${ext}`;
+  if (meta.to) {
+    const title = (result.title || 'Report').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const span = meta.from ? dmySlash(meta.from).replace(/\//g, '-') + '_to_' + dmySlash(meta.to).replace(/\//g, '-') : 'to_' + dmySlash(meta.to).replace(/\//g, '-');
+    return `${title}_${span}.${ext}`;
+  }
   return `${slug(result.title)}-${stamp()}.${ext}`;
 }
 
@@ -71,8 +115,14 @@ function cellHtml(c: Cell): string {
   return tone ? `<span style="color:${TONE_CSS[tone] || '#161A22'}">${text}</span>` : text;
 }
 
-/** The report as a standalone A4 sheet — the same palette as the light theme. */
+/**
+ * The report as an A4 sheet: the business centred at the top with its
+ * contact line, the title underlined, who / when / which firm in bold, a
+ * grey-headed table, the totals at the end and "Generated on" at the foot
+ * of every page.
+ */
 export function toHtml(result: ReportResult, meta: ExportMeta = {}): string {
+  const showTotals = meta.showTotals !== false;
   const head = result.cols
     .map((c) => `<th class="${c.r ? 'r' : ''}">${esc(c.h)}</th>`)
     .join('');
@@ -85,52 +135,66 @@ export function toHtml(result: ReportResult, meta: ExportMeta = {}): string {
       .join('')
     : `<tr><td colspan="${result.cols.length}" class="empty">No data in this period. Try a wider date range.</td></tr>`;
 
-  const foot = result.foot
+  const foot = showTotals && result.foot
     ? '<tfoot><tr>' + result.cols
       .map((c, i) => `<td class="${c.r ? 'r num' : ''}">${cellHtml(result.foot![i] ?? '')}</td>`)
       .join('') + '</tr></tfoot>'
     : '';
 
-  const stats = result.stats && result.stats.length
-    ? '<div class="stats">' + result.stats
-      .map((s) => `<div class="stat"><div class="cap">${esc(s.k)}</div><div class="v">${esc(s.v)}</div></div>`)
+  const totals = showTotals && result.stats && result.stats.length
+    ? '<div class="totals">' + result.stats
+      .map((s) => `<div>${esc(s.k)}: ${esc(s.v)}</div>`)
       .join('') + '</div>'
     : '';
+
+  const contact = [
+    meta.firmAddress ? 'Address: ' + meta.firmAddress : '',
+    meta.firmPhone ? 'Ph. no.: ' + meta.firmPhone : '',
+    meta.firmEmail ? 'Email: ' + meta.firmEmail : '',
+  ].filter(Boolean).join(', ');
+
+  const duration = meta.to
+    ? (meta.from ? 'From ' + dmySlash(meta.from) + ' to ' + dmySlash(meta.to) : 'Up to ' + dmySlash(meta.to))
+    : meta.range || '';
+
+  const now = new Date();
+  const generated = 'Generated on ' + now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).replace(', ', ',')
+    + ' at ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
   return `<!doctype html><html><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${esc(result.title)}</title>
 <style>
-  @page { margin: 16mm 12mm; }
+  @page { margin: 14mm 10mm 16mm; }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-         color: #161A22; background: #FFFFFF; margin: 0; font-size: 11px; }
-  .firm { font-size: 11px; color: #6B7387; letter-spacing: .04em; text-transform: uppercase; }
-  h1 { font-size: 19px; margin: 3px 0 2px; font-weight: 700; letter-spacing: -0.01em; }
-  .range { font-size: 11.5px; color: #4B5568; margin-bottom: 14px; }
-  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
-  .stat { flex: 1 1 140px; border: 1px solid #E4E7EE; border-radius: 9px; padding: 9px 11px; background: #F1F3F7; }
-  .cap { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: #6B7387; margin-bottom: 3px; }
-  .v { font-size: 14px; font-weight: 700; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 7px 9px; border-bottom: 1px solid #E4E7EE; text-align: left; vertical-align: top; }
-  th { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: #6B7387;
-       background: #F1F3F7; border-bottom: 1px solid #D3D8E3; font-weight: 600; }
-  td.r, th.r { text-align: right; }
-  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  tfoot td { background: #F1F3F7; font-weight: 700; border-top: 1px solid #D3D8E3; border-bottom: none; }
-  .empty { text-align: center; color: #6B7387; padding: 28px 10px; }
-  .note { margin-top: 12px; font-size: 10.5px; color: #6B7387; line-height: 1.5; }
-  .foot { margin-top: 20px; padding-top: 9px; border-top: 1px solid #E4E7EE;
-          font-size: 9.5px; color: #8A92A3; display: flex; justify-content: space-between; }
+  body { font-family: Roboto, "Segoe UI", Helvetica, Arial, sans-serif; color: #111; background: #fff; margin: 0; font-size: 10.5px; }
+  .firm { text-align: center; font-size: 15px; font-weight: 700; letter-spacing: .2px; }
+  .contact { text-align: center; font-size: 9.5px; color: #222; margin-top: 3px; }
+  h1 { text-align: center; font-size: 16px; font-weight: 700; text-decoration: underline; margin: 22px 0 16px; }
+  .meta div { font-weight: 700; font-size: 11.5px; margin-bottom: 11px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th { background: #D9D9D9; font-size: 10px; font-weight: 700; padding: 6px 5px; text-align: left; border-bottom: 1.5px solid #555; }
+  td { padding: 6px 5px; border-bottom: 1px solid #9A9A9A; text-align: left; vertical-align: top; }
+  th.r, td.r { text-align: right; }
+  td.num { white-space: nowrap; }
+  tfoot td { font-weight: 700; border-top: 1.5px solid #555; border-bottom: none; }
+  .empty { text-align: center; color: #666; padding: 28px 10px; }
+  .totals { margin-top: 16px; text-align: right; font-weight: 700; font-size: 12px; line-height: 20px; }
+  .note { margin-top: 12px; font-size: 10px; color: #444; line-height: 1.5; }
+  .gen { position: fixed; bottom: -9mm; left: 0; font-size: 8.5px; color: #666; }
 </style></head><body>
-  ${meta.firm ? `<div class="firm">${esc(meta.firm)}</div>` : ''}
+  ${meta.firm ? `<div class="firm">${esc(meta.firm.toUpperCase())}</div>` : ''}
+  ${contact ? `<div class="contact">${esc(contact)}</div>` : ''}
   <h1>${esc(result.title)}</h1>
-  ${meta.range ? `<div class="range">${esc(meta.range)}</div>` : ''}
-  ${stats}
+  <div class="meta">
+    <div>Username: ${esc(meta.user || 'All Users')}</div>
+    ${duration ? `<div>Duration: ${esc(duration)}</div>` : ''}
+    ${meta.firm ? `<div>Firm: ${esc(meta.firm)}</div>` : ''}
+  </div>
   <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table>
+  ${totals}
   ${result.note ? `<div class="note">${esc(result.note)}</div>` : ''}
-  <div class="foot"><span>Genius POS</span><span>${esc(new Date().toLocaleString())}</span></div>
+  ${meta.showGenerated !== false ? `<div class="gen">${esc(generated)}</div>` : ''}
 </body></html>`;
 }
 
@@ -142,7 +206,7 @@ export function toHtml(result: ReportResult, meta: ExportMeta = {}): string {
 export async function toPdf(result: ReportResult, meta: ExportMeta = {}): Promise<string> {
   // PDF reports are shared documents, so keep them on a predictable A4 page
   // instead of letting the platform choose a device-specific paper size.
-  return printPdfToCache({ html: toHtml(result, meta), width: 595, height: 842 }, fileNameFor(result, 'pdf'));
+  return printPdfToCache({ html: toHtml(result, meta), width: 595, height: 842 }, fileNameFor(result, 'pdf', meta));
 }
 
 /** Open the system print/preview dialog. */
@@ -186,7 +250,7 @@ export async function toExcel(result: ReportResult, meta: ExportMeta = {}): Prom
   // Excel caps sheet names at 31 characters and bans []:*?/\
   XLSX.utils.book_append_sheet(wb, ws, result.title.replace(/[[\]:*?/\\]/g, ' ').slice(0, 31) || 'Report');
   const base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }) as string;
-  return writeFile(fileNameFor(result, 'xlsx'), base64, 'base64');
+  return writeFile(fileNameFor(result, 'xlsx', meta), base64, 'base64');
 }
 
 function csvCell(c: Cell): string {

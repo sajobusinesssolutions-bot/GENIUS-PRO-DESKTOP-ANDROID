@@ -18,7 +18,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   // getting in, and the shell
   AuthGate: null, SignIn: null, CreateAccount: null, GoogleSignIn: null, Welcome: null,
   Onboarding: null, PinLock: null, Businesses: null, Main: null, MenuGroup: null, Notifications: null,
-  About: null, Legal: null, Install: null, Update: null, Versions: null, LicenceStop: null,
+  About: null, Legal: null, Help: null, Faq: null, Install: null, Update: null, Versions: null, LicenceStop: null,
 
   // selling
   NewSale: 'sales.create',

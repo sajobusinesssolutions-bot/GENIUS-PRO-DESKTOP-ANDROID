@@ -417,6 +417,59 @@ describe('report PDF — where the file actually ends up', () => {
   });
 });
 
+describe('report PDF — layout, columns and file name', () => {
+  const { pickColumns, toHtml: html, fileNameFor: nameFor } = require('../exporters');
+  const rep = {
+    title: 'Sale Report',
+    cols: [{ h: 'Date' }, { h: 'Ref No.' }, { h: 'Party Name' }, { h: 'Total Amount', r: true }],
+    rows: [['16/09/2026', '111', 'TURYATUNGA EMMANUEL', 'Sh 271,000']],
+    foot: ['Total', '', '', 'Sh 271,000'],
+    stats: [{ k: 'Total Sale', v: 'Sh 5,420,990' }],
+  };
+  const meta = {
+    firm: 'Saljoe Tech', firmAddress: 'Kichuleta, Fortportal', firmPhone: '0753201462', firmEmail: 'x@y.com',
+    from: new Date(2026, 8, 1).getTime(), to: new Date(2026, 8, 30, 23, 59).getTime(),
+  };
+
+  it('prints the business, underlined title, username, duration and firm like the reference', () => {
+    const out = html(rep, meta);
+    expect(out).toContain('SALJOE TECH');
+    expect(out).toContain('Address: Kichuleta, Fortportal, Ph. no.: 0753201462, Email: x@y.com');
+    expect(out).toContain('text-decoration: underline');
+    expect(out).toContain('Username: All Users');
+    expect(out).toContain('Duration: From 01/09/2026 to 30/09/2026');
+    expect(out).toContain('Firm: Saljoe Tech');
+    expect(out).toContain('Total Sale: Sh 5,420,990');
+    expect(out).toContain('Generated on');
+  });
+
+  it('leaves out the date stamp and the totals when unticked', () => {
+    const out = html(rep, { ...meta, showGenerated: false, showTotals: false });
+    expect(out).not.toContain('Generated on');
+    expect(out).not.toContain('Total Sale:');
+    expect(out).not.toContain('<tfoot>');
+  });
+
+  it('keeps only the ticked columns, in rows and totals alike', () => {
+    const cut = pickColumns(rep, [true, false, true, true]);
+    expect(cut.cols.map((c: any) => c.h)).toEqual(['Date', 'Party Name', 'Total Amount']);
+    expect(cut.rows[0]).toEqual(['16/09/2026', 'TURYATUNGA EMMANUEL', 'Sh 271,000']);
+    expect(cut.foot).toEqual(['Total', '', 'Sh 271,000']);
+    expect(html(cut, meta)).not.toContain('Ref No.');
+  });
+
+  it('keeps every column when nothing, or everything, is ticked', () => {
+    expect(pickColumns(rep, [false, false, false, false])).toBe(rep);
+    expect(pickColumns(rep, [true, true, true, true])).toBe(rep);
+  });
+
+  it('names the file after the report and its period, or what the person typed', () => {
+    expect(nameFor(rep, 'pdf', meta)).toBe('Sale_Report_01-09-2026_to_30-09-2026.pdf');
+    expect(nameFor(rep, 'xlsx', { ...meta, fileName: 'September sales' })).toBe('September_sales.xlsx');
+    expect(nameFor(rep, 'pdf', { ...meta, fileName: 'bad/name?.pdf' })).toBe('bad_name_.pdf');
+  });
+});
+
 describe('report export', () => {
   it('opens a native A4 preview when asked for print preview', async () => {
     const spy = jest.spyOn(Print, 'printAsync');

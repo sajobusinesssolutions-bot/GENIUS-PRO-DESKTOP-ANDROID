@@ -99,6 +99,8 @@ export type RootStackParamList = {
   PrintingReceipt: undefined;
   PrintingInvoice: undefined;
   Legal: { doc?: 'privacy' | 'terms' } | undefined;
+  Help: undefined;
+  Faq: undefined;
   DataTools: { backup?: boolean } | undefined;
   Business: undefined;
   Firms: undefined;

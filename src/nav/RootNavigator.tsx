@@ -77,6 +77,7 @@ import {
 } from '../screens/AdminScreens';
 import PrintingScreen, { ReceiptSettingsScreen, InvoiceSettingsScreen } from '../screens/PrintingScreen';
 import LegalScreen from '../screens/LegalScreen';
+import HelpScreen, { FaqScreen } from '../screens/HelpScreen';
 import { InstalmentsScreen, PlanDetailScreen, PlanNewScreen } from '../screens/InstalmentScreens';
 import { BulkChangeScreen, BulkPreviewScreen } from '../screens/BulkScreens';
 import {
@@ -227,6 +228,8 @@ export default function RootNavigator() {
         <Stack.Screen name="Printing" component={PrintingScreen} options={{ title: 'Printing' }} />
         <Stack.Screen name="PrintingReceipt" component={ReceiptSettingsScreen} options={{ title: 'Receipt settings' }} />
         <Stack.Screen name="PrintingInvoice" component={InvoiceSettingsScreen} options={{ title: 'Invoice settings' }} />
+        <Stack.Screen name="Help" component={HelpScreen} options={{ title: 'Help & about' }} />
+        <Stack.Screen name="Faq" component={FaqScreen} options={{ title: 'FAQs & help' }} />
         <Stack.Screen name="Legal" component={LegalScreen} options={({ route }: any) => ({ title: route.params?.doc === 'privacy' ? 'Privacy policy' : route.params?.doc === 'terms' ? 'Terms and conditions' : 'Legal' })} />
         <Stack.Screen name="DataTools" component={DataToolsScreen} options={{ title: 'Data tools' }} />
         <Stack.Screen name="Business" component={BusinessScreen} options={{ title: 'Business & branches' }} />
