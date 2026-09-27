@@ -182,6 +182,14 @@ export const MENU_GROUPS: MenuGroupDef[] = [
       },
     ],
   },
+  {
+    id: 'legal', n: 'Legal', i: 'shield', tone: 'soft', perm: null,
+    b: () => 'Privacy policy · terms',
+    items: [
+      { route: 'Legal', params: { doc: 'privacy' }, i: 'shield', n: 'Privacy policy', b: () => 'What the app stores, and where', alt: 'privacy data gdpr legal' },
+      { route: 'Legal', params: { doc: 'terms' }, i: 'doc', n: 'Terms and conditions', b: () => 'The rules for using Genius POS', alt: 'terms conditions agreement legal eula' },
+    ],
+  },
 ];
 
 export function menuGroup(id: string): MenuGroupDef | undefined {

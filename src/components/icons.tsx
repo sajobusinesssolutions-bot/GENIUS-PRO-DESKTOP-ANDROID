@@ -16,7 +16,8 @@ export type IconName =
   | 'gift' | 'cog' | 'factory' | 'receipt' | 'calendar' | 'cloud' | 'arrow'
   | 'swap' | 'print' | 'trash' | 'tag' | 'pie' | 'owner' | 'cashier' | 'money'
   | 'bank' | 'phone' | 'cash' | 'lock' | 'down' | 'up' | 'cart' | 'coins'
-  | 'pencil' | 'tools' | 'wrench' | 'bulb' | 'chair' | 'brick' | 'food' | 'taxi';
+  | 'pencil' | 'tools' | 'wrench' | 'bulb' | 'chair' | 'brick' | 'food' | 'taxi'
+  | 'wifi' | 'bluetooth' | 'image' | 'mail' | 'pin';
 
 type Fam = 'f' | 'm';
 
@@ -70,6 +71,11 @@ const MAP: Record<IconName, [Fam, string]> = {
   brick: ['m', 'wall'],
   food: ['m', 'food-outline'],
   taxi: ['m', 'taxi'],
+  wifi: ['f', 'wifi'],
+  bluetooth: ['f', 'bluetooth'],
+  image: ['f', 'image'],
+  mail: ['f', 'mail'],
+  pin: ['f', 'map-pin'],
 };
 
 export function Icon({ name, size = 18, color = '#000' }: { name: IconName | string; size?: number; color?: string }) {

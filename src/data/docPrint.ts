@@ -59,6 +59,8 @@ export interface DocMeta {
   firmAddress?: string;
   firmTin?: string;
   firmPhone?: string;
+  /** A second number the shop takes WhatsApp messages on. */
+  firmWhatsapp?: string;
   firmEmail?: string;
   /** One line under the shop name saying what the business does. */
   firmDescription?: string;
@@ -84,6 +86,8 @@ export interface DocMeta {
   terms?: string;
   servedBy?: string;
   footer?: string;
+  /** Settings → Tax name, e.g. "VAT" — what the tax line is called on paper. */
+  taxLabel?: string;
 }
 
 function esc(s: unknown): string {
@@ -263,14 +267,14 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
     totalRow('Subtotal', money(d.subtotal)),
     d.discount ? totalRow('Discount', '− ' + money(d.discount)) : '',
     d.charges ? totalRow('Additional charges', money(d.charges)) : '',
-    d.tax && showTax ? totalRow('Tax', money(d.tax)) : '',
+    d.tax && showTax ? totalRow(d.taxLabel || 'Tax', money(d.tax)) : '',
     totalRow('TOTAL', money(d.total), true),
     d.paid !== undefined ? totalRow('Paid', money(d.paid)) : '',
     d.due ? totalRow('Balance due', money(d.due), true) : '',
   ].filter(Boolean).join('');
 
   const firmLines = [
-    d.firmDescription, d.firmAddress, d.firmPhone, d.firmEmail, d.firmTin ? 'TIN ' + d.firmTin : '',
+    d.firmDescription, d.firmAddress, d.firmPhone, d.firmWhatsapp ? 'WhatsApp ' + d.firmWhatsapp : '', d.firmEmail, d.firmTin ? 'TIN ' + d.firmTin : '',
   ].filter(Boolean).map((x) => `<div class="muted">${esc(x)}</div>`).join('');
 
   const partyLabel = /purchase/i.test(d.kind) ? 'Supplier' : 'Customer';
@@ -279,8 +283,7 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
     ${d.terms ? `<div class="foot">Terms: ${esc(d.terms)}</div>` : ''}
     ${d.signature ? `<div class="sign"><img src="${esc(d.signature)}" /><div class="signline">Authorised signature</div></div>` : ''}
     ${code}
-    ${foot ? `<div class="foot">${esc(foot).replace(/\n/g, '<br/>')}</div>` : ''}
-    <div class="foot">${esc(d.footer || 'Thank you for your business')}</div>`;
+    <div class="foot">${esc(foot || d.footer || 'Thank you for your business').replace(/\n/g, '<br/>')}</div>`;
 
   let doc: string;
   if (paper === 'A4' && boxed) {
@@ -302,7 +305,7 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
     const footRows = [
       d.discount ? `<tr><td colspan="5" class="l">Discount</td><td class="r">− ${esc(money(d.discount))}</td></tr>` : '',
       d.charges ? `<tr><td colspan="5" class="l">Additional charges</td><td class="r">${esc(money(d.charges))}</td></tr>` : '',
-      d.tax && showTax ? `<tr><td colspan="5" class="l">VAT</td><td class="r">${esc(money(d.tax))}</td></tr>` : '',
+      d.tax && showTax ? `<tr><td colspan="5" class="l">${esc(d.taxLabel || 'VAT')}</td><td class="r">${esc(money(d.tax))}</td></tr>` : '',
       `<tr class="total"><td colspan="2" class="l">Total</td><td class="r">${totalQty !== null ? totalQty + ' ' + esc(d.lines[0]?.unit || '') : ''}</td><td></td><td></td><td class="r">${esc(money(d.total))}</td></tr>`,
     ].join('');
     doc = `<div class="doc a4 classic">
