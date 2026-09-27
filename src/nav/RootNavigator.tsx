@@ -135,17 +135,25 @@ export default function RootNavigator() {
           </KeyboardSafe>
         )}
         /* one shared header for every screen — reference render(), lines 1529-1536 */
-        screenOptions={{ header: (props) => <NavHeader {...props} />, contentStyle: { backgroundColor: colors.bg } }}
+        screenOptions={{
+          header: (props) => <NavHeader {...props} />,
+          contentStyle: { backgroundColor: colors.bg },
+          // the iOS slide with a parallax on both platforms; Android's default is an abrupt zoom
+          animation: 'ios_from_right',
+          animationDuration: 320,
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
+        }}
       >
-        <Stack.Screen name="AuthGate" component={AuthGateScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="AuthGate" component={AuthGateScreen} options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
         <Stack.Screen name="SignIn" component={SignInScreen} options={{ title: 'Sign in' }} />
         <Stack.Screen name="CreateAccount" component={CreateAccountScreen} options={{ title: 'Create an account' }} />
         <Stack.Screen name="GoogleSignIn" component={GoogleSignInScreen} options={{ title: 'Continue with Google' }} />
         <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="PinLock" component={PinLockScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="PinLock" component={PinLockScreen} options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
         <Stack.Screen name="Businesses" component={BusinessesScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
+        <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
 
         <Stack.Screen name="MenuGroup" component={MenuGroupScreen} options={{ title: 'Menu' }} />
 

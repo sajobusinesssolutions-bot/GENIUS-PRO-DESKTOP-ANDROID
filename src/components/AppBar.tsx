@@ -4,12 +4,13 @@
  * (lines 46-50, 88).
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { useTheme, fonts } from '../theme';
 import { useAppDataSafe } from '../data/AppDataContext';
 import { Icon, IconName } from './icons';
+import { Tap } from './Tap';
 
 function pad(n: number) { return n < 10 ? '0' + n : String(n); }
 
@@ -48,7 +49,8 @@ export function IconBtn({ name, onPress, color, size = 19, children }: {
 }) {
   const { colors } = useTheme();
   return (
-    <Pressable
+    <Tap
+      scaleTo={0.84}
       onPress={onPress}
       hitSlop={6}
       style={({ pressed }) => ({
@@ -57,7 +59,7 @@ export function IconBtn({ name, onPress, color, size = 19, children }: {
       })}
     >
       {children ?? <Icon name={name || 'dots'} size={size} color={color || colors.ink} />}
-    </Pressable>
+    </Tap>
   );
 }
 

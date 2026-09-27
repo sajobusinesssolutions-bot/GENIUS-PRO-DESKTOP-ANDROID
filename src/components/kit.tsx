@@ -7,10 +7,11 @@
  * a single full-width primary action at the bottom of every form.
  */
 import React from 'react';
-import { View, Text, Pressable, ScrollView, ViewStyle, TextInput } from 'react-native';
+import { View, Text, ScrollView, ViewStyle, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts, radius, shadow, control } from '../theme';
 import { Icon, IconName } from './icons';
+import { Tap, Rise } from './Tap';
 
 type Tone = 'accent' | 'good' | 'warn' | 'danger' | 'neutral';
 
@@ -31,12 +32,12 @@ export function useTone(tone: Tone = 'accent'): { bg: string; fg: string } {
 export function Panel({ children, style, flush }: { children: React.ReactNode; style?: ViewStyle; flush?: boolean }) {
   const { colors } = useTheme();
   return (
-    <View style={[{
+    <Rise style={[{
       backgroundColor: colors.surface, borderRadius: radius.lg,
       padding: flush ? 0 : 16, overflow: 'hidden', ...shadow.card,
     }, style]}>
       {children}
-    </View>
+    </Rise>
   );
 }
 
@@ -78,7 +79,7 @@ export function Tile({ icon, tone = 'accent', size = 42, round, iconSize }: {
       width: size, height: size, borderRadius: round ?? size / 3,
       backgroundColor: bg, alignItems: 'center', justifyContent: 'center',
     }}>
-      <Icon name={icon} size={iconSize ?? Math.round(size * 0.45)} color={fg} />
+      <Icon name={icon} size={iconSize ?? Math.round(size * 0.48)} color={fg} weight="duotone" />
     </View>
   );
 }
@@ -94,9 +95,10 @@ export function ListRow({ icon, tone, title, subtitle, value, valueTone, right, 
   onPress?: () => void; card?: boolean; last?: boolean; badge?: React.ReactNode;
 }) {
   const { colors } = useTheme();
-  const Comp: any = onPress ? Pressable : View;
+  const Comp: any = onPress ? Tap : View;
   return (
     <Comp
+      {...(onPress ? { feel: 'soft' } : null)}
       onPress={onPress}
       style={({ pressed }: any) => ({
         flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -209,7 +211,7 @@ export function FilterChips<T extends string>({ value, options, onChange, tone =
       {options.map((o) => {
         const on = o.v === value;
         return (
-          <Pressable
+          <Tap
             key={o.v}
             onPress={() => onChange(o.v)}
             style={{
@@ -222,7 +224,7 @@ export function FilterChips<T extends string>({ value, options, onChange, tone =
           >
             {on ? <Icon name="check" size={14} color={colors.accentInk} /> : o.i ? <Icon name={o.i} size={14} color={colors.faint} /> : null}
             <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13.5, color: on ? colors.accentInk : colors.soft }}>{o.l}</Text>
-          </Pressable>
+          </Tap>
         );
       })}
     </ScrollView>
@@ -243,14 +245,14 @@ export function SegPill<T extends string>({ value, options, onChange, tone = 'go
       {options.map((o) => {
         const on = o.v === value;
         return (
-          <Pressable
+          <Tap
             key={o.v}
             onPress={() => onChange(o.v)}
             style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 14, backgroundColor: on ? fg : 'transparent' }}
           >
             {on ? <Icon name={o.i || 'check'} size={16} color={colors.accentInk} /> : null}
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accentInk : colors.ink }}>{o.l}</Text>
-          </Pressable>
+          </Tap>
         );
       })}
     </View>
@@ -269,14 +271,14 @@ export function TopTabs<T extends string>({ value, options, onChange, tone = 'ac
         {options.map((o) => {
           const on = o.v === value;
           return (
-            <Pressable
+            <Tap
               key={o.v}
               onPress={() => onChange(o.v)}
               style={{ minWidth: 92, alignItems: 'center', gap: 4, paddingTop: 10, paddingBottom: 9, paddingHorizontal: 14, borderBottomWidth: 2.5, borderBottomColor: on ? fg : 'transparent' }}
             >
               {o.i ? <Icon name={o.i} size={19} color={on ? fg : colors.faint} /> : null}
               <Text numberOfLines={1} style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13, color: on ? fg : colors.faint }}>{o.l}</Text>
-            </Pressable>
+            </Tap>
           );
         })}
       </ScrollView>
@@ -295,7 +297,7 @@ export function OptionTiles<T extends string>({ value, options, onChange, tone =
       {options.map((o) => {
         const on = o.v === value;
         return (
-          <Pressable
+          <Tap
             key={o.v}
             onPress={() => onChange(o.v)}
             style={{
@@ -307,7 +309,7 @@ export function OptionTiles<T extends string>({ value, options, onChange, tone =
           >
             {o.i ? <Icon name={o.i} size={20} color={on ? colors.accentInk : colors.soft} /> : null}
             <Text numberOfLines={2} style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 12, color: on ? colors.accentInk : colors.soft }}>{o.l}</Text>
-          </Pressable>
+          </Tap>
         );
       })}
     </View>
@@ -352,7 +354,8 @@ export function FAB({ label, icon = 'plus', onPress, tone = 'danger' }: {
   const { fg } = useTone(tone);
   const insets = useSafeAreaInsets();
   return (
-    <Pressable
+    <Tap
+      feel="burst"
       onPress={onPress}
       style={{
         position: 'absolute', right: 18, bottom: 18 + insets.bottom,
@@ -363,7 +366,7 @@ export function FAB({ label, icon = 'plus', onPress, tone = 'danger' }: {
     >
       <Icon name={icon} size={22} color={colors.accentInk} />
       {label ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.accentInk }}>{label}</Text> : null}
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -391,7 +394,7 @@ function GridAction({ label, icon, tone = 'accent', filled, onPress }: {
   const { colors } = useTheme();
   const { fg } = useTone(tone);
   return (
-    <Pressable
+    <Tap
       onPress={onPress}
       style={{
         flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -402,7 +405,7 @@ function GridAction({ label, icon, tone = 'accent', filled, onPress }: {
     >
       {icon ? <Icon name={icon} size={17} color={filled ? colors.accentInk : fg} /> : null}
       <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: filled ? colors.accentInk : fg }}>{label}</Text>
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -444,7 +447,7 @@ export function Search({ value, onChange, placeholder, right, error }: {
           style={{ flex: 1, paddingVertical: 12, color: colors.ink, fontFamily: fonts.ui, fontSize: 15 }}
         />
         {value ? (
-          <Pressable onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Pressable>
+          <Tap onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Tap>
         ) : null}
       </View>
       {right}
@@ -459,7 +462,7 @@ export function SquareBtn({ icon, onPress, tone = 'danger', filled }: {
   const { colors } = useTheme();
   const { fg } = useTone(tone);
   return (
-    <Pressable
+    <Tap
       onPress={onPress}
       style={{
         width: 50, height: 50, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center',
@@ -467,7 +470,7 @@ export function SquareBtn({ icon, onPress, tone = 'danger', filled }: {
       }}
     >
       <Icon name={icon} size={20} color={filled ? colors.accentInk : fg} />
-    </Pressable>
+    </Tap>
   );
 }
 
@@ -482,7 +485,7 @@ export function DocCard({ icon, tone = 'accent', title, subtitle, amount, amount
   badges?: React.ReactNode; onPress?: () => void; children?: React.ReactNode; dim?: boolean;
 }) {
   const { colors } = useTheme();
-  const Comp: any = onPress ? Pressable : View;
+  const Comp: any = onPress ? Tap : View;
   return (
     <Comp
       onPress={onPress}
@@ -544,7 +547,7 @@ export function SegTabs<T extends string>({ value, options, onChange }: {
       {options.map((o) => {
         const on = o.v === value;
         return (
-          <Pressable
+          <Tap
             key={o.v}
             onPress={() => onChange(o.v)}
             style={{
@@ -569,7 +572,7 @@ export function SegTabs<T extends string>({ value, options, onChange }: {
             >
               {o.l}
             </Text>
-          </Pressable>
+          </Tap>
         );
       })}
     </View>

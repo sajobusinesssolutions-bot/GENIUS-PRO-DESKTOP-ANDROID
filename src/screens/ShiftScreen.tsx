@@ -64,8 +64,10 @@ export default function ShiftScreen({ route }: any) {
 
   if (!db) return null;
 
-  const isPicked = (id: string) => (picked ? !!picked[id] : true);
-  const chosen = openShifts.filter((s) => isPicked(s.id));
+  // day close is by person: every active member of staff, whether or not a shift is open
+  const staff = db.users.filter((u) => u.active);
+  const isPicked = (userId: string) => (picked ? !!picked[userId] : true);
+  const chosen = openShifts.filter((s) => isPicked(s.userId));
   const sum = (list: Shift[]) => list.reduce((t, s) => {
     const z = shiftTotals(s);
     return {
@@ -178,14 +180,24 @@ export default function ShiftScreen({ route }: any) {
   };
 
   const day = () => {
-    if (!openShifts.length) {
-      return <Panel><EmptyBlock icon="clock" title="No shifts are open" hint="Every till in this branch is closed." /></Panel>;
+    if (!staff.length) {
+      return <Panel><EmptyBlock icon="user" title="No staff yet" hint="Add people under Staff & roles." /></Panel>;
     }
     const all = sum(chosen);
-    const allOn = chosen.length === openShifts.length;
+    const allOn = !picked;
+    const pickedStaff = staff.filter((u) => isPicked(u.id));
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    const soldToday = (userId: string) => db.sales
+      .filter((x) => x.userId === userId && x.status !== 'void' && new Date(x.ts).getTime() >= startOfToday.getTime()
+        && (!branch || !x.warehouse || x.warehouse === branch))
+      .reduce((t, x) => ({ n: t.n + 1, total: t.total + x.total }), { n: 0, total: 0 });
+    const onShift = staff.filter((u) => openShifts.some((x) => x.userId === u.id)).length;
+
     return (
       <>
-        <SectionLabel>Who to close</SectionLabel>
+        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{onShift} of {staff.length} on shift</Text>}>
+          Who to close
+        </SectionLabel>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
           <Pressable
             onPress={() => setPicked(null)}
@@ -194,26 +206,27 @@ export default function ShiftScreen({ route }: any) {
               borderColor: allOn ? colors.accent : colors.line, backgroundColor: allOn ? colors.accent : colors.surface,
             }}
           >
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: allOn ? colors.accentInk : colors.soft }}>All staff · {openShifts.length}</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: allOn ? colors.accentInk : colors.soft }}>All staff · {staff.length}</Text>
           </Pressable>
-          {openShifts.map((s) => {
-            const on = isPicked(s.id) && !allOn;
+          {staff.map((u) => {
+            const on = !allOn && isPicked(u.id);
+            const open = openShifts.some((x) => x.userId === u.id);
             return (
               <Pressable
-                key={s.id}
+                key={u.id}
                 onPress={() => {
-                  const base: Record<string, boolean> = picked && !allOn ? { ...picked } : {};
-                  base[s.id] = !base[s.id];
+                  const base: Record<string, boolean> = picked ? { ...picked } : {};
+                  base[u.id] = !base[u.id];
                   setPicked(Object.values(base).some(Boolean) ? base : null);
                 }}
                 style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
                   paddingVertical: 9, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1.4,
                   borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
                 }}
               >
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accent : colors.soft }}>
-                  {user(s.userId)?.name || 'Staff'} · {s.till}
-                </Text>
+                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: open ? colors.good : colors.lineHard }} />
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accent : colors.soft }}>{u.name}</Text>
               </Pressable>
             );
           })}
@@ -221,7 +234,7 @@ export default function ShiftScreen({ route }: any) {
 
         <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: colors.line }}>
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
-            {allOn ? 'Everyone' : chosen.length + ' of ' + openShifts.length + ' tills'} · {all.count} bill{all.count === 1 ? '' : 's'} · sold {money(all.total)}
+            {allOn ? 'All staff' : pickedStaff.length + ' of ' + staff.length + ' staff'} · {all.count} bill{all.count === 1 ? '' : 's'} · sold {money(all.total)}
           </Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 12 }}>Drawers should hold</Text>
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: colors.ink, letterSpacing: -0.6 }}>{money(all.expected)}</Text>
@@ -229,25 +242,43 @@ export default function ShiftScreen({ route }: any) {
         </View>
 
         <View style={{ height: 16 }} />
-        <SectionLabel>Each till</SectionLabel>
+        <SectionLabel>Each member of staff</SectionLabel>
         <Panel flush>
-          {chosen.map((s, i) => {
-            const z = shiftTotals(s);
+          {pickedStaff.map((u, i) => {
+            const mineOpen = openShifts.filter((x) => x.userId === u.id);
+            const z = sum(mineOpen);
+            const today = soldToday(u.id);
+            const since = mineOpen.map((x) => x.openedAt).sort()[0];
             return (
-              <View key={s.id} style={{ padding: 14, borderBottomWidth: i === chosen.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+              <View key={u.id} style={{ padding: 14, borderBottomWidth: i === pickedStaff.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Avatar name={user(s.userId)?.name || '?'} id={s.userId} size={34} />
+                  <Avatar name={u.name} id={u.id} size={34} />
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }} numberOfLines={1}>{user(s.userId)?.name || 'Staff'} · {s.till}</Text>
-                    <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 1 }}>since {fmtDate(s.openedAt)} · {z.count} bills</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }} numberOfLines={1}>{u.name}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 1 }} numberOfLines={1}>
+                      {mineOpen.length
+                        ? 'On shift since ' + fmtDate(since) + ' · ' + z.count + ' bill' + (z.count === 1 ? '' : 's')
+                        : 'Not on shift · ' + today.n + ' bill' + (today.n === 1 ? '' : 's') + ' today'}
+                    </Text>
                   </View>
-                  <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{money0(z.expected)}</Text>
+                  {mineOpen.length
+                    ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{money0(z.expected)}</Text>
+                    : <Badge label="Closed" tone="neutral" />}
                 </View>
-                {money4(z)}
+                {mineOpen.length ? money4(z) : (
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 8 }}>
+                    Sold {money(today.total)} today. No drawer to count.
+                  </Text>
+                )}
               </View>
             );
           })}
         </Panel>
+        {!chosen.length ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', marginTop: 12 }}>
+            Nobody picked has a shift open, so there is nothing to close.
+          </Text>
+        ) : null}
       </>
     );
   };
@@ -348,7 +379,7 @@ export default function ShiftScreen({ route }: any) {
           const v = shiftVariance(z.expected, counted);
           return (
             <View key={s.id} style={{ marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: colors.sunk }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{user(s.userId)?.name} · {s.till}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{user(s.userId)?.name || 'Staff'}</Text>
               {money4(z)}
               <View style={{ height: 12 }} />
               <Field
