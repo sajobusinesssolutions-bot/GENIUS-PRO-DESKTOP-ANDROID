@@ -33,14 +33,15 @@ function extensionOf(uri: string): string {
  * picture that may not survive is still better than losing the user's pick,
  * and the form stays usable.
  */
-export function keepPhoto(uri: string, prefix = 'img'): string {
+export async function keepPhoto(uri: string, prefix = 'img'): Promise<string> {
   if (!uri) return uri;
   try {
     if (uri.startsWith(Paths.document.uri)) return uri; // already ours
     const name = prefix + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + extensionOf(uri);
     const dest = new File(folder(), name);
-    new File(uri).copy(dest);
-    return dest.uri;
+    // copy() is async on SDK 57; returning before it finished pointed at a file that might never arrive
+    await new File(uri).copy(dest);
+    return dest.exists ? dest.uri : uri;
   } catch {
     return uri;
   }

@@ -316,7 +316,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { Alert.alert('Photos', 'Allow access to your photos to attach one.'); return; }
     const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, allowsEditing: true, aspect: [4, 3] });
-    if (!r.canceled && r.assets?.[0]?.uri) setPhoto(keepPhoto(r.assets[0].uri, 'item'));
+    if (!r.canceled && r.assets?.[0]?.uri) setPhoto(await keepPhoto(r.assets[0].uri, 'item'));
   }
 
   /** Takes one with the camera. */
@@ -324,7 +324,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) { Alert.alert('Camera', 'Allow camera access to take a picture.'); return; }
     const r = await ImagePicker.launchCameraAsync({ quality: 0.6, allowsEditing: true, aspect: [4, 3] });
-    if (!r.canceled && r.assets?.[0]?.uri) setPhoto(keepPhoto(r.assets[0].uri, 'item'));
+    if (!r.canceled && r.assets?.[0]?.uri) setPhoto(await keepPhoto(r.assets[0].uri, 'item'));
   }
 
   /* ================= tab bodies ================= */

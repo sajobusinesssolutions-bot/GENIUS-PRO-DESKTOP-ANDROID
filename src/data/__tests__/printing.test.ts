@@ -20,13 +20,17 @@ jest.mock('expo-file-system', () => ({
     // fixed placeholder, or a moved file's URI never actually reflects its
     // new name and every content:// assertion downstream is trivially wrong.
     const uri = typeof a === 'string' ? a : ((a?.uri || 'file:///tmp') + '/' + (b || 'generated.pdf'));
+    // tracks what is on "disk", so a path returned before its file exists is caught
+    const disk: Map<string, number> = (global as any).__mockDisk || ((global as any).__mockDisk = new Map());
     const file = {
       base64: async () => (uri.includes('missing') ? Promise.reject(new Error('gone')) : 'QUJD'),
-      exists: false,
-      delete: jest.fn(),
-      create: jest.fn(),
-      write: jest.fn(),
-      move: jest.fn(function (dest: any) { this.uri = dest?.uri || dest || uri; return this; }),
+      get exists() { return disk.has(uri); },
+      get size() { return disk.get(uri) ?? null; },
+      delete: jest.fn(() => { disk.delete(uri); }),
+      create: jest.fn(() => { disk.set(uri, 0); }),
+      write: jest.fn((content: string) => { disk.set(uri, String(content).length); }),
+      // async on SDK 57, like the real one
+      move: jest.fn(async (dest: any) => { disk.set(dest.uri, disk.get(uri) ?? 100); disk.delete(uri); }),
       contentUri: uri.replace('file://', 'content://'),
       uri,
     };
@@ -162,66 +166,84 @@ describe('numberToWords — the classic invoice\'s "amount in words" line', () =
   });
 });
 
-describe('the classic boxed ledger invoice (Tally / GST style)', () => {
-  const withTax: DocMeta = { ...doc, tax: 1800, currencyName: 'Ugandan shilling', firmTin: '0125178M' };
+describe('A4 invoice layouts', () => {
+  const full: DocMeta = {
+    ...doc, tax: 1800, currencyName: 'Ugandan shilling', firmTin: '0125178M', partyName: 'Taylor & Company',
+    partyAddress: 'P.O. Box 45865', method: 'Cash', firmWebsite: 'www.amar.shop', firmBank: 'Stanbic · 9030001234',
+    firmDescription: 'Hardware and paint',
+  };
+  const a4 = (over: any, d: DocMeta = full) => docHtml(d, money, { paper: 'A4', tpl: tpl({ paper: 'A4', ...over }) });
 
-  it('is a genuinely different layout, not the plain A4 doc with borders added', () => {
-    const html = docHtml(withTax, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true }) });
-    expect(html).toContain('class="doc a4 classic"');
-    expect(html).toContain('Sl No.');
-    expect(html).toContain('Description of Goods');
-    expect(html).toContain('Amount Chargeable (in words)');
-    expect(html).toContain('Declaration');
-    expect(html).toContain('Authorised Signatory');
-    expect(html).toContain('This is a Computer Generated');
-  });
-
-  it('spells the total out in words, in the shop\'s own currency name', () => {
-    const html = docHtml(withTax, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true }) });
-    expect(html).toContain('Ugandan shilling Ten Thousand Only');
-  });
-
-  it('names the tax line "VAT" and shows the TIN, matching the reference invoices', () => {
-    const html = docHtml(withTax, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true, showTax: true }) });
-    expect(html).toContain('VAT');
-    expect(html).toContain("Company's TIN : 0125178M");
-  });
-
-  it('leaves A4 as the plain airy layout by default', () => {
-    const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: false }) });
-    expect(html).toContain('class="doc a4"');
-    expect(html).not.toContain('class="doc a4 classic"');
-  });
-});
-
-describe('the modern accent-coloured invoice (QuickBooks style)', () => {
-  it('is a genuinely different layout, with the bar, a boxed grey panel and a clean table', () => {
-    const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', accentColor: '#1DA362' }) });
-    expect(html).toContain('class="doc a4 modern"');
-    expect(html).toContain('--accent: #1DA362');
-    expect(html).toContain('<div class="bar"></div>');
-    expect(html).toContain('table class="mgrid"');
-    expect(html).toContain('Product/service');
-  });
-
-  it('shows who the bill is to inside the grey panel', () => {
-    const withParty: DocMeta = { ...doc, partyName: 'Taylor & Company' };
-    const html = docHtml(withParty, money, { paper: 'A4', tpl: tpl({ paper: 'A4', accentColor: '#1DA362', showParty: true }) });
+  it('Tally: ruled ledger with reference boxes, amount in words, declaration and signatory', () => {
+    const html = a4({ style: 'tally' });
+    expect(html).toContain('class="tally"');
+    for (const s of ['Invoice No.', 'Delivery Note', 'Mode/Terms of Payment', "Supplier's Ref.", "Buyer's Order No.",
+      'Despatched through', 'Terms of Delivery', 'Description of Goods', 'Amount Chargeable (in words)',
+      'Ugandan shilling Ten Thousand Only', 'E. &amp; O.E', 'Declaration', 'Authorised Signatory', 'This is a Computer Generated']) {
+      expect(html).toContain(s);
+    }
+    expect(html).toContain("Company's TIN No.");
     expect(html).toContain('Taylor &amp; Company');
   });
-});
 
-describe('choosing between the three A4 looks', () => {
-  it('never draws the classic grid or the accent bar on thermal paper, whatever the template says', () => {
-    const html = docHtml(doc, money, { paper: '80mm', tpl: tpl({ paper: 'A4', boxed: true, accentColor: '#1DA362' }) });
-    expect(html).not.toContain('classic');
-    expect(html).not.toContain('class="bar"');
+  it('QuickBooks: bar, Bill to / Ship to / Details band, customer message beside the totals', () => {
+    const html = a4({ style: 'quickbooks', accentColor: '#2CA01C' });
+    expect(html).toContain('class="qb"');
+    expect(html).toContain('--accent:#2CA01C');
+    for (const s of ['Bill to', 'Ship to', 'Details', 'Product/service', 'Customer message', 'Subtotal', 'www.amar.shop']) {
+      expect(html).toContain(s);
+    }
   });
 
-  it('prefers the classic grid over the accent look when a template somehow sets both', () => {
-    const html = docHtml(doc, money, { paper: 'A4', tpl: tpl({ paper: 'A4', boxed: true, accentColor: '#1DA362' }) });
-    expect(html).toContain('class="doc a4 classic"');
-    expect(html).not.toContain('class="doc a4 modern"');
+  it('GST: letterhead band, tax invoice panels, tax summary, bank details and both signatures', () => {
+    const html = a4({ style: 'gst', showTax: true });
+    expect(html).toContain('class="gst"');
+    for (const s of ['AMAR SHOP', 'Hardware and paint', 'ORIGINAL FOR RECIPIENT', 'Customer Detail', 'M/S',
+      'Name of Product / Service', 'Total in words', 'Taxable Value', 'Total Tax in words', 'Bank Details',
+      'Stanbic · 9030001234', 'Terms and Conditions', 'Customer Signature', 'Authorised Signatory']) {
+      expect(html).toContain(s);
+    }
+  });
+
+  it('older templates keep their look: boxed means Tally, an accent colour means QuickBooks', () => {
+    expect(a4({ boxed: true })).toContain('class="tally"');
+    expect(a4({ accentColor: '#1DA362' })).toContain('class="qb"');
+    expect(a4({ boxed: false })).toContain('class="plain"');
+    expect(a4({ boxed: true, accentColor: '#1DA362' })).toContain('class="tally"');
+  });
+
+  it('names the tax line with the shop\'s own tax name', () => {
+    expect(a4({ style: 'tally', showTax: true }, { ...full, taxLabel: 'VAT' })).toContain('<b>VAT</b>');
+  });
+
+  it('never draws an A4 layout on thermal paper', () => {
+    const html = docHtml(full, money, { paper: '80mm', tpl: tpl({ style: 'gst', boxed: true, accentColor: '#1DA362' }) });
+    expect(html).not.toMatch(/class="(tally|qb|gst)"/);
+  });
+
+  describe('batch and expiry', () => {
+    const dated: DocMeta = {
+      ...full,
+      lines: [
+        { name: 'Amoxicillin', qty: 2, price: 5000, unit: 'box', batchNo: 'B-102', expiry: '2027-03-31' },
+        { name: 'Gloves', qty: 1, price: 3000, unit: 'box' },
+      ],
+    };
+    for (const style of ['plain', 'tally', 'quickbooks', 'gst']) {
+      it(style + ': each gets its own column, not a line under the item name', () => {
+        const html = a4({ style, showBatch: true, showExpiry: true }, dated);
+        expect(html).toContain('<th class="c">Batch</th>');
+        expect(html).toContain('<th class="c">Expiry</th>');
+        expect(html).toContain('<td class="c">B-102</td>');
+        expect(html).toContain('<td class="c">31-Mar-2027</td>');
+        expect(html).not.toContain('Batch B-102');
+      });
+    }
+
+    it('drops a column that is switched off, or that no line has anything for', () => {
+      expect(a4({ style: 'tally', showBatch: false, showExpiry: true }, dated)).not.toContain('>Batch</th>');
+      expect(a4({ style: 'tally', showBatch: true, showExpiry: true }, doc)).not.toContain('>Batch</th>');
+    });
   });
 });
 
@@ -352,6 +374,45 @@ describe('report PDF — where the file actually ends up', () => {
       expect(uri).toBe('file:///tmp/report.pdf');
     } finally {
       fs.File = original;
+    }
+  });
+
+  // move() is async on SDK 57. Not awaiting it returned the cache path before
+  // the file was there, so the chosen app received nothing to attach — and its
+  // "Missing READ permission" rejection went uncaught.
+  it('waits for the move and only hands over a path once the file is really there', async () => {
+    const disk: Map<string, number> = (global as any).__mockDisk;
+    disk.set('file:///tmp/report.pdf', 5000);
+    const fs = require('expo-file-system');
+    const real = fs.File.getMockImplementation();
+    fs.File.mockImplementation((a: any, b?: string) => {
+      const f = real(a, b);
+      f.move = jest.fn((dest: any) => new Promise<void>((resolve) => setTimeout(() => {
+        disk.set(dest.uri, 5000); resolve();
+      }, 5)));
+      return f;
+    });
+    try {
+      const uri = await toPdf(rep);
+      expect(uri).toMatch(/^file:\/\/\/cache\/daily-sales-/);
+      expect(disk.get(uri)).toBe(5000);
+    } finally {
+      fs.File.mockImplementation(real);
+    }
+  });
+
+  it('catches an async move rejection and keeps the original file instead of an empty path', async () => {
+    const fs = require('expo-file-system');
+    const real = fs.File.getMockImplementation();
+    fs.File.mockImplementation((a: any, b?: string) => {
+      const f = real(a, b);
+      f.move = jest.fn(() => Promise.reject(new Error("Missing 'READ' permission for accessing the file.")));
+      return f;
+    });
+    try {
+      expect(await toPdf(rep)).toBe('file:///tmp/report.pdf');
+    } finally {
+      fs.File.mockImplementation(real);
     }
   });
 });

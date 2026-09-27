@@ -27,7 +27,8 @@ import { printDoc, DocMeta } from '../data/docPrint';
 import { printOptsFor, paperOf, defaultPrinter } from '../data/printSetup';
 import { keepPhoto, dropPhoto } from '../data/photos';
 import { kindLabel, CODE_DATA, POWERED_BY } from '../data/defaults';
-import type { Printer, CodeKind, CodeData } from '../data/types';
+import type { Printer, CodeKind, CodeData, PrintTemplate } from '../data/types';
+import { dmy, numberToWords, InvoiceStyle } from '../data/invoiceLayouts';
 
 const ACCENT_COLORS = ['#1A7AE6', '#1DA362', '#D97706', '#DC2626', '#7C3AED', '#111827'];
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
@@ -452,11 +453,11 @@ export function ReceiptSettingsScreen() {
   if (!db || !d) return <Guard>{null}</Guard>;
   const set = (patch: Partial<ReceiptDraft>) => setD({ ...d, ...patch });
 
-  function save() {
+  async function save() {
     if (!db || !d) return;
     let logo = d.logo;
     if (logo !== db.firm.logo) {
-      if (logo) logo = keepPhoto(logo, 'logo');
+      if (logo) logo = await keepPhoto(logo, 'logo');
       dropPhoto(db.firm.logo);
     }
     updateFirm({ logo, phone: d.phone.trim(), phone2: d.whatsapp.trim(), address: d.address.trim() });
@@ -569,78 +570,230 @@ export function ReceiptSettingsScreen() {
 
 /* ---------------- invoice PDF settings ---------------- */
 
-type InvStyle = 'plain' | 'modern' | 'classic';
+const STYLE_ACCENT: Record<InvoiceStyle, string> = { plain: '#111827', tally: '#111827', quickbooks: '#2CA01C', gst: '#1E2A78' };
+const INVOICE_STYLES: { v: InvoiceStyle; l: string; sub: string }[] = [
+  { v: 'tally', l: 'Tally', sub: 'Ruled ledger, amount in words, declaration' },
+  { v: 'quickbooks', l: 'QuickBooks', sub: 'Clean, colour bar, Bill to / Ship to band' },
+  { v: 'gst', l: 'GST tax invoice', sub: 'Letterhead band, tax summary, bank and QR' },
+  { v: 'plain', l: 'Plain', sub: 'Simple and airy' },
+];
+
 interface InvoiceDraft {
   logo?: string; showLogo: boolean;
-  tagline: string; phone: string; whatsapp: string; email: string; address: string;
-  foot: string; taxName: string; style: InvStyle; accent: string;
+  tagline: string; phone: string; whatsapp: string; email: string; website: string; address: string;
+  bank: string; terms: string;
+  foot: string; taxName: string; style: InvoiceStyle; accent: string;
   showTax: boolean; showParty: boolean; showServed: boolean; showBatch: boolean; showExpiry: boolean;
   code: CodeKind; codeData: CodeData;
+}
+
+/** The items grid shared by the thumbnails — batch and expiry as their own columns. */
+function ItemsMock({ d, head, headInk, ruled, tall }: { d: InvoiceDraft; head: string; headInk: string; ruled: boolean; tall?: number }) {
+  const { money } = useAppData();
+  const lines = sampleLines();
+  const b = ruled ? { borderRightWidth: 1, borderColor: '#000' } : {};
+  const t = (s: string, w: number | undefined, bold: boolean, ink: string, align: 'left' | 'right' | 'center' = 'left', last = false) => (
+    <Text numberOfLines={1} style={[{
+      ...(w ? { width: w } : { flex: 1 }), textAlign: align, padding: 3,
+      fontFamily: bold ? fonts.uiBold : fonts.ui, fontSize: 7.5, color: ink,
+    }, last ? null : b]}>{s}</Text>
+  );
+  const row = (cells: [string, number | undefined, 'left' | 'right' | 'center'][], bold: boolean, ink: string, bg?: string) => (
+    <View style={{ flexDirection: 'row', backgroundColor: bg }}>
+      {cells.map(([s, w, al], i) => <React.Fragment key={i}>{t(s, w, bold, ink, al, i === cells.length - 1)}</React.Fragment>)}
+    </View>
+  );
+  const cols = (l?: ReturnType<typeof sampleLines>[number]): [string, number | undefined, 'left' | 'right' | 'center'][] => [
+    [l ? l.name : 'Description', undefined, 'left'],
+    ...(d.showBatch ? [[l ? l.batch : 'Batch', 34, 'center'] as [string, number, 'center']] : []),
+    ...(d.showExpiry ? [[l ? l.expiry : 'Expiry', 40, 'center'] as [string, number, 'center']] : []),
+    [l ? String(l.qty) : 'Qty', 24, 'right'],
+    [l ? money(l.price) : 'Rate', 44, 'right'],
+    [l ? money(l.qty * l.price) : 'Amount', 50, 'right'],
+  ];
+  return (
+    <View style={{ marginTop: 8, borderWidth: ruled ? 1 : 0, borderColor: '#000' }}>
+      <View style={{ borderBottomWidth: 1, borderColor: ruled ? '#000' : '#ccc' }}>{row(cols(), true, headInk, head)}</View>
+      {lines.map((l) => <View key={l.name}>{row(cols(l), false, '#222')}</View>)}
+      {tall ? <View style={{ height: tall }} /> : null}
+    </View>
+  );
 }
 
 function InvoicePreview({ d }: { d: InvoiceDraft }) {
   const { db, money } = useAppData();
   if (!db) return null;
-  const accent = d.style === 'modern' ? d.accent : '#111';
-  const boxed = d.style === 'classic';
   const lines = sampleLines();
   const sub = lines.reduce((s, l) => s + l.qty * l.price, 0);
-  const tax = Math.round(sub * (db.settings.taxRate || 0) / 100);
-  const small = { fontFamily: fonts.ui, fontSize: 8.5, color: '#666' };
-  const cell = (s: string, w?: number, bold?: boolean) => (
-    <Text numberOfLines={1} style={{
-      ...(w ? { width: w, textAlign: 'right' as const } : { flex: 1 }),
-      fontFamily: bold ? fonts.uiBold : fonts.ui, fontSize: 9, color: bold ? '#fff' : '#222', padding: 4,
-    }}>{s}</Text>
-  );
+  const tax = d.showTax ? Math.round(sub * (db.settings.taxRate || 0) / 100) : 0;
+  const total = sub + tax;
+  const small = { fontFamily: fonts.ui, fontSize: 7.5, color: '#555' } as const;
+  const bold = { fontFamily: fonts.uiBold, fontSize: 8, color: '#111' } as const;
+  const logo = d.showLogo && d.logo ? <Image source={{ uri: d.logo }} style={{ width: 56, height: 24 }} resizeMode="contain" /> : null;
+  const contact = [d.address, d.phone, d.whatsapp ? 'WhatsApp ' + d.whatsapp : '', d.email, d.website].filter(Boolean);
+  const footer = <Text style={[small, { textAlign: 'center', marginTop: 8 }]}>{d.foot || db.firm.footer || 'Thank you for your business'}</Text>;
+
+  if (d.style === 'tally') {
+    const box = (k: string, v = '') => (
+      <View style={{ flex: 1, borderLeftWidth: 1, borderBottomWidth: 1, borderColor: '#000', padding: 2, minHeight: 18 }}>
+        <Text style={[small, { fontSize: 6.5 }]}>{k}</Text><Text style={bold}>{v}</Text>
+      </View>
+    );
+    return (
+      <View style={{ backgroundColor: '#fff', padding: 10 }}>
+        <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 11, color: '#111' }}>INVOICE</Text>
+        <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: '#000' }}>
+          <View style={{ flex: 1 }}>
+            <View style={{ padding: 3, borderBottomWidth: 1, borderColor: '#000' }}>
+              {logo}<Text style={bold}>{db.firm.name}</Text>
+              {contact.slice(0, 3).map((x, i) => <Text key={i} numberOfLines={1} style={small}>{x}</Text>)}
+            </View>
+            <View style={{ padding: 3 }}>
+              <Text style={[small, { fontSize: 6.5 }]}>Buyer</Text>
+              {d.showParty ? <Text style={bold}>Taylor & Company</Text> : null}
+            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row' }}>{box('Invoice No.', 'INV-001')}{box('Dated', dmy(new Date().toISOString()))}</View>
+            <View style={{ flexDirection: 'row' }}>{box('Delivery Note')}{box('Mode/Terms of Payment', 'Cash')}</View>
+            <View style={{ flexDirection: 'row' }}>{box("Supplier's Ref.")}{box('Other Reference(s)')}</View>
+            <View style={{ flexDirection: 'row' }}>{box('Despatched through')}{box('Destination')}</View>
+          </View>
+        </View>
+        <ItemsMock d={d} head="#fff" headInk="#111" ruled tall={36} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderWidth: 1, borderTopWidth: 0, borderColor: '#000', padding: 3 }}>
+          <Text style={bold}>Total</Text><Text style={bold}>{money(total)}</Text>
+        </View>
+        <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: '#000', padding: 3 }}>
+          <Text style={[small, { fontSize: 6.5 }]}>Amount Chargeable (in words)</Text>
+          <Text style={bold}>{[db.settings.currencyName, numberToWords(total), 'Only'].filter(Boolean).join(' ')}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', borderWidth: 1, borderTopWidth: 0, borderColor: '#000' }}>
+          <Text style={[small, { flex: 1, padding: 3, fontSize: 6.5 }]}>Declaration: We declare that this invoice shows the actual price of the goods described.</Text>
+          <View style={{ width: 110, borderLeftWidth: 1, borderColor: '#000', padding: 3, alignItems: 'flex-end' }}>
+            <Text style={bold}>for {db.firm.name}</Text><Text style={[small, { marginTop: 10 }]}>Authorised Signatory</Text>
+          </View>
+        </View>
+        <Text style={[small, { textAlign: 'center', marginTop: 4 }]}>This is a Computer Generated Invoice</Text>
+      </View>
+    );
+  }
+
+  if (d.style === 'gst') {
+    return (
+      <View style={{ backgroundColor: '#fff', padding: 10 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 15, color: d.accent }}>{db.firm.name.toUpperCase()}</Text>
+          {logo}
+        </View>
+        <View style={{ backgroundColor: '#1A9E8F', paddingVertical: 3, paddingHorizontal: 6, width: '75%', marginTop: 2 }}>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 8, color: '#fff' }}>{d.tagline || ' '}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+          <Text style={[small, { flex: 1 }]}>{d.address}</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            {d.phone ? <Text style={small}>Tel : {d.phone}</Text> : null}
+            {d.website ? <Text style={small}>Web : {d.website}</Text> : null}
+            {d.email ? <Text style={small}>Email : {d.email}</Text> : null}
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderWidth: 1, borderColor: '#000', padding: 3, marginTop: 5 }}>
+          <Text style={bold}>{db.firm.tin ? 'TIN : ' + db.firm.tin : ' '}</Text>
+          <Text style={[bold, { fontSize: 9 }]}>TAX INVOICE</Text>
+          <Text style={[small, { fontFamily: fonts.uiBold }]}>ORIGINAL FOR RECIPIENT</Text>
+        </View>
+        <View style={{ flexDirection: 'row', borderWidth: 1, borderTopWidth: 0, borderColor: '#000' }}>
+          <View style={{ flex: 1, borderRightWidth: 1, borderColor: '#000', padding: 3 }}>
+            <Text style={[bold, { textAlign: 'center' }]}>Customer Detail</Text>
+            <Text style={small}>M/S  {d.showParty ? 'Taylor & Company' : ''}</Text>
+            <Text style={small}>Phone</Text>
+          </View>
+          <View style={{ flex: 1, padding: 3 }}>
+            <Text style={small}>Invoice No.  <Text style={bold}>INV-001</Text></Text>
+            <Text style={small}>Invoice Date  <Text style={bold}>{dmy(new Date().toISOString())}</Text></Text>
+            <Text style={small}>Payment  Cash</Text>
+          </View>
+        </View>
+        <ItemsMock d={d} head="#fff" headInk="#111" ruled tall={24} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderWidth: 1, borderTopWidth: 0, borderColor: '#000', padding: 3 }}>
+          <Text style={bold}>Total</Text><Text style={bold}>{money(total)}</Text>
+        </View>
+        <Text style={[bold, { borderWidth: 1, borderTopWidth: 0, borderColor: '#000', padding: 3 }]}>
+          {numberToWords(total).toUpperCase()} ONLY
+        </Text>
+        <View style={{ flexDirection: 'row', borderWidth: 1, borderTopWidth: 0, borderColor: '#000' }}>
+          <View style={{ flex: 1, borderRightWidth: 1, borderColor: '#000', padding: 3 }}>
+            <Text style={[bold, { textAlign: 'center' }]}>Bank Details</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={[small, { flex: 1 }]}>{d.bank || 'Add bank details below'}</Text>
+              <CodeMock code={d.code === 'none' ? 'none' : 'qr'} />
+            </View>
+          </View>
+          <View style={{ flex: 1, padding: 3, alignItems: 'center' }}>
+            <Text style={[bold, { textAlign: 'center' }]}>For {db.firm.name}</Text>
+            <Text style={[small, { marginTop: 16 }]}>Authorised Signatory</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', borderWidth: 1, borderTopWidth: 0, borderColor: '#000' }}>
+          <View style={{ flex: 1, borderRightWidth: 1, borderColor: '#000', padding: 3 }}>
+            <Text style={[bold, { textAlign: 'center' }]}>Terms and Conditions</Text>
+            <Text style={small}>{d.terms}</Text>
+          </View>
+          <View style={{ flex: 1, padding: 3, justifyContent: 'flex-end' }}><Text style={bold}>Customer Signature</Text></View>
+        </View>
+        {footer}
+      </View>
+    );
+  }
+
+  if (d.style === 'quickbooks') {
+    return (
+      <View style={{ backgroundColor: '#fff', padding: 10 }}>
+        <View style={{ height: 4, width: '45%', alignSelf: 'flex-end', backgroundColor: d.accent }} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+          {logo || <Text style={{ fontFamily: fonts.uiExtra, fontSize: 13, color: '#111' }}>{db.firm.name}</Text>}
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: '#111' }}>Invoice</Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 14, marginTop: 6 }}>
+          <View style={{ flex: 1 }}><Text style={bold}>{db.firm.name}</Text><Text style={small}>{d.address}</Text></View>
+          <View style={{ flex: 1 }}>
+            {d.phone ? <Text style={small}><Text style={bold}>Phone # </Text>{d.phone}</Text> : null}
+            {d.email ? <Text style={small}><Text style={bold}>Email </Text>{d.email}</Text> : null}
+            {d.website ? <Text style={small}><Text style={bold}>Website </Text>{d.website}</Text> : null}
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', backgroundColor: '#f2f2f2', padding: 6, marginTop: 8, gap: 6 }}>
+          <View style={{ flex: 1 }}><Text style={small}>Bill to</Text>{d.showParty ? <Text style={bold}>Taylor & Co</Text> : null}</View>
+          <View style={{ flex: 1 }}><Text style={small}>Ship to</Text>{d.showParty ? <Text style={bold}>Taylor & Co</Text> : null}</View>
+          <View style={{ flex: 1 }}><Text style={small}>Details</Text><Text style={bold}>INV-001</Text></View>
+        </View>
+        <ItemsMock d={d} head="#fff" headInk="#111" ruled={false} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, borderTopWidth: 1, borderColor: '#bbb', paddingTop: 5 }}>
+          <View style={{ flex: 1 }}><Text style={small}>Customer message</Text><Text style={small}>{d.foot || 'Thank you for your business.'}</Text></View>
+          <View style={{ width: 120, gap: 1 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={small}>Subtotal</Text><Text style={small}>{money(sub)}</Text></View>
+            {tax ? <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={small}>{d.taxName || 'Tax'}</Text><Text style={small}>{money(tax)}</Text></View> : null}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderColor: '#222', marginTop: 3, paddingTop: 3 }}>
+              <Text style={[bold, { fontSize: 11 }]}>Total</Text><Text style={[bold, { fontSize: 11 }]}>{money(total)}</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={{ backgroundColor: '#fff', borderRadius: boxed ? 2 : 8, padding: 14, borderWidth: boxed ? 1.4 : 0, borderColor: '#000' }}>
-      {d.style === 'modern' ? <View style={{ height: 5, backgroundColor: accent, borderRadius: 3, marginBottom: 10 }} /> : null}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          {d.showLogo && d.logo ? <Image source={{ uri: d.logo }} style={{ width: 60, height: 26, marginBottom: 4 }} resizeMode="contain" /> : null}
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: '#111' }}>{db.firm.name}</Text>
-          {[d.tagline, d.address, d.phone, d.whatsapp ? 'WhatsApp ' + d.whatsapp : '', d.email].filter(Boolean).map((x, i) => (
-            <Text key={i} numberOfLines={1} style={small}>{x}</Text>
-          ))}
+    <View style={{ backgroundColor: '#fff', padding: 10 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <View style={{ flex: 1 }}>{logo}<Text style={[bold, { fontSize: 12 }]}>{db.firm.name}</Text>
+          {[d.tagline, ...contact].filter(Boolean).slice(0, 4).map((x, i) => <Text key={i} numberOfLines={1} style={small}>{x}</Text>)}
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <View style={{ backgroundColor: accent, borderRadius: 4, paddingVertical: 4, paddingHorizontal: 8 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 10, color: '#fff', letterSpacing: 0.8 }}>INVOICE</Text>
-          </View>
-          <Text style={[small, { marginTop: 4 }]}>INV-001</Text>
-          <Text style={small}>{new Date().toLocaleDateString('en-GB')}</Text>
-        </View>
+        <View style={{ alignItems: 'flex-end' }}><Text style={[bold, { fontSize: 11 }]}>INVOICE</Text><Text style={small}>INV-001</Text></View>
       </View>
-      {d.showParty ? (
-        <View style={{ marginTop: 10, padding: 7, backgroundColor: boxed ? '#fff' : '#f3f4f6', borderWidth: boxed ? 1 : 0, borderColor: '#000', borderRadius: boxed ? 0 : 6 }}>
-          <Text style={[small, { fontSize: 7.5, textTransform: 'uppercase' }]}>Billed to</Text>
-          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 10, color: '#222' }}>Customer name</Text>
-        </View>
-      ) : null}
-      <View style={{ marginTop: 10, borderWidth: boxed ? 1 : 0, borderColor: '#000' }}>
-        <View style={{ flexDirection: 'row', backgroundColor: accent }}>
-          {cell('Description', undefined, true)}{cell('Qty', 30, true)}{cell('Amount', 70, true)}
-        </View>
-        {lines.map((l) => (
-          <View key={l.name} style={{ borderBottomWidth: 1, borderBottomColor: boxed ? '#000' : '#eee' }}>
-            <View style={{ flexDirection: 'row' }}>{cell(l.name)}{cell(String(l.qty), 30)}{cell(money(l.qty * l.price), 70)}</View>
-            {d.showBatch || d.showExpiry ? (
-              <Text style={[small, { paddingHorizontal: 4, paddingBottom: 3 }]}>
-                {[d.showBatch ? 'Batch ' + l.batch : '', d.showExpiry ? 'Exp ' + l.expiry : ''].filter(Boolean).join(' · ')}
-              </Text>
-            ) : null}
-          </View>
-        ))}
-      </View>
-      <View style={{ alignItems: 'flex-end', marginTop: 8, gap: 2 }}>
-        <Text style={small}>Subtotal {money(sub)}</Text>
-        {d.showTax && tax ? <Text style={small}>{d.taxName || 'Tax'} {money(tax)}</Text> : null}
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: '#111' }}>Total {money(sub + tax)}</Text>
-      </View>
-      {d.showServed ? <Text style={[small, { textAlign: 'center', marginTop: 8 }]}>Served by Cashier</Text> : null}
-      <CodeMock code={d.code} />
-      <Text style={[small, { textAlign: 'center', marginTop: 8 }]}>{d.foot || db.firm.footer || 'Thank you for your business'}</Text>
+      {d.showParty ? <View style={{ backgroundColor: '#f4f4f4', padding: 5, marginTop: 6 }}><Text style={small}>Customer</Text><Text style={bold}>Taylor & Company</Text></View> : null}
+      <ItemsMock d={d} head="#fff" headInk="#555" ruled={false} />
+      <Text style={[bold, { textAlign: 'right', marginTop: 6, fontSize: 11 }]}>TOTAL {money(total)}</Text>
+      {footer}
     </View>
   );
 }
@@ -648,103 +801,122 @@ function InvoicePreview({ d }: { d: InvoiceDraft }) {
 export function InvoiceSettingsScreen() {
   const { colors } = useTheme();
   const nav = useNavigation<any>();
-  const { db, templateFor, updateTemplate, updateFirm, setSetting } = useAppData();
-  const { success } = useToast();
+  const { db, money, templateFor, updateTemplate, updateFirm, setSetting } = useAppData();
+  const { success, error } = useToast();
   const tpl = templateFor('invoice');
   const receiptTpl = templateFor('receipt');
   const [d, setD] = useState<InvoiceDraft | null>(() => {
     if (!db) return null;
+    const style: InvoiceStyle = tpl?.style || (tpl?.boxed ? 'tally' : tpl?.accentColor ? 'quickbooks' : 'plain');
     return {
       logo: db.firm.logo, showLogo: tpl?.showLogo ?? true,
       tagline: db.firm.description || '', phone: db.firm.phone || '', whatsapp: db.firm.phone2 || '',
-      email: db.firm.email || '', address: db.firm.address || '',
+      email: db.firm.email || '', website: db.firm.website || '', address: db.firm.address || '',
+      bank: db.firm.bankDetails || '', terms: db.firm.terms || '',
       foot: tpl?.foot || '', taxName: db.settings.taxName || 'Tax',
-      style: tpl?.boxed ? 'classic' : tpl?.accentColor ? 'modern' : 'plain',
-      accent: tpl?.accentColor || ACCENT_COLORS[1],
+      style, accent: tpl?.accentColor || STYLE_ACCENT[style],
       showTax: tpl?.showTax ?? true, showParty: tpl?.showParty ?? true, showServed: tpl?.showServed ?? true,
       showBatch: tpl?.showBatch ?? false, showExpiry: tpl?.showExpiry ?? false,
       code: tpl?.code || 'none', codeData: tpl?.codeData || 'verify',
     };
   });
+  const [opening, setOpening] = useState(false);
   if (!db || !d) return <Guard>{null}</Guard>;
   const set = (patch: Partial<InvoiceDraft>) => setD({ ...d, ...patch });
+  const coloured = d.style === 'quickbooks' || d.style === 'gst';
 
-  function save() {
-    if (!db || !d) return;
+  function templatePatch(): Partial<PrintTemplate> {
+    if (!d) return {};
+    return {
+      style: d.style, showLogo: d.showLogo, foot: d.foot.trim(),
+      boxed: d.style === 'tally', accentColor: coloured ? d.accent : undefined,
+      showTax: d.showTax, showParty: d.showParty, showServed: d.showServed,
+      showBatch: d.showBatch, showExpiry: d.showExpiry,
+      code: d.code, codeData: d.codeData, codeCaption: d.code !== 'none',
+    };
+  }
+
+  function firmPatch() {
+    if (!d) return {};
+    return {
+      description: d.tagline.trim(), phone: d.phone.trim(), phone2: d.whatsapp.trim(), email: d.email.trim(),
+      website: d.website.trim(), address: d.address.trim(), bankDetails: d.bank.trim(), terms: d.terms.trim(),
+    };
+  }
+
+  async function save() {
+    if (!db || !d || !tpl) return;
     let logo = d.logo;
     if (logo !== db.firm.logo) {
-      if (logo) logo = keepPhoto(logo, 'logo');
+      if (logo) logo = await keepPhoto(logo, 'logo');
       dropPhoto(db.firm.logo);
     }
-    updateFirm({
-      logo, description: d.tagline.trim(), phone: d.phone.trim(), phone2: d.whatsapp.trim(),
-      email: d.email.trim(), address: d.address.trim(),
-    });
+    updateFirm({ logo, ...firmPatch() });
     setSetting({ taxName: d.taxName.trim() || 'Tax' });
-    if (tpl) {
-      updateTemplate(tpl.id, {
-        showLogo: d.showLogo, foot: d.foot.trim(),
-        boxed: d.style === 'classic', accentColor: d.style === 'modern' ? d.accent : undefined,
-        showTax: d.showTax, showParty: d.showParty, showServed: d.showServed,
-        showBatch: d.showBatch, showExpiry: d.showExpiry,
-        code: d.code, codeData: d.codeData, codeCaption: d.code !== 'none',
-        // a template shared with receipts keeps its roll paper
-        ...(tpl.id !== receiptTpl?.id ? { paper: 'A4' as const, kind: 'page' as const } : null),
-      });
-    }
+    updateTemplate(tpl.id, {
+      ...templatePatch(),
+      // a template shared with receipts keeps its roll paper
+      ...(tpl.id !== receiptTpl?.id ? { paper: 'A4' as const, kind: 'page' as const } : null),
+    });
     success('Invoice settings saved');
     nav.goBack?.();
   }
 
-  const styleChip = (v: InvStyle, label: string, sub: string) => {
-    const on = d.style === v;
-    return (
-      <Pressable
-        key={v}
-        onPress={() => set({ style: v })}
-        accessibilityRole="button"
-        accessibilityState={{ selected: on }}
-        style={{
-          flex: 1, padding: 10, borderRadius: 12, borderWidth: 1.4,
-          borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
-        }}
-      >
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: on ? colors.accent : colors.ink }}>{label}</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 2 }}>{sub}</Text>
-      </Pressable>
-    );
-  };
+  /** The real page, from the real print engine, with the settings as they stand on screen. */
+  async function openReal() {
+    if (!db || !d || !tpl) return;
+    const f = firmPatch();
+    const sample: DocMeta = {
+      kind: 'Tax Invoice', no: 'INV-001', ts: new Date().toISOString(),
+      firmName: db.firm.name, firmAddress: f.address, firmTin: db.firm.tin, firmPhone: f.phone, firmWhatsapp: f.phone2,
+      firmEmail: f.email, firmWebsite: f.website, firmDescription: f.description, firmBank: f.bankDetails, firmTerms: f.terms,
+      logo: d.logo, taxLabel: d.taxName, currencyName: db.settings.currencyName,
+      partyName: 'Taylor & Company', partyPhone: '0700 000 000', partyAddress: 'P.O. Box 45865',
+      lines: sampleLines().map((l) => ({ name: l.name, qty: l.qty, price: l.price, unit: 'pcs', batchNo: l.batch, expiry: '2027-03-31' })),
+      subtotal: 20000, tax: Math.round(20000 * (db.settings.taxRate || 0) / 100),
+      total: 20000 + Math.round(20000 * (db.settings.taxRate || 0) / 100), method: 'Cash', servedBy: 'Cashier',
+    };
+    setOpening(true);
+    try {
+      await printDoc(sample, money, { paper: 'A4', tpl: { ...tpl, ...templatePatch(), paper: 'A4', kind: 'page', copies: 1 } });
+    } catch (e: any) {
+      error(e?.message || 'The preview could not be opened.');
+    } finally {
+      setOpening(false);
+    }
+  }
 
   return (
     <Guard>
       <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
-        <LogoSlot uri={d.logo} onChange={(logo) => set({ logo })} hint="Shown at the top of PDF invoices and printed receipts." />
-
-        <Section icon="owner" title="Business information" hint="Displayed at the top of every invoice.">
-          <Field icon="pencil" placeholder="Business tagline" value={d.tagline} onChangeText={(v) => set({ tagline: v })} />
-          <Field icon="phone" placeholder="Phone number" value={d.phone} onChangeText={(v) => set({ phone: v })} numeric />
-          <Field icon="phone" placeholder="WhatsApp number" value={d.whatsapp} onChangeText={(v) => set({ whatsapp: v })} numeric />
-          <Field icon="mail" placeholder="Email address" value={d.email} onChangeText={(v) => set({ email: v })} autoCapitalize="none" />
-          <Field icon="pin" placeholder="Business address" value={d.address} onChangeText={(v) => set({ address: v })} multiline />
-        </Section>
-
-        <Section icon="doc" title="Invoice footer">
-          <Field label="Footer message" placeholder="Thank you for your business!" value={d.foot} onChangeText={(v) => set({ foot: v })} multiline />
-        </Section>
-
-        <Section icon="pie" title="Tax">
-          <Field label="Tax label" icon="receipt" value={d.taxName} onChangeText={(v) => set({ taxName: v })} />
-        </Section>
-
-        <Section icon="tag" title="Layout and accent colour">
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {styleChip('plain', 'Plain', 'Clean, no colour')}
-            {styleChip('modern', 'Modern', 'Coloured bar')}
-            {styleChip('classic', 'Classic', 'Ruled boxes')}
+        <Section icon="doc" title="Template" hint="How a shared or A4 invoice is laid out.">
+          <View style={{ gap: 8 }}>
+            {INVOICE_STYLES.map((s) => {
+              const on = d.style === s.v;
+              return (
+                <Pressable
+                  key={s.v}
+                  onPress={() => set({ style: s.v, accent: STYLE_ACCENT[s.v] })}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, borderWidth: 1.4,
+                    borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
+                  }}
+                >
+                  <View style={{ width: 10, height: 34, borderRadius: 3, backgroundColor: STYLE_ACCENT[s.v] }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accent : colors.ink }}>{s.l}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{s.sub}</Text>
+                  </View>
+                  {on ? <Icon name="check" size={18} color={colors.accent} /> : null}
+                </Pressable>
+              );
+            })}
           </View>
-          {d.style === 'modern' ? (
+          {coloured ? (
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-              {ACCENT_COLORS.map((c) => (
+              {[STYLE_ACCENT[d.style], ...ACCENT_COLORS.filter((c) => c !== STYLE_ACCENT[d.style])].map((c) => (
                 <Pressable
                   key={c}
                   onPress={() => set({ accent: c })}
@@ -761,24 +933,50 @@ export function InvoiceSettingsScreen() {
           ) : null}
         </Section>
 
+        <Section icon="search" title="Preview">
+          <View style={{ backgroundColor: colors.sunk, borderRadius: 12, padding: 10 }}>
+            <InvoicePreview d={d} />
+          </View>
+          <View style={{ height: 10 }} />
+          <Button label="See the real page" loading={opening} icon={<Icon name="doc" size={16} color={colors.ink} />} onPress={openReal} />
+        </Section>
+
+        <LogoSlot uri={d.logo} onChange={(logo) => set({ logo })} hint="Shown at the top of PDF invoices and printed receipts." />
+
+        <Section icon="owner" title="Business information" hint="Displayed at the top of every invoice.">
+          <Field icon="pencil" placeholder="Business tagline" value={d.tagline} onChangeText={(v) => set({ tagline: v })} />
+          <Field icon="phone" placeholder="Phone number" value={d.phone} onChangeText={(v) => set({ phone: v })} numeric />
+          <Field icon="phone" placeholder="WhatsApp number" value={d.whatsapp} onChangeText={(v) => set({ whatsapp: v })} numeric />
+          <Field icon="mail" placeholder="Email address" value={d.email} onChangeText={(v) => set({ email: v })} autoCapitalize="none" />
+          <Field icon="cloud" placeholder="Website" value={d.website} onChangeText={(v) => set({ website: v })} autoCapitalize="none" />
+          <Field icon="pin" placeholder="Business address" value={d.address} onChangeText={(v) => set({ address: v })} multiline />
+        </Section>
+
+        <Section icon="bank" title="Payment details" hint="Printed in the Bank Details box of the GST tax invoice.">
+          <Field label="Bank details" placeholder={'Bank, account name and number, branch'} value={d.bank} onChangeText={(v) => set({ bank: v })} multiline />
+        </Section>
+
+        <Section icon="doc" title="Terms and footer">
+          <Field label="Terms and conditions" placeholder="Goods once sold will not be taken back." value={d.terms} onChangeText={(v) => set({ terms: v })} multiline />
+          <Field label="Footer message" placeholder="Thank you for your business!" value={d.foot} onChangeText={(v) => set({ foot: v })} multiline />
+        </Section>
+
+        <Section icon="pie" title="Tax">
+          <Field label="Tax label" icon="receipt" value={d.taxName} onChangeText={(v) => set({ taxName: v })} />
+        </Section>
+
         <Section icon="tools" title="Options">
           <ToggleRow bare label="Show logo" on={d.showLogo} onChange={(v) => set({ showLogo: v })} />
           <ToggleRow bare label="Show tax line" on={d.showTax} onChange={(v) => set({ showTax: v })} />
           <ToggleRow bare label="Show customer" sub="Name, phone and address of who is billed" on={d.showParty} onChange={(v) => set({ showParty: v })} />
           <ToggleRow bare label="Show who served" on={d.showServed} onChange={(v) => set({ showServed: v })} />
-          <ToggleRow bare label="Show batch number" on={d.showBatch} onChange={(v) => set({ showBatch: v })} />
-          <ToggleRow bare label="Show expiry date" on={d.showExpiry} onChange={(v) => set({ showExpiry: v })} />
+          <ToggleRow bare label="Batch column" sub="Which lot each item came from" on={d.showBatch} onChange={(v) => set({ showBatch: v })} />
+          <ToggleRow bare label="Expiry column" sub="For perishables and pharmacy stock" on={d.showExpiry} onChange={(v) => set({ showExpiry: v })} />
           <View style={{ height: 10 }} />
           <SelectField label="QR / barcode on the invoice" value={d.code} options={CODE_CHOICES} onChange={(v) => set({ code: v })} />
           {d.code !== 'none' ? (
             <SelectField label="What it holds" value={d.codeData} options={CODE_DATA_CHOICES} onChange={(v) => set({ codeData: v })} />
           ) : null}
-        </Section>
-
-        <Section icon="search" title="Preview">
-          <View style={{ backgroundColor: colors.sunk, borderRadius: 12, padding: 10 }}>
-            <InvoicePreview d={d} />
-          </View>
         </Section>
 
         <SaveBar onSave={save} />
