@@ -55,3 +55,17 @@ test('a scheme that merely starts the same way is not enough', () => {
   assert.equal(allowedRedirect('exponential://192.168.1.1'), false);
   assert.equal(allowedRedirect('exp+other://192.168.1.1'), false);
 });
+
+test('the Windows till on this computer is allowed, on loopback only', () => {
+  assert.equal(allowedRedirect('http://127.0.0.1:3000/api/auth/cloud/google/return?n=abc'), true);
+  assert.equal(allowedRedirect('http://localhost:3000/api/auth/cloud/google/return'), true);
+});
+
+test('loopback-looking addresses that are not loopback are refused', () => {
+  assert.equal(allowedRedirect('http://127.0.0.1.evil.com:3000/api/auth/x'), false);
+  assert.equal(allowedRedirect('http://evil.com@127.0.0.1:3000/api/auth/x'), false);
+  assert.equal(allowedRedirect('http://127.0.0.1/api/auth/x'), false);
+  assert.equal(allowedRedirect('https://127.0.0.1:3000/api/auth/x'), false);
+  assert.equal(allowedRedirect('http://127.0.0.1:3000/somewhere-else'), false);
+  assert.equal(allowedRedirect('http://192.168.1.5:3000/api/auth/x'), false);
+});
