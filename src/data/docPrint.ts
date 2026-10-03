@@ -3,6 +3,8 @@
  * receipts and statements. Report exporting lives in ./exporters; this covers
  * the single-document case, where the layout is a receipt rather than a table.
  */
+import { escposDoc, imeiTexts, shows, qtyText } from './escpos';
+import { printBluetooth, testNetwork } from './rawPrinter';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
@@ -11,7 +13,7 @@ import { code128Html } from './code128';
 import { a4Layout, esc, numberToWords } from './invoiceLayouts';
 
 export { numberToWords };
-import type { Paper, PrintTemplate, DocKind } from './types';
+import type { Paper, PrintTemplate, DocKind, Printer, SoldSerial } from './types';
 
 /**
  * Renders a PDF and returns a URI in this app's own cache that sharing can read.
@@ -53,6 +55,8 @@ export interface DocLine {
   qty: number;
   price: number;
   unit?: string;
+  /** The phones sold on this line: IMEI 1, IMEI 2 and condition. */
+  serials?: SoldSerial[];
   batchNo?: string;
   expiry?: string;
 }
@@ -126,6 +130,15 @@ export interface PrintOpts {
   tpl?: PrintTemplate;
   /** iOS only: a printer picked with Print.selectPrinterAsync. */
   printerUrl?: string;
+  /** The printer it is going to. A receipt printer this phone connected to itself is sent ESC/POS directly. */
+  printer?: Printer;
+  /** Kick the cash drawer wired to that printer (sales receipts only). */
+  openDrawer?: boolean;
+}
+
+/** A Bluetooth or network receipt printer this phone talks to itself, rather than through the print dialog. */
+export function isDirectPrinter(p?: Printer): p is Printer {
+  return !!p && (p.kind === 'bluetooth' || p.kind === 'wifi') && !!p.address;
 }
 
 /** Page size in points (1/72 inch), which is what expo-print measures in. */
@@ -181,7 +194,7 @@ export function qrSvg(text: string, px = 110): string {
 }
 
 /** What the template's code carries. */
-function codeText(d: DocMeta, tpl: PrintTemplate, money: (n: number) => string): string {
+export function codeText(d: DocMeta, tpl: PrintTemplate, money: (n: number) => string): string {
   switch (tpl.codeData) {
     case 'total': return d.no + ' ' + money(d.total);
     case 'party': return d.partyName ? d.partyName + ' · ' + d.no : d.no;
@@ -214,9 +227,14 @@ function codeBlock(d: DocMeta, tpl: PrintTemplate | undefined, money: (n: number
  * expiry ride under the line they belong to, because that is what a pharmacy
  * or a grocer needs on the paper for a recall or a return.
  */
-export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpts = {}): string {
+export function docHtml(input: DocMeta, money: (n: number) => string, opts: PrintOpts = {}): string {
   const paper: Paper = opts.paper || opts.tpl?.paper || '80mm';
   const tpl = opts.tpl;
+  // the template's own title, when it has one, replaces the document's name
+  const d: DocMeta = tpl?.title?.trim() ? { ...input, kind: tpl.title.trim() } : input;
+  const sh = shows(tpl);
+  const rollStyle = paper === 'A4' ? 'classic' : sh.style;
+  const imeiHtml = (l: DocLine) => (sh.imei ? imeiTexts(l.serials).map((t) => `<div class="sub imei">${esc(t)}</div>`).join('') : '');
   const showLogo = tpl ? tpl.showLogo : true;
   const showTax = tpl ? tpl.showTax : true;
   const showServed = tpl ? tpl.showServed : true;
@@ -228,7 +246,7 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
   const showExpiry = tpl ? tpl.showExpiry : true;
   const boxed = !!tpl?.boxed && paper === 'A4';
   const accent = tpl?.accentColor && paper === 'A4' ? tpl.accentColor : '';
-  const tight = tpl?.density === 'tight';
+  const tight = tpl?.density === 'tight' || rollStyle === 'compact';
   const head = (tpl?.head || '').trim();
   const foot = (tpl?.foot || '').trim();
   const copies = Math.max(1, Math.min(5, tpl?.copies || 1));
@@ -251,7 +269,8 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
     d.charges ? totalRow('Additional charges', money(d.charges)) : '',
     d.tax && showTax ? totalRow(d.taxLabel || 'Tax', money(d.tax)) : '',
     totalRow('TOTAL', money(d.total), true),
-    d.paid !== undefined ? totalRow('Paid', money(d.paid)) : '',
+    sh.paid && d.paid !== undefined ? totalRow('Paid', money(d.paid)) : '',
+    sh.paid && d.paid !== undefined && d.paid > d.total ? totalRow('Change', money(d.paid - d.total)) : '',
     d.due ? totalRow('Balance due', money(d.due), true) : '',
   ].filter(Boolean).join('');
 
@@ -271,19 +290,29 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
   let a4Css = '';
   if (paper === 'A4') {
     const style = tpl?.style || (boxed ? 'tally' : accent ? 'quickbooks' : 'plain');
-    const out = a4Layout(style, d, money, { showLogo, showTax, showServed, showParty, showBatch, showExpiry, head, foot, code, tight, accent });
+    // a page has the room for the IMEIs under each item name; the unit switch blanks the unit column
+    const pageDoc: DocMeta = { ...d, lines: d.lines.map((l) => ({ ...l, unit: sh.unit ? l.unit : '' })) };
+    const out = a4Layout(style, pageDoc, money, { showLogo, showTax, showServed, showParty, showBatch, showExpiry, head, foot, code, tight, accent, imeiHtml });
     doc = out.body;
     a4Css = out.css;
   } else {
-    const rows = d.lines.map((l) => `<tr>
-      <td class="l">${esc(l.name)}${batchSub(l)}<div class="sub">${l.qty} ${esc(l.unit || '')} × ${esc(money(l.price))}</div></td>
+    const rows = d.lines.map((l) => rollStyle === 'compact'
+      ? `<tr><td class="l">${l.qty} ${esc(l.name)}${imeiHtml(l)}</td><td class="r">${esc(money(l.qty * l.price))}</td></tr>`
+      : `<tr>
+      <td class="l">${esc(l.name)}${batchSub(l)}<div class="sub">${esc(qtyText(l, money, sh, ' × '))}</div>${imeiHtml(l)}</td>
       <td class="r">${esc(money(l.qty * l.price))}</td>
     </tr>`).join('');
+    const count = rollStyle === 'detailed'
+      ? `<div class="meta"><div><span>Items: ${d.lines.length}</span><span>Qty: ${d.lines.reduce((a, l) => a + l.qty, 0)}</span></div></div><div class="rule"></div>`
+      : '';
+    const bigTotal = rollStyle === 'bold'
+      ? `<div class="bigtotal"><div>TOTAL</div><strong>${esc(money(d.total))}</strong></div>`
+      : '';
     doc = `<div class="doc roll">
       ${showLogo && d.logo ? `<div class="logo"><img src="${esc(d.logo)}" /></div>` : ''}
       <h1>${esc(d.firmName)}</h1>
-      ${firmLines}
-      ${head ? `<div class="muted">${esc(head).replace(/\n/g, '<br/>')}</div>` : ''}
+      ${rollStyle === 'compact' ? (d.firmPhone ? `<div class="muted">${esc(d.firmPhone)}</div>` : '') : firmLines}
+      ${head && rollStyle !== 'compact' ? `<div class="muted">${esc(head).replace(/\n/g, '<br/>')}</div>` : ''}
       <div class="kind">${esc(d.kind)}</div>
       <div class="rule"></div>
       <div class="meta">
@@ -291,12 +320,14 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
         <div><span>Date</span><span>${esc(date.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</span></div>
         ${showParty && d.partyName ? `<div><span>${partyLabel}</span><strong>${esc(d.partyName)}</strong></div>` : ''}
         ${showParty && d.partyPhone ? `<div><span>Phone</span><span>${esc(d.partyPhone)}</span></div>` : ''}
-        ${d.method ? `<div><span>Paid by</span><span>${esc(d.method)}</span></div>` : ''}
-        ${showServed && d.servedBy ? `<div><span>Served by</span><span>${esc(d.servedBy)}</span></div>` : ''}
+        ${d.method && rollStyle !== 'compact' ? `<div><span>Paid by</span><span>${esc(d.method)}</span></div>` : ''}
+        ${showServed && rollStyle !== 'compact' && d.servedBy ? `<div><span>Served by</span><span>${esc(d.servedBy)}</span></div>` : ''}
       </div>
       <div class="rule"></div>
       <table>${rows}</table>
       <div class="rule"></div>
+      ${count}
+      ${bigTotal}
       <table>${totals}</table>
       ${endMatter}
     </div>`;
@@ -323,6 +354,10 @@ export function docHtml(d: DocMeta, money: (n: number) => string, opts: PrintOpt
   td { padding: ${4 * pad}px 0; vertical-align: top; }
   td.l { text-align: left; } td.r { text-align: right; white-space: nowrap; padding-left: 6px; }
   .sub { color: #333; font-size: ${narrow ? 8.5 : 9.5}px; margin-top: 1px; }
+  .imei { font-family: monospace; color: #000; }
+  .bigtotal { text-align: center; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 6px 0; margin: 6px 0; }
+  .bigtotal div { font-size: ${narrow ? 10 : 12}px; font-weight: 800; letter-spacing: 1px; }
+  .bigtotal strong { font-size: ${narrow ? 20 : 26}px; }
   .strong td { font-weight: 800; font-size: ${narrow ? 12 : 14}px; border-top: 1px solid #000; padding-top: 5px; }
   .meta { font-size: ${narrow ? 9 : 10.5}px; }
   .meta div { display: flex; justify-content: space-between; gap: 6px; padding: 1px 0; }
@@ -358,9 +393,25 @@ async function ready(d: DocMeta, opts: PrintOpts): Promise<DocMeta> {
   return { ...d, logo, signature };
 }
 
-/** Prints: straight to the chosen printer on iOS, through the system dialog on Android. */
+/**
+ * Prints. A roll receipt going to a Bluetooth or network receipt printer is
+ * sent straight to it as ESC/POS — no dialog, done in a second or two. Every
+ * other document (A4, "Save as PDF", a printer added by name) goes through
+ * the system print dialog as before, or straight to the chosen AirPrint
+ * printer on iOS.
+ */
 export async function printDoc(d: DocMeta, money: (n: number) => string, opts: PrintOpts = {}): Promise<void> {
   const paper: Paper = opts.paper || opts.tpl?.paper || '80mm';
+  const p = opts.printer;
+  if (isDirectPrinter(p) && paper !== 'A4') {
+    const bytes = escposDoc(d, money, {
+      paper, tpl: opts.tpl, openDrawer: opts.openDrawer,
+      codeText: opts.tpl && opts.tpl.code !== 'none' ? codeText(d, opts.tpl, money) : undefined,
+    });
+    if (p.kind === 'bluetooth') await printBluetooth(p.address, bytes);
+    else await testNetwork(p.address, p.port || 9100, bytes, 8000);
+    return;
+  }
   const full = await ready(d, opts);
   await Print.printAsync({
     html: docHtml(full, money, { ...opts, paper }),

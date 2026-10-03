@@ -15,6 +15,7 @@ import { Button } from './ui';
 import { Icon } from './icons';
 import { useTheme, fonts } from '../theme';
 import { requestPinCode, confirmPinCode, serverConfigured } from '../data/authApi';
+import { CodeInput, CodeSentNote, CodeState, useCooldown } from './CodeInput';
 
 type Step = 'send' | 'code' | 'pin';
 
@@ -40,25 +41,32 @@ export function PinResetSheet({ visible, email, onClose, onDone }: {
   const [pin2, setPin2] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [codeState, setCodeState] = useState<CodeState>('idle');
+  const [codeMsg, setCodeMsg] = useState('');
+  const cooldown = useCooldown();
 
   useEffect(() => {
-    if (visible) { setStep('send'); setCode(''); setPin(''); setPin2(''); setErr(''); }
+    if (visible) { setStep('send'); setCode(''); setPin(''); setPin2(''); setErr(''); setCodeState('idle'); }
   }, [visible]);
 
   async function send() {
+    if (cooldown.left > 0) return;
     setBusy(true); setErr('');
     const r = await requestPinCode(email);
     setBusy(false);
     if (!r.ok) return setErr(r.error.message);
+    setCode(''); setCodeState('idle'); setCodeMsg('');
+    cooldown.restart();
     setStep('code');
   }
 
-  async function confirm() {
-    setBusy(true); setErr('');
-    const r = await confirmPinCode(email, code.trim());
-    setBusy(false);
-    if (!r.ok) return setErr(r.error.message);
-    setStep('pin');
+  /** Checked as soon as all six digits are in; right goes straight to the new PIN. */
+  async function confirm(c = code.trim()) {
+    setCodeState('checking'); setCodeMsg(''); setErr('');
+    const r = await confirmPinCode(email, c);
+    if (!r.ok) { setCodeState('bad'); setCodeMsg(r.error.message); return; }
+    setCodeState('ok');
+    setTimeout(() => setStep('pin'), 650);
   }
 
   function save() {
@@ -68,7 +76,7 @@ export function PinResetSheet({ visible, email, onClose, onDone }: {
   }
 
   const note = (t: string) => (
-    <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.faint, lineHeight: 20, marginBottom: 14 }}>{t}</Text>
+    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, lineHeight: 20, marginBottom: 14 }}>{t}</Text>
   );
 
   return (
@@ -82,7 +90,7 @@ export function PinResetSheet({ visible, email, onClose, onDone }: {
         step === 'send' ? (
           <Button variant="pri" label="Send the code" loading={busy} disabled={busy || !email || !serverConfigured()} onPress={send} />
         ) : step === 'code' ? (
-          <Button variant="pri" label="Confirm the code" loading={busy} disabled={busy || code.trim().length !== 6} onPress={confirm} />
+          <Button variant="pri" label="Confirm the code" loading={codeState === 'checking'} disabled={codeState === 'checking' || codeState === 'ok' || code.trim().length !== 6} onPress={() => confirm()} />
         ) : (
           <Button variant="pri" label="Save the new PIN" disabled={pin.length !== 4 || pin2.length !== 4} onPress={save} />
         )
@@ -94,19 +102,25 @@ export function PinResetSheet({ visible, email, onClose, onDone }: {
             ? note('This shop has no owner email on record, so a code cannot be sent. Sign out, sign in with the owner\'s account, and set the PIN again.')
             : !serverConfigured()
               ? note('This copy of the app is not connected to a server, so a code cannot be sent.')
-              : note('We will send a six-digit code to the owner\'s email. Only the owner can read it, so only the owner can reset this PIN.')}
+              : note('We will email a six-digit one-time code to the owner. If you are not the owner, ask them to read it to you — a PIN is never reset without them.')}
           {email ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: colors.sunk }}>
               <Icon name="shield" size={18} color={colors.accent} />
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{maskEmail(email)}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{maskEmail(email)}</Text>
             </View>
           ) : null}
         </>
       ) : step === 'code' ? (
         <>
-          {note('Enter the code sent to ' + maskEmail(email) + '. It lasts ten minutes. Check spam if it has not arrived.')}
-          <Field label="Six-digit code" value={code} onChangeText={(v) => setCode(v.replace(/[^0-9]/g, ''))} numeric maxLength={6} />
-          <Button size="sm" label="Send another code" disabled={busy} onPress={send} />
+          {note('Enter the six-digit one-time code we emailed. It lasts ten minutes.')}
+          <CodeInput
+            value={code}
+            onChange={(v) => { setCode(v); if (codeState === 'bad') setCodeState('idle'); }}
+            onComplete={(c) => confirm(c)}
+            state={codeState}
+            message={codeState === 'ok' ? 'Code confirmed' : codeMsg}
+          />
+          <CodeSentNote to={maskEmail(email)} left={cooldown.left} busy={busy} onResend={send} />
         </>
       ) : (
         <>
@@ -115,7 +129,7 @@ export function PinResetSheet({ visible, email, onClose, onDone }: {
         </>
       )}
       {err ? (
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger, marginTop: 10 }}>{err}</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger, marginTop: 10 }}>{err}</Text>
       ) : null}
     </Sheet>
   );

@@ -30,7 +30,7 @@ export default function AuditLogScreen() {
           <View style={{ paddingTop: 14, gap: 14, marginBottom: 14 }}>
             <Search value={q} onChange={setQ} placeholder="Filter by action, user or detail" />
             {rows.length ? (
-              <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{rows.length} entries</Text>}>
+              <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{rows.length} entries</Text>}>
                 Audit trail
               </SectionLabel>
             ) : null}
@@ -54,11 +54,11 @@ export default function AuditLogScreen() {
               <Icon name="shield" size={19} color={colors.accent} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{item.action}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{item.action}</Text>
               {item.details ? (
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: colors.soft, marginTop: 3 }}>{item.details}</Text>
               ) : null}
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 5 }}>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 5 }}>
                 {item.userName} · {new Date(item.ts).toLocaleString()}
               </Text>
             </View>

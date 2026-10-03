@@ -32,7 +32,7 @@ type StepId = 'shop' | 'papers' | 'money' | 'stock' | 'people' | 'review';
 
 const STEPS: { id: StepId; n: string; hint: string; icon: IconName }[] = [
   { id: 'shop', n: 'The shop', hint: 'Where it is and what it is called', icon: 'home' },
-  { id: 'papers', n: 'Paperwork', hint: 'How its bills are numbered, and tax', icon: 'doc' },
+  { id: 'papers', n: 'Paperwork', hint: 'How its sales are numbered, and tax', icon: 'doc' },
   { id: 'money', n: 'Money', hint: 'Its own drawer and what it opens with', icon: 'cash' },
   { id: 'stock', n: 'Opening stock', hint: 'What it starts with on the shelf', icon: 'box' },
   { id: 'people', n: 'Who runs it', hint: 'The name on the door', icon: 'user' },
@@ -54,12 +54,12 @@ function StepHead({ index, step }: { index: number; step: typeof STEPS[number] }
           <Icon name={step.icon} size={19} color={colors.accent} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>{step.n}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{step.n}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
             {step.hint}
           </Text>
         </View>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint }}>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
           {index + 1} of {STEPS.length}
         </Text>
       </View>
@@ -256,7 +256,7 @@ export default function NewBranchScreen() {
                 icon="tag" label="Document prefix" value={prefix} onChangeText={setPrefix}
                 placeholder="INV" autoCapitalize="characters" maxLength={8}
               />
-              <DetailRow label="A bill will read" value={(prefix.trim().toUpperCase() || 'INV') + '-00042'} last />
+              <DetailRow label="A sale will read" value={(prefix.trim().toUpperCase() || 'INV') + '-00042'} last />
             </Panel>
             <View style={{ height: 14 }} />
             <SectionLabel>Tax</SectionLabel>
@@ -363,10 +363,10 @@ export default function NewBranchScreen() {
                           }}
                         >
                           <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>
+                            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>
                               {p.name}
                             </Text>
-                            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: over ? colors.danger : colors.faint, marginTop: 2 }}>
+                            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: over ? colors.danger : colors.faint, marginTop: 2 }}>
                               {had + ' ' + p.unit + ' available' + (over ? ' — more than that is there to move' : '')}
                             </Text>
                           </View>
@@ -449,7 +449,7 @@ export default function NewBranchScreen() {
             <View style={{ height: 14 }} />
             <SectionLabel>Paperwork</SectionLabel>
             <Panel>
-              <DetailRow label="Bills read" value={(prefix.trim().toUpperCase() || 'INV') + '-00042'} />
+              <DetailRow label="Numbers read" value={(prefix.trim().toUpperCase() || 'INV') + '-00042'} />
               <DetailRow label="VAT" value={taxEnabled ? 'Charged here' : 'Not charged here'} last />
             </Panel>
 

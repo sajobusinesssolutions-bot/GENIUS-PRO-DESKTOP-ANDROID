@@ -88,13 +88,13 @@ describe('the takings card', () => {
     mockState.sales = [sale({ total: 1000 }), sale({ id: 's2', total: 500 })];
     render(<DashboardScreen />);
     expect(screen.getByTestId('takings')).toHaveTextContent('Sh 1,500');
-    expect(screen.getByText('2 bills · Sh 750 average')).toBeTruthy();
+    expect(screen.getByText('2 sales · Sh 750 average')).toBeTruthy();
   });
 
   it('says so plainly on a quiet day rather than showing an average of nothing', () => {
     render(<DashboardScreen />);
     expect(screen.getByTestId('takings')).toHaveTextContent('Sh 0');
-    expect(screen.getByText('No bills yet')).toBeTruthy();
+    expect(screen.getAllByText('No sales yet')[0]).toBeTruthy();
   });
 
   it('changes the figure when the period is changed', () => {
@@ -107,10 +107,17 @@ describe('the takings card', () => {
     expect(screen.getByTestId('takings')).toHaveTextContent('Sh 1,400');
   });
 
-  it('opens the reports, where the detail it no longer shows now lives', () => {
+  it("shows a day's figures when its bar is tapped, and goes back when tapped again", () => {
+    const yesterday = new Date(Date.now() - 86400000).toISOString();
+    mockState.sales = [sale({ total: 1000 }), sale({ id: 's2', total: 300, ts: yesterday })];
     render(<DashboardScreen />);
-    fireEvent.press(screen.getByTestId('takings'));
-    expect(mockGo).toHaveBeenCalledWith('Reports');
+    expect(screen.getByTestId('takings')).toHaveTextContent('Sh 1,000');
+    const label = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(yesterday).getDay()];
+    fireEvent.press(screen.getByLabelText('Show ' + label));
+    expect(screen.getByTestId('takings')).toHaveTextContent('Sh 300');
+    expect(mockGo).not.toHaveBeenCalledWith('Reports');
+    fireEvent.press(screen.getByLabelText('Show ' + label));
+    expect(screen.getByTestId('takings')).toHaveTextContent('Sh 1,000');
   });
 });
 
@@ -142,18 +149,18 @@ describe('the money tiles', () => {
   });
 });
 
-describe('"Needs you"', () => {
+describe('Notifications', () => {
   it('is absent entirely when nothing needs doing', () => {
     render(<DashboardScreen />);
-    expect(screen.queryByText('Needs you')).toBeNull();
+    expect(screen.queryByText('Notifications')).toBeNull();
   });
 
   it('appears when something does, and leads with the costliest to ignore', () => {
     mockState.sales = [sale({ due: 500, ts: iso(45) })];
     mockState.products = [{ id: 'p', name: 'Sugar', active: true, reorder: 5, qty: 1 }];
     render(<DashboardScreen />);
-    expect(screen.getByText('Needs you')).toBeTruthy();
-    expect(screen.getByText('1 bill over 30 days')).toBeTruthy();
+    expect(screen.getByText('Notifications')).toBeTruthy();
+    expect(screen.getByText('1 sale over 30 days')).toBeTruthy();
   });
 
   it('caps the list and offers the rest, instead of growing without limit', () => {
@@ -164,7 +171,7 @@ describe('"Needs you"', () => {
     mockState.estimates = [{ id: 'e', status: 'open' }];
     render(<DashboardScreen />);
     // four things to do (open purchase orders no longer count — buying is direct), three shown
-    expect(screen.getByText('1 more')).toBeTruthy();
+    expect(screen.getByText('See all')).toBeTruthy();
     expect(screen.queryByText('1 quotation open')).toBeNull();
   });
 });
@@ -217,6 +224,6 @@ describe('latest bills', () => {
 
   it('invites a first sale when there are none', () => {
     render(<DashboardScreen />);
-    expect(screen.getByText('No sales yet')).toBeTruthy();
+    expect(screen.getAllByText('No sales yet')[0]).toBeTruthy();
   });
 });

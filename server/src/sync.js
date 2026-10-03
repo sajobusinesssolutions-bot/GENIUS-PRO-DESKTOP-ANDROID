@@ -72,6 +72,40 @@ async function businessFor(accountId, wanted) {
   return rows[0] || null;
 }
 
+/** Plans that are paid for. A trial is not one of them. */
+export const PAID_PLANS = ['starter', 'pro', 'lifetime'];
+
+/**
+ * Whether a business may sync: only while its owner holds a paid licence that
+ * is in force. A trial gets the whole app on one device but not sync, and an
+ * expired or blocked licence stops sync the same day it stops recording.
+ * Judged on the business owner, since staff sync the owner's books.
+ */
+export async function syncAllowed(businessId, now = new Date()) {
+  const { rows } = await q(
+    `select a.status as account_status, l.plan, l.status, l.expires_at
+       from businesses b
+       join accounts a on a.id = b.account_id
+       left join lateral (
+         select plan, status, expires_at from licences
+          where account_id = b.account_id order by started_at desc limit 1
+       ) l on true
+      where b.id = $1`,
+    [businessId],
+  );
+  const r = rows[0];
+  if (!r || !r.plan) return false;
+  const status = effectiveStatus({ status: r.account_status }, r, now);
+  return status === 'active' && PAID_PLANS.includes(r.plan);
+}
+
+async function refuseUnpaid(reply, businessId) {
+  if (await syncAllowed(businessId)) return false;
+  fail(reply, 402, 'paymentRequired',
+    'Cloud sync is part of a paid plan. It is not included in the free trial, and it stops when a plan runs out.');
+  return true;
+}
+
 export default async function syncRoutes(app) {
   /* ---------------------------------------------------------- devices */
 
@@ -321,6 +355,7 @@ export default async function syncRoutes(app) {
     if (st.rows[0]?.status === 'blocked') {
       return fail(reply, 403, 'server', 'This account has been blocked. Contact support.');
     }
+    if (await refuseUnpaid(reply, biz.id)) return;
 
     const accepted = [];
     const rejected = [];
@@ -363,6 +398,7 @@ export default async function syncRoutes(app) {
     if (!me) return;
     const biz = await businessFor(me.id, req.query?.business);
     if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    if (await refuseUnpaid(reply, biz.id)) return;
 
     const since = Number(req.query?.since || 0);
     const limit = Math.min(Number(req.query?.limit || 500), 1000);

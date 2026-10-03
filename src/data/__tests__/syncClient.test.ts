@@ -117,6 +117,25 @@ describe('opsFrom', () => {
     expect(op.payload).toEqual(shift);
   });
 
+  it('sends the business details, a quotation and a ledger to the other phones', () => {
+    const d = book({
+      firm: { id: 'f1', name: 'SALJOE TECH', logo: 'data:image/png;base64,AA' },
+      estimates: [{ id: 'e1', no: 'EST-1', total: 500 }],
+      coa: [{ id: 'led1', code: '6100', name: 'Petrol', type: 'expense' }],
+      queue: [
+        { id: 'q1', ts: '', kind: 'firm', ref: 'f1' },
+        { id: 'q2', ts: '', kind: 'estimate', ref: 'e1' },
+        { id: 'q3', ts: '', kind: 'ledger', ref: 'led1' },
+      ],
+    });
+    const { ops, skipped } = opsFrom(d, wiring);
+    expect(skipped).toEqual([]);
+    expect(ops.map((o) => [o.kind, (o.payload as any).coll])).toEqual([
+      ['record.upsert', 'firm'], ['record.upsert', 'estimates'], ['record.upsert', 'coa'],
+    ]);
+    expect((ops[0].payload as any).doc).toMatchObject({ name: 'SALJOE TECH', logo: 'data:image/png;base64,AA' });
+  });
+
   it('finds a sale by its id and sends the whole record', () => {
     const d = book({ queue: [{ id: 'q1', ts: '', kind: 'sale', ref: 's1' }] });
     const { ops, skipped } = opsFrom(d, wiring);

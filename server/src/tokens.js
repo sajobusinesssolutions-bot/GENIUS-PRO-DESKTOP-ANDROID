@@ -95,7 +95,9 @@ export async function issueLicence({ account, licence, businesses }) {
     plan: licence.plan,
     term: licence.term,
     seats: licence.seats,
-    features: licence.plan === 'pro' ? ['sync', 'multiFirm', 'secondaryUnit'] : ['sync'],
+    // a trial gets the app, not sync: that is for paid plans only
+    features: licence.plan === 'pro' || licence.plan === 'lifetime' ? ['sync', 'multiFirm', 'secondaryUnit']
+      : licence.plan === 'trial' ? [] : ['sync'],
     businesses,
   })
     .setProtectedHeader({ alg: 'EdDSA' })

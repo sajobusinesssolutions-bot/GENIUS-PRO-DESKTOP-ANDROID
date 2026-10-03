@@ -23,7 +23,7 @@ export default function WelcomeScreen({ navigation }: Props) {
           <Icon name="till" size={30} color="#fff" />
         </View>
         <Text style={{ color: '#fff', fontFamily: fonts.uiExtra, fontSize: 34, letterSpacing: -0.8 }}>Genius POS</Text>
-        <Text style={{ color: 'rgba(255,255,255,0.86)', fontFamily: fonts.ui, fontSize: 14.5, maxWidth: 280, lineHeight: 21 }}>
+        <Text style={{ color: 'rgba(255,255,255,0.86)', fontFamily: fonts.ui, fontSize: 15, maxWidth: 280, lineHeight: 21 }}>
           Billing, stock and money — all in one app for your shop.
         </Text>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
@@ -34,7 +34,7 @@ export default function WelcomeScreen({ navigation }: Props) {
           ].map((s) => (
             <View key={s.l} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 12 }}>
               <Text style={{ color: '#fff', fontFamily: fonts.uiExtra, fontSize: 20 }}>{s.n}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.76)', fontFamily: fonts.uiSemi, fontSize: 11.5, marginTop: 3 }}>{s.l}</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.76)', fontFamily: fonts.uiSemi, fontSize: 12.5, marginTop: 3 }}>{s.l}</Text>
             </View>
           ))}
         </View>

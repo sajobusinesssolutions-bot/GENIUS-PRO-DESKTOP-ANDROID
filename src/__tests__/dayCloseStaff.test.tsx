@@ -42,7 +42,7 @@ describe('Day close', () => {
     expect(screen.getAllByText('Brian').length).toBeGreaterThan(0);
     expect(screen.queryByText('Old Staff')).toBeNull();
     expect(screen.queryByText(/Till 7/)).toBeNull();
-    expect(screen.getByText(/Not on shift · 1 bill today/)).toBeTruthy();
+    expect(screen.getByText(/Not on shift · 1 sale today/)).toBeTruthy();
     expect(screen.getByText('1 of 2 on shift')).toBeTruthy();
   });
 

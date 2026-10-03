@@ -10,8 +10,9 @@
  * template (templateFor('receipt')), invoice fields on the invoice template,
  * and shop details (logo, phones, address) on the firm, which both share.
  */
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert, Image, Linking, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, Alert, Image, Linking, Platform, ActivityIndicator } from 'react-native';
+import { Pressable } from '../components/Press';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme, fonts, radius } from '../theme';
@@ -25,9 +26,13 @@ import { useToast } from '../components/Toast';
 import { useGo } from '../nav/navigate';
 import { printDoc, DocMeta } from '../data/docPrint';
 import { printOptsFor, paperOf, defaultPrinter } from '../data/printSetup';
+import {
+  FoundDevice, scanBluetooth, stopScan, notAPrinter, testBluetooth, printBluetooth, testNetwork,
+  testPage as rawTestPage,
+} from '../data/rawPrinter';
 import { keepPhoto, dropPhoto } from '../data/photos';
 import { kindLabel, CODE_DATA, POWERED_BY } from '../data/defaults';
-import type { Printer, CodeKind, CodeData, PrintTemplate } from '../data/types';
+import type { Printer, CodeKind, CodeData, PrintTemplate, ReceiptStyle } from '../data/types';
 import { dmy, numberToWords, InvoiceStyle } from '../data/invoiceLayouts';
 
 const ACCENT_COLORS = ['#1A7AE6', '#1DA362', '#D97706', '#DC2626', '#7C3AED', '#111827'];
@@ -181,12 +186,40 @@ export default function PrintingScreen() {
   const [mode, setMode] = useState<'bluetooth' | 'network'>(dp?.kind === 'bluetooth' ? 'bluetooth' : 'network');
   const [host, setHost] = useState(wifi?.address || '');
   const [port, setPort] = useState(String(wifi?.port || 9100));
-  const [btName, setBtName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [found, setFound] = useState<FoundDevice[] | null>(null);
+  const [joining, setJoining] = useState('');
+  const [problem, setProblem] = useState('');
+  useEffect(() => () => { stopScan(); }, []);
 
   if (!db) return <Guard>{null}</Guard>;
 
+  const rollPaper = () => (db!.printer.width === 'A4' ? '80mm' : db!.printer.width);
+
+  /** A printer this phone talks to directly gets the ESC/POS page; the rest go through the print dialog. */
   async function testPage(p: Printer) {
+    if (!db) return;
+    if ((p.kind === 'bluetooth' || p.kind === 'wifi') && p.address) {
+      setBusy(true);
+      setProblem('');
+      try {
+        const page = rawTestPage(db.firm.name, p.name, paperOf(p));
+        if (p.kind === 'bluetooth') await printBluetooth(p.address, page);
+        else await testNetwork(p.address, p.port || 9100, page);
+        success('Test page sent to ' + p.name);
+      } catch (e: any) {
+        setProblem(e?.message || 'The test page could not be sent.');
+        error(e?.message || 'The test page could not be sent to ' + p.name + '.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    await dialogTestPage(p);
+  }
+
+  async function dialogTestPage(p: Printer) {
     if (!db) return;
     const doc: DocMeta = {
       kind: 'Test Print', no: 'TEST-0001', ts: new Date().toISOString(),
@@ -212,32 +245,68 @@ export default function PrintingScreen() {
     if (!validHost(h)) { error('Enter the printer\'s IP address, such as 192.168.1.50.'); return; }
     if (!Number.isInteger(n) || n < 1 || n > 65535) { error('The port must be a number from 1 to 65535.'); return; }
     const same = db.printers.find((p) => p.kind === 'wifi' && p.address === h);
+    const name = same?.name || 'Network printer ' + h;
+    // the test page is the check: nothing is saved unless the printer answered
+    setBusy(true);
+    setProblem('');
+    try {
+      await testNetwork(h, n, rawTestPage(db.firm.name, name, same ? paperOf(same) : rollPaper()));
+    } catch (e: any) {
+      setProblem(e?.message || 'No printer answered at ' + h + ':' + n + '.');
+      error(e?.message || 'No printer answered at ' + h + ':' + n + '.');
+      return;
+    } finally {
+      setBusy(false);
+    }
     let p: Printer;
     if (same) {
       updatePrinter(same.id, { port: n, online: true });
       p = { ...same, port: n, online: true };
     } else {
-      p = addPrinter({
-        name: 'Network printer ' + h, kind: 'wifi', width: db.printer.width === 'A4' ? '80mm' : db.printer.width,
-        address: h, port: n, dflt: true, online: true, note: '',
-      });
+      p = addPrinter({ name, kind: 'wifi', width: rollPaper(), address: h, port: n, dflt: true, online: true, note: '' });
     }
     makeDefaultPrinter(p.id);
-    success(p.name + ' is now the printer for this phone');
-    await testPage(p);
+    success('Test page sent. ' + p.name + ' is now the printer for this phone');
   }
 
-  function addBluetooth() {
-    if (!db) return;
-    const name = btName.trim();
-    if (!name) { error('Type the printer\'s name as it appears in Bluetooth settings.'); return; }
-    const p = addPrinter({
-      name, kind: 'bluetooth', width: db.printer.width === 'A4' ? '80mm' : db.printer.width,
-      address: '', port: 0, dflt: true, online: true, note: '',
+  async function scan() {
+    setProblem('');
+    setScanning(true);
+    setFound([]);
+    try {
+      const list = await scanBluetooth((paired) => setFound(paired));
+      setFound(list);
+      if (!list.length) setProblem('No Bluetooth devices found. Switch the printer on, keep it near the phone and scan again.');
+    } catch (e: any) {
+      setProblem(e?.message || 'The scan could not run.');
+      error(e?.message || 'The scan could not run.');
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  /** Tap a found device: refuse it if it is not a printer, else connect, print a test page and keep it. */
+  async function join(d: FoundDevice) {
+    if (!db || joining) return;
+    const why = notAPrinter(d);
+    if (why) { setProblem(why); error(why); return; }
+    setJoining(d.address);
+    setProblem('');
+    const same = db.printers.find((p) => p.kind === 'bluetooth' && p.address === d.address);
+    try {
+      await testBluetooth(d, rawTestPage(db.firm.name, d.name, same ? paperOf(same) : rollPaper()));
+    } catch (e: any) {
+      setProblem(e?.message || 'Could not connect to ' + d.name + '.');
+      error(e?.message || 'Could not connect to ' + d.name + '.');
+      return;
+    } finally {
+      setJoining('');
+    }
+    const p = same || addPrinter({
+      name: d.name, kind: 'bluetooth', width: rollPaper(), address: d.address, port: 0, dflt: true, online: true, note: '',
     });
     makeDefaultPrinter(p.id);
-    setBtName('');
-    success(name + ' added and set as this phone\'s printer');
+    success('Connected. A test page was printed on ' + d.name);
   }
 
   function openBluetoothSettings() {
@@ -285,43 +354,129 @@ export default function PrintingScreen() {
           tone="accent"
           icon="alert"
           text={mode === 'network'
-            ? 'Connect to a Wi-Fi/LAN printer on the same network as this phone. Typical port: 9100. The page goes out through the phone\'s print service, so the printer must also appear in the print dialog.'
-            : 'Pair the printer in the phone\'s Bluetooth settings first, then add it here by name. Pages go out through the phone\'s print dialog, where the paired printer is chosen.'}
+            ? 'Enter the IP address of a Wi-Fi/LAN receipt printer on the same network as this phone. Typical port: 9100. Connect sends a test page; if nothing answers you will be told.'
+            : 'Switch the printer on and tap Scan. Tap your printer in the list to connect; a test page prints to confirm it.'}
         />
-
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 16,
-          backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, marginTop: 14,
-        }}>
-          <Icon name="print" size={22} color={dp ? colors.good : colors.faint} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Connected printer</Text>
-            <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 2 }}>
-              {dp ? dp.name + ' · ' + kindLabel(dp.kind) + ' · ' + paperOf(dp) : 'None'}
-            </Text>
+        {problem ? (
+          <View style={{ marginTop: 10 }}>
+            <InfoBanner tone="danger" icon="alert" text={problem} />
           </View>
-          {dp ? <Button size="sm" label="Test print" loading={busy} onPress={() => testPage(dp)} /> : null}
-        </View>
+        ) : null}
 
-        <View style={{ marginTop: 14 }}>
+        {/* the receipt printer in use — only a real one, found or tested here */}
+        {(() => {
+          const real = dp && (dp.kind === 'bluetooth' || dp.kind === 'wifi') ? dp : undefined;
+          return (
+            <View style={{
+              padding: 16, borderRadius: 18, marginTop: 14,
+              backgroundColor: colors.surface, borderWidth: 1, borderColor: real ? colors.good : colors.line,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
+                <View style={{
+                  width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: real ? colors.goodSoft : colors.sunk,
+                }}>
+                  <Icon name={real ? (real.kind === 'bluetooth' ? 'bluetooth' : 'wifi') : 'print'} size={20} color={real ? colors.good : colors.faint} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
+                    {real ? real.name : 'No receipt printer yet'}
+                  </Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
+                    {real
+                      ? kindLabel(real.kind) + ' · ' + paperOf(real) + (real.kind === 'wifi' && real.address ? ' · ' + real.address + ':' + (real.port || 9100) : '')
+                      : mode === 'bluetooth' ? 'Scan below to find one' : 'Enter its IP address below'}
+                  </Text>
+                </View>
+                {real ? <Badge label="In use" tone="good" /> : null}
+              </View>
+              {real ? (
+                <View style={{ marginTop: 14 }}>
+                  <Button size="sm" label="Print a test page" loading={busy} icon={<Icon name="print" size={15} color={colors.ink} />} onPress={() => testPage(real)} />
+                </View>
+              ) : null}
+            </View>
+          );
+        })()}
+
+        <View style={{ marginTop: 18 }}>
           {mode === 'network' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
                 <View style={{ flex: 1 }}>
-                  <Field icon="wifi" placeholder="Printer IP address" value={host} onChangeText={setHost} autoCapitalize="none" />
+                  <Field label="Printer IP address" icon="wifi" placeholder="192.168.1.50" value={host} onChangeText={setHost} autoCapitalize="none" />
                 </View>
-                <View style={{ width: 104 }}>
-                  <Field label="Port" value={port} onChangeText={setPort} numeric />
+                <View style={{ width: 96 }}>
+                  <Field label="Port" placeholder="9100" value={port} onChangeText={setPort} numeric />
                 </View>
               </View>
-              <Button variant="pri" label="Connect / Test" loading={busy} icon={<Icon name="wifi" size={17} color={colors.accentInk} />} onPress={connectNetwork} />
+              <Button variant="pri" label={busy ? 'Sending a test page…' : 'Connect and test'} loading={busy} icon={<Icon name="wifi" size={17} color={colors.accentInk} />} onPress={connectNetwork} />
             </>
           ) : (
             <>
-              <Button label="Open Bluetooth settings to pair" icon={<Icon name="bluetooth" size={17} color={colors.ink} />} onPress={openBluetoothSettings} />
-              <View style={{ height: 12 }} />
-              <Field icon="bluetooth" placeholder="Paired printer's name" value={btName} onChangeText={setBtName} />
-              <Button variant="pri" label="Add Bluetooth printer" icon={<Icon name="plus" size={17} color={colors.accentInk} />} onPress={addBluetooth} />
+              <Button
+                variant="pri"
+                label={scanning ? 'Scanning for printers…' : found ? 'Scan again' : 'Scan for printers'}
+                loading={scanning}
+                icon={<Icon name="search" size={17} color={colors.accentInk} />}
+                onPress={scan}
+              />
+              {found ? (
+                (['paired', 'available'] as const).map((group) => {
+                  const list = found.filter((d) => (group === 'paired') === d.paired);
+                  if (!list.length && !(group === 'available' && scanning)) return null;
+                  return (
+                    <View key={group} style={{ marginTop: 16 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginLeft: 4 }}>
+                        <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, letterSpacing: 0.8, textTransform: 'uppercase', color: colors.faint }}>
+                          {group === 'paired' ? 'Paired with this phone' : 'Available nearby'}
+                        </Text>
+                        {group === 'available' && scanning ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+                      </View>
+                      <View style={{ gap: 8 }}>
+                        {list.map((d) => {
+                          const not = notAPrinter(d);
+                          const inUse = db.printers.some((p) => p.kind === 'bluetooth' && p.address === d.address && p.dflt);
+                          return (
+                            <Pressable
+                              key={d.address}
+                              onPress={() => join(d)}
+                              disabled={!!joining}
+                              accessibilityRole="button"
+                              accessibilityLabel={'Connect to ' + d.name}
+                              style={({ pressed }) => ({
+                                flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14,
+                                backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1,
+                                borderColor: inUse ? colors.good : colors.line, opacity: not ? 0.55 : 1,
+                              })}
+                            >
+                              <View style={{ width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: not ? colors.sunk : colors.accentSoft }}>
+                                <Icon name={not ? 'bluetooth' : 'print'} size={18} color={not ? colors.faint : colors.accent} />
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{d.name}</Text>
+                                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
+                                  {not ? 'Not a printer' : inUse ? 'In use' : d.address}
+                                </Text>
+                              </View>
+                              {joining === d.address
+                                ? <ActivityIndicator size="small" color={colors.accent} />
+                                : inUse ? <Icon name="check" size={18} color={colors.good} />
+                                  : <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: not ? colors.faint : colors.accent }}>Connect</Text>}
+                            </Pressable>
+                          );
+                        })}
+                        {!list.length ? (
+                          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginLeft: 4 }}>Looking for printers that are switched on…</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })
+              ) : null}
+              <Pressable onPress={openBluetoothSettings} hitSlop={8} style={{ alignSelf: 'center', paddingVertical: 14 }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent }}>Printer not listed? Open Bluetooth settings</Text>
+              </Pressable>
             </>
           )}
         </View>
@@ -369,50 +524,76 @@ export default function PrintingScreen() {
 
 /* ---------------- receipt settings ---------------- */
 
+/** The four looks a roll receipt can take, and the switches each one starts from. */
+const RECEIPT_STYLES: { v: ReceiptStyle; l: string; sub: string; preset: Partial<ReceiptDraft> }[] = [
+  { v: 'classic', l: 'Classic', sub: 'Every item on two lines, the usual till receipt', preset: { tight: false, showRate: true, showUnit: true, showServed: true } },
+  { v: 'compact', l: 'Compact', sub: 'One line per item, least paper', preset: { tight: true, showServed: false } },
+  { v: 'detailed', l: 'Detailed', sub: 'Everything, with item and quantity counts', preset: { tight: false, showRate: true, showUnit: true, showServed: true, showParty: true, showImei: true, showPaid: true } },
+  { v: 'bold', l: 'Bold total', sub: 'A large total in a box, easy to read at a glance', preset: { tight: false } },
+];
+
 function ReceiptPreview({ d }: { d: ReceiptDraft }) {
   const { db, money } = useAppData();
   if (!db) return null;
   const narrow = d.paper === '58mm';
   const size = narrow ? 9.5 : 11;
+  const compact = d.style === 'compact';
   const lines = sampleLines();
   const sub = lines.reduce((s, l) => s + l.qty * l.price, 0);
   const tax = Math.round(sub * (db.settings.taxRate || 0) / 100);
+  const total = sub + tax;
+  const paid = Math.ceil((total + 1) / 10000) * 10000;
   const t = (s: string, extra?: object) => <Text style={[{ fontFamily: fonts.mono, fontSize: size, color: '#333' }, extra]}>{s}</Text>;
-  const rule = <View style={{ borderTopWidth: 1, borderStyle: 'dashed', borderColor: '#555', marginVertical: 6 }} />;
+  const rule = <View style={{ borderTopWidth: 1, borderStyle: 'dashed', borderColor: '#555', marginVertical: compact ? 3 : 6 }} />;
   const kv = (k: string, v: string) => (
     <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>{t(k)}{t(v)}</View>
   );
+  const qtyLine = (l: ReturnType<typeof sampleLines>[number]) =>
+    l.qty + (d.showUnit ? ' pcs' : '') + (d.showRate ? ' × ' + money(l.price) : '');
   return (
     <View style={{ backgroundColor: '#fff', borderRadius: 8, padding: 14, width: narrow ? 220 : 290, alignSelf: 'center' }}>
       {d.showLogo && d.logo ? <Image source={{ uri: d.logo }} style={{ height: 34, marginBottom: 4 }} resizeMode="contain" /> : null}
-      <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size + 3, color: '#111' }}>{db.firm.name}</Text>
-      {[d.head1, d.head2, d.address, d.phone, d.whatsapp ? 'WhatsApp ' + d.whatsapp : ''].filter(Boolean).map((x, i) => (
+      <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size + (d.style === 'bold' ? 5 : 3), color: '#111' }}>{db.firm.name}</Text>
+      {(compact ? [d.phone] : [d.head1, d.head2, d.address, d.phone, d.whatsapp ? 'WhatsApp ' + d.whatsapp : '']).filter(Boolean).map((x, i) => (
         <Text key={i} style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size - 1, color: '#444' }}>{x}</Text>
       ))}
-      <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size, color: '#111', marginTop: 6, letterSpacing: 1 }}>RECEIPT</Text>
+      <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size, color: '#111', marginTop: 6, letterSpacing: 1 }}>{(d.title.trim() || 'Receipt').toUpperCase()}</Text>
       {rule}
       {kv('Number', 'INV-001')}
       {kv('Date', new Date().toLocaleDateString('en-GB'))}
       {d.showParty ? kv('Customer', 'Walk-in customer') : null}
-      {kv('Paid by', 'Cash')}
-      {d.showServed ? kv('Served by', 'Cashier') : null}
+      {compact ? null : kv('Paid by', 'Cash')}
+      {d.showServed && !compact ? kv('Served by', 'Cashier') : null}
       {rule}
-      {lines.map((l) => (
-        <View key={l.name} style={{ marginBottom: 3 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{t(l.name)}{t(money(l.qty * l.price))}</View>
-          {t(l.qty + ' × ' + money(l.price), { fontSize: size - 1.5, color: '#666' })}
-          {d.showBatch || d.showExpiry
+      {lines.map((l, i) => (
+        <View key={l.name} style={{ marginBottom: compact ? 1 : 3 }}>
+          {compact
+            ? <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{t(l.qty + ' ' + l.name)}{t(money(l.qty * l.price))}</View>
+            : <>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{t(l.name)}{t(money(l.qty * l.price))}</View>
+              {t(qtyLine(l), { fontSize: size - 1.5, color: '#666' })}
+            </>}
+          {d.showImei && i === 0 ? t('IMEI 356789104512345 / 356789104512352 · Used', { fontSize: size - 1.5, color: '#000' }) : null}
+          {!compact && (d.showBatch || d.showExpiry)
             ? t([d.showBatch ? 'Batch ' + l.batch : '', d.showExpiry ? 'Exp ' + l.expiry : ''].filter(Boolean).join(' · '), { fontSize: size - 1.5, color: '#666' })
             : null}
         </View>
       ))}
       {rule}
+      {d.style === 'detailed' ? <>{kv('Items: ' + lines.length, 'Qty: ' + lines.reduce((a, l) => a + l.qty, 0))}{rule}</> : null}
+      {d.style === 'bold' ? (
+        <View style={{ borderTopWidth: 2, borderBottomWidth: 2, borderColor: '#000', paddingVertical: 6, marginVertical: 4, alignItems: 'center' }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: size, color: '#111', letterSpacing: 1 }}>TOTAL</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: size + 10, color: '#111' }}>{money(total)}</Text>
+        </View>
+      ) : null}
       {kv('Subtotal', money(sub))}
       {d.showTax && tax ? kv(d.taxName || 'Tax', money(tax)) : null}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
         <Text style={{ fontFamily: fonts.uiBold, fontSize: size + 1.5, color: '#111' }}>TOTAL</Text>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: size + 1.5, color: '#111' }}>{money(sub + tax)}</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: size + 1.5, color: '#111' }}>{money(total)}</Text>
       </View>
+      {d.showPaid ? <>{kv('Paid', money(paid))}{kv('Change', money(paid - total))}</> : null}
       <CodeMock code={d.code} caption={d.code !== 'none' ? 'INV-001' : undefined} />
       <Text style={{ textAlign: 'center', fontFamily: fonts.mono, fontSize: size - 0.5, color: '#333', marginTop: 8 }}>
         {d.foot || db.firm.footer || 'Thank you for your business'}
@@ -427,6 +608,8 @@ interface ReceiptDraft {
   head1: string; head2: string; phone: string; whatsapp: string; address: string;
   foot: string; taxName: string;
   showTax: boolean; showParty: boolean; showServed: boolean; showBatch: boolean; showExpiry: boolean; tight: boolean;
+  showRate: boolean; showUnit: boolean; showImei: boolean; showPaid: boolean;
+  title: string; style: ReceiptStyle; mode: 'thermal' | 'a4';
   code: CodeKind; codeData: CodeData; autoPrint: boolean; copies: number;
 }
 
@@ -446,6 +629,8 @@ export function ReceiptSettingsScreen() {
       foot: tpl?.foot || '', taxName: db.settings.taxName || 'Tax',
       showTax: tpl?.showTax ?? true, showParty: tpl?.showParty ?? true, showServed: tpl?.showServed ?? true,
       showBatch: tpl?.showBatch ?? false, showExpiry: tpl?.showExpiry ?? false, tight: tpl?.density === 'tight',
+      showRate: tpl?.showRate !== false, showUnit: tpl?.showUnit !== false, showImei: tpl?.showImei !== false, showPaid: tpl?.showPaid !== false,
+      title: tpl?.title || '', style: tpl?.receiptStyle || 'classic', mode: db.printer.receiptMode || 'thermal',
       code: tpl?.code || 'none', codeData: tpl?.codeData || 'no',
       autoPrint: db.printer.autoPrint, copies: db.printer.copies || 1,
     };
@@ -468,10 +653,12 @@ export function ReceiptSettingsScreen() {
         head: [d.head1.trim(), d.head2.trim()].filter(Boolean).join('\n'), foot: d.foot.trim(),
         showTax: d.showTax, showParty: d.showParty, showServed: d.showServed,
         showBatch: d.showBatch, showExpiry: d.showExpiry, density: d.tight ? 'tight' : 'normal',
+        showRate: d.showRate, showUnit: d.showUnit, showImei: d.showImei, showPaid: d.showPaid,
+        title: d.title.trim(), receiptStyle: d.style,
         code: d.code, codeData: d.codeData, codeCaption: d.code !== 'none',
       });
     }
-    setPrinter({ width: d.paper, autoPrint: d.autoPrint, copies: d.copies });
+    setPrinter({ width: d.paper, autoPrint: d.autoPrint, copies: d.copies, receiptMode: d.mode });
     // the paper in the default roll printer is what actually decides the layout
     const dp = defaultPrinter(db);
     if (dp && dp.kind !== 'pdf' && dp.width !== 'A4') updatePrinter(dp.id, { width: d.paper });
@@ -479,35 +666,74 @@ export function ReceiptSettingsScreen() {
     nav.goBack?.();
   }
 
-  const paperTile = (p: '58mm' | '80mm', chars: number) => {
-    const on = d.paper === p;
-    return (
-      <Pressable
-        key={p}
-        onPress={() => set({ paper: p })}
-        accessibilityRole="button"
-        accessibilityState={{ selected: on }}
-        style={{
-          flex: 1, alignItems: 'center', gap: 6, paddingVertical: 14, borderRadius: 14,
-          backgroundColor: on ? colors.accent : colors.sunk, borderWidth: 1, borderColor: on ? colors.accent : colors.line,
-        }}
-      >
-        <Icon name="receipt" size={20} color={on ? colors.accentInk : colors.soft} />
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: on ? colors.accentInk : colors.ink }}>{p.replace('mm', ' mm')}</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: on ? colors.accentInk : colors.faint }}>≈ {chars} chars/line</Text>
-      </Pressable>
-    );
-  };
+  const tile = (on: boolean, onPress: () => void, icon: IconName, title: string, sub: string) => (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+      style={{
+        flex: 1, alignItems: 'center', gap: 6, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 14,
+        backgroundColor: on ? colors.accent : colors.sunk, borderWidth: 1, borderColor: on ? colors.accent : colors.line,
+      }}
+    >
+      <Icon name={icon} size={20} color={on ? colors.accentInk : colors.soft} />
+      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accentInk : colors.ink }}>{title}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 11, textAlign: 'center', color: on ? colors.accentInk : colors.faint }}>{sub}</Text>
+    </Pressable>
+  );
 
   return (
     <Guard>
       <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+        <Section icon="print" title="Print receipts as" hint="How a sale's receipt comes out by default. Any receipt can still be shared as a PDF.">
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {tile(d.mode === 'thermal', () => set({ mode: 'thermal' }), 'receipt', 'Thermal roll', 'The till printer, 58 or 80 mm')}
+            {tile(d.mode === 'a4', () => set({ mode: 'a4' }), 'doc', 'A4 page', 'A full page, laid out like an invoice')}
+          </View>
+        </Section>
+
+        <Section icon="doc" title="Template" hint="How the receipt looks. Pick one, then fine-tune the switches below.">
+          <View style={{ gap: 8 }}>
+            {RECEIPT_STYLES.map((s) => {
+              const on = d.style === s.v;
+              return (
+                <Pressable
+                  key={s.v}
+                  onPress={() => set({ style: s.v, ...s.preset })}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, borderWidth: 1.4,
+                    borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accent : colors.ink }}>{s.l}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{s.sub}</Text>
+                  </View>
+                  {on ? <Icon name="check" size={18} color={colors.accent} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Section>
+
+        <Section icon="search" title="Preview">
+          <View style={{ backgroundColor: colors.sunk, borderRadius: 12, paddingVertical: 14 }}>
+            <ReceiptPreview d={d} />
+          </View>
+        </Section>
+
+        <Section icon="pencil" title="Title" hint="The heading printed on every receipt. Leave empty for 'Receipt'.">
+          <Field icon="pencil" placeholder="Receipt" value={d.title} onChangeText={(v) => set({ title: v })} />
+        </Section>
+
         <LogoSlot uri={d.logo} onChange={(logo) => set({ logo })} hint="Shown at the top of printed receipts and PDF invoices." />
 
         <Section icon="receipt" title="Paper size" hint="The width of the roll in your receipt printer.">
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            {paperTile('58mm', 32)}
-            {paperTile('80mm', 48)}
+            {tile(d.paper === '58mm', () => set({ paper: '58mm' }), 'receipt', '58 mm', '≈ 32 chars/line')}
+            {tile(d.paper === '80mm', () => set({ paper: '80mm' }), 'receipt', '80 mm', '≈ 48 chars/line')}
           </View>
         </Section>
 
@@ -530,14 +756,21 @@ export function ReceiptSettingsScreen() {
           <Field label="Tax label" icon="receipt" value={d.taxName} onChangeText={(v) => set({ taxName: v })} />
         </Section>
 
-        <Section icon="tools" title="Options">
+        <Section icon="tools" title="What prints">
           <ToggleRow bare label="Show logo" sub="Print the store logo at the top" on={d.showLogo} onChange={(v) => set({ showLogo: v })} />
+          <ToggleRow bare label="Show rate" sub="The price of one, beside the quantity" on={d.showRate} onChange={(v) => set({ showRate: v })} />
+          <ToggleRow bare label="Show unit" sub="pcs, kg, box after the quantity" on={d.showUnit} onChange={(v) => set({ showUnit: v })} />
+          <ToggleRow bare label="Show IMEI & condition" sub="The phone's IMEI(s) and New / Used under the item" on={d.showImei} onChange={(v) => set({ showImei: v })} />
           <ToggleRow bare label="Show tax line" sub={'Print the ' + (d.taxName || 'tax') + ' amount in the totals'} on={d.showTax} onChange={(v) => set({ showTax: v })} />
+          <ToggleRow bare label="Show paid & change" sub="What the customer handed over and got back" on={d.showPaid} onChange={(v) => set({ showPaid: v })} />
           <ToggleRow bare label="Show customer" sub="Print the customer's name and phone if given" on={d.showParty} onChange={(v) => set({ showParty: v })} />
           <ToggleRow bare label="Show who served" sub="Print the cashier's name" on={d.showServed} onChange={(v) => set({ showServed: v })} />
           <ToggleRow bare label="Show batch number" sub="Which lot each item came from" on={d.showBatch} onChange={(v) => set({ showBatch: v })} />
           <ToggleRow bare label="Show expiry date" sub="For perishables and pharmacy stock" on={d.showExpiry} onChange={(v) => set({ showExpiry: v })} />
           <ToggleRow bare label="Compact spacing" sub="Tighter lines — uses less paper" on={d.tight} onChange={(v) => set({ tight: v })} />
+        </Section>
+
+        <Section icon="print" title="After a sale">
           <ToggleRow bare label="Print automatically after a sale" on={d.autoPrint} onChange={(v) => set({ autoPrint: v })} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }}>
             <View style={{ flex: 1 }}>
@@ -554,12 +787,6 @@ export function ReceiptSettingsScreen() {
           {d.code !== 'none' ? (
             <SelectField label="What it holds" value={d.codeData} options={CODE_DATA_CHOICES} onChange={(v) => set({ codeData: v })} />
           ) : null}
-        </Section>
-
-        <Section icon="search" title="Preview">
-          <View style={{ backgroundColor: colors.sunk, borderRadius: 12, paddingVertical: 14 }}>
-            <ReceiptPreview d={d} />
-          </View>
         </Section>
 
         <SaveBar onSave={save} />
@@ -582,7 +809,7 @@ interface InvoiceDraft {
   logo?: string; showLogo: boolean;
   tagline: string; phone: string; whatsapp: string; email: string; website: string; address: string;
   bank: string; terms: string;
-  foot: string; taxName: string; style: InvoiceStyle; accent: string;
+  foot: string; taxName: string; style: InvoiceStyle; accent: string; title: string;
   showTax: boolean; showParty: boolean; showServed: boolean; showBatch: boolean; showExpiry: boolean;
   code: CodeKind; codeData: CodeData;
 }
@@ -814,7 +1041,7 @@ export function InvoiceSettingsScreen() {
       email: db.firm.email || '', website: db.firm.website || '', address: db.firm.address || '',
       bank: db.firm.bankDetails || '', terms: db.firm.terms || '',
       foot: tpl?.foot || '', taxName: db.settings.taxName || 'Tax',
-      style, accent: tpl?.accentColor || STYLE_ACCENT[style],
+      style, accent: tpl?.accentColor || STYLE_ACCENT[style], title: tpl?.title || '',
       showTax: tpl?.showTax ?? true, showParty: tpl?.showParty ?? true, showServed: tpl?.showServed ?? true,
       showBatch: tpl?.showBatch ?? false, showExpiry: tpl?.showExpiry ?? false,
       code: tpl?.code || 'none', codeData: tpl?.codeData || 'verify',
@@ -828,7 +1055,7 @@ export function InvoiceSettingsScreen() {
   function templatePatch(): Partial<PrintTemplate> {
     if (!d) return {};
     return {
-      style: d.style, showLogo: d.showLogo, foot: d.foot.trim(),
+      style: d.style, showLogo: d.showLogo, foot: d.foot.trim(), title: d.title.trim(),
       boxed: d.style === 'tally', accentColor: coloured ? d.accent : undefined,
       showTax: d.showTax, showParty: d.showParty, showServed: d.showServed,
       showBatch: d.showBatch, showExpiry: d.showExpiry,
@@ -939,6 +1166,10 @@ export function InvoiceSettingsScreen() {
           </View>
           <View style={{ height: 10 }} />
           <Button label="See the real page" loading={opening} icon={<Icon name="doc" size={16} color={colors.ink} />} onPress={openReal} />
+        </Section>
+
+        <Section icon="pencil" title="Title" hint="The heading on the page, e.g. Tax invoice or Proforma invoice. Leave empty to use the document's own name.">
+          <Field icon="pencil" placeholder="Invoice" value={d.title} onChangeText={(v) => set({ title: v })} />
         </Section>
 
         <LogoSlot uri={d.logo} onChange={(logo) => set({ logo })} hint="Shown at the top of PDF invoices and printed receipts." />

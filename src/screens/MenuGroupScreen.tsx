@@ -4,7 +4,7 @@ import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
-import { menuGroup } from '../data/menuGroups';
+import { menuGroup, itemShown } from '../data/menuGroups';
 import { EmptyState, Panel, ListRow } from '../components/ui';
 import { Icon } from '../components/icons';
 import { useGo } from '../nav/navigate';
@@ -19,7 +19,7 @@ export default function MenuGroupScreen({ route }: any) {
   if (!g) return <EmptyState icon="dots" title="Not found" />;
 
   const ctx = { db, dueRecurring, activeShift };
-  const items = g.items.filter((it) => canFor(db.session.role, it.perm));
+  const items = g.items.filter((it) => canFor(db.session.role, it.perm) && itemShown(it, db));
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16 }}>

@@ -181,7 +181,8 @@ export function toHtml(result: ReportResult, meta: ExportMeta = {}): string {
   .empty { text-align: center; color: #666; padding: 28px 10px; }
   .totals { margin-top: 16px; text-align: right; font-weight: 700; font-size: 12px; line-height: 20px; }
   .note { margin-top: 12px; font-size: 10px; color: #444; line-height: 1.5; }
-  .gen { position: fixed; bottom: -9mm; left: 0; font-size: 8.5px; color: #666; }
+  /* in the flow at the end, never pinned below the page: pinning it pushed it onto a page of its own */
+  .gen { margin-top: 14px; padding-top: 6px; border-top: 1px solid #ccc; font-size: 8.5px; color: #666; display: flex; justify-content: space-between; }
 </style></head><body>
   ${meta.firm ? `<div class="firm">${esc(meta.firm.toUpperCase())}</div>` : ''}
   ${contact ? `<div class="contact">${esc(contact)}</div>` : ''}
@@ -194,7 +195,7 @@ export function toHtml(result: ReportResult, meta: ExportMeta = {}): string {
   <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table>
   ${totals}
   ${result.note ? `<div class="note">${esc(result.note)}</div>` : ''}
-  ${meta.showGenerated !== false ? `<div class="gen">${esc(generated)}</div>` : ''}
+  ${meta.showGenerated !== false ? `<div class="gen"><span>${esc(generated)}</span><span>${esc(meta.firm || '')}</span></div>` : ''}
 </body></html>`;
 }
 
@@ -210,8 +211,27 @@ export async function toPdf(result: ReportResult, meta: ExportMeta = {}): Promis
 }
 
 /** Open the system print/preview dialog. */
+/**
+ * Opens the report as a PDF in a viewer the person picks. On Android that is
+ * the system "Open with" chooser (Drive, a PDF reader, the browser…); on iOS,
+ * which has no such chooser, the share sheet's Quick Look does the same job.
+ */
 export async function preview(result: ReportResult, meta: ExportMeta = {}): Promise<void> {
-  await Print.printAsync({ html: toHtml(result, meta), width: 595, height: 842 });
+  const uri = await toPdf(result, meta);
+  if (Platform.OS === 'android') {
+    const file = new File(uri);
+    await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+      data: file.contentUri || uri,
+      type: 'application/pdf',
+      // read permission for whichever app is chosen, and always show the chooser
+      flags: 1,
+      extra: { 'android.intent.extra.TITLE': result.title },
+    }).catch(async () => {
+      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Open ' + result.title + ' with' });
+    });
+    return;
+  }
+  await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: result.title });
 }
 
 /* ------------------------------------------------------------------ */

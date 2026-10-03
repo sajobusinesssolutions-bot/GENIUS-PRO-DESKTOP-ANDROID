@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, Pressable, TextInput } from 'react-native';
+import { View, Text, ScrollView, Alert, TextInput } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
@@ -53,24 +54,24 @@ export default function EditSaleScreen({ route, navigation }: Props) {
   }
 
   function save() {
-    if (!can('sales.edit')) { error('Your role cannot change a raised bill.'); return; }
+    if (!can('sales.edit')) { error('Your role cannot change a raised sale.'); return; }
     const kept = lines.filter((l) => l.qty > 0);
-    if (!kept.length) { error('A bill needs at least one line.'); return; }
+    if (!kept.length) { error('A sale needs at least one line.'); return; }
     const fresh = canEditSale(sale!.id);
     if (!fresh.ok) { error(fresh.why); return; }
     if (t.total === sale!.total && !linesChanged(sale!.lines, kept) && ref === (sale!.ref || '') && note === (sale!.note || '')) {
-      info('The bill is exactly as it was.');
+      info('The sale is exactly as it was.');
       return;
     }
     Alert.alert(
       'Save the change to ' + sale!.no + '?',
-      'The bill as it stands (' + money(sale!.total) + ') is reversed and reposted as ' + money(t.total) + ' under the same number. Both postings stay in the books.',
+      'The sale as it stands (' + money(sale!.total) + ') is reversed and reposted as ' + money(t.total) + ' under the same number. Both postings stay in the books.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Save', onPress: () => {
-            const out = editSale(sale!.id, { lines: kept, partyId: sale!.partyId, discount: Number(discount) || 0, ref, note }, 'Edited on the bill');
-            if (!out) { error('That bill can no longer be changed.'); return; }
+            const out = editSale(sale!.id, { lines: kept, partyId: sale!.partyId, discount: Number(discount) || 0, ref, note }, 'Edited on the sale');
+            if (!out) { error('That sale can no longer be changed.'); return; }
             logAudit('Sale edited', sale!.no + ' — ' + money(sale!.total) + ' to ' + money(out.total));
             navigation.replace('SaleDetail', { saleId: out.id });
           },
@@ -94,7 +95,7 @@ export default function EditSaleScreen({ route, navigation }: Props) {
               <Icon name="pencil" size={22} color={colors.warn} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: colors.ink }}>{sale.no}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{sale.no}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {sale.partyId ? party(sale.partyId)?.name : 'Walk-in'} · {new Date(sale.ts).toLocaleDateString()} · {sale.method}
               </Text>
@@ -104,7 +105,7 @@ export default function EditSaleScreen({ route, navigation }: Props) {
 
         <View style={{ height: 20 }} />
         <SectionLabel right={
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
             {lines.length} line{lines.length === 1 ? '' : 's'}
           </Text>
         }>
@@ -121,11 +122,11 @@ export default function EditSaleScreen({ route, navigation }: Props) {
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>{i + 1}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>{i + 1}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                   {money(l.price)} each{l.batchNo ? ' · batch ' + l.batchNo : ''}
                 </Text>
               </View>
@@ -134,13 +135,13 @@ export default function EditSaleScreen({ route, navigation }: Props) {
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 13 }}>
               <Pressable onPress={() => setQty(l.productId, l.qty - 1)} style={stepper(colors)}>
-                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 19 }}>−</Text>
+                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>−</Text>
               </Pressable>
-              <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>
-                {l.qty} <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>{l.unit}</Text>
+              <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>
+                {l.qty} <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{l.unit}</Text>
               </Text>
               <Pressable onPress={() => setQty(l.productId, l.qty + 1)} style={stepper(colors)}>
-                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 19 }}>+</Text>
+                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>+</Text>
               </Pressable>
               <Pressable
                 onPress={() => setQty(l.productId, 0)}
@@ -181,7 +182,7 @@ export default function EditSaleScreen({ route, navigation }: Props) {
         ) : null}
 
         <View style={{ height: 20 }} />
-        <SectionLabel>Bill details</SectionLabel>
+        <SectionLabel>Sale details</SectionLabel>
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Field icon="tag" label="Discount" value={discount} onChangeText={setDiscount} numeric decimal />

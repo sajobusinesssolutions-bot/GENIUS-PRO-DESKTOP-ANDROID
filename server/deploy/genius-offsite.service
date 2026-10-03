@@ -1,0 +1,10 @@
+[Unit]
+Description=Copy Genius backups and secrets off this server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/genius/repo/server/deploy/genius-offsite.sh
+# rclone reads its remotes from root's config (rclone config)
+Environment=HOME=/root

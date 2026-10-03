@@ -4,6 +4,7 @@ import { useTheme, spacing, radius, fonts, shadow, control } from '../theme';
 import { avatarFor } from '../data/helpers';
 import { Icon, IconName } from './icons';
 import { Tap, Rise } from './Tap';
+import { Field as FormField } from './form';
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
   const { colors } = useTheme();
@@ -51,7 +52,7 @@ export function Pill({ label, tone = 'default', icon }: { label: string; tone?: 
   return (
     <View style={{ backgroundColor: bg, borderRadius: radius.pill, paddingVertical: 3.5, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
       {icon}
-      <Text style={{ color: fg, fontFamily: fonts.uiBold, fontSize: 11 }}>{label}</Text>
+      <Text style={{ color: fg, fontFamily: fonts.uiBold, fontSize: 12.5 }}>{label}</Text>
     </View>
   );
 }
@@ -93,7 +94,7 @@ export function Button({ label, onPress, variant = 'default', size = 'md', disab
       ) : (
         icon
       )}
-      {!loading && <Text numberOfLines={1} style={{ color: fg, fontFamily: fonts.uiBold, fontSize: size === 'sm' ? 13.5 : 15 }}>{label}</Text>}
+      {!loading && <Text numberOfLines={1} style={{ color: fg, fontFamily: fonts.uiBold, fontSize: 15 }}>{label}</Text>}
     </Tap>
   );
 }
@@ -105,7 +106,7 @@ export function Screen({ children }: { children: React.ReactNode }) {
 
 export function Cap({ children, style }: { children: React.ReactNode; style?: any }) {
   const { colors } = useTheme();
-  return <Text style={[{ fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.7, color: colors.faint, textTransform: 'uppercase' }, style]}>{children}</Text>;
+  return <Text style={[{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 0.7, color: colors.faint, textTransform: 'uppercase' }, style]}>{children}</Text>;
 }
 
 export function Empty({ title, subtitle, actionLabel, onAction }: { title: string; subtitle?: string; actionLabel?: string; onAction?: () => void }) {
@@ -121,7 +122,7 @@ export function Chip({ label, on, onPress }: { label: string; on?: boolean; onPr
       flexDirection: 'row', alignItems: 'center', gap: 6,
     }}>
       {on ? <Icon name="check" size={13} color={colors.accentInk} /> : null}
-      <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13, color: on ? colors.accentInk : colors.soft }}>{label}</Text>
+      <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 12.5, color: on ? colors.accentInk : colors.soft }}>{label}</Text>
     </Tap>
   );
 }
@@ -155,8 +156,8 @@ export function Stat({ label, value, tone = 'default', compact }: {
       backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: bg,
       paddingVertical: compact ? 11 : 14, paddingHorizontal: compact ? 11 : 14, flex: 1, ...shadow.card,
     }}>
-      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: compact ? 11 : 12.5, color: colors.faint, marginBottom: 6 }}>{label}</Text>
-      <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: compact ? 16 : 20, color: tone === 'default' ? colors.ink : fg }}>{value}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 6 }}>{label}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: compact ? 15 : 20, color: tone === 'default' ? colors.ink : fg }}>{value}</Text>
     </View>
   );
 }
@@ -195,7 +196,7 @@ export function Banner({ tone, icon, text }: { tone: 'g' | 'w' | 'd'; icon: Icon
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: bg }}>
       <Icon name={icon} size={15} color={fg} />
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: fg }}>{text}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: fg }}>{text}</Text>
     </View>
   );
 }
@@ -210,8 +211,8 @@ export function KV({ label, value, bold, valueColor, last }: {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14, paddingVertical: 11,
       borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
     }}>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint, flexShrink: 1 }}>{label}</Text>
-      <Text style={{ fontFamily: bold ? fonts.uiBold : fonts.uiSemi, fontSize: 14.5, color: valueColor || colors.ink }}>{value}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint, flexShrink: 1 }}>{label}</Text>
+      <Text style={{ fontFamily: bold ? fonts.uiBold : fonts.uiSemi, fontSize: 15, color: valueColor || colors.ink }}>{value}</Text>
     </View>
   );
 }
@@ -224,7 +225,7 @@ export function KVNode({ label, children, last }: { label: string; children: Rea
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14, paddingVertical: 11,
       borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
     }}>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint }}>{label}</Text>
       {children}
     </View>
   );
@@ -266,8 +267,8 @@ export function Tile({ icon, iconColor, name, sub, onPress, horizontal }: {
     })}>
       <Icon name={icon} size={horizontal ? 16 : 17} color={iconColor || colors.rail} />
       <View style={{ flex: horizontal ? 1 : undefined, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.ink, lineHeight: 15 }}>{name}</Text>
-        {sub ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 10, color: colors.faint, marginTop: 1 }}>{sub}</Text> : null}
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, lineHeight: 17 }}>{name}</Text>
+        {sub ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>{sub}</Text> : null}
       </View>
     </Tap>
   );
@@ -280,17 +281,16 @@ export function SearchBar({ value, onChange, placeholder }: {
   const { colors } = useTheme();
   return (
     <View style={{ paddingVertical: 10, paddingHorizontal: 16, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.line }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.sunk, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, height: 50 }}>
-        <Icon name="search" size={18} color={colors.faint} />
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor={colors.faint}
-          style={{ flex: 1, height: 48, padding: 0, fontSize: 15, fontFamily: fonts.ui, color: colors.ink }}
-        />
-        {value ? <Tap onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Tap> : null}
-      </View>
+      <FormField
+        icon="search"
+        label={placeholder}
+        value={value}
+        onChangeText={onChange}
+        autoCorrect={false}
+        returnKeyType="search"
+        style={{ marginBottom: 0 }}
+        trailing={value ? <Tap onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Tap> : null}
+      />
     </View>
   );
 }
@@ -320,8 +320,8 @@ export function EmptyState({ icon, title, subtitle, action, actionLabel, onActio
   return (
     <View style={{ flex: 1, paddingVertical: 60, paddingHorizontal: 32, alignItems: 'center', justifyContent: 'center' }}>
       <Icon name={icon} size={48} color={colors.lineHard} />
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 16, color: colors.soft, marginTop: 16, marginBottom: 8, textAlign: 'center' }}>{title}</Text>
-      {subtitle ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 20, color: colors.faint, textAlign: 'center', marginBottom: 20 }}>{subtitle}</Text> : null}
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.soft, marginTop: 16, marginBottom: 8, textAlign: 'center' }}>{title}</Text>
+      {subtitle ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 20, color: colors.faint, textAlign: 'center', marginBottom: 20 }}>{subtitle}</Text> : null}
       {actionLabel && onAction ? (
         <View style={{ marginTop: 12 }}>
           <Button label={actionLabel} onPress={onAction} variant="pri" size="sm" />

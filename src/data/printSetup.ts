@@ -36,6 +36,12 @@ export function paperOf(p: Printer | undefined, fallback: Paper = '80mm'): Paper
 
 /** Everything printDoc needs for one document on one printer. */
 export function printOptsFor(db: DB | null | undefined, docKind: DocKind, printer?: Printer): PrintOpts {
+  // Receipt settings, "Print receipts as": an A4 page uses the invoice layout and the print dialog
+  if (docKind === 'receipt' && db?.printer?.receiptMode === 'a4' && !printer) {
+    const a4 = printOptsFor(db, 'invoice');
+    const p = defaultPrinter(db);
+    return { ...a4, paper: 'A4', printer: p && p.kind !== 'bluetooth' && p.kind !== 'wifi' ? p : undefined, openDrawer: !!db.printer.openDrawer };
+  }
   const tplId = db?.templateFor?.[docKind];
   const found = db?.templates?.find((t) => t.id === tplId);
   // "Copies per bill" under Printing is the shop's rule; the template's is its own default
@@ -43,9 +49,25 @@ export function printOptsFor(db: DB | null | undefined, docKind: DocKind, printe
   const p = printer || defaultPrinter(db);
   return {
     tpl,
-    paper: p ? paperOf(p) : tpl?.paper,
+    // 'Save as PDF' takes the template's own paper: a thermal receipt stays roll-sized,
+    // an invoice stays A4. Only a real printer's paper overrides the template.
+    paper: p && p.kind !== 'pdf' ? paperOf(p) : tpl?.paper || (p ? paperOf(p) : undefined),
     printerUrl: Platform.OS === 'ios' ? p?.url : undefined,
+    printer: p,
+    // the drawer opens for a sale, not for reprinting a quotation
+    openDrawer: docKind === 'receipt' && !!db?.printer?.openDrawer,
   };
+}
+
+/**
+ * How a document is laid out when it is shared as a PDF: always an A4 page.
+ * A receipt set up for a roll printer borrows the shop's A4 invoice layout,
+ * so what lands in WhatsApp or an email is a full page, not a till strip.
+ */
+export function shareOptsFor(db: DB | null | undefined, docKind: DocKind): PrintOpts {
+  const own = printOptsFor(db, docKind);
+  const base = own.tpl?.kind === 'thermal' || own.tpl?.paper !== 'A4' ? printOptsFor(db, 'invoice') : own;
+  return { ...base, paper: 'A4', printer: undefined, printerUrl: undefined, openDrawer: false };
 }
 
 /**

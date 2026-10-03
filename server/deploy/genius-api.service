@@ -1,0 +1,20 @@
+# The API itself. On a new server copy this to /etc/systemd/system/ and
+# check EnvironmentFile names the file(s) your secrets are in (ls /etc/genius).
+[Unit]
+Description=Genius POS sync API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=genius
+Group=genius
+WorkingDirectory=/opt/genius/api
+EnvironmentFile=/etc/genius/api.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

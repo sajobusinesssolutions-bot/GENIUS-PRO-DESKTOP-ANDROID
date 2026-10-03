@@ -10,14 +10,32 @@ import nodemailer from 'nodemailer';
 
 let transport = null;
 
+/*
+ * Either one SMTP_URL (what .env.example documents) or the separate
+ * SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS. Reading only the separate
+ * ones meant a server set up from .env.example sent no codes at all.
+ */
+function smtpUrl() {
+  const url = (process.env.SMTP_URL || '').trim();
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (!u.hostname || u.hostname === 'smtp.example.com') return null;
+    if (!u.password || decodeURIComponent(u.password) === 'CHANGE_ME') return null;
+    return url;
+  } catch { return null; }
+}
+
 export function mailConfigured() {
+  if (smtpUrl()) return true;
   const pass = process.env.SMTP_PASS || '';
   return Boolean(process.env.SMTP_HOST && pass && pass !== 'CHANGE_ME');
 }
 
 function get() {
   if (!transport) {
-    transport = nodemailer.createTransport({
+    const url = smtpUrl();
+    transport = url ? nodemailer.createTransport(url) : nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT || 465),
       secure: Number(process.env.SMTP_PORT || 465) === 465,

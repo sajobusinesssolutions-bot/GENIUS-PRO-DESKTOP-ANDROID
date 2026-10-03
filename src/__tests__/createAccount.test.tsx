@@ -69,6 +69,8 @@ const type = (placeholder: string, text: string) =>
   fireEvent.changeText(screen.getByPlaceholderText(placeholder), text);
 
 const next = () => fireEvent.press(screen.getByText('Next'));
+/** The six boxes sit over one hidden field; typing into it is typing the code. */
+const typeCode = (text: string) => fireEvent.changeText(screen.getByTestId('code-input'), text);
 
 describe('the stages', () => {
   it('asks who owns the business first', () => {
@@ -114,7 +116,7 @@ describe('with no server configured', () => {
     type('Your email address', 'owner@example.com');
     next();
     await waitFor(() => expect(screen.getByText('Choose a password')).toBeTruthy());
-    expect(screen.queryByText('Confirm your email')).toBeNull();
+    expect(screen.queryByText('Enter the code')).toBeNull();
     expect(mockApi.signUpCode).not.toHaveBeenCalled();
   });
 
@@ -179,7 +181,7 @@ describe('with a server configured', () => {
     await waitFor(() => screen.getByText('Your email address'));
     type('Your email address', 'owner@example.com');
     next();
-    await waitFor(() => expect(screen.getByText('Confirm your email')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Enter the code')).toBeTruthy());
     expect(mockApi.signUpCode).toHaveBeenCalledWith('owner@example.com', 'Ada');
   });
 
@@ -190,10 +192,11 @@ describe('with a server configured', () => {
     await waitFor(() => screen.getByText('Your email address'));
     type('Your email address', 'owner@example.com');
     next();
-    await waitFor(() => screen.getByText('Confirm your email'));
-    type('000000', '1234');
+    await waitFor(() => screen.getByText('Enter the code'));
+    typeCode('1234');
     next();
-    expect(mockError).toHaveBeenCalledWith('The code is six digits.');
+    expect(screen.getByText('Enter all six digits of the code.')).toBeTruthy();
+    expect(screen.queryByText('Choose a password')).toBeNull();
   });
 
   it('stops and explains when the server refuses the code', async () => {
@@ -206,9 +209,8 @@ describe('with a server configured', () => {
     await waitFor(() => screen.getByText('Your email address'));
     type('Your email address', 'owner@example.com');
     next();
-    await waitFor(() => screen.getByText('Confirm your email'));
-    type('000000', '123456');
-    next();
+    await waitFor(() => screen.getByText('Enter the code'));
+    typeCode('123456');
     await waitFor(() => screen.getByText('Choose a password'));
     type('At least 8 characters', 'sugar and salt and rice');
     type('The same password', 'sugar and salt and rice');
@@ -226,9 +228,8 @@ describe('with a server configured', () => {
     await waitFor(() => screen.getByText('Your email address'));
     type('Your email address', 'owner@example.com');
     next();
-    await waitFor(() => screen.getByText('Confirm your email'));
-    type('000000', '123456');
-    next();
+    await waitFor(() => screen.getByText('Enter the code'));
+    typeCode('123456');
     await waitFor(() => screen.getByText('Choose a password'));
     type('At least 8 characters', 'sugar and salt and rice');
     type('The same password', 'sugar and salt and rice');
@@ -250,13 +251,12 @@ describe('the code is checked the moment it is entered', () => {
     await waitFor(() => screen.getByText('Your email address'));
     type('Your email address', 'owner@example.com');
     next();
-    await waitFor(() => screen.getByText('Confirm your email'));
+    await waitFor(() => screen.getByText('Enter the code'));
   }
 
-  it('checks a code before moving on, not at the end', async () => {
+  it('checks the code the moment the sixth digit is in, not at the end', async () => {
     await toConfirm();
-    type('000000', '123456');
-    next();
+    typeCode('123456');
     await waitFor(() => expect(mockApi.verify).toHaveBeenCalledWith('owner@example.com', '123456', 'signup'));
   });
 
@@ -265,12 +265,11 @@ describe('the code is checked the moment it is entered', () => {
       ok: false, error: { failure: 'badCode', message: 'That code is not right. 4 attempts left.' },
     }));
     await toConfirm();
-    type('000000', '999999');
-    next();
+    typeCode('999999');
 
-    await waitFor(() => expect(mockError).toHaveBeenCalledWith('That code is not right. 4 attempts left.'));
+    await waitFor(() => expect(screen.getByText('That code is not right. 4 attempts left.')).toBeTruthy());
     // still on the code step, rather than three screens further on
-    expect(screen.getByText('Confirm your email')).toBeTruthy();
+    expect(screen.getByText('Enter the code')).toBeTruthy();
     expect(screen.queryByText('Choose a password')).toBeNull();
   });
 
@@ -279,23 +278,33 @@ describe('the code is checked the moment it is entered', () => {
       ok: false, error: { failure: 'codeExpired', message: 'That code has expired. Ask for a new one.' },
     }));
     await toConfirm();
-    type('000000', '123456');
-    next();
-    await waitFor(() => expect(mockError).toHaveBeenCalledWith('That code has expired. Ask for a new one.'));
+    typeCode('123456');
+    await waitFor(() => expect(screen.getByText('That code has expired. Ask for a new one.')).toBeTruthy());
   });
 
   it('moves on once the code is accepted', async () => {
     await toConfirm();
-    type('000000', '123456');
-    next();
+    typeCode('123456');
     await waitFor(() => expect(screen.getByText('Choose a password')).toBeTruthy());
   });
 
   it('does not call the server for a half-typed code', async () => {
     await toConfirm();
-    type('000000', '1234');
+    typeCode('1234');
     next();
     expect(mockApi.verify).not.toHaveBeenCalled();
-    expect(mockError).toHaveBeenCalledWith('The code is six digits.');
+    expect(screen.getByText('Enter all six digits of the code.')).toBeTruthy();
+  });
+
+  it('tells the owner to look in spam', async () => {
+    await toConfirm();
+    expect(screen.getByText(/Open your Spam or Junk folder/)).toBeTruthy();
+  });
+
+  it('waits out a cooldown before another code can be sent', async () => {
+    await toConfirm();
+    expect(screen.getByText(/Send a new code in 0:/)).toBeTruthy();
+    fireEvent.press(screen.getByText(/Send a new code in 0:/));
+    expect(mockApi.signUpCode).toHaveBeenCalledTimes(1);
   });
 });

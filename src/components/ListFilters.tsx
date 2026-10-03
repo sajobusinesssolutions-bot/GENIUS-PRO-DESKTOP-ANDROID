@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Platform } from 'react-native';
+import { Pressable } from './Press';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts, radius } from '../theme';
 import { Button, SelectField } from './ui';
@@ -52,8 +53,8 @@ export function ListFilters({
         >
           <Icon name="tools" size={14} color={filterValue === 'all' ? colors.faint : colors.accent} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: colors.faint, letterSpacing: 0.35, textTransform: 'uppercase' }}>{filterLabel}</Text>
-            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: filterValue === 'all' ? colors.soft : colors.accent }}>{selectedFilter}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, letterSpacing: 0.35, textTransform: 'uppercase' }}>{filterLabel}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: filterValue === 'all' ? colors.soft : colors.accent }}>{selectedFilter}</Text>
           </View>
           <Icon name="down" size={12} color={colors.faint} />
         </Pressable> : null}
@@ -63,8 +64,8 @@ export function ListFilters({
         >
           <Icon name="calendar" size={14} color={colors.accent} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: colors.faint, letterSpacing: 0.35, textTransform: 'uppercase' }}>Date</Text>
-            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.ink }}>{dateLabel}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, letterSpacing: 0.35, textTransform: 'uppercase' }}>Date</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{dateLabel}</Text>
           </View>
           <Icon name="down" size={12} color={colors.faint} />
         </Pressable>
@@ -90,8 +91,8 @@ export function ListFilters({
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {(['from', 'to'] as const).map((which) => (
             <Pressable key={which} onPress={() => setPicker(which)} style={{ flex: 1, minHeight: 58, justifyContent: 'center', paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1.2, borderColor: colors.line, backgroundColor: colors.surface }}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>{which === 'from' ? 'From' : 'To'}</Text>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink, marginTop: 4 }}>{which === 'from' ? draftFrom : draftTo}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{which === 'from' ? 'From' : 'To'}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink, marginTop: 4 }}>{which === 'from' ? draftFrom : draftTo}</Text>
             </Pressable>
           ))}
         </View>
@@ -100,7 +101,8 @@ export function ListFilters({
             value={parseDate(picker === 'from' ? draftFrom : draftTo)}
             mode="date"
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={(_event, value) => {
+            onDismiss={() => setPicker(null)}
+            onValueChange={(_event, value) => {
               setPicker(null);
               if (!value) return;
               const next = dateText(value);

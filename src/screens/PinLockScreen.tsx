@@ -12,8 +12,11 @@
  *    code to the owner's account address (see PinResetSheet). Staff are told to
  *    ask the owner, who resets theirs under Staff & roles.
  */
-import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, Alert, ScrollView } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, Alert, ScrollView, Animated as RNAnimated } from 'react-native';
+import { Pressable } from '../components/Press';
+import { Tap } from '../components/Tap';
+import { Logo } from '../components/Logo';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
@@ -26,6 +29,68 @@ import type { RootStackParamList } from '../nav/types';
 type Props = NativeStackScreenProps<RootStackParamList, 'PinLock'>;
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Four dots that pop as they fill, and shake together on a wrong PIN. */
+function PinDots({ filled, error }: { filled: number; error: boolean }) {
+  const { colors } = useTheme();
+  const shake = useRef(new RNAnimated.Value(0)).current;
+  const pops = useRef([0, 1, 2, 3].map(() => new RNAnimated.Value(1))).current;
+  const last = useRef(0);
+  useEffect(() => {
+    if (filled > last.current && filled <= 4) {
+      const v = pops[filled - 1];
+      v.setValue(0.4);
+      RNAnimated.spring(v, { toValue: 1, damping: 8, stiffness: 320, mass: 0.6, useNativeDriver: true }).start();
+    }
+    last.current = filled;
+  }, [filled, pops]);
+  useEffect(() => {
+    if (!error) return;
+    shake.setValue(0);
+    RNAnimated.sequence([12, -12, 8, -8, 4, 0].map((x) =>
+      RNAnimated.timing(shake, { toValue: x, duration: 45, useNativeDriver: true }))).start();
+  }, [error, shake]);
+  return (
+    <RNAnimated.View style={{ flexDirection: 'row', justifyContent: 'center', gap: 18, paddingTop: 26, paddingBottom: 12, transform: [{ translateX: shake }] }}>
+      {[0, 1, 2, 3].map((i) => {
+        const on = i < filled;
+        return (
+          <RNAnimated.View key={i} style={{
+            width: 16, height: 16, borderRadius: 8, borderWidth: 2,
+            borderColor: error ? colors.danger : on ? colors.accent : colors.lineHard,
+            backgroundColor: error ? colors.danger : on ? colors.accent : 'transparent',
+            transform: [{ scale: pops[i] }],
+          }} />
+        );
+      })}
+    </RNAnimated.View>
+  );
+}
+
+/** A round key that presses in and springs back, with a light tick. */
+function PinKey({ k, onPress }: { k: string; onPress: () => void }) {
+  const { colors } = useTheme();
+  if (!k) return <View style={{ width: 74, height: 74 }} />;
+  const del = k === 'del';
+  return (
+    <Tap
+      feel="spring"
+      scaleTo={0.88}
+      onPress={onPress}
+      accessibilityLabel={del ? 'Delete' : k}
+      style={({ pressed }) => ({
+        width: 74, height: 74, borderRadius: 37, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: del ? 'transparent' : pressed ? colors.accent : colors.surface,
+        borderWidth: del ? 0 : 1, borderColor: colors.line,
+        ...(del ? null : { shadowColor: '#0B1D2A', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }),
+      })}
+    >
+      {({ pressed }) => del
+        ? <Icon name="back" size={24} color={pressed ? colors.accent : colors.faint} />
+        : <Text style={{ fontFamily: fonts.uiBold, fontSize: 27, color: pressed ? colors.accentInk : colors.ink }}>{k}</Text>}
+    </Tap>
+  );
+}
 
 export default function PinLockScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -80,13 +145,18 @@ export default function PinLockScreen({ navigation }: Props) {
     if (next.length === 4) setTimeout(() => enter(next), 80);
   }
 
+  /**
+   * Reset by a one-time code. It always goes to the owner's email, never to an
+   * address typed here: for the owner that is their own inbox, and for staff it
+   * means the owner reads the code out, so a PIN is never reset without them.
+   */
   function forgot() {
     if (!user) return;
-    if (user.role === 'owner') { setResetOpen(true); return; }
-    Alert.alert(
-      'Forgot your PIN?',
-      'Ask the owner to set you a new one under Settings, Staff & roles. For the shop\'s safety, staff PINs cannot be reset from this screen.',
-    );
+    if (!ownerEmail) {
+      Alert.alert('Forgot your PIN?', 'This shop has no owner email on record, so a code cannot be sent. The owner can set a new PIN under Settings, Staff & roles.');
+      return;
+    }
+    setResetOpen(true);
   }
 
   function resetDone(newPin: string) {
@@ -103,14 +173,14 @@ export default function PinLockScreen({ navigation }: Props) {
         <Icon name="home" size={20} color={colors.accent} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{db?.firm.name || 'This shop'}</Text>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{db?.firm.name || 'This shop'}</Text>
         <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
           {account?.email ? account.email : 'On this phone'}
         </Text>
       </View>
       {account ? (
         <Pressable hitSlop={8} onPress={() => navigation.navigate('Businesses' as never)}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Switch</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Switch</Text>
         </Pressable>
       ) : null}
     </View>
@@ -135,7 +205,7 @@ export default function PinLockScreen({ navigation }: Props) {
               transform: [{ scale: pressed && !off ? 0.96 : 1 }],
             })}
           >
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: off ? colors.faint : on ? colors.accent : colors.soft, textDecorationLine: off ? 'line-through' : 'none' }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: off ? colors.faint : on ? colors.accent : colors.soft, textDecorationLine: off ? 'line-through' : 'none' }}>
               {w.name}{off ? ' · disabled' : ''}
             </Text>
           </Pressable>
@@ -150,11 +220,9 @@ export default function PinLockScreen({ navigation }: Props) {
         {shopHead}
         {branchRow}
         <View style={{ alignItems: 'center', paddingVertical: 26 }}>
-          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="lock" size={32} color={colors.accent} />
-          </View>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: colors.ink, marginTop: 16 }}>Who is at the till?</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.faint, marginTop: 6 }}>Pick your profile, then enter its PIN.</Text>
+          <Logo size={64} />
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 16 }}>Who is at the till?</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6 }}>Pick your profile, then enter its PIN.</Text>
         </View>
         <SectionLabel>Profiles</SectionLabel>
         <Panel flush>
@@ -185,60 +253,48 @@ export default function PinLockScreen({ navigation }: Props) {
       <View style={{ paddingHorizontal: 16, paddingTop: 52 }}>{shopHead}{branchRow}</View>
       <View style={{ alignItems: 'center', paddingTop: 22 }}>
         <Avatar name={user.name} id={user.id} size={70} />
-        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 21, color: colors.ink, marginTop: 14 }}>{user.name}</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.faint, marginTop: 5, textAlign: 'center', paddingHorizontal: 30 }}>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 14 }}>{user.name}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 5, textAlign: 'center', paddingHorizontal: 30 }}>
           {cap(user.role)} · {prompt}
         </Text>
         {users.length > 1 ? (
           <Pressable onPress={() => { setSelected(''); setPin(''); setFirst(''); }} hitSlop={8} style={({ pressed }) => ({ marginTop: 10, opacity: pressed ? 0.65 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.accent }}>Not you? Switch profile</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Not you? Switch profile</Text>
           </Pressable>
         ) : null}
       </View>
-      {staffWithoutPin ? null : (
+      {staffWithoutPin ? (
+        <Pressable onPress={forgot} hitSlop={8} style={{ alignSelf: 'center', marginTop: 18 }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Reset it with an email code</Text>
+        </Pressable>
+      ) : (
         <>
-          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, paddingVertical: 26 }}>
-            {[0, 1, 2, 3].map((i) => (
-              <View key={i} style={{
-                width: 15, height: 15, borderRadius: 8,
-                backgroundColor: err ? colors.danger : i < pin.length ? colors.accent : colors.lineHard,
-              }} />
-            ))}
-          </View>
-          <Text style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger, marginTop: -12, minHeight: 18 }}>
+          <PinDots filled={pin.length} error={!!err} />
+          <Text style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger, minHeight: 18 }}>
             {err}
           </Text>
-          {!choosing ? (
-            <Pressable onPress={forgot} hitSlop={8} style={{ alignSelf: 'center', marginTop: 4 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.accent }}>Forgot PIN?</Text>
-            </Pressable>
-          ) : null}
         </>
       )}
-      <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: 30 }}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: 26 }}>
         {staffWithoutPin ? null : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', paddingHorizontal: 28, gap: 12 }}>
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((k, i) => (
-              <Pressable
-                key={i}
-                disabled={!k}
-                accessibilityLabel={k === 'del' ? 'Delete' : k}
-                onPress={() => (k === 'del' ? setPin(pin.slice(0, -1)) : k ? press(k) : undefined)}
-                android_ripple={{ color: colors.accentSoft }}
-                style={({ pressed }) => ({
-                  width: '30%', height: 62, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: k && k !== 'del' ? (pressed ? colors.accentSoft : colors.surface) : 'transparent',
-                  transform: [{ scale: pressed && !!k ? 0.94 : 1 }],
-                  ...(k && k !== 'del' ? { shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2 } : null),
-                })}
-              >
-                {k === 'del'
-                  ? <Icon name="back" size={24} color={colors.faint} />
-                  : <Text style={{ fontFamily: fonts.uiBold, fontSize: 25, color: colors.ink }}>{k}</Text>}
-              </Pressable>
+          <View style={{ alignSelf: 'center', width: '100%', maxWidth: 320, paddingHorizontal: 20 }}>
+            {[['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['', '0', 'del']].map((row, r) => (
+              <View key={r} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 }}>
+                {row.map((k, i) => <PinKey key={i} k={k} onPress={() => (k === 'del' ? setPin(pin.slice(0, -1)) : press(k))} />)}
+              </View>
             ))}
           </View>
         )}
+        {!choosing ? (
+          <Pressable
+            onPress={forgot}
+            hitSlop={10}
+            style={({ pressed }) => ({ alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: pressed ? colors.accentSoft : 'transparent' })}
+          >
+            <Icon name="mail" size={16} color={colors.accent} />
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Forgot PIN? Reset with an email code</Text>
+          </Pressable>
+        ) : null}
       </View>
       <PinResetSheet visible={resetOpen} email={ownerEmail} onClose={() => setResetOpen(false)} onDone={resetDone} />
     </View>

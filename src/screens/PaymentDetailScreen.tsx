@@ -87,10 +87,10 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 8 }}>
         <View style={{ padding: 16, borderRadius: 14, alignItems: 'center', backgroundColor: inbound ? colors.goodSoft : colors.dangerSoft }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 10.5, letterSpacing: 0.6, color: colors.faint }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 0.6, color: colors.faint }}>
             {(inbound ? 'RECEIVED FROM' : 'PAID TO')}
           </Text>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink, marginTop: 2 }}>{pt?.name || '—'}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginTop: 2 }}>{pt?.name || '—'}</Text>
           <Text style={{ fontFamily: fonts.monoSemi, fontSize: 26, color: colors.ink, marginTop: 6 }}>{money(pay.amount)}</Text>
         </View>
 
@@ -116,7 +116,7 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
                     onPress={() => (inbound
                       ? navigation.navigate('SaleDetail', { saleId: a.docId } as any)
                       : navigation.navigate('PurchaseDetail', { purchaseId: a.docId } as any))}
-                    style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent, paddingVertical: 7, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line }}
+                    style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accent, paddingVertical: 7, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line }}
                   >
                     {a.no}  ·  {money(a.amount)}
                   </Text>
@@ -147,7 +147,7 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
       </ScrollView>
 
       <View style={{ padding: 12, gap: 8, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.surface }}>
-        {!gate.ok && <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{gate.why}</Text>}
+        {!gate.ok && <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{gate.why}</Text>}
         {editing ? (
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <View style={{ flex: 1 }}><Button label="Cancel" size="sm" onPress={() => setEditing(false)} /></View>

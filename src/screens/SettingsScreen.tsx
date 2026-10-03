@@ -21,10 +21,12 @@ import {
   Card, Cap, Button, Avatar, KV, EmptyState, TopTabs,
   SettingGroup, SettingRow, SettingToggle, SettingSeg, Field, SelectField, FieldNote,
 } from '../components/ui';
+import { Pressable } from '../components/Press';
 import { Icon, IconName } from '../components/icons';
 import { Sheet } from '../components/Sheet';
 import { useGo } from '../nav/navigate';
 import { plural } from '../data/helpers';
+import { planSummary } from '../data/logic';
 import { NUMBER_LABEL, BUILD } from '../data/defaults';
 import type { NumberingKey, Settings, BelowCost, Costing } from '../data/types';
 
@@ -56,6 +58,7 @@ export default function SettingsScreen() {
   const set = (patch: Partial<Settings>) => setSetting(patch);
   const wh = db.warehouses.find((w) => w.id === s.defaultWarehouse);
   const activePeople = db.users.filter((u) => u.active).length;
+  const plan = planSummary(db);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -75,20 +78,25 @@ export default function SettingsScreen() {
         {tab === 'general' ? (
           <>
             {/* the business profile card, reference 6718 */}
-            <Card style={{ padding: 14, marginBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Avatar name={db.firm.name} id={db.firm.id} size={48} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{db.firm.name}</Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                  TIN {db.firm.tin || '—'} · {db.firm.phone || '—'}
-                </Text>
-              </View>
-              <Button size="sm" label="Edit" onPress={() => setSheet('firm')} />
-            </Card>
+            {/* the business, and the one way in to all its details */}
+            <Pressable onPress={() => go('Business')} accessibilityLabel="Edit business details" style={{ marginBottom: 20 }}>
+              <Card style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Avatar name={db.firm.name} id={db.firm.id} size={44} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{db.firm.name}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
+                    {[db.firm.tin ? 'TIN ' + db.firm.tin : '', db.firm.phone].filter(Boolean).join(' · ') || 'Add your phone, address and logo'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 32, paddingHorizontal: 11, borderRadius: 10, backgroundColor: colors.accentSoft }}>
+                  <Icon name="pencil" size={13} color={colors.accent} />
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Edit</Text>
+                </View>
+              </Card>
+            </Pressable>
 
             {/* Company — reference the wrapper at 15396 */}
             <SettingGroup title="Company">
-              <SettingRow icon="owner" label="Company details" value={db.firm.name} onPress={() => go('Business')} />
               <SettingRow icon="factory" label="Businesses on this device" value={plural(db.firms.length, 'business', 'businesses')} onPress={() => go('Firms')} />
             </SettingGroup>
 
@@ -101,31 +109,27 @@ export default function SettingsScreen() {
               <SettingRow icon="pie" label="Decimals" value={String(s.decimals)} onPress={() => setSheet('money')} />
             </SettingGroup>
 
-            <SettingGroup title="Appearance">
-              <SettingSeg
-                label="Theme"
-                value={s.theme}
-                options={[{ v: 'auto' as const, l: 'Auto' }, { v: 'light' as const, l: 'Light' }, { v: 'dark' as const, l: 'Dark' }]}
-                onChange={(v) => set({ theme: v })}
-              />
-            </SettingGroup>
           </>
         ) : null}
 
         {tab === 'selling' ? (
           <>
+            <SettingGroup title="Payment reminders">
+              <SettingRow icon="share" label="Reminders and their messages" value={s.reminders?.enabled === false ? 'Off' : 'On'} onPress={() => go('ReminderSettings')} />
+            </SettingGroup>
+
             <SettingGroup title="Selling & the till">
               <SettingRow icon="cash" label="Default payment" value={s.defaultMethod} onPress={() => setSheet('till')} />
               <SettingRow icon="coins" label="Round totals to" value={s.roundTo ? 'nearest ' + s.roundTo : 'no rounding'} onPress={() => setSheet('till')} />
               <SettingRow icon="tag" label="Biggest discount a cashier may give" value={s.maxDiscountPct + '%'} onPress={() => setSheet('till')} />
-              <SettingToggle label="A shift must be open to sell" on={s.requireShift} onChange={(v) => set({ requireShift: v })} />
-              <SettingToggle label="Ask for the customer on every sale" on={s.askCustomer} onChange={(v) => set({ askCustomer: v })} />
-              <SettingToggle label="Let staff change the price at the till" on={s.allowPriceEdit} onChange={(v) => set({ allowPriceEdit: v })} />
+              <SettingToggle icon="clock" label="A shift must be open to sell" on={s.requireShift} onChange={(v) => set({ requireShift: v })} />
+              <SettingToggle icon="user" label="Ask for the customer on every sale" on={s.askCustomer} onChange={(v) => set({ askCustomer: v })} />
+              <SettingToggle icon="pencil" label="Let staff change the price at the till" on={s.allowPriceEdit} onChange={(v) => set({ allowPriceEdit: v })} />
             </SettingGroup>
 
             {/* Selling rules — reference the wrapper at 15407 */}
             <SettingGroup title="Selling rules">
-              <SettingToggle label="Refuse to sell what is not in stock" on={s.blockNegativeStock} onChange={(v) => set({ blockNegativeStock: v, allowNegativeStock: !v })} />
+              <SettingToggle icon="box" label="Refuse to sell what is not in stock" on={s.blockNegativeStock} onChange={(v) => set({ blockNegativeStock: v, allowNegativeStock: !v })} />
               <SettingRow
                 icon="alert"
                 label="Stop selling below cost"
@@ -136,7 +140,7 @@ export default function SettingsScreen() {
 
             <SettingGroup title="Tax">
               <SettingToggle
-                label="Charge tax on sales"
+                icon="pie" label="Charge tax on sales"
                 sub="Off means no tax is added, shown on a bill, or reported"
                 on={s.taxEnabled !== false}
                 onChange={(v) => set({ taxEnabled: v })}
@@ -148,7 +152,7 @@ export default function SettingsScreen() {
                 <SettingRow icon="pie" label="Rate" value={s.taxRate + '%'} onPress={() => setSheet('tax')} />
               ) : null}
               {s.taxEnabled !== false ? (
-                <SettingToggle label="Prices already include tax" on={s.pricesIncludeTax} onChange={(v) => set({ pricesIncludeTax: v })} />
+                <SettingToggle icon="receipt" label="Prices already include tax" on={s.pricesIncludeTax} onChange={(v) => set({ pricesIncludeTax: v })} />
               ) : null}
             </SettingGroup>
           </>
@@ -159,10 +163,10 @@ export default function SettingsScreen() {
             <SettingGroup title="Stock">
               <SettingRow icon="box" label="Sell stock from" value={wh?.name || '—'} onPress={() => setSheet('stock')} />
               <SettingRow icon="chart" label="Costing" value={s.costing === 'average' ? 'Weighted average' : 'Last cost'} onPress={() => setSheet('stock')} />
-              <SettingToggle label="Buy and sell in a second unit" on={s.useSecondaryUnit} onChange={(v) => set({ useSecondaryUnit: v })} />
-              <SettingToggle label="Warn when stock runs low" on={s.lowStockAlerts} onChange={(v) => set({ lowStockAlerts: v })} />
-              <SettingToggle label="Allow selling below zero" on={s.allowNegativeStock} onChange={(v) => set({ allowNegativeStock: v, blockNegativeStock: !v })} />
-              <SettingToggle label="Track batches and expiry" on={s.trackBatches} onChange={(v) => set({ trackBatches: v })} />
+              <SettingToggle icon="swap" label="Buy and sell in a second unit" on={s.useSecondaryUnit} onChange={(v) => set({ useSecondaryUnit: v })} />
+              <SettingToggle icon="alert" label="Warn when stock runs low" on={s.lowStockAlerts} onChange={(v) => set({ lowStockAlerts: v })} />
+              <SettingToggle icon="down" label="Allow selling below zero" on={s.allowNegativeStock} onChange={(v) => set({ allowNegativeStock: v, blockNegativeStock: !v })} />
+              <SettingToggle icon="calendar" label="Track batches and expiry" on={s.trackBatches} onChange={(v) => set({ trackBatches: v })} />
             </SettingGroup>
 
             {/* Document numbers — reference 6817 */}
@@ -183,9 +187,9 @@ export default function SettingsScreen() {
         {tab === 'security' ? (
           <>
             <SettingGroup title="Security">
-              <SettingToggle label="Ask for a PIN when the app opens" on={s.lockOnOpen} onChange={(v) => set({ lockOnOpen: v })} />
+              <SettingToggle icon="lock" label="Ask for a PIN when the app opens" on={s.lockOnOpen} onChange={(v) => set({ lockOnOpen: v })} />
               <SettingRow icon="lock" label="Lock after" value={s.autoLockMins ? s.autoLockMins + ' minutes idle' : 'never'} onPress={() => setSheet('security')} />
-              <SettingToggle label="Hide cost prices from cashiers" on={s.hideCostFromCashier} onChange={(v) => set({ hideCostFromCashier: v })} />
+              <SettingToggle icon="shield" label="Hide cost prices from cashiers" on={s.hideCostFromCashier} onChange={(v) => set({ hideCostFromCashier: v })} />
               <SettingRow icon="user" label="Users and roles" value={plural(activePeople, 'person', 'people')} onPress={() => go('UsersRoles')} />
             </SettingGroup>
 
@@ -207,13 +211,13 @@ export default function SettingsScreen() {
             {/* Changing what is recorded — reference the wrapper at 17926 */}
             <SettingGroup title="Accountability">
               <SettingToggle
-                label="Ask who is recording each entry"
+                icon="user" label="Ask who is recording each entry"
                 sub="Every sale, payment and count is stamped with a name"
                 on={s.askWhoOnSave !== false}
                 onChange={(v) => set({ askWhoOnSave: v })}
               />
               <SettingToggle
-                label="That person must enter their PIN"
+                icon="lock" label="That person must enter their PIN"
                 sub="Stops one person recording work as another"
                 on={s.requirePinOnSave === true}
                 onChange={(v) => set({ requirePinOnSave: v })}
@@ -222,20 +226,20 @@ export default function SettingsScreen() {
             </SettingGroup>
 
             <SettingGroup title="Changing what is recorded">
-              <SettingToggle label="A PIN is needed to edit a transaction" on={s.requirePinToEdit} onChange={(v) => set({ requirePinToEdit: v })} />
-              <SettingToggle label="A PIN is needed to delete one" on={s.requirePinToDelete} onChange={(v) => set({ requirePinToDelete: v })} />
+              <SettingToggle icon="pencil" label="A PIN is needed to edit a transaction" on={s.requirePinToEdit} onChange={(v) => set({ requirePinToEdit: v })} />
+              <SettingToggle icon="trash" label="A PIN is needed to delete one" on={s.requirePinToDelete} onChange={(v) => set({ requirePinToDelete: v })} />
               <SettingRow
                 icon="clock"
                 label="Edits allowed for"
-                value={s.editWindowDays > 0 ? plural(s.editWindowDays, 'day') + ' after the bill' : 'any bill, any age'}
+                value={s.editWindowDays > 0 ? plural(s.editWindowDays, 'day') + ' after the sale' : 'any sale, any age'}
                 onPress={() => setSheet('editWindow')}
               />
               <SettingRow icon="shield" label="Audit log" value={plural(db.auditLog.length, 'entry', 'entries')} onPress={() => go('AuditLog')} />
             </SettingGroup>
 
             <SettingGroup title="Alerts">
-              <SettingToggle label="Low stock" on={s.notifyLowStock} onChange={(v) => set({ notifyLowStock: v })} />
-              <SettingToggle label="Overdue bills" on={s.notifyOverdue} onChange={(v) => set({ notifyOverdue: v })} />
+              <SettingToggle icon="box" label="Low stock" on={s.notifyLowStock} onChange={(v) => set({ notifyLowStock: v })} />
+              <SettingToggle icon="clock" label="Overdue bills" on={s.notifyOverdue} onChange={(v) => set({ notifyOverdue: v })} />
             </SettingGroup>
           </>
         ) : null}
@@ -251,15 +255,14 @@ export default function SettingsScreen() {
 
             {/* Account / Cloud / This phone / About — the later wrappers */}
             <SettingGroup title="Account">
-              <SettingRow icon="gift" label="Plan" value={isPro() ? 'Pro' : 'Starter'} onPress={() => go('Plans')} />
-              <SettingRow icon="shield" label="Licence" value={db.licence.status} onPress={() => go('Licence')} />
+              <SettingRow icon="gift" label="Plan & licence" sub={plan.name} value={plan.left} onPress={() => go('Licence')} />
             </SettingGroup>
 
             <SettingGroup title="Cloud">
               <SettingRow
                 icon="cloud"
                 label="Cloud sync"
-                value={!isPro() ? 'On Pro' : db.sync.on ? (db.sync.pending.length ? plural(db.sync.pending.length, 'change') + ' waiting' : 'On this phone only') : 'Off'}
+                value={plan.name === 'Free trial' || plan.left === 'Choose a plan' || plan.left === 'Renew' ? 'Paid plans only' : !isPro() ? 'On Pro' : db.sync.on ? (db.sync.pending.length ? plural(db.sync.pending.length, 'change') + ' waiting' : 'On this phone only') : 'Off'}
                 onPress={() => go('Sync')}
               />
             </SettingGroup>
@@ -285,7 +288,6 @@ export default function SettingsScreen() {
 
       {/* ----------------------------- the sheets ----------------------------- */}
 
-      <FirmSheet visible={sheet === 'firm'} onClose={() => setSheet(null)} />
 
       {/* SHEETS.money — reference 6839 */}
       <SimpleSheet visible={sheet === 'money'} title="Money" icon="coins" onClose={() => setSheet(null)}>
@@ -425,12 +427,12 @@ export default function SettingsScreen() {
           label="Edits allowed for"
           value={String(s.editWindowDays)}
           options={[
-            { v: '0', l: 'Any bill, any age' }, { v: '1', l: 'The same day' },
-            { v: '7', l: '7 days after the bill' }, { v: '30', l: '30 days after the bill' },
+            { v: '0', l: 'Any sale, any age' }, { v: '1', l: 'The same day' },
+            { v: '7', l: '7 days after the sale' }, { v: '30', l: '30 days after the sale' },
           ]}
           onChange={(v) => set({ editWindowDays: num(v) })}
         />
-        <FieldNote>Older bills can still be corrected with a credit note, which leaves a trail.</FieldNote>
+        <FieldNote>Older sales can still be corrected with a credit note, which leaves a trail.</FieldNote>
       </SimpleSheet>
 
       {/* SHEETS.device */}

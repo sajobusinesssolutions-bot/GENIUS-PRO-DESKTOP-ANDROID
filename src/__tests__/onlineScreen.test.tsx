@@ -28,6 +28,7 @@ jest.mock('../data/AppDataContext', () => ({
     setSync: mockSetSync,
     licFeature: () => true,
     toggleOnline: mockToggleOnline,
+    can: () => true,
   }),
   useAppDataSafe: () => ({ db: mockDb }),
 }));

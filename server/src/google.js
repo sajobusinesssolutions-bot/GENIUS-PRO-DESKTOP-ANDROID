@@ -117,7 +117,7 @@ export default async function googleRoutes(app) {
         await q(
           `insert into licences (account_id, plan, term, seats, status, expires_at)
            values ($1, 'trial', 'monthly', $2, 'trial', now() + ($3 || ' days')::interval)`,
-          [account.id, Number(process.env.TRIAL_SEATS || 2), String(process.env.TRIAL_DAYS || 30)],
+          [account.id, Number(process.env.TRIAL_SEATS || 2), String(process.env.TRIAL_DAYS || 7)],
         );
       } else {
         // Links the Google identity to an account that already signs in by

@@ -205,7 +205,7 @@ describe('closing a branch', () => {
   it('refuses while bills were rung up there', () => {
     const d = book();
     d.sales.push({ id: 's1', warehouse: 'w3', status: 'complete' });
-    expect(branchIsEmpty(d, 'w3').why).toMatch(/bills/);
+    expect(branchIsEmpty(d, 'w3').why).toMatch(/sales/);
   });
 
   it('allows it once the branch holds nothing at all', () => {

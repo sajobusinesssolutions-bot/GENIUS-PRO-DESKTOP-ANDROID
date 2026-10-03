@@ -14,8 +14,11 @@ import { loadDB, saveDB, clearDB, scheduleSave, flushSave, migrate } from './sto
 import { defaultSync } from './defaults';
 import { uid, iso } from './uid';
 import * as logic from './logic';
+import { importVyapar } from './vyapar';
+import { deviceTillName, isDefaultTillName } from './deviceName';
+import { addStarterLedgers } from './coa';
 import { activeBranchId, branchJournal } from './branch';
-import { mayRecord, refusalMessage } from './recordGate';
+import { mayRecord, planRefusal, refusalMessage } from './recordGate';
 import { Refusal } from './refusal';
 import { refusalFor } from '../nav/routePerms';
 import { licenceFromToken, verifyLicenceSignature } from './licenceKey';
@@ -52,9 +55,13 @@ interface Ctx {
   voidSale: (saleId: string, reason?: string) => void;
   createPurchase: (partyId: string, lines: PurchaseLine[], method: PayMethod, userId?: string, no?: string, when?: string) => Purchase;
   recordPayment: (o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; allocations?: Array<{ saleId: string; amount: number }>; userId?: string }) => Payment;
+  /** Brings one business from a Vyapar backup into these books. Owner only. */
+  importFromVyapar: (tables: import('./vyapar').VyTables, firmId: number) => import('./vyapar').ImportReport;
   recordEntry: (o: {
     direction: 'in' | 'out'; accountId: string; category: string; amount: number; note?: string;
     userId?: string;
+    /** The ledger it goes to; Expenses or Other income when not given. */
+    ledgerId?: string;
     /** Charge it against a credit sale instead of an account. */
     offsetSaleId?: string;
   }) => Entry;
@@ -239,6 +246,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         d.onboarded = false;
         await saveDB(d);
       }
+      // a till still called "Till 1" takes the name of this phone
+      const phoneName = deviceTillName();
+      if (phoneName && isDefaultTillName(d.session.till)) {
+        d.session.till = phoneName;
+        await saveDB(d);
+      }
+      // Books imported from another app before imports were queued for sync: send
+      // their items, customers, quotations, ledgers and business details once, and
+      // a fresh copy of the books, so other phones and the business list catch up.
+      if (d.imports && Object.keys(d.imports).length && !d.sync?.importsQueued && d.sync?.on) {
+        d.products.forEach((p) => logic.enqueue(d!, 'product', p.id));
+        d.parties.forEach((p) => logic.enqueue(d!, 'party', p.id));
+        (d.estimates || []).forEach((e) => logic.enqueue(d!, 'estimate', e.id));
+        (d.coa || []).filter((l) => !l.builtin).forEach((l) => logic.enqueue(d!, 'ledger', l.id));
+        logic.enqueue(d, 'firm', d.firm.id);
+        d.sync = { ...d.sync, importsQueued: true, snapshotDue: true };
+        await saveDB(d);
+      }
       ensureRoles(d);
       setRoleRegistry(d.roles);
       setCostHidden(d.settings?.hideCostFromCashier !== false);
@@ -314,6 +339,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
    * still hold a button they may not press — Void on a bill they can see — so
    * the action that writes asks again. The owner always passes.
    */
+  /** Stops anything new once the trial has ended or the plan has run out. */
+  const requireCreate = useCallback(() => {
+    const d = dbRef.current;
+    if (!d) return;
+    const r = planRefusal(d);
+    if (r) throw new Refusal(r.title, r.why);
+  }, []);
+
   const requirePerm = useCallback((key: string) => {
     const d = dbRef.current;
     if (!d) return;
@@ -454,6 +487,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     voidSale: (saleId, reason) => { requireRecordable(); requirePerm('sales.void'); commit((d) => logic.voidSale(d, saleId, reason)); },
     createPurchase: (partyId, lines, method, userId, no, when) => {
       requireRecordable();
+      requirePerm('purchases.receive');
       let pu!: Purchase;
       commit((d) => { pu = logic.createPurchase(d, partyId, lines, method, when ? new Date(when) : new Date(), userId, no); });
       return pu;
@@ -463,6 +497,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       let pay!: Payment;
       commit((d) => { pay = logic.recordPayment(d, o); });
       return pay;
+    },
+    importFromVyapar: (tables, firmId) => {
+      requireRecordable();
+      if (db?.session.role !== 'owner') throw new Error("Only the owner can import another app's books.");
+      let report!: import('./vyapar').ImportReport;
+      // one change, so it is saved and synced as a whole
+      commit((d) => {
+        report = importVyapar(d, tables, firmId);
+        if (d.sync) d.sync.importsQueued = true;
+        // a whole business arrived: send a fresh copy of the books now, so the
+        // business list and any phone that signs in see it straight away
+        if (d.sync) d.sync.snapshotDue = true;
+      });
+      return report;
     },
     recordEntry: (o) => {
       requireRecordable(); requirePerm('expenses.create');
@@ -480,37 +528,41 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           id: uid('ent'), ts: iso(when), direction: o.direction, accountId: o.accountId,
           branch: activeBranchId(d),
           category: o.category, amount: o.amount, note: o.note || '',
+          ...(o.ledgerId ? { ledgerId: o.ledgerId } : {}),
           userId: o.userId || d.session.userId,
           ...(offset > 0 ? { offsetSaleId: sale!.id } : {}),
         };
         d.entries.push(e);
 
         const memo = o.category + (o.note ? ' — ' + o.note : '');
+        const expLedger = o.ledgerId || 'n_expense';
+        const incLedger = o.ledgerId || 'n_income';
 
         if (offset > 0) {
           // the customer settled it, so the cost is ours but the debt is theirs less
           sale!.due -= offset;
           sale!.paid += offset;
           journal(d, when, memo + ' — against ' + sale!.no, sale!.no, [
-            { acc: 'n_expense', dr: offset },
+            { acc: expLedger, dr: offset },
             { acc: 'n_ar', cr: offset },
           ]);
           // anything above the outstanding balance still leaves the drawer
           const rest = split.rest;
           if (rest > 0) {
-            journal(d, when, memo, 'EXP', [{ acc: 'n_expense', dr: rest }, { acc: o.accountId, cr: rest }]);
+            journal(d, when, memo, 'EXP', [{ acc: expLedger, dr: rest }, { acc: o.accountId, cr: rest }]);
           }
           audit(d, 'Expense offset', memo + ' — ' + Math.round(offset) + ' off ' + sale!.no);
         } else if (o.direction === 'out') {
-          journal(d, when, memo, 'EXP', [{ acc: 'n_expense', dr: o.amount }, { acc: o.accountId, cr: o.amount }]);
+          journal(d, when, memo, 'EXP', [{ acc: expLedger, dr: o.amount }, { acc: o.accountId, cr: o.amount }]);
         } else {
-          journal(d, when, memo, 'INC', [{ acc: o.accountId, dr: o.amount }, { acc: 'n_income', cr: o.amount }]);
+          journal(d, when, memo, 'INC', [{ acc: o.accountId, dr: o.amount }, { acc: incLedger, cr: o.amount }]);
         }
       });
       return e;
     },
     updateProduct: (id, patch) => {
       requirePerm('inventory.edit');
+      if (patch.active === false) requirePerm('inventory.delete');
       commit((d) => {
         const i = d.products.findIndex((p) => p.id === id);
         if (i >= 0) d.products[i] = { ...d.products[i], ...patch };
@@ -529,6 +581,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
     },
     addProduct: (p) => {
+      requireCreate();
       requirePerm('inventory.create');
       let np!: Product;
       commit((d) => { np = { ...p, id: uid('prd') }; d.products.push(np); });
@@ -539,6 +592,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (i >= 0) d.parties[i] = { ...d.parties[i], ...patch };
     }),
     addParty: (p) => {
+      requireCreate();
       requirePerm(p.type === 'supplier' ? 'purchases.create' : 'customers.create');
       let np!: Party;
       commit((d) => { np = { ...p, id: uid('pty') }; d.parties.push(np); });
@@ -558,6 +612,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return result;
     },
     importBankStatement: (accountId, lines) => {
+      requireCreate();
       let result: BankStatementLine[] = [];
       commit((d) => { result = importStatementLines(d, accountId, lines); });
       return result;
@@ -609,6 +664,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }),
     updateFirm: (patch) => commit((d) => {
       d.firm = { ...d.firm, ...patch };
+      logic.enqueue(d, 'firm', d.firm.id);
+      if (d.sync) d.sync.snapshotDue = true;
+      // choosing what kind of business it is fills the chart with the ledgers it will need
+      if (patch.businessType) addStarterLedgers(d, patch.businessType);
       const i = d.firms.findIndex((f) => f.id === d.firm.id);
       if (i >= 0) d.firms[i] = d.firm;
     }),
@@ -639,6 +698,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Estimates ---
     createEstimate: (o) => {
+      requireCreate();
       let est!: Estimate;
       commit((d) => {
         d.counters.estimate += 1;
@@ -650,6 +710,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return est;
     },
     convertEstimate: (estimateId, method) => {
+      requireCreate();
       const d = dbRef.current!;
       const est = d.estimates.find((e) => e.id === estimateId);
       if (!est || est.status !== 'open') return null;
@@ -668,6 +729,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Delivery challans ---
     createChallan: (o) => {
+      requireCreate();
       let ch!: Challan;
       commit((d) => {
         d.counters.challan += 1;
@@ -731,7 +793,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
 
     // --- Offers ---
-    addOffer: (o) => { let no!: Offer; commit((d) => { no = { ...o, id: uid('off') }; d.offers.push(no); audit(d, 'Offer created', no.name); }); return no; },
+    addOffer: (o) => { requireCreate(); let no!: Offer; commit((d) => { no = { ...o, id: uid('off') }; d.offers.push(no); audit(d, 'Offer created', no.name); }); return no; },
     updateOffer: (id, patch) => commit((d) => { const i = d.offers.findIndex((o) => o.id === id); if (i >= 0) d.offers[i] = { ...d.offers[i], ...patch }; }),
     removeOffer: (id) => commit((d) => { d.offers = d.offers.filter((o) => o.id !== id); }),
     activeOffers: () => {
@@ -788,6 +850,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Purchase orders ---
     createPurchaseOrder: (o) => {
+      requireCreate();
       let po!: PurchaseOrder;
       commit((d) => {
         d.counters.po += 1;
@@ -943,6 +1006,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Multi-firm ---
     addFirm: (f) => {
+      requireCreate();
       let nf!: Firm;
       commit((d) => { nf = { ...f, id: uid('frm'), active: true }; d.firms.push(nf); audit(d, 'Firm added', nf.name); });
       return nf;
@@ -953,7 +1017,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }),
 
     // --- Correcting and removing posted documents (reference 17496-17790) ---
-    canEditSale: (id) => { const d = dbRef.current; return d ? logic.canEditSale(d, id) : { ok: false, why: '' }; },
+    canEditSale: (id) => {
+      const d = dbRef.current;
+      if (!d) return { ok: false, why: '' };
+      if (d.session.online === false && !canWith(ensureRoles(d), d.session.role, 'sales.edit_offline')) {
+        return { ok: false, why: 'Your role cannot change a sale while this device is offline.' };
+      }
+      return logic.canEditSale(d, id);
+    },
     canEditPurchase: (id) => { const d = dbRef.current; return d ? logic.canEditPurchase(d, id) : { ok: false, why: '' }; },
     canEditPayment: (id) => { const d = dbRef.current; return d ? logic.canEditPayment(d, id) : { ok: false, why: '' }; },
     editSale: (saleId, o, reason) => {
@@ -962,7 +1033,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       commit((d) => { out = logic.editSale(d, saleId, o, reason); });
       return out;
     },
-    deleteSale: (saleId, reason) => { requireRecordable(); let ok = false; commit((d) => { ok = logic.deleteSale(d, saleId, reason); }); return ok; },
+    deleteSale: (saleId, reason) => {
+      requireRecordable();
+      if (dbRef.current?.session.online === false) requirePerm('sales.delete_offline');
+      let ok = false;
+      commit((d) => { ok = logic.deleteSale(d, saleId, reason); });
+      return ok;
+    },
     editPurchase: (purchaseId, o, reason) => {
       requireRecordable();
       let out: Purchase | null = null;
@@ -1026,6 +1103,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       d.coa = d.coa || [];
       const id = 'led_' + uid('x').slice(-6);
       d.coa.push({ id, code: l.code, name: l.name, type: l.type, note: l.note, builtin: false, active: true });
+      logic.enqueue(d, 'ledger', id);
       d.coa.sort((a, b) => a.code.localeCompare(b.code));
       audit(d, 'Ledger added', l.code + ' ' + l.name);
     }),
@@ -1058,6 +1136,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Offline queue ---
     toggleOnline: () => commit((d) => {
+      // switching the till to offline work is for those allowed to
+      if (!canWith(ensureRoles(d), d.session.role, 'sales.toggle_offline')) return;
       d.session.online = !d.session.online;
       audit(d, d.session.online ? 'Went online' : 'Went offline', '');
       // Coming back online used to call flushQueue(), which marked every
@@ -1070,6 +1150,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Instalment plans ---
     createInstalmentPlan: (o) => {
+      requireCreate();
       let pl: InstalmentPlan | null = null;
       commit((d) => { pl = logic.createInstalmentPlan(d, o); });
       return pl;
@@ -1215,6 +1296,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               put(d.products, current ? { ...current, ...p.doc, stock: current.stock } : p.doc);
             } else if (p?.coll === 'parties') {
               put(d.parties, p.doc);
+            } else if (p?.coll === 'estimates') {
+              d.estimates = d.estimates || [];
+              put(d.estimates, p.doc);
+            } else if (p?.coll === 'coa') {
+              d.coa = d.coa || [];
+              put(d.coa, p.doc);
+            } else if (p?.coll === 'firm' && p.doc?.id && p.doc.id === d.firm.id) {
+              // another phone changed the business's details
+              d.firm = { ...d.firm, ...p.doc };
+              const i = (d.firms || []).findIndex((x) => x.id === d.firm.id);
+              if (i >= 0) d.firms[i] = d.firm;
+              applied++;
             }
           } else if (op.kind.startsWith('sale.')) put(d.sales, p);
           else if (op.kind.startsWith('purchase.')) put(d.purchases, p);

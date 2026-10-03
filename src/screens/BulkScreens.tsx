@@ -19,6 +19,7 @@ import type { BulkKind, BulkForm, BulkPlan } from '../data/logic';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
+import { Field as FloatField } from '../components/form';
 export const BULK_ACTIONS: { kind: BulkKind; icon: IconName; title: string; sub: string }[] = [
   { kind: 'bulkPrices', icon: 'coins', title: 'Price list', sub: 'Raise or drop prices by a percentage or an amount' },
   { kind: 'bulkNames', icon: 'pencil', title: 'Names and descriptions', sub: 'Find and replace across item names' },
@@ -36,7 +37,7 @@ const TITLES: Record<BulkKind, string> = {
 function Note({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
   return (
-    <Text style={{ fontFamily: fonts.ui, fontSize: 11, lineHeight: 16, color: colors.faint, marginTop: 4 }}>
+    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 16, color: colors.faint, marginTop: 4 }}>
       {children}
     </Text>
   );
@@ -45,20 +46,7 @@ function Note({ children }: { children: React.ReactNode }) {
 function Field({ label, value, onChangeText, placeholder, numeric }: {
   label: string; value: string; onChangeText: (v: string) => void; placeholder?: string; numeric?: boolean;
 }) {
-  const { colors } = useTheme();
-  return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, marginBottom: 5 }}>{label}</Text>
-      <TextInput
-        value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.faint}
-        keyboardType={numeric ? 'numbers-and-punctuation' : 'default'}
-        style={{
-          backgroundColor: colors.sunk, borderRadius: 10, height: 42, paddingHorizontal: 12,
-          fontFamily: numeric ? fonts.mono : fonts.ui, fontSize: 13.5, color: colors.ink,
-        }}
-      />
-    </View>
-  );
+  return <FloatField label={label} value={value} onChangeText={onChangeText} placeholder={placeholder} numeric={numeric} decimal={numeric} />;
 }
 
 function ChipRow({ options, value, onChange }: {
@@ -179,7 +167,7 @@ export function BulkChangeScreen({ route, navigation }: EditProps) {
           </Card>
         ) : null}
 
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 12 }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 12 }}>
           {plural(affected, 'item')} in that group. {preview ? plural(preview.rows.length, 'item') + ' would actually change.' : ''}
         </Text>
       </ScrollView>
@@ -217,8 +205,8 @@ export function BulkPreviewScreen({ route, navigation }: PreviewProps) {
       <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
         <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
           <Card style={{ paddingVertical: 13, paddingHorizontal: 14 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{plan.title}</Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11, lineHeight: 16, color: colors.faint, marginTop: 3 }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{plan.title}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 16, color: colors.faint, marginTop: 3 }}>
               {plural(plan.rows.length, 'item')} will change. {plan.note}
             </Text>
           </Card>
@@ -233,18 +221,18 @@ export function BulkPreviewScreen({ route, navigation }: PreviewProps) {
             }}
           >
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{r.name}</Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>{String(r.from)}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{r.name}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>{String(r.from)}</Text>
             </View>
             <Icon name="chev" size={14} color={colors.faint} />
-            <Text numberOfLines={1} style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.ink, maxWidth: 130, textAlign: 'right' }}>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.ink, maxWidth: 130, textAlign: 'right' }}>
               {String(r.to)}
             </Text>
           </View>
         ))}
 
         {plan.rows.length > SHOWN ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, textAlign: 'center', paddingVertical: 12 }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', paddingVertical: 12 }}>
             …and {plan.rows.length - SHOWN} more, all included in the change
           </Text>
         ) : null}

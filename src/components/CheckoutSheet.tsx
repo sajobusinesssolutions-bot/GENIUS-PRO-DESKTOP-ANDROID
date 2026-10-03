@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, TextInput, FlatList } from 'react-native';
+import { View, Text, TextInput, FlatList } from 'react-native';
+import { Pressable } from './Press';
 import { useTheme, fonts, spacing } from '../theme';
 import { Button, Chip, Field, SectionLabel, DetailRow, InfoBanner, Panel } from './ui';
 import { Icon } from './icons';
@@ -93,30 +94,30 @@ export default function CheckoutSheet({
     <View style={{ gap: 20 }}>
       {typingReceived ? (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Credit sale · total</Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(netTotal)}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.ink }}>Credit sale · total</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(netTotal)}</Text>
         </View>
       ) : (<>
       {typingAdditionalCharges ? (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Additional charges</Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(additionalCharges)}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.ink }}>Additional charges</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(additionalCharges)}</Text>
         </View>
       ) : (
         <>
         <View style={{ gap: spacing.sm }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Subtotal</Text>
-            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.ink }}>{money(total)}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Subtotal</Text>
+            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.ink }}>{money(total)}</Text>
           </View>
           {discount > 0 && (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Discount</Text>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.accent }}>−{money(discount)}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Discount</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.accent }}>−{money(discount)}</Text>
             </View>
           )}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.line }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Total</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.ink }}>Total</Text>
             <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(netTotal)}</Text>
           </View>
         </View>
@@ -166,7 +167,7 @@ export default function CheckoutSheet({
               }}
             >
               <Icon name={o.i} size={16} color={on ? colors.accentInk : colors.soft} />
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accentInk : colors.soft }}>{o.l}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accentInk : colors.soft }}>{o.l}</Text>
             </Pressable>
           );
         })}
@@ -205,12 +206,12 @@ export default function CheckoutSheet({
                   backgroundColor: received === q.v ? colors.accentSoft : colors.surface,
                 }}
               >
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: received === q.v ? colors.accent : colors.soft }}>{q.l}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: received === q.v ? colors.accent : colors.soft }}>{q.l}</Text>
               </Pressable>
             ))}
           </View>
           <Panel>
-            <DetailRow label="Bill total" value={money(netTotal)} />
+            <DetailRow label="Sale total" value={money(netTotal)} />
             <DetailRow label="Received now" value={money(received)} tone={colors.good} />
             <DetailRow
               label="Balance on account"
@@ -222,7 +223,7 @@ export default function CheckoutSheet({
           </Panel>
           {received > 0 && onReceivedViaChange ? (
             <View style={{ marginTop: 14 }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint, marginBottom: 8 }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>
                 The {money(received)} was paid by
               </Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -236,7 +237,7 @@ export default function CheckoutSheet({
                       backgroundColor: receivedVia === m ? colors.accentSoft : colors.surface,
                     }}
                   >
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: receivedVia === m ? colors.accent : colors.soft }}>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: receivedVia === m ? colors.accent : colors.soft }}>
                       {m === 'momo' ? 'Mobile money' : m === 'bank' ? 'Bank' : 'Cash'}
                     </Text>
                   </Pressable>
@@ -258,9 +259,9 @@ export default function CheckoutSheet({
       {method === 'credit' ? null : !splitMode ? (
         <View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint }}>Payment method</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Payment method</Text>
             <Pressable onPress={toggleSplit}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.accent }}>Split →</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent }}>Split →</Text>
             </Pressable>
           </View>
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -284,7 +285,7 @@ export default function CheckoutSheet({
                   }}
                 >
                   <Icon name={opt.icon as any} size={15} color={active ? colors.accent : colors.soft} />
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: active ? colors.accent : colors.ink }}>{opt.label}</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: active ? colors.accent : colors.ink }}>{opt.label}</Text>
                 </Pressable>
               );
             })}
@@ -292,7 +293,7 @@ export default function CheckoutSheet({
           {(receivedVia === 'momo' || method === 'momo') && onMomoNetworkChange && onMomoRefChange ? (
             <View style={{ marginTop: 14 }}>
               <Panel>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint, marginBottom: 8 }}>MoMo details</Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>MoMo details</Text>
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
                   {([
                     { value: 'mtn', label: 'MTN MoMo' },
@@ -327,29 +328,27 @@ export default function CheckoutSheet({
       ) : (
         <View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint }}>Split payment ({splitMethods.length} methods)</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Split payment ({splitMethods.length} methods)</Text>
             <Pressable onPress={toggleSplit}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.accent }}>← Back</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent }}>← Back</Text>
             </Pressable>
           </View>
           <View style={{ gap: spacing.sm }}>
             {splitMethods.map((m, i) => (
               <View key={i} style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 10, color: colors.faint, marginBottom: 2, textTransform: 'capitalize' }}>{m.method}</Text>
-                  <TextInput
+                  <Field
+                    compact
+                    style={{ marginBottom: 0 }}
+                    label={m.method.charAt(0).toUpperCase() + m.method.slice(1)}
+                    numeric
+                    decimal
                     value={String(m.amount || 0)}
                     onChangeText={(v) => {
                       const amt = parseFloat(v) || 0;
                       const next = splitMethods.map((x, j) => j === i ? { ...x, amount: Math.max(0, amt) } : x);
                       setSplitMethods(next);
                       onMethodsChange?.(next);
-                    }}
-                    keyboardType="decimal-pad"
-                    style={{
-                      height: 36, borderRadius: 8, borderWidth: 1, borderColor: colors.lineHard,
-                      paddingHorizontal: spacing.sm, fontFamily: fonts.monoSemi, fontSize: 13,
-                      backgroundColor: colors.sunk, color: colors.ink,
                     }}
                   />
                 </View>
@@ -370,12 +369,12 @@ export default function CheckoutSheet({
           </View>
           {splitRemaining > 0 && (
             <View style={{ marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.line }}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>Remaining: {money(splitRemaining)}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Remaining: {money(splitRemaining)}</Text>
             </View>
           )}
           {splitOver > 0 && (
             <View style={{ marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.line }}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.danger }}>Over by: {money(splitOver)}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger }}>Over by: {money(splitOver)}</Text>
             </View>
           )}
           <Pressable
@@ -386,7 +385,7 @@ export default function CheckoutSheet({
             }}
             style={{ marginTop: spacing.sm }}
           >
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.accent }}>+ Add method</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent }}>+ Add method</Text>
           </Pressable>
         </View>
       )}
@@ -408,13 +407,13 @@ export default function CheckoutSheet({
                   paddingHorizontal: 15,
                 }}
               >
-                <Text style={{ fontFamily: item.id === partyId ? fonts.uiBold : fonts.uiSemi, fontSize: 13.5, color: item.id === partyId ? colors.accent : colors.ink }}>
+                <Text style={{ fontFamily: item.id === partyId ? fonts.uiBold : fonts.uiSemi, fontSize: 12.5, color: item.id === partyId ? colors.accent : colors.ink }}>
                   {item.name}
                 </Text>
               </Pressable>
             ))}
             {!parties.length ? (
-              <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>No customers yet.</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>No customers yet.</Text>
             ) : null}
           </View>
         </View>

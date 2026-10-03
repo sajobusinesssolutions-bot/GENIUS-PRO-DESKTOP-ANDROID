@@ -5,7 +5,8 @@
  * pencil in the header.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
@@ -142,7 +143,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
               <Text style={{ fontSize: 26 }}>{p.emoji || '📦'}</Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={2} style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: colors.ink, letterSpacing: -0.3 }}>{p.name}</Text>
+              <Text numberOfLines={2} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: -0.3 }}>{p.name}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>
                 {p.sku}{p.category ? ' · ' + p.category : ''}
               </Text>
@@ -182,7 +183,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
         {p.trackBatches ? (
           <>
             <View style={{ height: 20 }} />
-            <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{batches.length} live</Text>}>
+            <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{batches.length} live</Text>}>
               Batches
             </SectionLabel>
             <Panel flush>
@@ -221,7 +222,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
 
         {/* stock transactions */}
         <View style={{ height: 20 }} />
-        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{moves.length} entries</Text>}>
+        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{moves.length} entries</Text>}>
           Stock transactions
         </SectionLabel>
         <View style={{ marginBottom: 12 }}>
@@ -253,10 +254,10 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                   <Icon name={MOVE_ICON[m.type] || 'swap'} size={19} color={fg} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
                     {m.type.charAt(0).toUpperCase() + m.type.slice(1)}{m.ref ? ' · ' + m.ref : ''}
                   </Text>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     {new Date(m.ts).toLocaleString()}{m.batchNo ? ' · batch ' + m.batchNo : ''}
                   </Text>
                 </View>
@@ -270,7 +271,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
           )}
         </Panel>
         {moves.length > 80 ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, textAlign: 'center', marginTop: 10 }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', marginTop: 10 }}>
             Showing the 80 most recent of {moves.length}.
           </Text>
         ) : null}
@@ -323,8 +324,8 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                   }}
                 >
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>Batch {b.no}</Text>
-                    <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Batch {b.no}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                       {b.qty} on hand
                       {b.expiry ? ' · exp ' + new Date(b.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''}
                     </Text>
@@ -344,8 +345,8 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
               }}
             >
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>The whole shelf</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>The whole shelf</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                   Corrects the warehouse total without touching a batch
                 </Text>
               </View>

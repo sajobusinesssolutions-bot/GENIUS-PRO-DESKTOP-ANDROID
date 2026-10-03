@@ -40,7 +40,7 @@ jest.mock('expo-file-system', () => ({
 }));
 
 import { docHtml, qrSvg, inlineImage, pageSize, numberToWords, DocMeta } from '../docPrint';
-import { printOptsFor, docKindOf, paperOf } from '../printSetup';
+import { printOptsFor, docKindOf, paperOf, shareOptsFor } from '../printSetup';
 import { defaultTemplates, defaultTemplateFor } from '../defaults';
 import { tagHtml } from '../../screens/PriceTagScreen';
 import { preview, reportShareMessage, shareTo, toPdf } from '../exporters';
@@ -295,6 +295,15 @@ describe('which printer, which template', () => {
     expect(paperOf(undefined, 'A4')).toBe('A4');
   });
 
+  it('shares every document as an A4 page, a roll receipt in the invoice layout', () => {
+    for (const kind of ['receipt', 'invoice'] as const) {
+      const o = shareOptsFor(db, kind);
+      expect(o.paper).toBe('A4');
+      expect(o.tpl?.kind).not.toBe('thermal');
+      expect(o.printer).toBeUndefined();
+    }
+  });
+
   it('uses the shop\'s copies per bill', () => {
     expect(printOptsFor(db, 'receipt').tpl?.copies).toBe(2);
   });
@@ -471,8 +480,9 @@ describe('report PDF — layout, columns and file name', () => {
 });
 
 describe('report export', () => {
-  it('opens a native A4 preview when asked for print preview', async () => {
-    const spy = jest.spyOn(Print, 'printAsync');
+  it('opens the report as a PDF in a viewer the person chooses', async () => {
+    const Sharing = require('expo-sharing');
+    (Sharing.shareAsync as jest.Mock).mockClear();
     await preview({
       title: 'Daily sales',
       cols: [{ h: 'Date' }, { h: 'Total' }],
@@ -480,7 +490,7 @@ describe('report export', () => {
       foot: ['Total', 1200],
     }, { firm: 'Amar Shop', range: 'Last 30 days' });
 
-    expect(spy).toHaveBeenCalledWith({ html: expect.stringContaining('Daily sales'), width: 595, height: 842 });
+    expect(Sharing.shareAsync).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mimeType: 'application/pdf' }));
   });
 
   it('uses the share sheet for WhatsApp PDF exports instead of an unsupported Android send intent', async () => {

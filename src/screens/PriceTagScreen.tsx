@@ -9,7 +9,8 @@
 import React, { useMemo, useState } from 'react';
 import { code128b, code128Html } from '../data/code128';
 import { useCan, Denied } from '../components/Gate';
-import { View, Text, FlatList, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, FlatList, ScrollView, Alert } from 'react-native';
+import { Pressable } from '../components/Press';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useTheme, fonts, radius } from '../theme';
@@ -176,8 +177,8 @@ function PriceTagScreenBody() {
       }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{label}</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{sub}</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{label}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{sub}</Text>
       </View>
       <Sw on={!!style[key]} onPress={() => set({ [key]: !style[key] } as Partial<TagStyle>)} />
     </Pressable>
@@ -199,7 +200,7 @@ function PriceTagScreenBody() {
                 backgroundColor: on ? colors.accentSoft : colors.surface,
               }}
             >
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: on ? colors.accent : colors.soft }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>
                 {s.charAt(0).toUpperCase() + s.slice(1)}
               </Text>
             </Pressable>
@@ -297,7 +298,7 @@ function PriceTagScreenBody() {
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     {money(p.price)} · {tagCode(p)}
                   </Text>
                 </View>
@@ -308,7 +309,7 @@ function PriceTagScreenBody() {
                       onPress={() => setCopies((c) => ({ ...c, [p.id]: Math.max(1, countOf(p.id) - 1) }))}
                       style={{ width: 32, height: 32, borderRadius: 10, borderWidth: 1.4, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }}
                     >
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.accent }}>−</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>−</Text>
                     </Pressable>
                     <Text style={{ minWidth: 30, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>×{countOf(p.id)}</Text>
                     <Pressable
@@ -317,7 +318,7 @@ function PriceTagScreenBody() {
                       onLongPress={() => setCopies((c) => ({ ...c, [p.id]: Math.min(500, countOf(p.id) + 10) }))}
                       style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}
                     >
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.accentInk }}>+</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>+</Text>
                     </Pressable>
                   </View>
                 ) : (
@@ -346,7 +347,7 @@ function PriceTagScreenBody() {
                           borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
                         }}
                       >
-                        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accent : colors.soft }}>
+                        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>
                           {pr.name} · {paperOf(pr)}
                         </Text>
                       </Pressable>
@@ -369,12 +370,12 @@ function PriceTagScreenBody() {
                       backgroundColor: on ? colors.accentSoft : colors.surface,
                     }}
                   >
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: on ? colors.accent : colors.soft }}>{l}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>{l}</Text>
                   </Pressable>
                 );
               })}
             </View>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 10 }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 10 }}>
               {paper === 'A4'
                 ? 'Tags are laid out in a grid on the page, to cut apart.'
                 : 'One tag per label, full width of the roll — for a POS or label printer.'}
@@ -395,22 +396,22 @@ function PriceTagScreenBody() {
                 }}
               >
                 {style.shopName ? (
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 9, letterSpacing: 0.5, color: '#777', textTransform: 'uppercase' }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, letterSpacing: 0.5, color: '#777', textTransform: 'uppercase' }}>
                     {db.firm.name}
                   </Text>
                 ) : null}
                 {style.name ? (
-                  <Text numberOfLines={2} style={{ fontFamily: fonts.uiBold, fontSize: 13, color: '#111', textAlign: 'center', marginTop: 3 }}>
+                  <Text numberOfLines={2} style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: '#111', textAlign: 'center', marginTop: 3 }}>
                     {sample.name}
                   </Text>
                 ) : null}
                 {style.category && sample.category ? (
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: '#888', marginTop: 2 }}>{sample.category}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: '#888', marginTop: 2 }}>{sample.category}</Text>
                 ) : null}
                 {style.price ? (
                   <Text style={{ fontFamily: fonts.uiExtra, fontSize: PRICE_PT[style.priceSize], color: '#111', marginTop: 6, letterSpacing: -0.5 }}>
                     {money(sample.price)}
-                    {style.unit ? <Text style={{ fontFamily: fonts.ui, fontSize: 10, color: '#666' }}> / {sample.unit}</Text> : null}
+                    {style.unit ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: '#666' }}> / {sample.unit}</Text> : null}
                   </Text>
                 ) : null}
                 {style.barcode ? (
@@ -421,17 +422,17 @@ function PriceTagScreenBody() {
                         style={{ width: w * 1.4, height: BAR_H[style.barcodeSize], backgroundColor: i % 2 === 0 ? '#111' : '#fff' }}
                       />
                     )) : (
-                      <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: '#b00' }}>
+                      <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: '#b00' }}>
                         This item code cannot be printed as a barcode
                       </Text>
                     )}
                   </View>
                 ) : null}
                 {style.sku ? (
-                  <Text style={{ fontFamily: fonts.mono, fontSize: 9, color: '#555', marginTop: 4 }}>{tagCode(sample)}</Text>
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 12.5, color: '#555', marginTop: 4 }}>{tagCode(sample)}</Text>
                 ) : null}
                 {!style.name && !style.price && !style.barcode && !style.sku && !style.shopName ? (
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: '#bbb' }}>Everything is switched off</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: '#bbb' }}>Everything is switched off</Text>
                 ) : null}
               </View>
             ) : (
@@ -487,7 +488,7 @@ function PriceTagScreenBody() {
           </Text>
           {tab === 'pick' && chosen.length ? (
             <Pressable onPress={() => setTab('design')}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Design them →</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Design them →</Text>
             </Pressable>
           ) : null}
         </View>

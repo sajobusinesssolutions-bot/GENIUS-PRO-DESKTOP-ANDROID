@@ -1,5 +1,5 @@
 /**
- * "Send on WhatsApp" used whatsapp://send?phone=…&text=… for a document with
+ * Sending a document on WhatsApp used whatsapp://send?phone=…&text=… for a document with
  * a customer phone number attached. That scheme is unofficial and has become
  * unreliable at carrying both a phone number and pre-filled text together —
  * WhatsApp often opens straight to the chat with the text box empty, which
@@ -34,9 +34,12 @@ function renderIt(phone?: string) {
   );
 }
 
+/** More options → Send as message → WhatsApp: the message opens ready-written. */
 async function openWhatsapp() {
   await act(async () => { fireEvent.press(screen.getByLabelText('More options')); });
-  await act(async () => { fireEvent.press(screen.getByText('Send on WhatsApp')); });
+  await act(async () => { fireEvent.press(screen.getByText('Send as message')); });
+  await act(async () => { jest.advanceTimersByTime(300); });
+  await act(async () => { fireEvent.press(screen.getByText('WhatsApp')); });
 }
 
 const canOpenURL = jest.spyOn(Linking, 'canOpenURL');
@@ -82,11 +85,10 @@ describe('"Send on WhatsApp" with no phone number', () => {
     expect(Linking.openURL).toHaveBeenCalledWith(expect.stringMatching(/^whatsapp:\/\/send\?text=/));
   });
 
-  it('reports "not installed" when WhatsApp itself cannot be opened', async () => {
-    canOpenURL.mockResolvedValue(false);
+  it('says so when WhatsApp itself cannot be opened', async () => {
+    openURL.mockRejectedValue(new Error('no app'));
     renderIt();
     await openWhatsapp();
-    expect(Linking.openURL).not.toHaveBeenCalled();
-    expect(screen.getByText('WhatsApp is not installed.')).toBeTruthy();
+    expect(screen.getByText('WhatsApp could not be opened.')).toBeTruthy();
   });
 });

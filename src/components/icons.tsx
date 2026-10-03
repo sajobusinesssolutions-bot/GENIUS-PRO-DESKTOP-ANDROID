@@ -17,6 +17,10 @@ type Glyph = React.ComponentType<{ size?: number; color?: string; weight?: IconW
 // Plain require() per glyph: Metro bundles only these files, and the library's
 // .tsx source stays out of this project's type-check (its svg prop types clash).
 /* eslint-disable @typescript-eslint/no-require-imports */
+const SunIcon: Glyph = require('phosphor-react-native/src/icons/Sun').SunIcon;
+const MoonIcon: Glyph = require('phosphor-react-native/src/icons/Moon').MoonIcon;
+const CircleHalfIcon: Glyph = require('phosphor-react-native/src/icons/CircleHalf').CircleHalfIcon;
+const FunnelIcon: Glyph = require('phosphor-react-native/src/icons/Funnel').FunnelIcon;
 const HouseIcon: Glyph = require('phosphor-react-native/src/icons/House').HouseIcon;
 const CashRegisterIcon: Glyph = require('phosphor-react-native/src/icons/CashRegister').CashRegisterIcon;
 const FileTextIcon: Glyph = require('phosphor-react-native/src/icons/FileText').FileTextIcon;
@@ -73,6 +77,8 @@ const MapPinIcon: Glyph = require('phosphor-react-native/src/icons/MapPin').MapP
 const SquaresFourIcon: Glyph = require('phosphor-react-native/src/icons/SquaresFour').SquaresFourIcon;
 const ListIcon: Glyph = require('phosphor-react-native/src/icons/List').ListIcon;
 const CameraIcon: Glyph = require('phosphor-react-native/src/icons/Camera').CameraIcon;
+const BarcodeIcon: Glyph = require('phosphor-react-native/src/icons/Barcode').BarcodeIcon;
+const ShareFatIcon: Glyph = require('phosphor-react-native/src/icons/ShareFat').ShareFatIcon;
 
 export type IconName =
   | 'home' | 'till' | 'doc' | 'box' | 'user' | 'card' | 'chart' | 'dots' | 'back'
@@ -81,12 +87,16 @@ export type IconName =
   | 'swap' | 'print' | 'trash' | 'tag' | 'pie' | 'owner' | 'cashier' | 'money'
   | 'bank' | 'phone' | 'cash' | 'lock' | 'down' | 'up' | 'cart' | 'coins'
   | 'pencil' | 'tools' | 'wrench' | 'bulb' | 'chair' | 'brick' | 'food' | 'taxi'
-  | 'wifi' | 'bluetooth' | 'image' | 'mail' | 'pin' | 'dashboard' | 'menu' | 'camera';
+  | 'wifi' | 'bluetooth' | 'image' | 'mail' | 'pin' | 'dashboard' | 'menu' | 'camera' | 'barcode' | 'share' | 'filter' | 'sun' | 'moon' | 'contrast';
 
 export type { IconWeight };
 
 const MAP: Record<IconName, Glyph> = {
   home: HouseIcon,
+  filter: FunnelIcon,
+  sun: SunIcon,
+  moon: MoonIcon,
+  contrast: CircleHalfIcon,
   till: CashRegisterIcon,
   doc: FileTextIcon,
   box: PackageIcon,
@@ -142,6 +152,8 @@ const MAP: Record<IconName, Glyph> = {
   dashboard: SquaresFourIcon,
   menu: ListIcon,
   camera: CameraIcon,
+  barcode: BarcodeIcon,
+  share: ShareFatIcon,
 };
 
 /** Small glyphs that are pure direction or punctuation read better a touch heavier. */

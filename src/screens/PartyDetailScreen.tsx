@@ -4,7 +4,8 @@
  * print / share / more controls, and the quick bar closes the common jobs.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, Pressable, Linking } from 'react-native';
+import { View, Text, FlatList, Linking } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
@@ -143,12 +144,12 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
                   backgroundColor: pt.type === 'customer' ? colors.accentSoft : colors.warnSoft,
                   alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 21, color: pt.type === 'customer' ? colors.accent : colors.warn }}>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: pt.type === 'customer' ? colors.accent : colors.warn }}>
                     {pt.name.charAt(0).toUpperCase()}
                   </Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: colors.ink }}>{pt.name}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{pt.name}</Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     {pt.phone || 'No phone'}{pt.address ? ' · ' + pt.address : ''}
                   </Text>
@@ -166,7 +167,7 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
                   {money(Math.abs(balance))}
                 </Text>
                 {pt.creditLimit > 0 ? (
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                     Credit limit {money(pt.creditLimit)}
                     {balance > pt.creditLimit ? ' · over the limit' : ''}
                   </Text>
@@ -185,7 +186,7 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
             />
 
             <View style={{ height: 20 }} />
-            <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{rows.length} shown</Text>}>
+            <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{rows.length} shown</Text>}>
               Transactions
             </SectionLabel>
             <View style={{ marginBottom: 12 }}>
@@ -204,7 +205,7 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
         }
         ListEmptyComponent={
           <Panel>
-            <EmptyBlock icon="doc" title="Nothing recorded yet" hint="Bills and payments for this contact will appear here." />
+            <EmptyBlock icon="doc" title="Nothing recorded yet" hint="Sales and payments for this contact will appear here." />
           </Panel>
         }
         renderItem={({ item }) => {
@@ -229,8 +230,8 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 3 }}>
-                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16, color: colors.ink }}>{money(item.amount)}</Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>
+                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>{money(item.amount)}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                     {new Date(item.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
                   </Text>
                 </View>

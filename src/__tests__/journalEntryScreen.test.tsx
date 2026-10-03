@@ -55,14 +55,15 @@ const renderIt = () => render(
   </ToastProvider>,
 );
 
-const NOT_READY_TEXT = /A simple entry moves one amount between two ledgers/;
+/** The "this will post" summary only appears once the entry is ready. */
+const isReady = () => screen.queryAllByText('Dr').length > 0;
 
 function pickCategory(label: string) {
-  fireEvent.press(screen.getByText('Which ledger'));
-  // the Category dropdown's own option list renders before the Contra
-  // field further down, which can show the same label as its selected
-  // value — [0] is always the dropdown option being pressed here
-  fireEvent.press(screen.getAllByText(label)[0]);
+  // the ledger box opens a searchable list; the name is the last match on screen
+  fireEvent.press(screen.getByText('Choose a ledger'));
+  const name = label.replace(/^[0-9]+ · /, '');
+  const hits = screen.getAllByText(name);
+  fireEvent.press(hits[hits.length - 1]);
 }
 
 beforeEach(() => {
@@ -76,10 +77,11 @@ describe('a Simple entry', () => {
   it('credits the chosen ledger and debits the contra account', () => {
     mockPostJournal.mockReturnValue(true);
     renderIt();
+    fireEvent.press(screen.getByText('Credit'));
     pickCategory('4000 · Sales');
     fireEvent.changeText(screen.getByPlaceholderText('0'), '5000');
     fireEvent.changeText(screen.getByPlaceholderText('What it is for'), 'Cash sale');
-    expect(screen.queryByText(NOT_READY_TEXT)).toBeNull(); // ready to post
+    expect(isReady()).toBe(true);
     fireEvent.press(screen.getByText('Save entry'));
 
     expect(mockPostJournal).toHaveBeenCalledTimes(1);
@@ -105,19 +107,20 @@ describe('a Simple entry', () => {
     pickCategory('1000 · Cash'); // same as the contra default (the only asset account)
     fireEvent.changeText(screen.getByPlaceholderText('0'), '5000');
     fireEvent.changeText(screen.getByPlaceholderText('What it is for'), 'Oops');
-    expect(screen.getByText(NOT_READY_TEXT)).toBeTruthy();
+    expect(isReady()).toBe(false);
   });
 
   it('is not ready to post with no description', () => {
     renderIt();
     pickCategory('4000 · Sales');
     fireEvent.changeText(screen.getByPlaceholderText('0'), '5000');
-    expect(screen.getByText(NOT_READY_TEXT)).toBeTruthy();
+    expect(isReady()).toBe(false);
   });
 
   it('surfaces postJournal\'s own refusal rather than assuming success', () => {
     mockPostJournal.mockReturnValue(false); // e.g. it did not actually balance
     renderIt();
+    fireEvent.press(screen.getByText('Credit'));
     pickCategory('4000 · Sales');
     fireEvent.changeText(screen.getByPlaceholderText('0'), '5000');
     fireEvent.changeText(screen.getByPlaceholderText('What it is for'), 'Cash sale');

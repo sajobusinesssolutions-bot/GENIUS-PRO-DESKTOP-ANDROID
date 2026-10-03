@@ -3,10 +3,11 @@
  * Batches & expiry (reference QUICK "Stock" group, lines 5484-5494).
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, FlatList, TextInput, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, FlatList, TextInput, Alert } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
-import { Card, Cap, Button, Chip, SearchBar, EmptyState, IconTile, Grid, Stat } from '../components/ui';
+import { Card, Cap, Button, Chip, SearchBar, Field, EmptyState, IconTile, Grid, Stat } from '../components/ui';
 import { Icon } from '../components/icons';
 import { fmtDay } from '../data/helpers';
 
@@ -52,10 +53,10 @@ export function StockAdjustScreen() {
             >
               <IconTile icon="box" bg={colors.sunk} color={colors.faint} />
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{p.name}</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>{p.sku}</Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{p.name}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>{p.sku}</Text>
               </View>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: colors.ink }}>{stockOf(p)} {p.unit}</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.ink }}>{stockOf(p)} {p.unit}</Text>
             </Pressable>
             {editing === p.id && p.trackBatches && (p.batches || []).length ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 }}>
@@ -72,10 +73,7 @@ export function StockAdjustScreen() {
             ) : null}
             {editing === p.id ? (
               <View style={{ flexDirection: 'row', gap: 9, marginTop: 10, alignItems: 'center' }}>
-                <TextInput
-                  value={value} onChangeText={setValue} keyboardType="numeric" autoFocus
-                  style={{ flex: 1, backgroundColor: colors.sunk, borderRadius: 10, height: 40, paddingHorizontal: 12, fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}
-                />
+                <Field label="Counted" value={value} onChangeText={setValue} numeric decimal autoFocus style={{ flex: 1, marginBottom: 0 }} />
                 <Button size="sm" variant="pri" label={batchNo ? 'Set batch count' : 'Set count'} onPress={() => apply(p.id)} />
               </View>
             ) : null}
@@ -125,13 +123,9 @@ export function StockTransferScreen({ navigation }: any) {
           <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
             {db.warehouses.map((w) => <Chip key={w.id} label={w.name} on={w.id === to} onPress={() => setTo(w.id)} />)}
           </View>
-          <Cap style={{ marginBottom: 6 }}>Quantity</Cap>
-          <TextInput
-            value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="0" placeholderTextColor={colors.faint}
-            style={{ backgroundColor: colors.sunk, borderRadius: 10, height: 42, paddingHorizontal: 12, fontFamily: fonts.ui, fontSize: 14, color: colors.ink, marginBottom: 12 }}
-          />
+          <Field label="Quantity" value={qty} onChangeText={setQty} numeric decimal />
           {p ? (
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginBottom: 12 }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 12 }}>
               {p.name}: {p.stock[from] || 0} in {db.warehouses.find((w) => w.id === from)?.name}, total {stockOf(p)} {p.unit}.
             </Text>
           ) : null}

@@ -1,6 +1,5 @@
 import 'react-native-gesture-handler';
 import React from 'react';
-import { StatusBar } from 'expo-status-bar';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import { IBMPlexMono_500Medium, IBMPlexMono_600SemiBold } from '@expo-google-fonts/ibm-plex-mono';
 import { ActivityIndicator, View } from 'react-native';
@@ -12,9 +11,15 @@ import SyncKeeper from './src/data/SyncKeeper';
 import StorageKeeper from './src/data/StorageKeeper';
 import BackupKeeper from './src/data/BackupKeeper';
 import { installRefusalHandler } from './src/data/refusal';
+import { installCrashReporting } from './src/data/crashReporter';
+import CrashContext from './src/components/CrashContext';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import ThemedStatusBar from './src/components/ThemedStatusBar';
 
 // a refusal nothing caught is shown to the person rather than crashing the app
 installRefusalHandler();
+// anything else that breaks is reported to the developer console (crashReporter)
+installCrashReporting();
 import { ToastProvider } from './src/components/Toast';
 import RootNavigator from './src/nav/RootNavigator';
 
@@ -41,8 +46,11 @@ export default function App() {
             <SyncKeeper />
             <StorageKeeper />
             <BackupKeeper />
-            <RootNavigator />
-            <StatusBar style="auto" />
+            <CrashContext />
+            <ErrorBoundary>
+              <RootNavigator />
+            </ErrorBoundary>
+            <ThemedStatusBar />
           </ToastProvider>
         </AppDataProvider>
       </AuthProvider>

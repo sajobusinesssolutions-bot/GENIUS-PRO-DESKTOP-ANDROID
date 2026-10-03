@@ -7,7 +7,8 @@
  * paperwork add up to what is on the shelf".
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, FlatList, Pressable } from 'react-native';
+import { View, Text, FlatList } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
@@ -95,14 +96,14 @@ export default function BatchMovementScreen() {
                       backgroundColor: on ? colors.accentSoft : colors.surface,
                     }}
                   >
-                    <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13.5, color: on ? colors.accent : colors.ink }}>
+                    <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 12.5, color: on ? colors.accent : colors.ink }}>
                       {p.name}
                     </Text>
                   </Pressable>
                 );
               })}
               {!tracked.length ? (
-                <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                   No item is batch tracked yet.
                 </Text>
               ) : null}
@@ -154,7 +155,7 @@ export default function BatchMovementScreen() {
                       } />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>Batch {batch.no}</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Batch {batch.no}</Text>
                       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                         {batch.expiry
                           ? new Date(batch.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -178,7 +179,7 @@ export default function BatchMovementScreen() {
                 ) : null}
 
                 <View style={{ height: 20 }} />
-                <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{shown.length} entries</Text>}>
+                <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{shown.length} entries</Text>}>
                   Movement history
                 </SectionLabel>
                 <View style={{ marginBottom: 12 }}>
@@ -225,10 +226,10 @@ export default function BatchMovementScreen() {
                 <Icon name={MOVE_ICON[item.type] || 'swap'} size={19} color={fg} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
                   {item.type.charAt(0).toUpperCase() + item.type.slice(1)}{item.ref ? ' · ' + item.ref : ''}
                 </Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                   {new Date(item.ts).toLocaleString()}
                 </Text>
               </View>
@@ -236,7 +237,7 @@ export default function BatchMovementScreen() {
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>
                   {item.qty > 0 ? '+' : '−'}{Math.abs(item.qty)}
                 </Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>bal {item.balance}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>bal {item.balance}</Text>
               </View>
             </View>
           );

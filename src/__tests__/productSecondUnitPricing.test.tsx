@@ -49,14 +49,23 @@ describe('the second unit\'s suggested price', () => {
   it('divides the main price down for the second unit, rather than multiplying it up', () => {
     renderIt();
     fireEvent.press(screen.getByText('Price'));
-    // Cost price and Sale price share the placeholder "0" — Sale price is the second
+    // a carton sells for 2,400
     fireEvent.changeText(screen.getAllByPlaceholderText('0')[1], '2400');
-    fireEvent.press(screen.getByText('— none —'));
+    // the unit and its second unit are set together, from the Unit box on Basics
+    fireEvent.press(screen.getByText('Basics'));
+    fireEvent.press(screen.getByLabelText('Unit'));
+    // sold by the carton…
+    fireEvent.press(screen.getByLabelText('Sold by'));
     fireEvent.press(screen.getByText('CTN'));
-    fireEvent.changeText(screen.getByPlaceholderText('A number, such as 24'), '24');
+    // …and also by the piece, with 24 pieces inside one carton
+    fireEvent.press(screen.getByLabelText('Also sold by (optional)'));
+    fireEvent.press(screen.getByText('PC'));
+    expect(screen.getByText('How many PC inside one CTN?')).toBeTruthy();
+    fireEvent.changeText(screen.getByPlaceholderText('e.g. 24'), '24');
 
-    // 2400 / 24 = 100, not 2400 * 24 = 57600
-    expect(screen.getByText(/Sh 100 each/)).toBeTruthy();
+
+    // 2400 / 24 = 100 a piece, not 2400 * 24 = 57,600
+    expect(screen.getByText(/Sh 100 a PC/)).toBeTruthy();
     expect(screen.queryByText(/57,?600/)).toBeNull();
   });
 });

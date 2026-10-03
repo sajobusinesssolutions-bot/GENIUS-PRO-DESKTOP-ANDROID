@@ -4,7 +4,7 @@
  * (lines 46-50, 88).
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { useTheme, fonts } from '../theme';
@@ -31,12 +31,12 @@ export function StatusStrip() {
       height: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
       paddingHorizontal: 18, backgroundColor: colors.surface,
     }}>
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 10.5, color: colors.faint }}>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
         {pad(now.getHours())}:{pad(now.getMinutes())}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: online ? colors.good : colors.warn }} />
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 10.5, color: colors.faint }}>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
           {online ? 'online' : 'offline' + (queued ? ' · ' + queued + ' queued' : '')}
         </Text>
       </View>
@@ -67,13 +67,22 @@ export type AppBarProps = {
   title: string;
   onBack?: (() => void) | null;
   right?: React.ReactNode;
-  /** Tab roots draw the status strip too; nested screens keep it for continuity. */
+  /** Off by default: the phone's own status bar already shows the time, and the
+      strip covered its icons. Offline is shown on the dashboard instead. */
   statusStrip?: boolean;
+  /**
+   * The business itself as the title — its logo (or initials) and name — on
+   * the main tabs, so every one of them reads as this shop's app. The title
+   * given is then a fallback for books not yet loaded.
+   */
+  brand?: boolean;
 };
 
-export function AppBar({ title, onBack, right, statusStrip = true }: AppBarProps) {
+export function AppBar({ title, onBack, right, statusStrip = false, brand }: AppBarProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const firm = useAppDataSafe()?.db?.firm;
+  const name = brand && firm?.name ? firm.name : title;
   return (
     <View style={{ backgroundColor: colors.surface, paddingTop: insets.top }}>
       {statusStrip ? <StatusStrip /> : null}
@@ -83,11 +92,22 @@ export function AppBar({ title, onBack, right, statusStrip = true }: AppBarProps
         flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60,
       }}>
         {onBack ? <IconBtn name="back" size={23} onPress={onBack} /> : null}
+        {brand ? (
+          firm?.logo ? (
+            <Image source={{ uri: firm.logo }} style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.sunk }} />
+          ) : (
+            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.accentInk }}>
+                {(name || '?').split(' ').map((w) => w[0] || '').slice(0, 2).join('').toUpperCase()}
+              </Text>
+            </View>
+          )
+        ) : null}
         <Text
           numberOfLines={1}
-          style={{ flex: 1, minWidth: 0, fontFamily: fonts.uiExtra, fontSize: 21, color: colors.ink, letterSpacing: -0.4 }}
+          style={{ flex: 1, minWidth: 0, fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: -0.4 }}
         >
-          {title}
+          {name}
         </Text>
         {right}
       </View>

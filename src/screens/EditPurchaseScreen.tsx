@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, Pressable, TextInput } from 'react-native';
+import { View, Text, ScrollView, Alert, TextInput } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
@@ -83,7 +84,7 @@ export default function EditPurchaseScreen({ route, navigation }: Props) {
               <Icon name="cart" size={22} color={colors.warn} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: colors.ink }}>{x.no}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{x.no}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {party(x.partyId)?.name || 'Supplier'} · {new Date(x.ts).toLocaleDateString()} · {x.method}
               </Text>
@@ -93,7 +94,7 @@ export default function EditPurchaseScreen({ route, navigation }: Props) {
 
         <View style={{ height: 20 }} />
         <SectionLabel right={
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
             {lines.length} line{lines.length === 1 ? '' : 's'}
           </Text>
         }>
@@ -110,13 +111,13 @@ export default function EditPurchaseScreen({ route, navigation }: Props) {
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.warn }}>{i + 1}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.warn }}>{i + 1}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
                   {product(l.productId)?.name || l.productId}
                 </Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                   {money(l.cost)} each
                 </Text>
               </View>
@@ -125,11 +126,11 @@ export default function EditPurchaseScreen({ route, navigation }: Props) {
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 13 }}>
               <Pressable onPress={() => setQty(l.productId, l.qty - 1)} style={stepper(colors)}>
-                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 19 }}>−</Text>
+                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>−</Text>
               </Pressable>
-              <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{l.qty}</Text>
+              <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{l.qty}</Text>
               <Pressable onPress={() => setQty(l.productId, l.qty + 1)} style={stepper(colors)}>
-                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 19 }}>+</Text>
+                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>+</Text>
               </Pressable>
               <Pressable
                 onPress={() => setQty(l.productId, 0)}

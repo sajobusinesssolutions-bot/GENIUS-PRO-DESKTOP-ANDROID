@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, Pressable } from 'react-native';
+import { ToastHost } from './Toast';
+import { Modal, View, Text } from 'react-native';
+import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { Button } from './ui';
 import { Icon } from './icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 let CameraView: any = null;
 let useCameraPermissions: any = null;
@@ -45,6 +48,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
             <Button label="Close" onPress={onClose} />
           </View>
         </View>
+        <ToastHost />
       </Modal>
     );
   }
@@ -55,6 +59,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
         <View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: '#fff', fontFamily: fonts.ui }}>Loading camera…</Text>
         </View>
+        <ToastHost />
       </Modal>
     );
   }
@@ -72,11 +77,12 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
             <Button label="Cancel" onPress={onClose} />
           </View>
         </View>
+        <ToastHost />
       </Modal>
     );
   }
 
-  const info = detected ? (describe ? describe(detected) : { title: detected, subtitle: 'Tap add to put this on the bill', ok: true }) : null;
+  const info = detected ? (describe ? describe(detected) : { title: detected, subtitle: 'Tap add to put this on the sale', ok: true }) : null;
 
   function close() {
     setDetected(null);
@@ -108,7 +114,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
       <View style={{ flex: 1, backgroundColor: '#000' }}>
         {/* the title bar, on solid black so it reads over any scene */}
         <View style={{ paddingTop: insets.top + 14, paddingBottom: 16, paddingHorizontal: 20, backgroundColor: '#000' }}>
-          <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 19, color: '#fff' }}>
+          <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 20, color: '#fff' }}>
             Scan Barcode
           </Text>
         </View>
@@ -120,7 +126,10 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
             enableTorch={torch}
             barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'itf14', 'qr'] }}
             onBarcodeScanned={(result: { data: string }) => {
-              if (result.data !== detected) setDetected(result.data);
+              if (result.data === detected) return;
+              setDetected(result.data);
+              // a buzz says the code was read, so the phone can come away from it
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
             }}
           />
 
@@ -133,7 +142,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
               {corner({ bottom: 0, right: 0 })}
               <View style={{ position: 'absolute', top: '50%', left: 10, right: 10, height: 2, backgroundColor: edge, opacity: 0.75 }} />
             </View>
-            <Text style={{ marginTop: 22, fontFamily: fonts.uiSemi, fontSize: 14, color: 'rgba(255,255,255,0.88)' }}>
+            <Text style={{ marginTop: 22, fontFamily: fonts.uiSemi, fontSize: 15, color: 'rgba(255,255,255,0.88)' }}>
               {info ? (info.ok ? 'Found it — tap Add below' : 'Not sellable') : 'Line the barcode up inside the frame'}
             </Text>
           </View>
@@ -169,7 +178,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
               <Icon name={info ? (info.ok ? 'check' : 'alert') : 'box'} size={20} color={info ? edge : 'rgba(255,255,255,0.7)'} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 16, color: '#fff' }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: '#fff' }}>
                 {info ? info.title : 'Nothing detected yet'}
               </Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: 'rgba(255,255,255,0.7)', marginTop: 3 }}>
@@ -188,16 +197,17 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
             }}
           >
             <Icon name="plus" size={20} color={info && info.ok ? '#fff' : 'rgba(255,255,255,0.45)'} />
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: info && info.ok ? '#fff' : 'rgba(255,255,255,0.45)' }}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: info && info.ok ? '#fff' : 'rgba(255,255,255,0.45)' }}>
               Add to bill
             </Text>
           </Pressable>
 
           <Pressable onPress={close} style={{ height: 50, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: '#fff' }}>Cancel</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: '#fff' }}>Cancel</Text>
           </Pressable>
         </View>
       </View>
+      <ToastHost />
     </Modal>
   );
 }

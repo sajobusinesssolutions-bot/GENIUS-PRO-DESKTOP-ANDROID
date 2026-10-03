@@ -7,6 +7,7 @@ import {
 } from './defaults';
 import { ensureRoles } from './perms';
 import { ensureCoa } from './coa';
+import { reconcileBatches } from './batches';
 import { hashPin, isPinHashed } from './pinHash';
 
 export const KEY = 'genius.pos.v1';
@@ -41,6 +42,8 @@ export function migrate(d: any): any {
   d.bankReconciliations = d.bankReconciliations || [];
   d.archivedFinancialYears = d.archivedFinancialYears || [];
   ensureCoa(d);
+  // repair items whose batches drifted from their stock before moves kept them in step
+  (d.products || []).forEach((p: any) => reconcileBatches(p));
   (d.warehouses || []).forEach((w: any) => {
     if (w.active === undefined) w.active = true;
   });
@@ -63,10 +66,18 @@ export function migrate(d: any): any {
   // --- printing (reference ensurePrinting, 19496) ---
   d.printer = { ...defaultPrinterSettings(), ...(d.printer || {}) };
   if (!Array.isArray(d.printers) || !d.printers.length) d.printers = defaultPrinters(d.printer);
+  // the two demo printers every book used to start with were never real: a
+  // Bluetooth one with no address and a network one at a made-up address
+  d.printers = d.printers.filter((p: any) => !(p.id === 'prn_1' && p.kind === 'bluetooth' && !p.address)
+    && !(p.id === 'prn_2' && p.address === '192.168.1.44'));
+  if (!d.printers.length) d.printers = defaultPrinters(d.printer);
+  if (d.printer.device === 'POS-80 (Bluetooth)') d.printer.device = '';
   d.printers.forEach((p: any) => { if (p.port == null) p.port = 9100; });
   if (!d.printers.some((p: any) => p.dflt)) d.printers[0].dflt = true;
   d.printServer = { ...defaultPrintServer(), ...(d.printServer || {}) };
   if (!Array.isArray(d.templates) || !d.templates.length) d.templates = defaultTemplates();
+  // IMEIs started printing on receipts; the old receipt template had the switch off by default
+  if (!d.imeiOnReceiptsV1) { d.templates.forEach((t: any) => { t.showImei = true; }); d.imeiOnReceiptsV1 = true; }
   d.templateFor = { ...defaultTemplateFor(), ...(d.templateFor || {}) };
 
   // --- licence, subscription, sync, updates, versions ---
@@ -80,7 +91,15 @@ export function migrate(d: any): any {
   ensureRoles(d);
   d.numbering = { ...defaultNumbering(), ...(d.numbering || {}) };
   d.units = (Array.isArray(d.units) && d.units.length) ? d.units : defaultUnits();
-  d.categories = (Array.isArray(d.categories) && d.categories.length) ? d.categories : defaultCategories();
+  d.categories = Array.isArray(d.categories) ? d.categories : [];
+  // Every book used to be handed a starter list of categories nobody chose.
+  // Those that no item uses are removed, once; anything in use stays.
+  if (!d.starterCategoriesClearedV1) {
+    const starter = new Set(defaultCategories());
+    const used = new Set((d.products || []).map((p: any) => p.category));
+    d.categories = d.categories.filter((c: string) => !starter.has(c) || used.has(c));
+    d.starterCategoriesClearedV1 = true;
+  }
   (d.products || []).forEach((p: any) => {
     if (!p.kind) p.kind = 'product';
     if (!Array.isArray(p.barcodes)) p.barcodes = [];

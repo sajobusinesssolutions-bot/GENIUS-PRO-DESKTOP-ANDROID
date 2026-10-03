@@ -97,7 +97,7 @@ export default function PurchaseDetailScreen({ route, navigation }: Props) {
         />
 
         <View style={{ height: 20 }} />
-        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{x.lines.length} line{x.lines.length === 1 ? '' : 's'}</Text>}>
+        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{x.lines.length} line{x.lines.length === 1 ? '' : 's'}</Text>}>
           Goods received
         </SectionLabel>
         <Panel>
@@ -110,17 +110,17 @@ export default function PurchaseDetailScreen({ route, navigation }: Props) {
               }}
             >
               <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: colors.warn }}>{i + 1}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.warn }}>{i + 1}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
                   {product(l.productId)?.name || l.productId}
                 </Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                   {l.qty} × {money(l.cost)}
                 </Text>
               </View>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
             </View>
           ))}
         </Panel>

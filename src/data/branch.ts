@@ -98,7 +98,7 @@ export function branchIsEmpty(d: DB, id: string): { empty: boolean; why: string 
   const units = branchStockUnits(d, id);
   if (units > 0) return { empty: false, why: units + ' units of stock are still held here' };
   const sales = d.sales.filter((s) => s.warehouse === id).length;
-  if (sales) return { empty: false, why: sales + ' bills were rung up here' };
+  if (sales) return { empty: false, why: sales + ' sales were rung up here' };
   const posts = (d.journal || []).filter((e) => e.branch === id).length;
   if (posts) return { empty: false, why: posts + ' postings sit in its books' };
   return { empty: true, why: '' };

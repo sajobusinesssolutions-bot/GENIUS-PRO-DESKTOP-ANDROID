@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, Pressable, ScrollView, TextInput } from 'react-native';
+import { View, Text, FlatList, ScrollView, TextInput } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
-import { Empty, Button, Cap, Chip, DocCard, Badge } from '../components/ui';
+import { Empty, Button, Cap, Chip, DocCard, Badge, Field } from '../components/ui';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
@@ -68,17 +69,14 @@ export function OfferNewScreen({ navigation }: NativeStackScreenProps<RootStackP
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: 16 }}>
       <ScrollView>
-        <Cap>Name</Cap>
-        <TextInput value={name} onChangeText={setName} placeholder="What this offer is called" placeholderTextColor={colors.faint}
-          style={{ height: 52, borderRadius: 13, borderWidth: 1.4, borderColor: colors.line, paddingHorizontal: 14, color: colors.ink, backgroundColor: colors.surface, fontFamily: fonts.ui, fontSize: 15, marginTop: 8, marginBottom: 14 }} />
+        <Field label="Offer name" value={name} onChangeText={setName} placeholder="What this offer is called" />
         <Cap>Discount type</Cap>
         <View style={{ flexDirection: 'row', gap: 6, marginVertical: 8 }}>
           <Chip label="Percent %" on={kind === 'percent'} onPress={() => setKind('percent')} />
           <Chip label="Fixed amount" on={kind === 'fixed'} onPress={() => setKind('fixed')} />
         </View>
-        <Cap>Value</Cap>
-        <TextInput value={value} onChangeText={setValue} keyboardType="numeric" placeholder={kind === 'percent' ? '10' : '5000'} placeholderTextColor={colors.faint}
-          style={{ height: 52, borderRadius: 13, borderWidth: 1.4, borderColor: colors.line, paddingHorizontal: 14, color: colors.ink, backgroundColor: colors.surface, fontFamily: fonts.ui, fontSize: 15, marginTop: 8, marginBottom: 14 }} />
+        <View style={{ height: 6 }} />
+        <Field label={kind === 'percent' ? 'Discount %' : 'Discount amount'} value={value} onChangeText={setValue} numeric decimal placeholder={kind === 'percent' ? '10' : '5000'} />
         <Cap>Applies to</Cap>
         <View style={{ flexDirection: 'row', gap: 6, marginVertical: 8, flexWrap: 'wrap' }}>
           <Chip label="Whole cart" on={scope === 'all'} onPress={() => { setScope('all'); setTarget(null); }} />

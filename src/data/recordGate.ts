@@ -21,7 +21,7 @@
  * why, and what to do next — in that order.
  */
 import type { DB } from './types';
-import { licState } from './logic';
+import { licState, access } from './logic';
 
 export type RefusalCode = 'licence' | 'offline' | 'branch' | 'period_lock';
 
@@ -91,6 +91,36 @@ const LICENCE_WHY: Record<string, { title: string; why: string }> = {
 const RECORDING_STATES = Object.keys(LICENCE_WHY).filter((k) => k !== 'none');
 
 /**
+ * The plan rule on its own: a trial that has ended, or a paid plan that has
+ * run out, refuses anything new. Used alone for new items, customers and
+ * quotes, which are not bookkeeping entries and so are not stopped by a closed
+ * period or a lost connection.
+ */
+export function planRefusal(d: DB, now = new Date()): Refusal | null {
+  const plan = access(d, now);
+  if (plan === 'trialOver') {
+    return {
+      code: 'licence', title: 'Your free trial has ended',
+      why: 'Nothing new can be added (sales, items, expenses, customers) until a plan is chosen. '
+        + 'Everything already in the books can still be read, printed, exported and backed up.',
+      route: 'Licence', action: 'Choose a plan',
+    };
+  }
+  // A plan whose end date has passed while its last answer still said "fine".
+  // Every other lapsed state already has its own words below.
+  const said = licState(d, now);
+  if (plan === 'lapsed' && (said === 'active' || said === 'trial')) {
+    return {
+      code: 'licence', title: 'Your plan has run out',
+      why: 'Nothing new can be added until it is renewed, and cloud sync is paused. '
+        + 'Everything already in the books can still be read, printed, exported and backed up.',
+      route: 'Licence', action: 'Renew',
+    };
+  }
+  return null;
+}
+
+/**
  * Whether a new transaction may be written, and if not, why not.
  *
  * `online` is passed in rather than read off the book because the book only
@@ -121,6 +151,8 @@ export function mayRecord(d: DB, online: boolean, now = new Date()): Refusal | n
       route: 'Branches', action: 'Open branches',
     };
   }
+  const unpaid = planRefusal(d, now);
+  if (unpaid) return unpaid;
   const state = licState(d, now);
   if (state !== 'active' && state !== 'trial' && RECORDING_STATES.indexOf(state) > -1) {
     const w = LICENCE_WHY[state];

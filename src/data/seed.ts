@@ -355,6 +355,8 @@ export function emptyBook(o: { firmName?: string; ownerName?: string; branchName
   db.activeFirmId = firm.id;
 
   db.warehouses = [{ id: 'w1', name: (o.branchName || '').trim() || 'Main shop', active: true }];
+  // categories are the owner's own; none are made up for them
+  db.categories = [];
 
   db.products = [];
   db.parties = [];

@@ -18,16 +18,17 @@ import {
 import { Icon, IconName } from '../components/icons';
 import Sheet from '../components/Sheet';
 import { useGo } from '../nav/navigate';
-import { finRange, FIN_PERIODS, inRange } from '../data/helpers';
+import { finRange, FIN_PERIODS, inRange, fmtDate } from '../data/helpers';
 import type { DB, Warehouse } from '../data/types';
 import { useAuthSafe } from '../data/AuthContext';
 import { refreshSession } from '../data/authApi';
 import { filterVisibleBusinesses, listBusinesses, downloadSnapshot, RemoteBusiness } from '../data/syncClient';
 
 /** Owner-only gate, used by both screens in this module. */
+/** Whether this role may see the branches — from Users & roles, not just "is the owner". */
 function useOwnerOnly() {
-  const { db } = useAppData();
-  return db?.session.role === 'owner';
+  const { can } = useAppData();
+  return can('branches.view');
 }
 
 function Denied() {
@@ -199,7 +200,7 @@ export function BranchesScreen() {
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{w.name}</Text>
+                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{w.name}</Text>
                     {here ? <Badge label="Selling here" tone="good" /> : null}
                     {off ? <Badge label="Disabled" tone="neutral" /> : null}
                   </View>
@@ -214,7 +215,7 @@ export function BranchesScreen() {
               <DetailRow label="Stock on hand" value={Math.round(f.stock) + ' units'} />
               <DetailRow label="Stock at cost" value={money(f.value)} />
               <DetailRow label="Sales all time" value={money(f.sales)} tone={colors.good} />
-              <DetailRow label="Bills raised" value={String(f.bills)} last />
+              <DetailRow label="Sales raised" value={String(f.bills)} last />
 
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
                 <View style={{ flex: 1 }}>
@@ -232,20 +233,49 @@ export function BranchesScreen() {
 
         {accountBranches.length ? (
           <>
-            <SectionLabel style={{ marginTop: 8 }} right={<Badge label={accountBranches.length + ' account branches'} tone="neutral" />}>Other branches on your account</SectionLabel>
-            <Panel flush>
-              {accountBranches.map((b, i) => (
-                <ListRow
-                  key={b.id}
-                  icon="factory"
-                  tone={b.active === false ? 'neutral' : 'accent'}
-                  title={b.name}
-                  subtitle={'Account branch · ID ' + b.id.slice(0, 8).toUpperCase() + (b.active === false ? ' · Disabled' : ' · Available to compare')}
-                  badge={b.active === false ? <Badge label="Disabled" tone="neutral" /> : <Badge label="Business" tone="accent" />}
-                  last={i === businesses.length - 1}
-                />
-              ))}
-            </Panel>
+            <View style={{ height: 8 }} />
+            <SectionLabel right={<Badge label={accountBranches.length + ' on your account'} tone="neutral" />}>Other branches on your account</SectionLabel>
+            {accountBranches.map((b) => {
+              const off = b.active === false;
+              const backedUp = b.snapshot_at ? fmtDate(b.snapshot_at) : null;
+              return (
+                <Panel key={b.id} style={{ marginBottom: 12, opacity: off ? 0.6 : 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
+                    <View style={{
+                      width: 46, height: 46, borderRadius: 15,
+                      backgroundColor: off ? colors.sunk : colors.warnSoft,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Icon name="factory" size={21} color={off ? colors.faint : colors.warn} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                        <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{b.name}</Text>
+                        {off ? <Badge label="Disabled" tone="neutral" /> : <Badge label={b.role ? b.role.charAt(0).toUpperCase() + b.role.slice(1) : 'Account'} tone="accent" />}
+                      </View>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
+                        {b.tin ? 'TIN ' + b.tin + ' · ' : ''}ID {b.id.slice(0, 8).toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 13 }} />
+
+                  <DetailRow label="Kept as" value="Its own books on your account" />
+                  <DetailRow label="On your account since" value={fmtDate(b.created_at)} />
+                  <DetailRow label="Last copy in the cloud" value={backedUp || 'Not yet'} tone={backedUp ? colors.good : colors.warn} last />
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                    <View style={{ flex: 1 }}>
+                      <Button size="sm" label="Compare" icon={<Icon name="chart" size={15} color={colors.ink} />} onPress={() => go('BranchAnalysis')} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Button size="sm" label="Open" icon={<Icon name="swap" size={15} color={colors.ink} />} onPress={() => go('Businesses')} />
+                    </View>
+                  </View>
+                </Panel>
+              );
+            })}
           </>
         ) : null}
       </ScrollView>
@@ -463,7 +493,7 @@ export function BranchAnalysisScreen() {
       return [
         { l: 'Bills raised', v: String(r.bills) },
         { l: 'Units sold', v: String(Math.round(r.units)) },
-        { l: 'Average bill', v: money(r.avg) },
+        { l: 'Average sale', v: money(r.avg) },
         { l: 'Stock in', v: String(Math.round(r.movesIn)), tone: colors.good },
         { l: 'Stock out', v: String(Math.round(r.movesOut)), tone: colors.danger, bold: true },
       ];
@@ -523,7 +553,7 @@ export function BranchAnalysisScreen() {
             <Text style={{ fontFamily: fonts.uiExtra, fontSize: 32, letterSpacing: -0.8, color: colors.ink }}>
               {grandHeadline}
             </Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
               across {d.rows.length} business{d.rows.length === 1 ? '' : 'es'}
             </Text>
           </View>
@@ -540,7 +570,7 @@ export function BranchAnalysisScreen() {
             ]
             : lens === 'trade'
               ? [
-                { icon: 'receipt', label: 'Bills', value: String(d.total.bills), tone: 'accent' },
+                { icon: 'receipt', label: 'Sales', value: String(d.total.bills), tone: 'accent' },
                 { icon: 'cart', label: 'Units sold', value: String(Math.round(d.total.units)), tone: 'good' },
                 { icon: 'down', label: 'Stock in', value: String(Math.round(d.total.movesIn)), tone: 'good' },
                 { icon: 'up', label: 'Stock out', value: String(Math.round(d.total.movesOut)), tone: 'danger' },
@@ -554,7 +584,7 @@ export function BranchAnalysisScreen() {
         />
 
         <View style={{ height: 20 }} />
-        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>share of total · ranked</Text>}>
+        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>share of total · ranked</Text>}>
           Branch comparison
         </SectionLabel>
 
@@ -574,7 +604,7 @@ export function BranchAnalysisScreen() {
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{r.w.name}</Text>
+                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{r.w.name}</Text>
                     {accountBranch ? <Badge label="Account branch" tone="accent" /> : null}
                     {r.w.active === false ? <Badge label="Disabled" tone="neutral" /> : null}
                   </View>
@@ -582,7 +612,7 @@ export function BranchAnalysisScreen() {
                     {Math.round(share)}% of the total
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 17, color: colors.ink }}>{headline(r)}</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>{headline(r)}</Text>
               </View>
 
               <View style={{ marginTop: 13, marginBottom: 13 }}>
@@ -620,7 +650,7 @@ export function BranchAnalysisScreen() {
             </>
           ) : (
             <>
-              <DetailRow label="Bills raised" value={String(d.total.bills)} />
+              <DetailRow label="Sales raised" value={String(d.total.bills)} />
               <DetailRow label="Units sold" value={String(Math.round(d.total.units))} />
               <DetailRow label="Stock in" value={String(Math.round(d.total.movesIn))} tone={colors.good} />
               <DetailRow label="Stock out" value={String(Math.round(d.total.movesOut))} tone={colors.danger} bold last />

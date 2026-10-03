@@ -1,16 +1,15 @@
 /**
- * The live tab bar — reference lines 5408-5424 (BAR / TAB_OF) and 6203-6220
- * (the centre floating action button). Four tabs for every role, a `.fabslot`
- * between the second and third, and a raised accent `.fab` that opens the
- * `quickAll` sheet.
+ * The live tab bar — reference lines 5408-5424 (BAR / TAB_OF).
+ * Four tabs for every role, evenly spaced. The quick-add button that sat
+ * in the middle of the bar is now a floating button on Home.
  */
 import React, { useEffect, useState } from 'react';
+import { requestSync } from '../data/SyncKeeper';
 import { View, Text, Keyboard } from 'react-native';
 import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts } from '../theme';
 import { Icon, IconName } from '../components/icons';
-import { QuickSheet } from '../components/Quick';
 import { Tap } from '../components/Tap';
 
 import DashboardScreen from '../screens/DashboardScreen';
@@ -22,8 +21,8 @@ const Tab = createBottomTabNavigator();
 
 /** reference `var BAR = [...]` line 5409 */
 const BAR: { s: string; i: IconName; l: string }[] = [
-  { s: 'DashboardTab', i: 'dashboard', l: 'Dashboard' },
-  { s: 'SalesTab', i: 'receipt', l: 'Sales' },
+  { s: 'DashboardTab', i: 'home', l: 'Home' },
+  { s: 'SalesTab', i: 'receipt', l: 'Activity' },
   { s: 'ItemsTab', i: 'box', l: 'Items' },
   { s: 'MenuTab', i: 'menu', l: 'Menu' },
 ];
@@ -31,7 +30,6 @@ const BAR: { s: string; i: IconName; l: string }[] = [
 function TabBar({ state, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [quick, setQuick] = useState(false);
   const current = state.routes[state.index].name;
 
   // The bar steps aside while typing. With the screen now lifted clear of the
@@ -66,7 +64,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
         }}
       >
         <Icon name={t.i} size={22} color={on ? colors.accent : colors.faint} weight={on ? 'fill' : 'regular'} />
-        <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 10, color: on ? colors.accent : colors.faint, marginTop: 4 }}>
+        <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 12.5, color: on ? colors.accent : colors.faint, marginTop: 4 }}>
           {t.l}
         </Text>
       </Tap>
@@ -85,33 +83,34 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
         shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: -3 },
         elevation: 4,
       }}>
-        {BAR.slice(0, 2).map(btn)}
-        <View style={{ width: 70, alignItems: 'center', justifyContent: 'center', marginTop: -18 }}>
-          <Tap
-            feel="burst"
-            scaleTo={0.88}
-            accessibilityLabel="Quick actions"
-            onPress={() => setQuick(true)}
-            style={() => ({
-              width: 58, height: 58, borderRadius: 18, backgroundColor: colors.accent,
-              alignItems: 'center', justifyContent: 'center',
-              shadowColor: colors.accent, shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 },
-              elevation: 10,
-            })}
-          >
-            <Icon name="plus" size={26} color={colors.accentInk} weight="bold" />
-          </Tap>
-        </View>
-        {BAR.slice(2).map(btn)}
+        {BAR.map(btn)}
       </View>
-      <QuickSheet visible={quick} onClose={() => setQuick(false)} />
     </>
   );
 }
 
+
 export default function MainTabs() {
+  const { colors } = useTheme();
   return (
-    <Tab.Navigator tabBar={(props) => <TabBar {...props} />} screenOptions={{ headerShown: false, animation: 'shift' }}>
+    <Tab.Navigator
+      tabBar={(props) => <TabBar {...props} />}
+      screenListeners={{ focus: () => requestSync() }}
+      /* A quick cross-fade on the native thread. 'shift' slid a screen that was
+         often still being built on first visit, which stuttered. The tabs are
+         built once up front and kept current while hidden (not frozen: a frozen
+         tab has to catch up on every change the moment it is shown, which is
+         exactly the frame the fade needs), so a switch has nothing to render. */
+      screenOptions={{
+        headerShown: false,
+        // solid, so the cross-fade never shows the window behind the tabs
+        sceneStyle: { backgroundColor: colors.bg },
+        // instant, as on most Android apps: a fade drew the cards' shadows as dark blocks
+        animation: 'none',
+        lazy: false,
+        freezeOnBlur: false,
+      }}
+    >
       <Tab.Screen name="DashboardTab" component={DashboardScreen} />
       <Tab.Screen name="SalesTab" component={SalesListScreen} />
       <Tab.Screen name="ItemsTab" component={ItemsScreen} />

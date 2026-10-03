@@ -15,7 +15,8 @@
  * in. Nothing here invents a code or reports a sign-in that did not happen.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, Image } from 'react-native';
+import { Pressable } from '../components/Press';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { Easing, Extrapolation, interpolate, interpolateColor, useAnimatedProps, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useTheme, fonts, radius } from '../theme';
@@ -24,6 +25,8 @@ import {
   Button, Field, Panel, SectionLabel, InfoBanner, StickyBar, ProgressBar, DetailRow,
 } from '../components/ui';
 import { Icon, IconName } from '../components/icons';
+import { CodeInput, CodeSentNote, CodeState, useCooldown } from '../components/CodeInput';
+import { Logo } from '../components/Logo';
 import { useAuth } from '../data/AuthContext';
 import { useAppData } from '../data/AppDataContext';
 import { useAfterSignIn } from '../nav/afterSignIn';
@@ -44,16 +47,13 @@ function Hero({ title, sub }: { title: string; sub: string }) {
   const { colors } = useTheme();
   return (
     <View style={{ gap: 9, marginBottom: 20 }}>
-      <View style={{
-        width: 52, height: 52, borderRadius: 17, backgroundColor: colors.rail,
-        alignItems: 'center', justifyContent: 'center', marginBottom: 6,
-      }}>
-        <Icon name="till" size={26} color="#fff" />
+      <View style={{ marginBottom: 8 }}>
+        <Logo size={52} />
       </View>
       <Text style={{ fontFamily: fonts.uiExtra, fontSize: 26, color: colors.ink, letterSpacing: -0.7 }}>
         {title}
       </Text>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 20.5, color: colors.soft }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 20.5, color: colors.soft }}>
         {sub}
       </Text>
     </View>
@@ -150,9 +150,7 @@ export function AuthGateScreen({ navigation }: GateProps) {
 
           <View style={{ flex: 1, justifyContent: 'flex-end' }}>
             <View style={{ paddingBottom: 12 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-                <Icon name="till" size={20} color="#171A22" />
-              </View>
+              <View style={{ marginBottom: 14 }}><Logo size={64} color="#FFFFFF" /></View>
               <Text style={{ color: '#FFFFFF', fontFamily: fonts.uiExtra, fontSize: 38, letterSpacing: -1.2, lineHeight: 43 }}>
                 Genius Pro
               </Text>
@@ -200,11 +198,23 @@ export function SignInScreen({ navigation }: SignInProps) {
 
   /** Reset-by-code, shown in place of the password once asked for. */
   const [resetting, setResetting] = useState(false);
+  /** Set when the server says no account uses this address. */
+  const [noAccount, setNoAccount] = useState('');
   const [code, setCode] = useState('');
   const [fresh, setFresh] = useState('');
+  const [codeState, setCodeState] = useState<CodeState>('idle');
+  const [codeMsg, setCodeMsg] = useState('');
+  const cooldown = useCooldown();
 
   const configured = api.serverConfigured();
   const emailOk = emailLooksReal(email);
+
+  async function checkCode(c: string) {
+    setCodeState('checking'); setCodeMsg('');
+    const v = await api.verifyCode(email.trim(), c, 'reset');
+    if (!v.ok) { setCodeState('bad'); setCodeMsg(v.error.message); return; }
+    setCodeState('ok');
+  }
 
   async function doSignIn() {
     if (!emailOk) { error('Check the email address.'); return; }
@@ -212,6 +222,7 @@ export function SignInScreen({ navigation }: SignInProps) {
     setBusy(true);
     const r = await api.signIn(email.trim(), password);
     setBusy(false);
+    if (!r.ok && r.error.failure === 'unknownEmail') { setNoAccount(email.trim()); return; }
     if (!r.ok) { error(r.error.message); return; }
     await adopt({
       email: r.value.email, name: r.value.name, method: 'password',
@@ -239,25 +250,29 @@ export function SignInScreen({ navigation }: SignInProps) {
 
   async function askCode() {
     if (!emailOk) { error('Enter your email first, and we will send a code to it.'); return; }
+    if (cooldown.left > 0) return;
     setBusy(true);
     const r = await api.requestResetCode(email.trim());
     setBusy(false);
+    if (!r.ok && r.error.failure === 'unknownEmail') { setNoAccount(email.trim()); return; }
     if (!r.ok) { error(r.error.message); return; }
+    setCode(''); setCodeState('idle'); setCodeMsg('');
+    cooldown.restart();
     setResetting(true);
-    success('A six-digit code is on its way to ' + email.trim());
   }
 
   async function doReset() {
-    if (!codeLooksReal(code)) { error('The code is six digits.'); return; }
+    // The code is checked on its own first, so a wrong one is reported as a
+    // wrong code rather than as a failed password change.
+    if (codeState !== 'ok') {
+      if (!codeLooksReal(code)) { setCodeState('bad'); setCodeMsg('Enter all six digits of the code.'); return; }
+      await checkCode(code.trim());
+      return;
+    }
     const v = checkPassword(fresh, email);
     if (!v.ok) { error(v.why); return; }
 
-    // The code is checked on its own first, so a wrong one is reported as a
-    // wrong code rather than as a failed password change.
     setBusy(true);
-    const check = await api.verifyCode(email.trim(), code.trim(), 'reset');
-    if (!check.ok) { setBusy(false); error(check.error.message); return; }
-
     const r = await api.resetPassword(email.trim(), code.trim(), fresh);
     setBusy(false);
     if (!r.ok) { error(r.error.message); return; }
@@ -275,7 +290,7 @@ export function SignInScreen({ navigation }: SignInProps) {
         <Hero
           title={resetting ? 'Check your email' : 'Welcome back'}
           sub={resetting
-            ? 'Enter the six-digit code we sent to ' + email.trim() + ', then choose a new password.'
+            ? 'Enter the six-digit one-time code we emailed you, then choose a new password.'
             : 'Sign in with the email that owns the business.'}
         />
 
@@ -283,34 +298,58 @@ export function SignInScreen({ navigation }: SignInProps) {
 
         {resetting ? (
           <>
-            <Panel>
-              <Field icon="lock" label="Six-digit code" value={code} onChangeText={setCode} numeric maxLength={6} placeholder="000000" />
-              <Field icon="lock" label="New password" value={fresh} onChangeText={setFresh} secure placeholder="At least 8 characters" />
-            </Panel>
-            <View style={{ height: 12 }} />
-            <Button label="Send the code again" onPress={askCode} />
-            <View style={{ height: 8 }} />
-            <Button label="Back to password" onPress={() => setResetting(false)} />
+            <CodeInput
+              value={code}
+              onChange={(v) => { setCode(v); if (codeState === 'bad') setCodeState('idle'); }}
+              onComplete={checkCode}
+              state={codeState}
+              message={codeState === 'ok' ? 'Code confirmed. Choose a new password.' : codeMsg}
+            />
+            {codeState === 'ok' ? (
+              <Panel>
+                <Field icon="lock" label="New password" value={fresh} onChangeText={setFresh} secure placeholder="At least 8 characters" autoFocus />
+              </Panel>
+            ) : (
+              <CodeSentNote to={email.trim()} left={cooldown.left} busy={busy} onResend={askCode} />
+            )}
+            <Pressable onPress={() => setResetting(false)} hitSlop={8} style={{ alignSelf: 'center', paddingVertical: 14 }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft }}>Back to password sign-in</Text>
+            </Pressable>
           </>
         ) : (
           <>
             <Panel>
               <Field
-                icon="user" label="Owner email" value={email} onChangeText={setEmail}
+                icon="user" label="Owner email" value={email} onChangeText={(t) => { setEmail(t); setNoAccount(''); }}
                 placeholder="Your email address" autoCapitalize="none"
               />
               <Field icon="lock" label="Password" value={password} onChangeText={setPassword} secure placeholder="Your password" />
             </Panel>
 
+            {noAccount ? (
+              <View style={{ marginTop: 14, padding: 16, borderRadius: 16, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Icon name="user" size={18} color={colors.accent} />
+                  <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>No account uses this email</Text>
+                </View>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 19, color: colors.soft, marginTop: 6 }}>
+                  {noAccount} is not registered yet. Check the spelling, or create an account with it. It takes a minute and starts a {7}-day free trial.
+                </Text>
+                <View style={{ marginTop: 12 }}>
+                  <Button variant="pri" label="Create an account" onPress={() => navigation.replace('CreateAccount', { email: noAccount })} />
+                </View>
+              </View>
+            ) : null}
+
             <Pressable onPress={askCode} hitSlop={8} style={{ paddingVertical: 14, alignSelf: 'flex-start' }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>
                 Forgotten it? Send a code by email
               </Text>
             </Pressable>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 6 }}>
               <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>or</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>or</Text>
               <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
             </View>
 
@@ -322,7 +361,7 @@ export function SignInScreen({ navigation }: SignInProps) {
 
             <View style={{ height: 14 }} />
             <Pressable onPress={() => navigation.replace('CreateAccount')} hitSlop={8}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft, textAlign: 'center' }}>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft, textAlign: 'center' }}>
                 No account yet?{' '}
                 <Text style={{ fontFamily: fonts.uiBold, color: colors.accent }}>Create one</Text>
               </Text>
@@ -333,7 +372,7 @@ export function SignInScreen({ navigation }: SignInProps) {
 
       <StickyBar>
         <Button
-          label={resetting ? 'Change password and sign in' : 'Sign in'}
+          label={resetting ? (codeState === 'ok' ? 'Change password and sign in' : 'Check the code') : 'Sign in'}
           variant="pri"
           loading={busy}
           onPress={resetting ? doReset : doSignIn}
@@ -352,13 +391,13 @@ const STEPS = ['You', 'Email', 'Confirm', 'Password'] as const;
 const HEADS: { title: string; sub: string; icon: IconName }[] = [
   { title: 'Who owns the business?', sub: 'Your name goes on the account and on the licence.', icon: 'user' },
   { title: 'Your email address', sub: 'This is how you sign in, recover the books and hold the licence.', icon: 'doc' },
-  { title: 'Confirm your email', sub: 'We have sent you a six-digit code.', icon: 'lock' },
+  { title: 'Enter the code', sub: 'We emailed you a six-digit one-time code.', icon: 'lock' },
   { title: 'Choose a password', sub: 'The one thing standing between someone and your books.', icon: 'lock' },
 ];
 
 type CreateProps = NativeStackScreenProps<RootStackParamList, 'CreateAccount'>;
 
-export function CreateAccountScreen({ navigation }: CreateProps) {
+export function CreateAccountScreen({ navigation, route }: CreateProps) {
   const { colors } = useTheme();
   const { adopt } = useAuth();
   const { startFreshBook } = useAppData();
@@ -367,15 +406,27 @@ export function CreateAccountScreen({ navigation }: CreateProps) {
   const [at, setAt] = useState(0);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(route?.params?.email || '');
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  const [codeState, setCodeState] = useState<CodeState>('idle');
+  const [codeMsg, setCodeMsg] = useState('');
+  const cooldown = useCooldown();
 
   const configured = api.serverConfigured();
   const verdict = useMemo(() => checkPassword(password, email), [password, email]);
+
+  /** Checked the moment the sixth digit is in; right moves straight on. */
+  async function checkCode(c: string) {
+    setCodeState('checking'); setCodeMsg('');
+    const v = await api.verifyCode(email.trim(), c, 'signup');
+    if (!v.ok) { setCodeState('bad'); setCodeMsg(v.error.message); return; }
+    setCodeState('ok');
+    setTimeout(() => setAt((i) => (steps[i] === 'Confirm' ? i + 1 : i)), 650);
+  }
 
   /**
    * Without a server there is nobody to send a code, so that step is skipped
@@ -400,19 +451,20 @@ export function CreateAccountScreen({ navigation }: CreateProps) {
         setBusy(false);
         if (!r.ok) { error(r.error.message); return; }
         setSent(true);
-        success('A six-digit code is on its way to ' + email.trim());
+        setCode(''); setCodeState('idle');
+        cooldown.restart();
       }
     }
 
     if (which === 'Confirm') {
-      if (!codeLooksReal(code)) { error('The code is six digits.'); return; }
       // Checked here, not at the end. Discovering a mistyped digit only after
       // choosing a password means being thrown back three screens for something
       // that could have been said immediately.
-      setBusy(true);
-      const v = await api.verifyCode(email.trim(), code.trim(), 'signup');
-      setBusy(false);
-      if (!v.ok) { error(v.error.message); return; }
+      if (codeState !== 'ok') {
+        if (!codeLooksReal(code)) { setCodeState('bad'); setCodeMsg('Enter all six digits of the code.'); return; }
+        await checkCode(code.trim());
+        return;
+      }
     }
 
     if (which === 'Password') {
@@ -454,11 +506,14 @@ export function CreateAccountScreen({ navigation }: CreateProps) {
   }
 
   async function resend() {
+    if (cooldown.left > 0) return;
     setBusy(true);
     const r = await api.requestSignUpCode(email.trim(), name.trim());
     setBusy(false);
     if (!r.ok) { error(r.error.message); return; }
-    success('Sent again to ' + email.trim());
+    setCode(''); setCodeState('idle'); setCodeMsg('');
+    cooldown.restart();
+    success('A new code is on its way. The earlier one no longer works.');
   }
 
   const strengthWord = ['Too short', 'Weak', 'Good', 'Strong'][verdict.strength];
@@ -500,12 +555,14 @@ export function CreateAccountScreen({ navigation }: CreateProps) {
 
         {steps[at] === 'Confirm' ? (
           <>
-            <Panel>
-              <Field icon="lock" label="Six-digit code" value={code} onChangeText={setCode} numeric maxLength={6} placeholder="000000" />
-              <DetailRow label="Sent to" value={email.trim()} last />
-            </Panel>
-            <View style={{ height: 12 }} />
-            <Button label="Send it again" onPress={resend} loading={busy} />
+            <CodeInput
+              value={code}
+              onChange={(v) => { setCode(v); if (codeState === 'bad') setCodeState('idle'); }}
+              onComplete={checkCode}
+              state={codeState}
+              message={codeState === 'ok' ? 'Email confirmed' : codeMsg}
+            />
+            <CodeSentNote to={email.trim()} left={cooldown.left} busy={busy} onResend={resend} />
           </>
         ) : null}
 

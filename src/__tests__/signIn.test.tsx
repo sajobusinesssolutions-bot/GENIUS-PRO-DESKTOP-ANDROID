@@ -140,3 +140,15 @@ describe('a refused sign-in', () => {
     expect(mockError).toHaveBeenCalledWith('Enter your password.');
   });
 });
+
+describe('an email with no account', () => {
+  it('says so and offers to create the account with that email', async () => {
+    mockApi.signIn = jest.fn(async () => ({
+      ok: false, error: { failure: 'unknownEmail', message: 'There is no Genius account with that email.' },
+    }));
+    signIn();
+    await waitFor(() => expect(screen.getByText('No account uses this email')).toBeTruthy());
+    fireEvent.press(screen.getByText('Create an account'));
+    expect(nav.replace).toHaveBeenCalledWith('CreateAccount', { email: 'owner@example.com' });
+  });
+});

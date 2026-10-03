@@ -7,6 +7,7 @@ import {
   LicStatus, Subscription, Shift,
 } from './types';
 import { uid, iso } from './uid';
+import { reconcileBatches } from './batches';
 import { activeBranchId, branchPrefix } from './branch';
 import { ensureCoa } from './coa';
 import { addDays, PLANS, LIC_GRACE } from './defaults';
@@ -111,6 +112,8 @@ export function move(d: DB, productId: string, wh: string, qty: number, type: st
     const batch = prod.batches.find((x) => x.no === batchNo);
     if (batch) batch.qty += qty;
   }
+  // a move that named no batch (or one that is gone) still has to land in the batches
+  reconcileBatches(prod);
   const movement = { id: uid('mv'), ts: iso(when), productId, wh, qty, type, ref, batchNo, userId: userId || d.session.userId };
   d.movements.push(movement);
   if (d.sync?.on) enqueue(d, 'movement', movement.id);
@@ -221,6 +224,16 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
         'Not enough ' + prod.name + ' — ' + available + ' ' + prod.unit + ' on hand, ' + required + ' needed',
       );
     }
+  });
+  // the phones sold leave the IMEI list, so the same one cannot be sold twice
+  o.lines.forEach((l) => {
+    if (!l.serials || !l.serials.length) return;
+    const prod = d.products.find((p) => p.id === l.productId);
+    if (!prod || !prod.serials) return;
+    const gone = new Set(l.serials.map((s) => s.imei.toUpperCase()));
+    prod.serials = prod.serials.filter((s) => !gone.has(s.toUpperCase()));
+    if (prod.serialInfo) gone.forEach((g) => { Object.keys(prod.serialInfo!).forEach((k) => { if (k.toUpperCase() === g) delete prod.serialInfo![k]; }); });
+    l.serialNo = l.serials[0].imei;
   });
   d.counters.sale += 1;
   const partPaid = Math.max(0, Math.min(Number(o.received) || 0, finalTotal));
@@ -931,7 +944,77 @@ export function isPro(d: DB, now = new Date()): boolean {
   return s.plan === 'pro' && s.status === 'active';
 }
 
+/* ============================================================
+   What the owner has paid for, in four words.
+
+     paid       a paid plan, in force
+     trial      the free trial, still running — everything but sync
+     trialOver  the trial has ended and nothing has been bought
+     lapsed     a paid plan that has run out, or been blocked
+
+   Only `paid` and `trial` may create anything new. The books stay open to
+   read, print, export and back up in every state, so nothing is held hostage.
+   Sync needs `paid`: it is not part of the trial.
+   ============================================================ */
+
+export const TRIAL_DAYS = 7;
+export type Access = 'paid' | 'trial' | 'trialOver' | 'lapsed';
+const PAID = ['starter', 'pro', 'lifetime'];
+
+export function access(d: DB, now = new Date()): Access {
+  const l = d.licence;
+  if (l && l.key && l.licence) {
+    const ends = l.licence.expiresAt ? new Date(l.licence.expiresAt).getTime() : null;
+    const past = ends !== null && ends < now.getTime();
+    if (l.licence.plan === 'trial') return licOK(d, now) && !past ? 'trial' : 'trialOver';
+    return licOK(d, now) && !past && PAID.indexOf(l.licence.plan) > -1 ? 'paid' : 'lapsed';
+  }
+  if (l && l.key) {
+    // a licence with no plan details yet: its status is all there is to go on
+    const st = licState(d, now);
+    return st === 'active' ? 'paid' : st === 'trial' ? 'trial' : 'lapsed';
+  }
+  const s = d.subscription;
+  // a device that has never heard from anyone has not run out of anything
+  if (!s) return 'trial';
+  if (s.status === 'trial') return new Date(s.trialUntil).getTime() >= now.getTime() ? 'trial' : 'trialOver';
+  if (s.status === 'active' && new Date(s.renewsAt).getTime() >= now.getTime()) return 'paid';
+  return 'lapsed';
+}
+
+/** New records may be made: a paid plan, or a trial that is still running. */
+export function mayCreate(d: DB, now = new Date()): boolean {
+  const a = access(d, now);
+  return a === 'paid' || a === 'trial';
+}
+
+/** Whole days left on the trial or plan; null when there is no end (lifetime). */
+export function accessDaysLeft(d: DB, now = new Date()): number | null {
+  const l = d.licence;
+  if (l && l.key && l.licence) {
+    if (!l.licence.expiresAt) return null;
+    return Math.ceil((new Date(l.licence.expiresAt).getTime() - now.getTime()) / 864e5);
+  }
+  return d.subscription ? subDaysLeft(d.subscription, now) : 0;
+}
+
+/** The plan in two short phrases, for rows and cards: "Free trial" · "5 days left". */
+export function planSummary(d: DB, now = new Date()): { name: string; left: string; tone: 'good' | 'accent' | 'warn' | 'danger' } {
+  const a = access(d, now);
+  const days = accessDaysLeft(d, now);
+  const n = Math.max(0, days || 0);
+  const word = n === 1 ? '1 day left' : n + ' days left';
+  const lic = d.licence && d.licence.key ? d.licence.licence : null;
+  const paidName = lic ? (lic.planName || lic.plan) : d.subscription && d.subscription.plan === 'pro' ? 'Pro' : 'Starter';
+  if (a === 'trial') return { name: 'Free trial', left: n === 0 ? 'Ends today' : word, tone: n <= 2 ? 'warn' : 'accent' };
+  if (a === 'trialOver') return { name: 'Trial ended', left: 'Choose a plan', tone: 'danger' };
+  if (a === 'lapsed') return { name: paidName + ' · expired', left: 'Renew', tone: 'danger' };
+  return { name: paidName, left: days === null ? 'Lifetime' : word, tone: days !== null && n <= 7 ? 'warn' : 'good' };
+}
+
 export function licFeature(d: DB, f: string, now = new Date()): boolean {
+  // sync is for paid plans only, whatever an older token may say
+  if (f === 'sync' && access(d, now) !== 'paid') return false;
   const l = d.licence;
   if (l && l.key) {
     if (!licOK(d, now)) return false;
@@ -1205,8 +1288,8 @@ export function editWindowOK(d: DB, ts: string, now = new Date()): { ok: boolean
 /** Anything already void, or outside the window, cannot be touched again. */
 export function canEditSale(d: DB, saleId: string, now = new Date()): { ok: boolean; why: string } {
   const s = d.sales.find((x) => x.id === saleId);
-  if (!s) return { ok: false, why: 'That bill is gone.' };
-  if (s.status === 'void') return { ok: false, why: 'That bill is already void.' };
+  if (!s) return { ok: false, why: 'That sale is gone.' };
+  if (s.status === 'void') return { ok: false, why: 'That sale is already void.' };
   return editWindowOK(d, s.ts, now);
 }
 

@@ -50,7 +50,7 @@ export const CODE_DATA: [PrintTemplate['codeData'], string][] = [
 
 export const DOC_KINDS_TPL: [DocKind, string][] = [
   ['receipt', 'Sale receipt'], ['invoice', 'Invoice'], ['estimate', 'Quotation'],
-  ['challan', 'Delivery note'], ['recurring', 'Recurring bill'], ['instal', 'Instalment plan'],
+  ['challan', 'Delivery note'], ['recurring', 'Recurring sale'], ['instal', 'Instalment plan'],
   ['ret', 'Return note'], ['purchase', 'Purchase / supplier bill'],
 ];
 
@@ -59,17 +59,20 @@ export const POWERED_BY = 'Powered by SALJO TECH';
 
 export function defaultPrinterSettings(): PrinterSettings {
   return {
-    device: 'POS-80 (Bluetooth)', width: '80mm', copies: 1,
+    device: '', width: '80mm', copies: 1,
     autoPrint: true, openDrawer: true, showLogo: true,
     header: '', footer: 'Goods once sold are not returnable\nThank you',
   };
 }
 
-export function defaultPrinters(pr: PrinterSettings): Printer[] {
+/*
+ * A new book has one printer that always works: Save as PDF. Receipt printers
+ * are added when they are found — a Bluetooth scan, or a network address that
+ * answered a test page — never pretended into the list.
+ */
+export function defaultPrinters(_pr: PrinterSettings): Printer[] {
   return [
-    { id: 'prn_1', name: pr.device || 'POS-80 (Bluetooth)', kind: 'bluetooth', width: pr.width || '80mm', address: '', port: 9100, dflt: true, online: true, note: 'Front till' },
-    { id: 'prn_2', name: 'Epson TM-T20 (counter)', kind: 'wifi', width: '80mm', address: '192.168.1.44', port: 9100, dflt: false, online: true, note: 'Behind the counter' },
-    { id: 'prn_3', name: 'Save as PDF', kind: 'pdf', width: 'A4', address: '', port: 0, dflt: false, online: true, note: 'For emailing' },
+    { id: 'prn_3', name: 'Save as PDF', kind: 'pdf', width: 'A4', address: '', port: 0, dflt: true, online: true, note: 'For emailing' },
   ];
 }
 
@@ -86,7 +89,7 @@ export function defaultTemplates(): PrintTemplate[] {
     {
       id: 'tpl_receipt', name: 'Thermal receipt', paper: '80mm', kind: 'thermal',
       showLogo: true, showTax: true, showServed: true, showParty: true, showSaved: true,
-      showAddress: true, showBatch: true, showExpiry: true, showImei: false,
+      showAddress: true, showBatch: true, showExpiry: true, showImei: true,
       showWarranty: false, showUnit: true, showRate: true,
       code: 'barcode', codeData: 'no', codeCaption: true, density: 'normal',
       head: '', foot: 'Goods once sold are not returnable\nThank you', copies: 1,
@@ -143,7 +146,7 @@ export const PLANS: Record<'starter' | 'pro', PlanDef> = {
     prices: { month: 95000, quarter: 260000, year: 940000 },
     limits: { businesses: 99, devices: 99, users: 99 },
     has: ['Everything in Starter', 'As many businesses as you need', 'Branch panel across all of them',
-      'Recurring bills and instalment plans', 'Batches, expiry and FIFO', 'Serial and IMEI tracking',
+      'Recurring sales and instalment plans', 'Batches, expiry and FIFO', 'Serial and IMEI tracking',
       'WhatsApp and SMS reminders', 'Second unit of measure', 'Cloud sync and off-device backup',
       'Audit log and approvals'],
     hasnt: [],
@@ -157,7 +160,7 @@ export const PLAN_TERMS: [Subscription['term'], string, string][] = [
 ];
 
 export const PRO_FEATURES: Record<string, string> = {
-  recurring: 'Recurring bills', instal: 'Instalment plans', batches: 'Batches and expiry',
+  recurring: 'Recurring sales', instal: 'Instalment plans', batches: 'Batches and expiry',
   serials: 'Serial and IMEI tracking', reminders: 'Payment reminders',
   multiFirm: 'More than one business', sync: 'Cloud sync', secondaryUnit: 'A second unit',
   audit: 'Audit log and approvals',
@@ -167,7 +170,7 @@ export function defaultSubscription(): Subscription {
   const now = new Date();
   return {
     plan: 'starter', term: 'month', status: 'trial',
-    startedAt: iso(now), renewsAt: iso(addDays(now, 14)), trialUntil: iso(addDays(now, 14)),
+    startedAt: iso(now), renewsAt: iso(addDays(now, 7)), trialUntil: iso(addDays(now, 7)),
     history: [], email: '', account: '',
   };
 }
@@ -181,7 +184,7 @@ export const LIC_SERVER_DEFAULT = 'https://licences.saljo.tech';
 export const LIC_WORDS: Record<string, [string, string]> = {
   none: ['No licence on this till', 'Type the key the author sent you.'],
   active: ['Licensed', 'Everything is switched on.'],
-  trial: ['On trial', 'Full Pro until the trial runs out.'],
+  trial: ['On the free trial', 'Everything except cloud sync, for ' + 7 + ' days.'],
   stale: ['Not checked in a while', 'This till has not reached the server for ' + LIC_GRACE + ' days. Connect it once to carry on.'],
   blocked: ['This licence has been blocked', 'The author switched it off.'],
   expired: ['This licence has run out', 'Renew it to carry on selling.'],
@@ -290,7 +293,7 @@ export function defaultSettings(): Settings {
 
 /** Reference numLabel(), line 6817. */
 export const NUMBER_LABEL: Record<NumberingKey, string> = {
-  sale: 'Sales bill', estimate: 'Quotation', challan: 'Delivery note', credit: 'Credit note',
+  sale: 'Sale', estimate: 'Quotation', challan: 'Delivery note', credit: 'Credit note',
   purchase: 'Purchase', po: 'Purchase order', stocktake: 'Stock take', journal: 'Journal entry',
 };
 

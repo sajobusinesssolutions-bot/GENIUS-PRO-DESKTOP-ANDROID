@@ -8,15 +8,18 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useCan, Denied } from '../components/Gate';
-import { View, Text, ScrollView, FlatList, Pressable, Platform, Alert } from 'react-native';
+import { View, Text, ScrollView, FlatList, Platform, Alert } from 'react-native';
+import { Pressable } from '../components/Press';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
 import {
   Panel, Badge, StatGrid, SectionLabel, FilterChips, EmptyBlock, Search, InfoBanner,
-  Button, Field, SelectField, SegPill, StickyBar, DetailRow, TopTabs, ListRow,
+  Button, Field, SelectField, SegPill, StickyBar, DetailRow, TopTabs, ListRow, FieldShell,
 } from '../components/ui';
+import SegmentSlider from '../components/SegmentSlider';
+import LedgerPicker from '../components/LedgerPicker';
 import { Icon, IconName } from '../components/icons';
 import Sheet from '../components/Sheet';
 import { useWho } from '../components/WhoSheet';
@@ -128,7 +131,7 @@ function ChartOfAccountsScreenBody() {
               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' }}
             >
               <Icon name={showOff ? 'check' : 'box'} size={16} color={showOff ? colors.accent : colors.faint} />
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: showOff ? colors.accent : colors.faint }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: showOff ? colors.accent : colors.faint }}>
                 {showOff ? 'Showing deactivated' : 'Show deactivated too'}
               </Text>
             </Pressable>
@@ -171,7 +174,7 @@ function ChartOfAccountsScreenBody() {
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: balance < 0 ? colors.danger : colors.ink }}>
                   {money(Math.abs(balance))}
                 </Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                   {debitPositive(l.type) ? (balance < 0 ? 'credit' : 'debit') : (balance < 0 ? 'debit' : 'credit')}
                 </Text>
               </View>
@@ -341,7 +344,7 @@ function LedgerDetailScreenBody({ route, navigation }: LedgerProps) {
             />
 
             <View style={{ height: 20 }} />
-            <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{rows.length} postings</Text>}>
+            <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{rows.length} postings</Text>}>
               History
             </SectionLabel>
           </View>
@@ -367,17 +370,17 @@ function LedgerDetailScreenBody({ route, navigation }: LedgerProps) {
               <Icon name={item.dr ? 'down' : 'up'} size={19} color={item.dr ? colors.accent : colors.warn} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{item.memo}</Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{item.memo}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {new Date(item.ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
                 {' · '} {item.ref} · {db?.sales.some((s) => s.no === item.ref) ? 'Sales' : db?.purchases.some((p) => p.no === item.ref) ? 'Purchase' : 'Journal'}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 3 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: item.dr ? colors.accent : colors.warn }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: item.dr ? colors.accent : colors.warn }}>
                 {item.dr ? money(item.dr) : money(item.cr)}
               </Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>bal {money(item.balance)}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>bal {money(item.balance)}</Text>
             </View>
           </View>
         )}
@@ -405,7 +408,7 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
 
   /** Simple posts one ledger against a contra account; advanced is free-form. */
   const [mode, setMode] = useState<'simple' | 'advanced'>('simple');
-  const [side, setSide] = useState<'credit' | 'debit'>('credit');
+  const [side, setSide] = useState<'credit' | 'debit'>('debit');
 
   const [ledger, setLedger] = useState('');
   const [contra, setContra] = useState('');
@@ -475,148 +478,91 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 170 }} keyboardShouldPersistTaps="handled">
-        <SegPill
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 150 }} keyboardShouldPersistTaps="handled">
+        <SegmentSlider
           value={mode}
           onChange={setMode}
-          tone="accent"
+          style={{ marginBottom: 12 }}
           options={[
             { v: 'simple', l: 'Simple', i: 'bulb' },
             { v: 'advanced', l: 'Advanced', i: 'chart' },
           ]}
         />
 
-        <View style={{ height: 20 }} />
+        <FieldShell
+          label="Entry date"
+          icon="calendar"
+          onPress={() => setPicking(true)}
+          style={{ marginBottom: 10 }}
+          right={<Icon name="down" size={16} color={colors.faint} />}
+        >
+          <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>
+            {at.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
+          </Text>
+        </FieldShell>
 
         {mode === 'simple' ? (
           <>
-            {/* the credit / debit pair from the reference */}
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
-              {([
-                { v: 'credit' as const, l: 'Credit', i: 'down' as IconName, tint: colors.good, soft: colors.goodSoft },
-                { v: 'debit' as const, l: 'Debit', i: 'up' as IconName, tint: colors.danger, soft: colors.dangerSoft },
-              ]).map((o) => {
-                const on = side === o.v;
-                return (
-                  <Pressable
-                    key={o.v}
-                    onPress={() => setSide(o.v)}
-                    style={{
-                      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9,
-                      paddingVertical: 15, borderRadius: radius.md,
-                      borderWidth: 1.6, borderColor: on ? o.tint : colors.line,
-                      backgroundColor: on ? o.soft : colors.surface,
-                    }}
-                  >
-                    <Icon name={o.i} size={19} color={on ? o.tint : colors.faint} />
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 16.5, color: on ? o.tint : colors.faint }}>{o.l}</Text>
-                  </Pressable>
-                );
-              })}
+            {/* the two sides of the entry, both in view and both changeable */}
+            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 12, marginBottom: 10 }}>
+              <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 12, padding: 3, marginBottom: 6 }}>
+                {([
+                  { v: 'debit' as const, l: 'Debit', tint: colors.accent },
+                  { v: 'credit' as const, l: 'Credit', tint: colors.warn },
+                ]).map((o) => {
+                  const on = side === o.v;
+                  return (
+                    <Pressable
+                      key={o.v}
+                      onPress={() => setSide(o.v)}
+                      style={{ flex: 1, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? colors.surface : 'transparent' }}
+                    >
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? o.tint : colors.faint }}>{o.l}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <LedgerPicker
+                label={side === 'debit' ? 'Ledger debited' : 'Ledger credited'}
+                value={ledger}
+                onChange={setLedger}
+                canCreate
+                style={{ marginBottom: 6 }}
+              />
+              <View style={{ alignItems: 'center', marginVertical: -4, zIndex: 1 }}>
+                <Pressable
+                  onPress={() => { const l = ledger; setLedger(contra); setContra(l); }}
+                  accessibilityLabel="Swap the two ledgers"
+                  style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Icon name="swap" size={14} color={colors.accent} />
+                </Pressable>
+              </View>
+              <LedgerPicker
+                label={side === 'debit' ? 'Credited to' : 'Debited to'}
+                value={contra}
+                onChange={setContra}
+                icon="bank"
+                canCreate
+                style={{ marginBottom: 0 }}
+              />
             </View>
 
-            <SelectField
-              icon="tag"
-              label="Category"
-              value={ledger}
-              options={active.map((x) => ({ v: x.id, l: x.code + ' · ' + x.name }))}
-              onChange={setLedger}
-              placeholder="Which ledger"
-            />
+            <Field label="Amount" value={amount} onChangeText={setAmount} numeric decimal placeholder="0" style={{ marginBottom: 10 }} />
+            <Field icon="doc" label="Description" value={memo} onChangeText={setMemo} placeholder="What it is for" style={{ marginBottom: 10 }} />
+            <Field icon="user" label="Party name (optional)" value={partyName} onChangeText={setPartyName} style={{ marginBottom: 10 }} />
+            <Field label="Notes (optional)" value={notes} onChangeText={setNotes} multiline style={{ marginBottom: 10 }} />
 
-            <Field
-              label="Amount *"
-              value={amount}
-              onChangeText={setAmount}
-              numeric
-              decimal
-              placeholder="0"
-            />
-
-            <Field label="Description" value={memo} onChangeText={setMemo} placeholder="What it is for" />
-
-            <Field icon="user" label="Party name" value={partyName} onChangeText={setPartyName} placeholder="Optional" />
-
-            <Pressable
-              onPress={() => setPicking(true)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 13, minHeight: 74, marginBottom: 14,
-                borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.line,
-                backgroundColor: colors.surface, paddingHorizontal: 15,
-              }}
-            >
-              <Icon name="calendar" size={22} color={colors.ink} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 17, color: colors.ink }}>
-                  {at.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
-                </Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 3 }}>Entry date</Text>
-              </View>
-            </Pressable>
-
-            <Field label="Notes" value={notes} onChangeText={setNotes} placeholder="Anything else worth recording" multiline />
-
-            <SectionLabel>Posted against</SectionLabel>
-            <SelectField
-              icon="bank"
-              label="Contra account"
-              value={contra}
-              options={cashish.map((x) => ({ v: x.id, l: x.code + ' · ' + x.name }))}
-              onChange={setContra}
-              placeholder="Cash, bank or wallet"
-            />
-
-            {/* what the entry will actually do, in plain words */}
             {simpleReady ? (
-              <Panel>
-                <SectionLabel>This will post</SectionLabel>
-                <DetailRow
-                  label={side === 'credit' ? 'Credit ' + (chosen?.name || '') : 'Debit ' + (chosen?.name || '')}
-                  value={money(amt)}
-                  tone={side === 'credit' ? colors.good : colors.danger}
-                />
-                <DetailRow
-                  label={side === 'credit' ? 'Debit ' + (against?.name || '') : 'Credit ' + (against?.name || '')}
-                  value={money(amt)}
-                  bold
-                  last
-                />
-              </Panel>
-            ) : (
-              <InfoBanner
-                tone="neutral"
-                icon="bulb"
-                text="A simple entry moves one amount between two ledgers, so it always balances. Use Advanced for an entry with more than two sides."
-              />
-            )}
+              <View style={{ borderRadius: 14, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
+                <PostLine dr label={(side === 'debit' ? chosen : against)?.name || ''} value={money(amt)} />
+                <PostLine label={(side === 'debit' ? against : chosen)?.name || ''} value={money(amt)} />
+              </View>
+            ) : null}
           </>
         ) : (
           <>
-            <InfoBanner
-              tone="accent"
-              icon="bulb"
-              text="Every entry must balance — the debits and the credits have to come to the same figure before it can be posted."
-            />
-
-            <View style={{ height: 18 }} />
-            <Field icon="doc" label="Description" value={memo} onChangeText={setMemo} placeholder="What this entry is for" />
-
-            <Pressable
-              onPress={() => setPicking(true)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 13, minHeight: 74, marginBottom: 14,
-                borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.line,
-                backgroundColor: colors.surface, paddingHorizontal: 15,
-              }}
-            >
-              <Icon name="calendar" size={22} color={colors.ink} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 17, color: colors.ink }}>
-                  {at.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
-                </Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 3 }}>Entry date</Text>
-              </View>
-            </Pressable>
+            <Field icon="doc" label="Description" value={memo} onChangeText={setMemo} placeholder="What this entry is for" style={{ marginBottom: 10 }} />
 
             <SectionLabel right={
               <Badge
@@ -628,54 +574,42 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
             </SectionLabel>
 
             {lines.map((l, i) => (
-              <Panel key={i} style={{ marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>Line {i + 1}</Text>
+              <View key={i} style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 10, marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <LedgerPicker compact label={'Line ' + (i + 1)} value={l.acc} onChange={(v) => patch(i, { acc: v })} canCreate style={{ marginBottom: 0 }} />
+                  </View>
                   {lines.length > 2 ? (
-                    <Pressable onPress={() => setLines(lines.filter((_, x) => x !== i))} hitSlop={8}>
-                      <Icon name="trash" size={18} color={colors.danger} />
+                    <Pressable onPress={() => setLines(lines.filter((_, x) => x !== i))} hitSlop={8} style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center', marginTop: 6 }}>
+                      <Icon name="trash" size={15} color={colors.danger} />
                     </Pressable>
                   ) : null}
                 </View>
-
-                <SelectField
-                  icon="doc"
-                  label="Ledger"
-                  value={l.acc}
-                  options={active.map((x) => ({ v: x.id, l: x.code + ' · ' + x.name }))}
-                  onChange={(v) => patch(i, { acc: v })}
-                  placeholder="Choose a ledger"
-                />
-
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Field label="Debit" value={l.dr} onChangeText={(v) => patch(i, { dr: v, cr: '' })} numeric decimal placeholder="0" style={{ marginBottom: 0 }} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Field label="Credit" value={l.cr} onChangeText={(v) => patch(i, { cr: v, dr: '' })} numeric decimal placeholder="0" style={{ marginBottom: 0 }} />
-                  </View>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                  <Field compact label="Debit" value={l.dr} onChangeText={(v) => patch(i, { dr: v, cr: '' })} numeric decimal style={{ flex: 1, marginBottom: 0 }} />
+                  <Field compact label="Credit" value={l.cr} onChangeText={(v) => patch(i, { cr: v, dr: '' })} numeric decimal style={{ flex: 1, marginBottom: 0 }} />
                 </View>
-              </Panel>
+              </View>
             ))}
 
-            <Button
-              label="Add another line"
-              icon={<Icon name="plus" size={16} color={colors.ink} />}
+            <Pressable
               onPress={() => setLines([...lines, { acc: '', dr: '', cr: '' }])}
-            />
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 42, borderRadius: radius.md, borderWidth: 1.2, borderStyle: 'dashed', borderColor: colors.accent, marginBottom: 10 }}
+            >
+              <Icon name="plus" size={15} color={colors.accent} />
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>Add a line</Text>
+            </Pressable>
 
-            <View style={{ height: 20 }} />
-            <Panel>
-              <DetailRow label="Total debits" value={money(totalDr)} tone={colors.accent} />
-              <DetailRow label="Total credits" value={money(totalCr)} tone={colors.warn} />
-              <DetailRow
-                label={advBalanced ? 'Balanced' : 'Out by'}
-                value={advBalanced ? '—' : money(Math.abs(diff))}
-                bold
-                tone={advBalanced ? colors.good : colors.danger}
-                last
-              />
-            </Panel>
+            <View style={{ borderRadius: 14, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
+              <View style={{ flexDirection: 'row' }}>
+                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft }}>Debits · credits</Text>
+                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: colors.ink }}>{money(totalDr)} · {money(totalCr)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row' }}>
+                <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13.5, color: advBalanced ? colors.good : colors.danger }}>{advBalanced ? 'Balanced' : 'Out by'}</Text>
+                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: advBalanced ? colors.good : colors.danger }}>{advBalanced ? '✓' : money(Math.abs(diff))}</Text>
+              </View>
+            </View>
           </>
         )}
 
@@ -684,7 +618,8 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
             value={at}
             mode="date"
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={(_e, d) => { setPicking(false); if (d) setAt(d); }}
+            onDismiss={() => setPicking(false)}
+            onValueChange={(_e, d) => { setPicking(false); if (d) setAt(d); }}
           />
         ) : null}
       </ScrollView>
@@ -740,7 +675,7 @@ function TrialBalanceScreenBody() {
       />
 
       <View style={{ height: 20 }} />
-      <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{tb.rows.length} ledgers</Text>}>
+      <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{tb.rows.length} ledgers</Text>}>
         Trial balance
       </SectionLabel>
 
@@ -754,15 +689,15 @@ function TrialBalanceScreenBody() {
             }}
           >
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{r.ledger.name}</Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{r.ledger.name}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                 {r.ledger.code} · {r.ledger.type}
               </Text>
             </View>
-            <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.monoSemi, fontSize: 13, color: r.debit ? colors.accent : colors.lineHard }}>
+            <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.monoSemi, fontSize: 12.5, color: r.debit ? colors.accent : colors.lineHard }}>
               {r.debit ? money(r.debit) : '—'}
             </Text>
-            <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.monoSemi, fontSize: 13, color: r.credit ? colors.warn : colors.lineHard }}>
+            <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.monoSemi, fontSize: 12.5, color: r.credit ? colors.warn : colors.lineHard }}>
               {r.credit ? money(r.credit) : '—'}
             </Text>
           </View>
@@ -834,15 +769,15 @@ export function ReconciliationScreen() {
       <SelectField label="Bank account" value={selected} options={bankAccounts.map((a) => ({ v: a.id, l: a.name }))} onChange={setAccountId} />
       <Field label="Statement date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
       <Panel style={{ padding: 12 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 8 }}>Add statement line</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 8 }}>Add statement line</Text>
         <Field label="Description" value={description} onChangeText={setDescription} placeholder="Bank charge or deposit" />
         <Field label="Amount" value={amount} onChangeText={setAmount} placeholder="250.00" numeric />
         <Button label="Add line" icon={<Icon name="plus" size={16} color={colors.ink} />} onPress={addLine} />
       </Panel>
       <View style={{ height: 12 }} />
       <Panel style={{ padding: 12 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 8 }}>Paste CSV statement</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginBottom: 8 }}>Use Date, Description, Amount, or Debit and Credit columns.</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 8 }}>Paste CSV statement</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Use Date, Description, Amount, or Debit and Credit columns.</Text>
         <Field value={csv} onChangeText={setCsv} placeholder={'Date,Description,Amount\n2026-09-20,Deposit,250'} multiline autoCapitalize="none" />
         <Button label="Import CSV rows" onPress={importCsv} />
       </Panel>
@@ -856,8 +791,8 @@ export function ReconciliationScreen() {
             <View key={line.id} style={{ padding: 12, borderBottomWidth: index === lines.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{line.description}</Text>
-                  <Text style={{ fontFamily: fonts.mono, fontSize: 12, color: colors.faint, marginTop: 3 }}>{money(line.amount)} · {line.status}</Text>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{line.description}</Text>
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>{money(line.amount)} · {line.status}</Text>
                 </View>
                 {line.status === 'matched' ? <Badge label="Matched" tone="good" /> : null}
               </View>
@@ -865,12 +800,12 @@ export function ReconciliationScreen() {
                 <View style={{ marginTop: 8, gap: 6 }}>
                   {candidates.slice(0, 3).map((entry) => (
                     <Pressable key={entry.id} onPress={() => matchBankStatementLine(line.id, entry.id)} style={{ paddingVertical: 7, paddingHorizontal: 9, backgroundColor: colors.accentSoft, borderRadius: radius.sm }}>
-                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.ink }}>Match {entry.memo} · {entry.ref}</Text>
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>Match {entry.memo} · {entry.ref}</Text>
                     </Pressable>
                   ))}
                 </View>
               ) : null}
-              {line.status === 'unmatched' && !candidates.length ? <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.warn, marginTop: 7 }}>No posted journal match found.</Text> : null}
+              {line.status === 'unmatched' && !candidates.length ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.warn, marginTop: 7 }}>No posted journal match found.</Text> : null}
             </View>
           );
         })}
@@ -955,9 +890,23 @@ function AccountingHubScreenBody() {
       <SectionLabel>Statements</SectionLabel>
       <Panel flush>
         <ListRow icon="bank" tone="good" title="Bank reconciliation" subtitle="Match statement lines to posted entries" onPress={() => go('Reconciliation')} />
-        <ListRow icon="pie" tone="good" title="Profit and loss" subtitle="Revenue against cost" onPress={() => go('Accounting')} />
-        <ListRow icon="bank" tone="accent" title="Tax" subtitle="What is collected and owed" onPress={() => go('Tax')} last />
+        <ListRow icon="pie" tone="good" title="Profit and loss" subtitle="Revenue against cost" onPress={() => go('Accounting')} last={db?.settings.taxEnabled === false} />
+        {db?.settings.taxEnabled === false ? null : (
+          <ListRow icon="bank" tone="accent" title="Tax" subtitle="What is collected and owed" onPress={() => go('Tax')} last />
+        )}
       </Panel>
     </ScrollView>
+  );
+}
+
+/** One side of what a journal entry will post. */
+function PostLine({ dr, label, value }: { dr?: boolean; label: string; value: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Text style={{ width: 26, fontFamily: fonts.uiBold, fontSize: 12, color: dr ? colors.accent : colors.warn }}>{dr ? 'Dr' : 'Cr'}</Text>
+      <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink, paddingLeft: dr ? 0 : 14 }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{value}</Text>
+    </View>
   );
 }

@@ -48,14 +48,14 @@ export default function PartyLedgerScreen({ route }: Props) {
             />
             {rows.length ? (
               <View style={{ marginTop: 20 }}>
-                <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>newest first</Text>}>
+                <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>newest first</Text>}>
                   {pt?.name || 'Ledger'}
                 </SectionLabel>
               </View>
             ) : null}
           </View>
         }
-        ListEmptyComponent={<Empty title="No transactions" subtitle="Bills and payments for this contact will appear here." />}
+        ListEmptyComponent={<Empty title="No transactions" subtitle="Sales and payments for this contact will appear here." />}
         renderItem={({ item }) => {
           const net = item.debit - item.credit;
           return (
@@ -70,15 +70,15 @@ export default function PartyLedgerScreen({ route }: Props) {
                 <Icon name={net >= 0 ? 'up' : 'down'} size={19} color={net >= 0 ? colors.warn : colors.good} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{item.memo}</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{item.memo}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                   {item.ts ? new Date(item.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Brought forward'}
                   {net !== 0 ? ' · ' + (net > 0 ? '+' : '−') + money(Math.abs(net)) : ''}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 2 }}>
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(item.balance)}</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>balance</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>balance</Text>
               </View>
             </View>
           );

@@ -169,7 +169,7 @@ export default function GoogleSignInScreen({ navigation }: Props) {
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 24, color: colors.ink, letterSpacing: -0.6 }}>
           Continue with Google
         </Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 20.5, color: colors.soft, marginTop: 8 }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 20.5, color: colors.soft, marginTop: 8 }}>
           Google will ask which account to use. We only receive your name and email address.
         </Text>
 

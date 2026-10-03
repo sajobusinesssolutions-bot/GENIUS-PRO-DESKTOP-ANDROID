@@ -33,6 +33,18 @@ export interface RunOutcome {
  */
 let syncRunning = false;
 
+/**
+ * A sign-in token lasts longer than a few minutes, so one is reused rather than
+ * asked for on every run: the quick "anything new?" check runs every few
+ * seconds, and refreshing the session each time would double its cost.
+ */
+let tokenCache: { refresh: string; token: string; at: number } | null = null;
+const TOKEN_REUSE_MS = 4 * 60 * 1000;
+
+/** The whole copy of the books is heavy; it goes up this often, not every run. */
+const SNAPSHOT_EVERY_MS = 30 * 60 * 1000;
+let lastSnapshotAt = 0;
+
 export function useSyncRun() {
   const { db, setSync, dropQueued, applyRemoteOps, logAudit, licFeature } = useAppData();
   const { account } = useAuth();
@@ -41,8 +53,11 @@ export function useSyncRun() {
 
   const accessToken = useCallback(async (): Promise<string | null> => {
     if (!account?.refresh || account.localOnly) return null;
+    if (tokenCache && tokenCache.refresh === account.refresh && Date.now() - tokenCache.at < TOKEN_REUSE_MS) return tokenCache.token;
     const r = await refreshSession(account.refresh);
-    return r.ok ? r.value.access : null;
+    if (!r.ok) { tokenCache = null; return null; }
+    tokenCache = { refresh: account.refresh, token: r.value.access, at: Date.now() };
+    return r.value.access;
   }, [account?.refresh, account?.localOnly]);
 
   const run = useCallback(async (how: 'manual' | 'auto'): Promise<RunOutcome> => {
@@ -80,11 +95,16 @@ export function useSyncRun() {
         more = pulled.value.more;
       }
 
-      // the copy goes after the push, from the books as they are now
-      const snap = await uploadSnapshot(dbRef.current || d, token, wiring.value);
+      // the copy goes after the push, from the books as they are now — when asked
+      // for, or when the last one is old; the changes themselves already went up
+      const snapDue = how === 'manual' || !!(dbRef.current || d).sync.snapshotDue || Date.now() - lastSnapshotAt > SNAPSHOT_EVERY_MS;
+      const snap = snapDue
+        ? await uploadSnapshot(dbRef.current || d, token, wiring.value)
+        : { ok: true as const, value: { bytes: 0, version: (dbRef.current || d).sync.snapshotVersion || 0 } };
       if (!snap.ok) {
         return { ok: false, sent: r.value.sent, seq: r.value.seq, message: snap.error.message };
       }
+      if (snapDue) lastSnapshotAt = Date.now();
 
       const now = new Date().toISOString();
       const s = (dbRef.current || d).sync;
@@ -92,6 +112,7 @@ export function useSyncRun() {
       const note = (r.value.sent ? plural(r.value.sent, 'change') + ' sent up' : 'Nothing was waiting')
         + (snap.ok ? '' : ' · the copy of the books did not go up');
       setSync({
+        ...(snapDue ? { snapshotDue: false } : {}),
         lastPush: now,
         lastAt: now,
         cursor: Math.max(r.value.seq, cursor),
@@ -123,5 +144,40 @@ export function useSyncRun() {
     }
   }, [account, accessToken, setSync, dropQueued, applyRemoteOps, logAudit, licFeature]);
 
-  return { run, accessToken };
+  /**
+   * The quick check: fetch what other phones have recorded since last time and
+   * apply it, nothing more. Cheap enough to run when a screen opens and every
+   * few seconds, so a sale rung up on another phone shows here almost at once.
+   * Returns how many changes came down (0 when nothing ran).
+   */
+  const pull = useCallback(async (): Promise<number> => {
+    const d = dbRef.current;
+    if (!d || !d.sync.on || !account || account.localOnly || d.session.online === false || !licFeature('sync')) return 0;
+    if (!d.sync.businessId || syncRunning) return 0;
+    syncRunning = true;
+    try {
+      const token = await accessToken();
+      if (!token) return 0;
+      let down = 0;
+      let cursor = d.sync.cursor || 0;
+      let more = true;
+      while (more) {
+        const pulled = await pullOps(token, d.sync.businessId, cursor);
+        if (!pulled.ok) return down;
+        if (pulled.value.ops.length) {
+          down += applyRemoteOps(pulled.value.ops);
+          cursor = Math.max(cursor, pulled.value.seq);
+        }
+        more = pulled.value.more;
+      }
+      if (cursor !== (d.sync.cursor || 0)) setSync({ cursor });
+      return down;
+    } catch {
+      return 0;
+    } finally {
+      syncRunning = false;
+    }
+  }, [account, accessToken, setSync, applyRemoteOps, licFeature]);
+
+  return { run, pull, accessToken };
 }

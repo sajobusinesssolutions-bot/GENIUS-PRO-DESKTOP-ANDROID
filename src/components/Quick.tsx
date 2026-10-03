@@ -5,7 +5,8 @@
  * as a bottom sheet titled "What are you doing?".
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
+import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
@@ -82,7 +83,7 @@ export function QuickBlock() {
               <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name={g.i} size={17} color={fg} />
               </View>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 10, color: on ? colors.accent : colors.soft }}>{g.g}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>{g.g}</Text>
             </Pressable>
           );
         })}
@@ -108,6 +109,11 @@ export function QuickBlock() {
  * who already know what they want. Typing skips the grouping entirely, which
  * is how anybody who has used the app for a week will actually use it.
  */
+/** The section headings, in the words of what is done there. */
+const SECTION: Record<string, string> = {
+  Sell: 'Sale transactions', Money: 'Money', Stock: 'Stock & purchases', People: 'People', Day: 'Day & reports',
+};
+
 export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { colors } = useTheme();
   const go = useGo();
@@ -146,7 +152,7 @@ export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: ()
   );
 
   return (
-    <Sheet visible={visible} title="What are you doing?" icon="bulb" onClose={onClose} full>
+    <Sheet visible={visible} title="Quick add" onClose={onClose} full>
       <Search value={q} onChange={setQ} placeholder="Search everything you can add" />
 
       {q.trim() ? (
@@ -171,70 +177,40 @@ export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: ()
           )}
         </View>
       ) : (
-        <>
-          {common.length ? (
-            <View style={{ marginTop: 16 }}>
-              <Cap style={{ marginBottom: 9 }}>Most of the time</Cap>
-              <Grid cols={2}>
-                {common.map(({ g, it }) => {
-                  const [fg] = tone(g.tone);
-                  return (
-                    <Tile
-                      key={'c' + it.n}
-                      icon={it.i}
-                      iconColor={fg}
-                      name={it.n}
-                      horizontal
-                      onPress={() => pick(it.route, it.params)}
-                    />
-                  );
-                })}
-              </Grid>
-            </View>
-          ) : null}
-
-          <View style={{ marginTop: 20 }}>
-            <Cap style={{ marginBottom: 9 }}>Everything else</Cap>
-            {groups.map((g) => {
-              const on = open === g.g;
-              const [fg, bg] = tone(g.tone);
-              return (
-                <View key={g.g} style={{ marginBottom: 10 }}>
+        // every group as a section of tiles, three to a row — all of it in view, nothing to open first
+        groups.map((g, gi) => {
+          const [fg, bg] = tone(g.tone);
+          return (
+            <View
+              key={g.g}
+              style={{
+                paddingTop: 16, paddingBottom: 6, marginHorizontal: -16, paddingHorizontal: 16,
+                borderTopWidth: gi === 0 ? 0 : 1, borderTopColor: colors.line,
+              }}
+            >
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 16, color: colors.ink, marginBottom: 12 }}>{SECTION[g.g] || g.g}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {g.items.map((it) => (
                   <Pressable
-                    onPress={() => setOpen(on ? '' : g.g)}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 12,
-                      paddingVertical: 13, paddingHorizontal: 14,
-                      backgroundColor: colors.surface,
-                      borderRadius: 14, borderWidth: 1,
-                      borderColor: on ? colors.accent : colors.line,
-                    }}
+                    key={it.n}
+                    onPress={() => pick(it.route, it.params)}
+                    style={({ pressed }) => ({
+                      width: '33.33%', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderRadius: 14,
+                      backgroundColor: pressed ? colors.sunk : 'transparent',
+                    })}
                   >
-                    <View style={{
-                      width: 34, height: 34, borderRadius: 11, backgroundColor: bg,
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Icon name={g.i} size={18} color={fg} />
+                    <View style={{ width: 54, height: 54, borderRadius: 16, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name={it.i} size={24} color={fg} />
                     </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{g.g}</Text>
-                      <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
-                        {g.items.length} thing{g.items.length === 1 ? '' : 's'} you can add
-                      </Text>
-                    </View>
-                    <Icon name={on ? 'up' : 'down'} size={15} color={colors.faint} />
+                    <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 16, color: colors.soft, textAlign: 'center', marginTop: 8 }}>
+                      {it.n}
+                    </Text>
                   </Pressable>
-
-                  {on ? (
-                    <View style={{ marginTop: 9 }}>
-                      <ActionTiles group={g} onPick={pick} />
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })}
-          </View>
-        </>
+                ))}
+              </View>
+            </View>
+          );
+        })
       )}
     </Sheet>
   );

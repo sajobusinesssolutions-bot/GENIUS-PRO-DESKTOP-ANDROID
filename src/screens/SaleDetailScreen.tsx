@@ -38,7 +38,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   }
 
   function onEdit() {
-    if (!can('sales.edit')) return refuse('Your role cannot change a raised bill.');
+    if (!can('sales.edit')) return refuse('Your role cannot change a raised sale.');
     if (!gate.ok) return refuse(gate.why);
     const open = () => navigation.navigate('NewSale', { editSaleId: sale!.id });
     // Settings → "A PIN is needed to edit a transaction"
@@ -47,7 +47,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   }
 
   function onDelete() {
-    if (!can('sales.delete')) return refuse('Your role cannot delete a bill.');
+    if (!can('sales.delete')) return refuse('Your role cannot delete a sale.');
     if (!gate.ok) return refuse(gate.why);
     // Settings → "A PIN is needed to delete one"
     if (db?.settings.requirePinToDelete) { ownerPin.ask('Delete ' + sale!.no, confirmDelete); return; }
@@ -57,12 +57,12 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   function confirmDelete() {
     Alert.alert(
       'Delete ' + sale!.no + '?',
-      'The bill is reversed, not erased: ' + money(sale!.total) + ' comes off the books and the stock goes back on the shelf. The reversal stays in the audit log.',
+      'The sale is reversed, not erased: ' + money(sale!.total) + ' comes off the books and the stock goes back on the shelf. The reversal stays in the audit log.',
       [
         { text: 'Keep it', style: 'cancel' },
         {
           text: 'Delete', style: 'destructive', onPress: () => {
-            deleteSale(sale!.id, 'Deleted from the bill');
+            deleteSale(sale!.id, 'Deleted from the sale');
             logAudit('Sale deleted', sale!.no + ' — ' + money(sale!.total) + ' reversed');
             navigation.goBack();
           },
@@ -72,7 +72,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   }
 
   function onVoid() {
-    if (!can('sales.void')) return refuse('Your role cannot void a bill.');
+    if (!can('sales.void')) return refuse('Your role cannot void a sale.');
     Alert.alert('Void ' + sale!.no + '?', 'This reverses stock and ledger entries.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -125,7 +125,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
         />
 
         <View style={{ height: 20 }} />
-        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{sale.lines.length} line{sale.lines.length === 1 ? '' : 's'}</Text>}>
+        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{sale.lines.length} line{sale.lines.length === 1 ? '' : 's'}</Text>}>
           Items
         </SectionLabel>
         <Panel>
@@ -138,16 +138,16 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
               }}
             >
               <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: colors.accent }}>{i + 1}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>{i + 1}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{l.name}</Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                   {l.qty} {l.unit} × {money(l.price)}
                   {l.batchNo ? ' · ' + l.batchNo : ''}
                 </Text>
               </View>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{money(l.qty * l.price)}</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money(l.qty * l.price)}</Text>
             </View>
           ))}
         </Panel>
@@ -157,7 +157,8 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
         <Panel>
           <DetailRow label="Subtotal" value={money(sale.gross)} />
           <DetailRow label="Discount" value={money(sale.discount)} tone={sale.discount ? colors.good : undefined} />
-          <DetailRow label="Tax" value={money(sale.tax)} />
+          {/* no tax line when the shop does not charge tax, unless this sale carried some */}
+          {db?.settings.taxEnabled === false && !sale.tax ? null : <DetailRow label="Tax" value={money(sale.tax)} />}
           {sale.additionalCharges ? <DetailRow label="Additional charges" value={money(sale.additionalCharges)} /> : null}
           <DetailRow label="Total" value={money(sale.total)} bold />
           <DetailRow label="Paid" value={money(sale.paid)} tone={colors.good} />
@@ -183,7 +184,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
                   key={r.paymentId + i}
                   onPress={() => navigation.navigate('PaymentDetail', { paymentId: r.paymentId } as any)}
                   style={{
-                    fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent, paddingVertical: 13, paddingHorizontal: 15,
+                    fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accent, paddingVertical: 13, paddingHorizontal: 15,
                     borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line,
                   }}
                 >
