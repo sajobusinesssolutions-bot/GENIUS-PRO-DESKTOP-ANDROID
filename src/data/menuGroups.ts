@@ -31,7 +31,7 @@ import type { IconName } from '../components/icons';
 import type { PermKey } from './perms';
 import type { DB, RecurringInvoice, Shift } from './types';
 import { plural } from './helpers';
-import { licState as licStateOf, isPro as isProOf, subState } from './logic';
+import { licState as licStateOf, isPro as isProOf, subState, planSummary as planSummaryOf } from './logic';
 import { LIC_WORDS, PLANS, BUILD, SCHEMA_VERSION } from './defaults';
 import { REPORTS } from './reports';
 
@@ -53,7 +53,14 @@ export type MenuItem = {
   perm?: PermKey;
   /** Extra words that should match this row in the menu search. */
   alt?: string;
+  /** Shown only when this holds — e.g. tax screens only while tax is charged. */
+  show?: (db: DB) => boolean;
 };
+
+/** Whether a menu row belongs on screen for these books. */
+export function itemShown(it: MenuItem, db: DB | null | undefined): boolean {
+  return !it.show || (!!db && it.show(db));
+}
 
 export type MenuGroupDef = {
   id: string;
@@ -76,16 +83,16 @@ const liveSales = (d: DB) => d.sales.filter((s) => s.status !== 'void');
 export const MENU_GROUPS: MenuGroupDef[] = [
   {
     id: 'sell', n: 'Sell', i: 'till', tone: 'accent', perm: 'sales',
-    b: (c) => plural(liveSales(c.db).length, 'bill'),
+    b: (c) => plural(liveSales(c.db).length, 'sale'),
     items: [
-      { route: 'Sales', i: 'doc', n: 'Sales', b: (c) => plural(liveSales(c.db).length, 'bill'), alt: 'invoices bills receipts' },
+      { route: 'Sales', i: 'doc', n: 'Activity', b: (c) => plural(liveSales(c.db).length, 'sale'), alt: 'sales invoices receipts transactions parties' },
       { route: 'Estimates', i: 'doc', n: 'Quotations', b: (c) => (c.db.estimates || []).filter((e) => e.status === 'open').length + ' open', alt: 'quotes estimates proforma' },
       { route: 'Challans', i: 'box', n: 'Delivery notes', b: (c) => (c.db.challans || []).filter((x) => !x.saleId).length + ' still out', alt: 'challan dispatch' },
       { route: 'CreditNotes', i: 'swap', n: 'Returns', b: (c) => plural((c.db.creditNotes || []).length, 'credit note'), alt: 'credit note refund sale return' },
       { route: 'Offers', i: 'tag', n: 'Offers', b: (c) => (c.db.offers || []).filter((o) => o.active).length + ' live', alt: 'discount promotion' },
       {
-        route: 'Recurring', i: 'calendar', n: 'Recurring bills',
-        b: (c) => (c.dueRecurring().length ? plural(c.dueRecurring().length, 'bill') + ' due' : plural((c.db.recurringInvoices || []).length, 'schedule')),
+        route: 'Recurring', i: 'calendar', n: 'Recurring sales',
+        b: (c) => (c.dueRecurring().length ? plural(c.dueRecurring().length, 'sale') + ' due' : plural((c.db.recurringInvoices || []).length, 'schedule')),
         alt: 'subscription standing order',
       },
       { route: 'Instalments', i: 'calendar', n: 'Instalment plans', b: () => 'Pay-in-parts schedules', perm: 'money', alt: 'hire purchase layaway' },
@@ -123,11 +130,11 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     items: [
       { route: 'Shift', i: 'till', n: 'Cash register', b: (c) => (c.activeShift() ? 'Open — count and close' : 'Closed — open a shift'), perm: 'sell', alt: 'drawer shift float' },
       { route: 'Shift', i: 'lock', n: 'Day close', b: () => 'Count the drawer and reconcile', params: { close: true }, perm: 'sell', alt: 'z report end of day' },
-      { route: 'EntryNew', i: 'down', n: 'Cash in', b: () => 'Money into the drawer', params: { direction: 'in' }, alt: 'income receipt' },
-      { route: 'EntryNew', i: 'up', n: 'Cash out', b: () => 'Money out of the drawer', params: { direction: 'out' }, alt: 'expense spend' },
+      { route: 'CashEntries', i: 'down', n: 'Cash in', b: () => 'Money into the drawer', params: { direction: 'in' }, alt: 'income receipt' },
+      { route: 'CashEntries', i: 'up', n: 'Cash out', b: () => 'Money out of the drawer', params: { direction: 'out' }, alt: 'expense spend' },
       { route: 'Money', i: 'card', n: 'Cash & bank', b: (c) => plural(c.db.accounts.length, 'account'), alt: 'accounts momo wallet balance' },
       { route: 'AccountingHub', i: 'pie', n: 'Accounting', b: (c) => plural((c.db.coa || []).filter((l) => l.active).length, 'ledger') + ' · journals, trial balance', perm: 'accounting', alt: 'ledgers chart of accounts journal entry trial balance postings double entry' },
-      { route: 'Tax', i: 'receipt', n: 'Tax & URA', b: (c) => 'Rate ' + c.db.settings.taxRate + '%', perm: 'accounting', alt: 'vat ura returns' },
+      { route: 'Tax', i: 'receipt', n: 'Tax & URA', b: (c) => 'Rate ' + c.db.settings.taxRate + '%', perm: 'accounting', alt: 'vat ura returns', show: (db) => db.settings.taxEnabled !== false },
     ],
   },
   {
@@ -141,7 +148,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     ],
   },
   {
-    id: 'admin', n: 'Settings', i: 'cog', tone: 'soft', perm: null,
+    id: 'admin', n: 'More', i: 'cog', tone: 'soft', perm: null,
     b: (c) => plural(c.db.warehouses.filter((w) => w.active !== false).length, 'branch', 'branches') + ' · settings',
     items: [
       { route: 'Branches', i: 'home', n: 'Branches', b: (c) => plural(c.db.warehouses.filter((w) => w.active !== false).length, 'open branch', 'open branches'), perm: 'settings', alt: 'stores shops outlets new branch' },
@@ -156,6 +163,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
       },
       { route: 'UsersRoles', i: 'user', n: 'Staff & roles', b: (c) => plural(c.db.users.filter((u) => u.active).length, 'person', 'people'), perm: 'users', alt: 'users permissions pins' },
       { route: 'Settings', i: 'cog', n: 'Settings', b: () => 'Business details, tax, till, numbering', perm: 'settings', alt: 'preferences currency numbering' },
+      { route: 'ReminderSettings', i: 'share', n: 'Payment reminders', b: (c) => (c.db.settings.reminders?.enabled === false ? 'Off' : 'WhatsApp, SMS and email messages'), perm: 'settings', alt: 'remind debtors owe whatsapp sms email template' },
       { route: 'Printing', i: 'print', n: 'Printing', b: (c) => (c.db.printers.find((p) => p.dflt) || c.db.printers[0])?.name || 'Receipt layout and copies', perm: 'settings', alt: 'printer receipt template' },
       { route: 'DataTools', i: 'swap', n: 'Data & backup', b: () => 'Back up, export, check health', perm: 'settings', alt: 'backup restore export import' },
       {
@@ -178,18 +186,12 @@ export const MENU_GROUPS: MenuGroupDef[] = [
       { route: 'Help', i: 'pencil', n: 'Feature request', b: () => 'Ask for something new', alt: 'suggestion idea feedback' },
       { route: 'Help', i: 'up', n: 'Share the app', b: () => 'Tell another shop', alt: 'invite recommend share' },
       {
-        route: 'About', i: 'shield', n: 'App & updates', alt: 'version build update install about',
-        b: (c) => 'Version ' + BUILD + ' · data v' + SCHEMA_VERSION + (c.db.update.lastCheck ? '' : ' · not checked'),
+        route: 'About', i: 'shield', n: 'About Genius Pro', alt: 'version build about',
+        b: () => 'Version ' + BUILD,
       },
       {
-        route: 'Plans', i: 'money', n: 'Plan & licence', alt: 'billing subscription pro upgrade key',
-        b: (c) => {
-          const pro = isProOf(c.db);
-          const st = licStateOf(c.db);
-          const lic = st === 'active' ? 'licensed'
-            : st === 'none' ? 'not licensed' : (LIC_WORDS[st] || LIC_WORDS.none)[0].toLowerCase();
-          return (pro ? PLANS.pro.name : PLANS.starter.name) + ' · ' + lic;
-        },
+        route: 'Licence', i: 'money', n: 'Plan & licence', alt: 'billing subscription pro upgrade key trial licence',
+        b: (c) => { const p = planSummaryOf(c.db); return p.name + ' · ' + p.left; },
       },
       { route: 'Legal', params: { doc: 'privacy' }, i: 'shield', n: 'Privacy policy', b: () => 'What the app stores, and where', alt: 'privacy data gdpr legal' },
       { route: 'Legal', params: { doc: 'terms' }, i: 'doc', n: 'Terms and conditions', b: () => 'The rules for using Genius POS', alt: 'terms conditions agreement legal eula' },

@@ -4,7 +4,8 @@
  * body below.
  */
 import React from 'react';
-import { View, Text, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
+import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { Icon, IconName } from './icons';
 
@@ -38,8 +39,8 @@ export function ToolCard({ icon, tone = 'accent', title, sub, action, border, ch
           <Icon name={icon} size={23} color={t.fg} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: titleColor || colors.ink }}>{title}</Text>
-          {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 2 }}>{sub}</Text> : null}
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: titleColor || colors.ink }}>{title}</Text>
+          {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{sub}</Text> : null}
         </View>
         {action ? (
           <Pressable onPress={action.onPress} hitSlop={10} accessibilityRole="button" accessibilityLabel={action.label} disabled={action.busy}>
@@ -73,7 +74,7 @@ export function ChoiceChips<T extends string>({ value, options, onChange }: {
             }}
           >
             {on ? <Icon name="check" size={14} color={colors.good} /> : null}
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: on ? colors.good : colors.ink }}>{o.l}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.good : colors.ink }}>{o.l}</Text>
           </Pressable>
         );
       })}
@@ -85,7 +86,7 @@ export function CountPill({ label, n, tone }: { label: string; n: number; tone: 
   const t = useToneColors(tone);
   return (
     <View style={{ paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.2, borderColor: t.fg, backgroundColor: t.bg }}>
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: t.fg }}>{label}: {n}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: t.fg }}>{label}: {n}</Text>
     </View>
   );
 }

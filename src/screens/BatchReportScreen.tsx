@@ -7,6 +7,7 @@
  * that decides whether you discount it or write it off.
  */
 import React, { useMemo, useState } from 'react';
+import { ListPage, DocRow, StatusChips, SummaryTiles } from '../components/DocList';
 import { View, Text, FlatList, Pressable, Alert } from 'react-native';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -120,139 +121,62 @@ export default function BatchReportScreen() {
       { v: 'none', l: 'No date ' + counts.none },
     ];
 
+  const tabs = (
+    <TopTabs
+      value={tab}
+      onChange={(v) => { setTab(v); setFilter('all'); }}
+      options={[
+        { v: 'batches', l: 'Batches', i: 'box' },
+        { v: 'expiry', l: 'Expiry', i: 'clock' },
+      ]}
+    />
+  );
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <TopTabs
-        value={tab}
-        onChange={(v) => { setTab(v); setFilter('all'); }}
-        options={[
-          { v: 'batches', l: 'Batches', i: 'box' },
-          { v: 'expiry', l: 'Expiry', i: 'clock' },
-        ]}
-      />
-
-      <FlatList
+      {tabs}
+      <ListPage
+        top={(
+          <>
+            <StatusChips value={filter} onChange={setFilter} options={filters} />
+            <SummaryTiles tiles={tab === 'expiry'
+              ? [
+                { label: 'Expired value', value: money(deadValue), tone: deadValue ? colors.danger : undefined },
+                { label: 'At risk value', value: money(riskValue), tone: riskValue ? colors.warn : undefined },
+              ]
+              : [
+                { label: 'Stock value', value: money(totalValue) },
+                { label: 'At risk', value: String(atRisk.length) + ' lot' + (atRisk.length === 1 ? '' : 's'), tone: atRisk.length ? colors.warn : undefined },
+              ]} />
+          </>
+        )}
+        search={{ value: q, onChange: setQ, placeholder: 'Search item, code or batch no.' }}
         data={visible}
         keyExtractor={(r) => r.product.id}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24, flexGrow: 1 }}
-        ListHeaderComponent={
-          <View style={{ paddingTop: 14, gap: 14, marginBottom: 14 }}>
-            <StatGrid
-              items={tab === 'expiry'
-                ? [
-                  { icon: 'alert', label: 'Expired value', value: money(deadValue), tone: deadValue ? 'danger' : 'good' },
-                  { icon: 'clock', label: 'At risk value', value: money(riskValue), tone: riskValue ? 'warn' : 'good' },
-                  { icon: 'box', label: 'Lots at risk', value: String(atRisk.length), tone: atRisk.length ? 'warn' : 'good' },
-                  { icon: 'check', label: 'Expiring this week', value: String(counts.critical), tone: counts.critical ? 'danger' : 'good' },
-                ]
-                : [
-                  { icon: 'box', label: 'Live batches', value: String(rows.length), tone: 'accent' },
-                  { icon: 'coins', label: 'Stock value', value: money(totalValue), tone: 'good' },
-                  { icon: 'clock', label: 'At risk', value: String(atRisk.length), tone: atRisk.length ? 'warn' : 'good' },
-                  { icon: 'alert', label: 'Expired', value: String(counts.expired), tone: counts.expired ? 'danger' : 'good' },
-                ]}
-            />
-
-            {tab === 'expiry' && counts.expired > 0 ? (
-              <InfoBanner
-                tone="danger"
-                text={counts.expired + ' lot' + (counts.expired === 1 ? '' : 's') + ' worth ' + money(deadValue) + ' are already past their date and should come off the shelf.'}
-              />
-            ) : null}
-
-            <Search value={q} onChange={setQ} placeholder="Search item, code or batch no." />
-            <Button
-              label="Trace one batch"
-              icon={<Icon name="swap" size={16} color={colors.ink} />}
-              onPress={() => go('BatchMovement')}
-            />
-            <FilterChips value={filter} onChange={setFilter} options={filters} />
-
-            {visible.length ? (
-              <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{visible.length} shown</Text>}>
-                {tab === 'expiry' ? 'Most urgent first' : 'By item'}
-              </SectionLabel>
-            ) : null}
-          </View>
-        }
-        ListEmptyComponent={
-          <Panel>
-            <EmptyBlock
-              icon={tab === 'expiry' ? 'check' : 'box'}
-              title={tab === 'expiry' ? 'Nothing is near expiry' : q || filter !== 'all' ? 'No batch matches' : 'No batches yet'}
-              hint={tab === 'expiry'
-                ? 'Every tracked lot is still well inside its date.'
-                : 'Turn on batch tracking for an item, then add its batches on the item editor.'}
-            />
-          </Panel>
-        }
+        empty={tab === 'expiry'
+          ? { title: 'Nothing near expiry', text: 'Every tracked lot is still well inside its date.' }
+          : { text: 'No batches yet. Turn on batch tracking for an item, then add its batches in the item editor.' }}
+        add={{ label: 'Trace a batch', onPress: () => go('BatchMovement') }}
         renderItem={({ item }) => {
           const tone = toneOf(item.state);
-          const edge = tone === 'danger' ? colors.danger : tone === 'warn' ? colors.warn : tone === 'neutral' ? colors.lineHard : colors.good;
-          const topBatch = item.batches[0];
+          const top = item.batches[0];
+          const edge = tone === 'danger' ? colors.danger : tone === 'warn' ? colors.warn : undefined;
           return (
-            <Pressable
+            <DocRow
+              title={item.product.name}
+              pill={{ label: STATE_LABEL[item.state], tone: tone as any }}
+              amount={item.qty + ' ' + item.product.unit}
+              refText={item.batches.length + ' lot' + (item.batches.length === 1 ? '' : 's') + ' · ' + item.product.sku}
+              sideText={top.batch.expiry
+                ? 'Expires ' + new Date(top.batch.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })
+                : 'No expiry recorded'}
+              lines={[
+                { label: 'Value', value: money(item.value) },
+                ...(item.days !== null ? [{ label: item.days < 0 ? 'Past its date by' : 'Days left', value: String(Math.abs(item.days)), tone: edge }] : []),
+              ]}
               onPress={() => go('ItemDetail', { productId: item.product.id })}
-              style={{
-                backgroundColor: colors.surface, borderRadius: 16,
-                borderLeftWidth: 5, borderLeftColor: edge,
-                paddingHorizontal: 15, paddingVertical: 14, marginBottom: 10,
-                shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>
-                    {item.product.name}
-                  </Text>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                    {item.batches.length} lot{item.batches.length === 1 ? '' : 's'} · {item.product.sku}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 3 }}>
-                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 17, color: colors.ink }}>
-                    {item.qty} {item.product.unit}
-                  </Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{money(item.value)}</Text>
-                </View>
-              </View>
-
-              <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 12 }} />
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-                <Badge label={STATE_LABEL[item.state]} tone={tone as any} />
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-                  {topBatch.batch.expiry
-                    ? new Date(topBatch.batch.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-                    : 'No expiry recorded'}
-                </Text>
-                <View style={{ flex: 1 }} />
-                {item.days !== null ? (
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: edge }}>
-                    {item.days < 0 ? Math.abs(item.days) + 'd over' : item.days + 'd left'}
-                  </Text>
-                ) : null}
-              </View>
-            </Pressable>
+            />
           );
         }}
-        ListFooterComponent={
-          visible.length ? (
-            <View style={{ marginTop: 6 }}>
-              <Button
-                label="Copy this list"
-                icon={<Icon name="doc" size={17} color={colors.ink} />}
-                onPress={() => {
-                  const text = visible
-                    .map((r) => `${r.product.name} | ${r.batches.length} lot${r.batches.length === 1 ? '' : 's'} | ${r.qty} ${r.product.unit} | ${STATE_LABEL[r.state]}`)
-                    .join('\n');
-                  Alert.alert('Batch list', text.slice(0, 1500) + (text.length > 1500 ? '\n…' : ''));
-                }}
-              />
-            </View>
-          ) : null
-        }
       />
     </View>
   );

@@ -7,7 +7,8 @@
  * is tracked by batch — and everything else can be filled in later on the item.
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
+import { Pressable } from './Press';
 import { Sheet } from './Sheet';
 import { Field, ToggleRow } from './form';
 import { Button } from './ui';
@@ -61,7 +62,7 @@ export function QuickItemSheet({ visible, initialName, units, categories, batche
               borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
             }}
           >
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accent : colors.soft }}>{u}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>{u}</Text>
           </Pressable>
         );
       })}

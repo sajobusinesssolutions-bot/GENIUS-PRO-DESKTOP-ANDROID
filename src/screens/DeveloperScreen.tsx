@@ -15,7 +15,8 @@
  * server that decides.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, Alert, RefreshControl } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useToast } from '../components/Toast';
 import {
@@ -28,7 +29,7 @@ import { useDeveloper } from '../data/useDeveloper';
 import * as dev from '../data/devApi';
 import type { Owner, Reports, ServerStats, Backup } from '../data/devApi';
 
-type Tab = 'owners' | 'reports' | 'server' | 'backups';
+type Tab = 'owners' | 'reports' | 'server' | 'backups' | 'crashes';
 
 /* ================================================================
    Small pieces
@@ -65,12 +66,12 @@ function OwnerRow({ o, onPress, last }: { o: Owner; onPress: () => void; last?: 
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
           {o.email}
         </Text>
         <Badge tone={licenceTone(o)} label={licenceLabel(o)} />
       </View>
-      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
         {(o.businesses.map((b) => b.name).join(', ') || 'No business yet')
           + ' · signed in ' + dev.ago(o.lastLoginAt)}
       </Text>
@@ -86,8 +87,8 @@ function Meter({ label, pct, detail }: { label: string; pct: number; detail: str
   return (
     <View style={{ marginBottom: 14 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{label}</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{detail}</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{label}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{detail}</Text>
       </View>
       <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.sunk, overflow: 'hidden' }}>
         <View style={{ height: 8, borderRadius: 4, width: (p + '%') as `${number}%`, backgroundColor: tone }} />
@@ -101,7 +102,7 @@ function Traffic({ history }: { history: ServerStats['requests']['history'] }) {
   const { colors } = useTheme();
   const max = Math.max(1, ...history.map((h) => h.n));
   if (!history.length) {
-    return <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>No requests yet.</Text>;
+    return <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>No requests yet.</Text>;
   }
   return (
     <View>
@@ -119,11 +120,11 @@ function Traffic({ history }: { history: ServerStats['requests']['history'] }) {
         ))}
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
           {new Date(history[0].t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
         </Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>peak {max}/min</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>now</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>peak {max}/min</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>now</Text>
       </View>
     </View>
   );
@@ -163,6 +164,8 @@ export default function DeveloperScreen() {
   const [reports, setReports] = useState<Reports | null>(null);
   const [stats, setStats] = useState<ServerStats | null>(null);
   const [backups, setBackups] = useState<Backup[] | null>(null);
+  const [crashes, setCrashes] = useState<dev.Crashes | null>(null);
+  const [openCrash, setOpenCrash] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<Owner | null>(null);
@@ -182,6 +185,9 @@ export default function DeveloperScreen() {
       } else if (which === 'server') {
         const r = await dev.getServer(a);
         if (r.ok) setStats(r.value); else error(r.error.message);
+      } else if (which === 'crashes') {
+        const r = await dev.listCrashes(a);
+        if (r.ok) setCrashes(r.value); else error(r.error.message);
       } else {
         const r = await dev.listBackups(a);
         if (r.ok) setBackups(r.value.backups); else error(r.error.message);
@@ -291,7 +297,7 @@ export default function DeveloperScreen() {
       <>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.good }} />
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
             Live · updates every few seconds · {new Date(s.at).toLocaleTimeString('en-GB')}
           </Text>
         </View>
@@ -419,6 +425,49 @@ export default function DeveloperScreen() {
     </>
   );
 
+  /* What broke on people's phones: the most frequent first, then every report, newest first. */
+  const crashesTab = (
+    <>
+      <SectionLabel right={<Badge tone="neutral" label={String((crashes?.top || []).length)} />}>Most frequent · 30 days</SectionLabel>
+      {crashes && crashes.top.length ? (
+        <Panel flush>
+          {crashes.top.map((t, i) => (
+            <ListRow
+              key={t.message}
+              icon="alert"
+              title={t.message}
+              subtitle={t.n + (t.n === 1 ? ' time' : ' times') + ' · last ' + dev.ago(t.last) + (t.fatal ? ' · closed the app' : '')}
+              last={i === crashes.top.length - 1}
+            />
+          ))}
+        </Panel>
+      ) : (
+        <Panel><EmptyBlock icon="check" title={crashes ? 'Nothing reported' : 'Loading…'} hint={crashes ? 'No phone has reported a problem in the last 30 days.' : undefined} /></Panel>
+      )}
+      <View style={{ height: 18 }} />
+      <SectionLabel right={<Badge tone="neutral" label={String((crashes?.reports || []).length)} />}>Latest</SectionLabel>
+      {(crashes?.reports || []).map((c) => {
+        const expanded = openCrash === c.id;
+        return (
+          <Pressable
+            key={c.id}
+            onPress={() => setOpenCrash(expanded ? null : c.id)}
+            style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: c.fatal ? colors.danger : colors.line, padding: 13, marginBottom: 8 }}
+          >
+            <Text numberOfLines={expanded ? undefined : 2} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{c.message}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>
+              {[dev.ago(c.received_at), c.kind, c.route ? 'on ' + c.route : '', c.device, c.os_version ? 'Android ' + c.os_version : '', c.app_version ? 'app ' + c.app_version : '', c.email || '']
+                .filter(Boolean).join(' · ')}
+            </Text>
+            {expanded && c.stack ? (
+              <Text selectable style={{ fontFamily: fonts.mono, fontSize: 12.5, lineHeight: 17, color: colors.soft, marginTop: 10 }}>{c.stack.slice(0, 4000)}</Text>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SegTabs
@@ -429,6 +478,7 @@ export default function DeveloperScreen() {
           { v: 'reports', l: 'Reports' },
           { v: 'server', l: 'Server' },
           { v: 'backups', l: 'Backups' },
+          { v: 'crashes', l: 'Crashes' },
         ]}
       />
       <ScrollView
@@ -436,7 +486,7 @@ export default function DeveloperScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={loading && tab !== 'server'} onRefresh={() => load(tab)} />}
       >
-        {tab === 'owners' ? ownersTab : tab === 'reports' ? reportsTab : tab === 'server' ? serverTab : backupsTab}
+        {tab === 'owners' ? ownersTab : tab === 'reports' ? reportsTab : tab === 'server' ? serverTab : tab === 'crashes' ? crashesTab : backupsTab}
       </ScrollView>
 
       <AddOwnerSheet
@@ -517,7 +567,7 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
         borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accent : colors.surface,
       }}
     >
-      <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13, color: on ? colors.accentInk : colors.soft }}>{label}</Text>
+      <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 12.5, color: on ? colors.accentInk : colors.soft }}>{label}</Text>
     </Pressable>
   );
 
@@ -551,7 +601,7 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
         }}>
           {invite ? <Icon name="check" size={14} color={colors.accentInk} /> : null}
         </View>
-        <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.ink }}>
+        <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.ink }}>
           Email them how to get in (Google, or "Forgot password" to set one)
         </Text>
       </Pressable>
@@ -640,7 +690,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
         borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accent : colors.surface,
       }}
     >
-      <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13, color: on ? colors.accentInk : colors.soft }}>{label}</Text>
+      <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 12.5, color: on ? colors.accentInk : colors.soft }}>{label}</Text>
     </Pressable>
   );
 

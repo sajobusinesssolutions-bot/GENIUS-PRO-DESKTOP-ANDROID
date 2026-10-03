@@ -10,7 +10,8 @@ export type RootStackParamList = {
   MenuGroup: { groupId: string };
 
   // Sell
-  NewSale: { editSaleId?: string } | undefined;
+  /** copyFromId starts a new sale with another one's items, customer and method. */
+  NewSale: { editSaleId?: string; copyFromId?: string } | undefined;
   Receipt: { saleId: string };
   Sales: undefined;
   SaleDetail: { saleId: string };
@@ -33,7 +34,7 @@ export type RootStackParamList = {
   Purchases: undefined;
   PurchaseDetail: { purchaseId: string };
   EditPurchase: { purchaseId: string };
-  PurchaseNew: { editPurchaseId?: string } | undefined;
+  PurchaseNew: { editPurchaseId?: string; copyFromId?: string } | undefined;
   PurchaseOrders: undefined;
   PurchaseOrderNew: undefined;
 
@@ -59,7 +60,7 @@ export type RootStackParamList = {
   AuthGate: undefined;
   Developer: undefined;
   SignIn: undefined;
-  CreateAccount: undefined;
+  CreateAccount: { email?: string } | undefined;
   GoogleSignIn: undefined;
   Branches: undefined;
   NewBranch: undefined;
@@ -85,6 +86,7 @@ export type RootStackParamList = {
   PaymentDetail: { paymentId: string };
   PaymentNew: { direction?: 'in' | 'out'; partyId?: string } | undefined;
   EntryNew: { direction?: 'in' | 'out' } | undefined;
+  CashEntries: { direction?: 'in' | 'out' } | undefined;
   Transfer: undefined;
   Accounting: undefined;
   Journals: undefined;
@@ -102,6 +104,8 @@ export type RootStackParamList = {
   Help: undefined;
   Faq: undefined;
   DataTools: { backup?: boolean } | undefined;
+  VyaparImport: undefined;
+  ReminderSettings: undefined;
   Business: undefined;
   Firms: undefined;
   AuditLog: undefined;
@@ -110,8 +114,6 @@ export type RootStackParamList = {
   About: undefined;
   Licence: undefined;
   LicenceStop: undefined;
-  Install: undefined;
-  Update: undefined;
   Sync: undefined;
   Online: undefined;
   Versions: { coll: string; recordId: string };

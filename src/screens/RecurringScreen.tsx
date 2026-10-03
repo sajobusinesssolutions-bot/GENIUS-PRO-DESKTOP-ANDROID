@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, Pressable, ScrollView } from 'react-native';
+import { ListPage, DocRow, StatusChips, SummaryTiles } from '../components/DocList';
+import { View, Text, FlatList, Pressable, ScrollView, Alert } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
@@ -15,54 +16,54 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Recurring'>;
 export default function RecurringScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { db, money, party, dueRecurring, runRecurring, updateRecurring } = useAppData();
+  const [filter, setFilter] = useState<'all' | 'due' | 'active' | 'paused'>('all');
+  const [q, setQ] = useState('');
   const due = dueRecurring();
-
+  const isDue = (id: string) => due.some((d) => d.id === id);
+  const all = db?.recurringInvoices || [];
+  const totalOf = (r: typeof all[number]) => r.lines.reduce((s, l) => s + l.qty * l.price, 0);
+  const needle = q.trim().toLowerCase();
+  const list = all.filter((r) => {
+    if (filter === 'due' && !isDue(r.id)) return false;
+    if (filter === 'active' && !r.active) return false;
+    if (filter === 'paused' && r.active) return false;
+    return !needle || (party(r.partyId)?.name || '').toLowerCase().includes(needle);
+  });
+  const perMonth = all.filter((r) => r.active).reduce((s, r) => s + totalOf(r) * (r.frequency === 'weekly' ? 52 / 12 : 1), 0);
+  const day = (t: string | null) => (t ? new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : 'Never');
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <FlatList
-        data={db?.recurringInvoices || []}
-        keyExtractor={(r) => r.id}
-        contentContainerStyle={{ padding: 12, gap: 8 }}
-        ListHeaderComponent={due.length ? (
-          <View style={{ marginBottom: 8 }}>
-            <Cap>{`Due now (${due.length})`}</Cap>
-          </View>
-        ) : null}
-        ListEmptyComponent={<Empty title="No recurring invoices" subtitle="Auto-generate a sale for a party on a schedule" />}
-        renderItem={({ item }) => {
-          const total = item.lines.reduce((s, l) => s + l.qty * l.price, 0);
-          const isDue = due.some((d) => d.id === item.id);
-          return (
-            <DocCard
-              icon="clock"
-              tone={isDue ? 'warn' : item.active ? 'accent' : 'neutral'}
-              dim={!item.active}
-              title={party(item.partyId)?.name || 'Customer'}
-              subtitle={'Next due ' + new Date(item.nextDue).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-              amount={money(total)}
-              badges={
-                <>
-                  <Badge label={item.active ? item.frequency : 'paused'} tone={isDue ? 'warn' : item.active ? 'accent' : 'neutral'} />
-                  {isDue ? <Badge label="Due now" tone="warn" /> : null}
-                </>
-              }
-            >
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                {item.active ? (
-                  <View style={{ flex: 1 }}>
-                    <Button size="sm" label="Run now" variant="pri" onPress={() => runRecurring(item.id)} />
-                  </View>
-                ) : null}
-                <View style={{ flex: 1 }}>
-                  <Button size="sm" label={item.active ? 'Pause' : 'Resume'} onPress={() => updateRecurring(item.id, { active: !item.active })} />
-                </View>
-              </View>
-            </DocCard>
-          );
-        }}
-      />
-      <FAB label="New schedule" icon="plus" tone="accent" onPress={() => navigation.navigate('RecurringNew')} />
-    </View>
+    <ListPage
+      top={(
+        <>
+          <StatusChips value={filter} onChange={setFilter} options={[{ v: 'all', l: 'All' }, { v: 'due', l: 'Due now' }, { v: 'active', l: 'Active' }, { v: 'paused', l: 'Paused' }]} />
+          <SummaryTiles tiles={[
+            { label: 'Due now', value: String(due.length), tone: due.length ? colors.warn : undefined },
+            { label: 'Per month', value: money(Math.round(perMonth)) },
+          ]} />
+        </>
+      )}
+      search={{ value: q, onChange: setQ, placeholder: 'Search by customer' }}
+      data={list}
+      keyExtractor={(r) => r.id}
+      empty={{ text: 'No repeating sales yet. Charge a customer on a schedule with Add recurring sale.' }}
+      add={{ label: 'Add recurring sale', onPress: () => navigation.navigate('RecurringNew') }}
+      renderItem={({ item: r }) => (
+        <DocRow
+          title={party(r.partyId)?.name || 'Customer'}
+          pill={isDue(r.id) ? { label: 'Due now', tone: 'warn' } : r.active ? { label: r.frequency, tone: 'accent' } : { label: 'Paused', tone: 'neutral' }}
+          amount={money(totalOf(r))}
+          refText={r.frequency === 'weekly' ? 'Every week' : 'Every month'}
+          sideText={'Next ' + day(r.nextDue)}
+          dim={!r.active}
+          lines={[{ label: 'Last run', value: day(r.lastRun) }, { label: 'Items', value: String(r.lines.length) }]}
+          action={r.active ? { label: 'Run now', onPress: () => runRecurring(r.id) } : undefined}
+          onMore={() => Alert.alert(party(r.partyId)?.name || 'Recurring sale', undefined, [
+            { text: r.active ? 'Pause' : 'Resume', onPress: () => updateRecurring(r.id, { active: !r.active }) },
+            { text: 'Cancel', style: 'cancel' },
+          ])}
+        />
+      )}
+    />
   );
 }
 
@@ -111,7 +112,7 @@ export function RecurringNewScreen({ navigation }: NativeStackScreenProps<RootSt
           <InfoBanner
             tone="neutral"
             icon="coins"
-            text={'About ' + money(total * perYear) + ' a year at this rate. Each run raises a real bill you can still edit.'}
+            text={'About ' + money(total * perYear) + ' a year at this rate. Each run raises a real sale you can still edit.'}
           />
         </Panel>
       }

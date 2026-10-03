@@ -34,7 +34,7 @@ const developers = () => String(process.env.DEVELOPER_EMAILS || '')
 const fail = (reply, status, error, message) => reply.code(status).send({ error, message });
 
 /** The caller, if and only if they are a developer. */
-async function developer(req, reply) {
+export async function developer(req, reply) {
   const h = String(req.headers.authorization || '');
   if (!h.startsWith('Bearer ')) { fail(reply, 401, 'badCredentials', 'Sign in again.'); return null; }
   let claims;

@@ -4,24 +4,30 @@
  * Reference SCREENS.reports.body, line 5355.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useGo } from '../nav/navigate';
 import { canFor } from '../data/perms';
+import { mayCreate } from '../data/logic';
+import { isPremiumReport , reportPermission } from '../data/reports';
 import { Card, Cap, SearchBar, EmptyState, Pad, Badge } from '../components/ui';
 import Icon from '../components/icons';
 import {
-  REPORTS, REPORT_CATEGORIES, FAVOURITE_REPORTS, ReportDef, isImplemented,
+  REPORTS, REPORT_CATEGORIES, FAVOURITE_REPORTS, ReportDef, isImplemented, reportEntries, ReportEntry, groupOf,
 } from '../data/reports';
 import type { RootStackParamList } from '../nav/types';
 
 function ReportRow({ r, last, onPress, icon, isFav, onToggleFav }: {
-  r: ReportDef; last?: boolean; onPress: () => void; icon?: boolean; isFav?: boolean; onToggleFav?: () => void;
+  r: ReportEntry; last?: boolean; onPress: () => void; icon?: boolean; isFav?: boolean; onToggleFav?: () => void;
 }) {
   const { colors } = useTheme();
+  const { db } = useAppData();
   const live = isImplemented(r.id);
+  const locked = !!db && !mayCreate(db)
+    && (r.group ? r.group.views.every((v) => isPremiumReport(v.id)) : isPremiumReport(r.id));
   return (
     <Pressable
       onPress={onPress}
@@ -36,14 +42,19 @@ function ReportRow({ r, last, onPress, icon, isFav, onToggleFav }: {
         <Icon name="chart" size={19} color={live ? colors.accent : colors.faint} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }} numberOfLines={1}>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }} numberOfLines={1}>
           {r.name}
         </Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }} numberOfLines={1}>
           {r.sub}
         </Text>
+        {r.group ? (
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent, marginTop: 3 }} numberOfLines={1}>
+            {r.group.views.length} views · {r.group.views.map((v) => v.label).join(' · ')}
+          </Text>
+        ) : null}
       </View>
-      {!live ? <Badge label="Soon" tone="neutral" /> : null}
+      {!live ? <Badge label="Soon" tone="neutral" /> : locked ? <Icon name="lock" size={16} color={colors.faint} /> : null}
       {onToggleFav && (
         <Pressable onPress={onToggleFav} hitSlop={8} style={{ paddingHorizontal: 6 }}>
           <Icon name="tag" size={18} color={isFav ? colors.accent : colors.lineHard} />
@@ -74,11 +85,17 @@ export default function ReportsScreen() {
   const role = db?.session.role;
   const allowed = canFor(role, 'reports');
 
+  /* Each group of similar reports is one row; searching finds a group by any of its views. */
   const groups = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const list = needle
-      ? REPORTS.filter((r) => (r.name + ' ' + r.sub + ' ' + r.cat).toLowerCase().includes(needle))
-      : REPORTS;
+    const words = (e: ReportEntry) => e.name + ' ' + e.sub + ' ' + e.cat + ' '
+      + (e.group ? e.group.views.map((v) => { const d = REPORTS.find((x) => x.id === v.id); return v.label + ' ' + (d ? d.name + ' ' + d.sub : ''); }).join(' ') : '');
+    // a report this role may not open is not listed at all
+    // a tax report means nothing to a shop that charges no tax
+    const taxOff = db?.settings.taxEnabled === false;
+    const may = (id: string) => { if (taxOff && id === 'tax-summary') return false; const p = reportPermission(id); return !p || canFor(role, p); };
+    const all = reportEntries().filter((e) => (e.group ? e.group.views.some((v) => may(v.id)) : may(e.id)));
+    const list = needle ? all.filter((e) => words(e).toLowerCase().includes(needle)) : all;
     return REPORT_CATEGORIES
       .map((cat) => ({
         cat,
@@ -89,7 +106,7 @@ export default function ReportsScreen() {
         }),
       }))
       .filter((g) => g.items.length);
-  }, [q, favs]);
+  }, [q, favs, role, db?.settings.taxEnabled]);
 
   const favourites = useMemo(
     () => FAVOURITE_REPORTS.map((id) => REPORTS.find((r) => r.id === id)).filter(Boolean) as ReportDef[],
@@ -110,7 +127,11 @@ export default function ReportsScreen() {
     );
   }
 
-  const open = (id: string) => go('ReportDetail', { id });
+  const open = (id: string) => {
+    const g = groupOf(id);
+    const free = g && !mayCreate(db) ? g.views.find((v) => !isPremiumReport(v.id)) : undefined;
+    go('ReportDetail', { id: free && isPremiumReport(id) ? free.id : id });
+  };
   const toggleFav = (id: string) => {
     setFavs((prev) => {
       const next = new Set(prev);
@@ -121,7 +142,7 @@ export default function ReportsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <SearchBar value={q} onChange={setQ} placeholder={`Search ${REPORTS.length} reports`} />
+      <SearchBar value={q} onChange={setQ} placeholder="Search reports" />
       <ScrollView contentContainerStyle={{ paddingBottom: 22 }}>
         {!q && Array.from(favs).length ? (
           <Pad style={{ paddingTop: 12, paddingBottom: 4 }}>

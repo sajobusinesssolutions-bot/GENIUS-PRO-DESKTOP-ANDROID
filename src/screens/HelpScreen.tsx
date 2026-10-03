@@ -3,7 +3,8 @@
  * every way to reach the people who make it.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Panel, ListRow, SectionLabel } from '../components/kit';
@@ -21,7 +22,7 @@ export const FAQS: { q: string; a: string }[] = [
   { q: 'How do I connect a receipt printer?', a: 'Settings → Printing. For a network printer enter its IP address and tap Connect / Test. For Bluetooth, pair it in the phone\'s Bluetooth settings first, then add it by name.' },
   { q: 'How do I change what prints on receipts and invoices?', a: 'Settings → Printing → Receipt settings or Invoice PDF settings. Every change shows in the preview before you save.' },
   { q: 'How do I choose which columns go on a report PDF?', a: 'Open the report, tap the print button and pick PDF, Excel, Preview or WhatsApp. Tick the columns you want and tap Apply.' },
-  { q: 'Why does a staff member not see some bills?', a: 'Each role decides what a person may see. The owner can allow "See other staff\'s bills" under Settings → Staff & roles.' },
+  { q: 'Why does a staff member not see some sales?', a: 'Each role decides what a person may see. The owner can allow "See other staff\'s sales" under Settings → Staff & roles.' },
   { q: 'How many phones can use one licence?', a: 'Your plan sets the number of devices. Cloud sync → Linked devices shows who is using a place, and the owner can remove an old phone there.' },
   { q: 'I forgot my PIN. What now?', a: 'The owner can reset a staff PIN under Staff & roles. The owner\'s own PIN can be reset with a code sent to the account email.' },
 ];
@@ -60,7 +61,7 @@ export default function HelpScreen() {
         <ListRow icon="doc" tone="neutral" title="Terms and conditions" subtitle="The rules for using Genius POS" onPress={() => go('Legal', { doc: 'terms' })} last />
       </Panel>
 
-      <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, textAlign: 'center', marginTop: 22 }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', marginTop: 22 }}>
         Genius POS {BUILD} · made by {PUBLISHER}
       </Text>
     </ScrollView>
@@ -83,10 +84,10 @@ export function FaqScreen() {
             style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: on ? colors.accent : colors.line, padding: 14, marginBottom: 10 }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{f.q}</Text>
+              <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{f.q}</Text>
               <Icon name={on ? 'up' : 'down'} size={16} color={colors.faint} />
             </View>
-            {on ? <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, lineHeight: 20, color: colors.soft, marginTop: 8 }}>{f.a}</Text> : null}
+            {on ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 20, color: colors.soft, marginTop: 8 }}>{f.a}</Text> : null}
           </Pressable>
         );
       })}

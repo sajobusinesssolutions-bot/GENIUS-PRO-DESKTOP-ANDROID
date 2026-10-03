@@ -78,6 +78,15 @@ export interface ServerStats {
 
 export interface Backup { name: string; bytes: number; at: string }
 
+/** One problem a phone reported (server/src/crash.js). */
+export interface CrashRow {
+  id: number; received_at: string; happened_at: string | null; fatal: boolean; kind: string | null;
+  message: string; stack: string | null; route: string | null; app_version: string | null;
+  platform: string | null; os_version: string | null; device: string | null; business_id: string | null; email: string | null;
+}
+export interface Crashes { reports: CrashRow[]; top: Array<{ message: string; n: number; last: string; fatal: boolean }> }
+export const listCrashes = (a: string) => call<Crashes>('/v1/admin/crashes?limit=100', a);
+
 export const isDeveloper = (a: string) => call<{ developer: boolean }>('/v1/admin/me', a);
 export const listOwners = (a: string) => call<{ owners: Owner[] }>('/v1/admin/owners', a);
 export const getReports = (a: string) => call<Reports>('/v1/admin/reports', a);

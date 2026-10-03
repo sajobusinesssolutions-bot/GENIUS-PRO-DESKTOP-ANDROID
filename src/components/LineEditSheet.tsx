@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import { View, Text, TextInput } from 'react-native';
+import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
-import { Button } from './ui';
+import { Button, Field } from './ui';
 import { Icon } from './icons';
 import Sheet from './Sheet';
 import type { SaleLine, Product } from '../data/types';
@@ -119,15 +120,15 @@ export default function LineEditSheet({
     >
       <View style={{ gap: 16 }}>
         <View>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>{line.name}</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{line.name}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
             {line.sku}{batchNo ? ' · Batch ' + batchNo : ''} · {Number.isFinite(availableHere) ? Math.floor(availableHere * 100) / 100 + ' ' + chosen.unit + ' available' : 'No stock limit'}
           </Text>
         </View>
 
         {units.length > 1 ? (
           <View style={{ gap: 6 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, letterSpacing: 0.3 }}>SELL BY</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, letterSpacing: 0.3 }}>SELL BY</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {units.map((u) => {
                 const on = u.unit === chosen.unit;
@@ -141,8 +142,8 @@ export default function LineEditSheet({
                       backgroundColor: on ? colors.accentSoft : colors.surface,
                     }}
                   >
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accent : colors.ink }}>{u.unit}</Text>
-                    <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{money(u.price)}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accent : colors.ink }}>{u.unit}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{money(u.price)}</Text>
                   </Pressable>
                 );
               })}
@@ -152,12 +153,12 @@ export default function LineEditSheet({
 
         {product?.trackBatches && (product.batches || []).length > 0 ? (
           <View style={{ gap: 6 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, letterSpacing: 0.3 }}>BATCH</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, letterSpacing: 0.3 }}>BATCH</Text>
             <Pressable
               onPress={onChooseBatch}
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderRadius: 12, backgroundColor: colors.sunk, borderWidth: 1, borderColor: colors.lineHard, paddingHorizontal: 12, paddingVertical: 12 }}
             >
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: batchNo ? colors.ink : colors.faint }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: batchNo ? colors.ink : colors.faint }}>
                 {batchNo ? 'Batch ' + batchNo : 'Choose batch'}
               </Text>
               <Icon name="box" size={15} color={colors.accent} />
@@ -166,57 +167,30 @@ export default function LineEditSheet({
         ) : null}
 
         <View style={{ gap: 6 }}>
-          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, letterSpacing: 0.3 }}>QUANTITY</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Pressable onPress={() => step(-1)} style={{ width: 48, height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 22, color: colors.ink }}>−</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>−</Text>
             </Pressable>
-            <TextInput
-              value={qty}
-              onChangeText={setQty}
-              keyboardType="numeric"
-              selectTextOnFocus
-              style={{ flex: 1, height: 48, textAlign: 'center', borderRadius: 14, borderWidth: 1, borderColor: overStock ? colors.danger : colors.lineHard, backgroundColor: colors.sunk, color: overStock ? colors.danger : colors.ink, fontFamily: fonts.uiBold, fontSize: 19 }}
-            />
+            <Field style={{ flex: 1, marginBottom: 0 }} label="Quantity" value={qty} onChangeText={setQty} numeric decimal error={overStock ? " " : undefined} />
             <Pressable onPress={() => step(1)} style={{ width: 48, height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 22, color: colors.ink }}>+</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>+</Text>
             </Pressable>
           </View>
-          {overStock ? <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.danger }}>Only {Math.floor(availableHere * 100) / 100} {chosen.unit} in stock.</Text> : null}
+          {overStock ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger }}>Only {Math.floor(availableHere * 100) / 100} {chosen.unit} in stock.</Text> : null}
         </View>
 
         <View style={{ flexDirection: 'row', gap: 12 }}>
-          <View style={{ flex: 1, gap: 6 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, letterSpacing: 0.3 }}>UNIT PRICE</Text>
-            <TextInput
-              value={listPrice}
-              onChangeText={setListPrice}
-              editable={canEditPrice}
-              keyboardType="numeric"
-              selectTextOnFocus
-              style={{ height: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, paddingHorizontal: 12, color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 15 }}
-            />
-          </View>
-          <View style={{ flex: 1, gap: 6 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, letterSpacing: 0.3 }}>DISCOUNT %</Text>
-            <TextInput
-              value={discountPct}
-              onChangeText={setDiscountPct}
-              editable={maxDiscountPct > 0}
-              keyboardType="numeric"
-              selectTextOnFocus
-              style={{ height: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, paddingHorizontal: 12, color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 15 }}
-            />
-          </View>
+          <Field style={{ flex: 1, marginBottom: 0 }} label="Unit price" value={listPrice} onChangeText={setListPrice} readOnly={!canEditPrice} numeric decimal />
+          <Field style={{ flex: 1, marginBottom: 0 }} label="Discount %" value={discountPct} onChangeText={setDiscountPct} readOnly={!(maxDiscountPct > 0)} numeric decimal />
         </View>
 
         {!canEditPrice ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
             The price is fixed here. Changing it at the till is switched off in Settings.
           </Text>
         ) : null}
         {discRaw > maxDiscountPct ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.danger }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger }}>
             The most you can give is {maxDiscountPct}%, so {maxDiscountPct}% is applied.
           </Text>
         ) : null}
@@ -226,7 +200,7 @@ export default function LineEditSheet({
           {discNum > 0 ? <Row label="You save" value={'− ' + money(qtyNum * (listNum - netPrice))} colors={colors} tone={colors.good} /> : null}
           <View style={{ height: 1, backgroundColor: colors.line }} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Line total</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Line total</Text>
             <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(lineTotal)}</Text>
           </View>
         </View>

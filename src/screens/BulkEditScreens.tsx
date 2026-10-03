@@ -8,7 +8,8 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useCan, Denied } from '../components/Gate';
-import { View, Text, FlatList, Pressable, TextInput } from 'react-native';
+import { View, Text, FlatList, TextInput } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
@@ -162,7 +163,7 @@ function PriceListScreenBody() {
                       backgroundColor: pct < 0 ? colors.dangerSoft : colors.goodSoft,
                     }}
                   >
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: pct < 0 ? colors.danger : colors.good }}>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: pct < 0 ? colors.danger : colors.good }}>
                       {pct > 0 ? '+' : ''}{pct}% sell
                     </Text>
                   </Pressable>
@@ -175,7 +176,7 @@ function PriceListScreenBody() {
                       borderWidth: 1.4, borderColor: colors.line, backgroundColor: colors.surface,
                     }}
                   >
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.soft }}>Reset</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.soft }}>Reset</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -208,7 +209,7 @@ function PriceListScreenBody() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     {p.sku}{p.category ? ' · ' + p.category : ''}
                   </Text>
                 </View>
@@ -217,37 +218,10 @@ function PriceListScreenBody() {
               </View>
 
               <View style={{ flexDirection: 'row', gap: 12, marginTop: 13 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginBottom: 6 }}>Cost</Text>
-                  <TextInput
-                    value={costV}
-                    onChangeText={(v) => set(p.id, { cost: v })}
-                    keyboardType="decimal-pad"
-                    selectTextOnFocus
-                    style={{
-                      height: 48, borderRadius: 12, borderWidth: 1.4, borderColor: colors.line,
-                      paddingHorizontal: 12, color: colors.ink, backgroundColor: colors.sunk,
-                      fontFamily: fonts.monoSemi, fontSize: 15,
-                    }}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginBottom: 6 }}>Sell</Text>
-                  <TextInput
-                    value={priceV}
-                    onChangeText={(v) => set(p.id, { price: v })}
-                    keyboardType="decimal-pad"
-                    selectTextOnFocus
-                    style={{
-                      height: 48, borderRadius: 12, borderWidth: 1.4,
-                      borderColor: loss ? colors.danger : colors.line,
-                      paddingHorizontal: 12, color: loss ? colors.danger : colors.ink, backgroundColor: colors.sunk,
-                      fontFamily: fonts.monoSemi, fontSize: 15,
-                    }}
-                  />
-                </View>
+                <Field style={{ flex: 1, marginBottom: 0 }} label="Cost" value={costV} onChangeText={(v) => set(p.id, { cost: v })} numeric decimal />
+                <Field style={{ flex: 1, marginBottom: 0 }} label="Sell" value={priceV} onChangeText={(v) => set(p.id, { price: v })} numeric decimal error={loss ? ' ' : undefined} />
                 <View style={{ width: 74 }}>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginBottom: 6 }}>Margin</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 6 }}>Margin</Text>
                   <View style={{ height: 48, alignItems: 'flex-end', justifyContent: 'center' }}>
                     <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: loss ? colors.danger : margin < 10 ? colors.warn : colors.good }}>
                       {Math.round(margin)}%
@@ -269,7 +243,7 @@ function PriceListScreenBody() {
               {dirty.length} unsaved change{dirty.length === 1 ? '' : 's'}
             </Text>
             <Pressable onPress={() => setDrafts({})}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.danger }}>Discard</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.danger }}>Discard</Text>
             </Pressable>
           </View>
           <Button
@@ -425,37 +399,15 @@ function NamesEditorScreenBody() {
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{p.sku}</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{p.sku}</Text>
                 {changed ? <Badge label="Edited" tone="accent" /> : null}
               </View>
 
-              <TextInput
-                value={nameV}
-                onChangeText={(v) => set(p.id, { name: v })}
-                placeholder="Item name"
-                placeholderTextColor={colors.faint}
-                style={{
-                  minHeight: 48, borderRadius: 12, borderWidth: 1.4,
-                  borderColor: nameV.trim() ? colors.line : colors.danger,
-                  paddingHorizontal: 12, color: colors.ink, backgroundColor: colors.sunk,
-                  fontFamily: fonts.uiSemi, fontSize: 15, marginBottom: 10,
-                }}
-              />
-              <TextInput
-                value={noteV}
-                onChangeText={(v) => set(p.id, { note: v })}
-                placeholder="Description — what staff should know when selling it"
-                placeholderTextColor={colors.faint}
-                multiline
-                style={{
-                  minHeight: 66, borderRadius: 12, borderWidth: 1.4, borderColor: colors.line,
-                  paddingHorizontal: 12, paddingVertical: 10, color: colors.ink, backgroundColor: colors.sunk,
-                  fontFamily: fonts.ui, fontSize: 14, textAlignVertical: 'top',
-                }}
-              />
+              <Field label="Item name" value={nameV} onChangeText={(v) => set(p.id, { name: v })} error={nameV.trim() ? undefined : 'A name is needed'} style={{ marginBottom: 10 }} />
+              <Field label="Description" placeholder="What staff should know when selling it" value={noteV} onChangeText={(v) => set(p.id, { note: v })} multiline style={{ marginBottom: 0 }} />
 
               {changed && nameV !== p.name ? (
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 8 }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 8 }}>
                   was “{p.name}”
                 </Text>
               ) : null}
@@ -473,7 +425,7 @@ function NamesEditorScreenBody() {
               {dirty.length} unsaved change{dirty.length === 1 ? '' : 's'}
             </Text>
             <Pressable onPress={() => setDrafts({})}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.danger }}>Discard</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.danger }}>Discard</Text>
             </Pressable>
           </View>
           <Button
@@ -606,7 +558,7 @@ function ActivateScreenBody() {
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                   {p.sku} · {st} {p.unit} · {money(p.price)}
                 </Text>
               </View>
@@ -625,7 +577,7 @@ function ActivateScreenBody() {
               {chosen.length} selected
             </Text>
             <Pressable onPress={() => setPicked({})}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.danger }}>Clear</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.danger }}>Clear</Text>
             </Pressable>
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>

@@ -91,8 +91,8 @@ function pruneAuto(): void {
  * Reads a backup — an encrypted .sa, or an older plain .json one — and checks
  * it is a complete book before handing it back.
  */
-export async function readBackup(uri: string): Promise<DB> {
-  const bytes = fromBase64(await new File(uri).base64());
+export async function readBackup(source: string | File): Promise<DB> {
+  const bytes = fromBase64(await (typeof source === 'string' ? new File(source) : source).base64());
   const json = isSealed(bytes) ? openBackup(bytes) : fromUtf8(bytes);
   const checked = validateBackup(json);
   if (!checked.ok || !checked.db) throw new Error(checked.reason || 'This backup could not be read.');

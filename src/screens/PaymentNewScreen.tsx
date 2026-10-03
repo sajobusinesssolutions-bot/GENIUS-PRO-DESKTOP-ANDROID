@@ -45,8 +45,12 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
   }, [db, partyId, direction]);
 
   const owed = partyId ? partyBalance(partyId) : 0;
+  /** What is outstanding with this person: what a customer owes us, or what we owe a supplier. */
+  const pending = direction === 'in' ? owed : -owed;
   const amt = num(amount);
-  const after = direction === 'in' ? owed - amt : owed + amt;
+  const left = pending - amt;
+  /** Each person's outstanding amount, by id, for the list. */
+  const pendingOf = (id: string) => (direction === 'in' ? partyBalance(id) : -partyBalance(id));
 
   function save() {
     if (!partyId || !amt) return;
@@ -91,10 +95,25 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
           icon={direction === 'in' ? 'user' : 'factory'}
           label={direction === 'in' ? 'Customer' : 'Supplier'}
           value={partyId || ''}
-          options={parties.map((p) => ({ v: p.id, l: p.name }))}
+          options={parties.map((p) => {
+            const due = pendingOf(p.id);
+            return { v: p.id, l: p.name + (due > 0.01 ? ' · ' + money(due) + (direction === 'in' ? ' owed' : ' pending') : '') };
+          })}
           onChange={setPartyId}
           placeholder={'Choose a ' + (direction === 'in' ? 'customer' : 'supplier')}
         />
+
+        {partyId ? (
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', marginTop: -4, marginBottom: 16, padding: 12, borderRadius: 14,
+            backgroundColor: pending > 0.01 ? colors.dangerSoft : colors.goodSoft,
+          }}>
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.soft }}>
+              {pending > 0.01 ? (direction === 'in' ? 'They owe you' : 'Pending to pay them') : pending < -0.01 ? (direction === 'in' ? 'They are in credit' : 'You have paid ahead') : 'Nothing pending'}
+            </Text>
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 17, color: pending > 0.01 ? colors.danger : colors.good }}>{money(Math.abs(pending))}</Text>
+          </View>
+        ) : null}
 
         <SectionLabel>{direction === 'in' ? 'Paid into' : 'Paid from'}</SectionLabel>
         <OptionTiles
@@ -110,11 +129,11 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
         <SectionLabel>How much</SectionLabel>
         <Field icon="coins" label="Amount" value={amount} onChangeText={setAmount} numeric decimal placeholder="0" />
 
-        {partyId && owed > 0 && direction === 'in' ? (
+        {partyId && pending > 0.01 ? (
           <View style={{ flexDirection: 'row', gap: 9, marginBottom: 14 }}>
             {[
-              { l: 'Half', v: Math.round(owed / 2) },
-              { l: 'All owed', v: Math.round(owed) },
+              { l: 'Half', v: Math.round(pending / 2) },
+              { l: direction === 'in' ? 'All owed' : 'All pending', v: Math.round(pending) },
             ].map((qk) => (
               <View key={qk.l} style={{ flex: 1 }}>
                 <Button size="sm" label={qk.l + ' · ' + money(qk.v)} onPress={() => setAmount(String(qk.v))} />
@@ -128,16 +147,16 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
         {partyId ? (
           <Panel>
             <DetailRow
-              label={owed >= 0 ? 'They owe now' : 'In credit now'}
-              value={money(Math.abs(owed))}
-              tone={owed > 0 ? colors.danger : colors.good}
+              label={direction === 'in' ? (pending >= 0 ? 'They owe now' : 'In credit now') : (pending >= 0 ? 'You owe them now' : 'Paid ahead now')}
+              value={money(Math.abs(pending))}
+              tone={pending > 0 ? colors.danger : colors.good}
             />
             <DetailRow label={direction === 'in' ? 'Receiving' : 'Paying'} value={money(amt)} tone={colors.accent} />
             <DetailRow
-              label={after > 0 ? 'Will still owe' : after < 0 ? 'Will be in credit' : 'Settled'}
-              value={money(Math.abs(after))}
+              label={left > 0.01 ? (direction === 'in' ? 'They will still owe' : 'You will still owe') : left < -0.01 ? (direction === 'in' ? 'They will be in credit' : 'You will have paid ahead') : 'Settled'}
+              value={money(Math.abs(left))}
               bold
-              tone={after > 0 ? colors.danger : colors.good}
+              tone={left > 0.01 ? colors.danger : colors.good}
               last
             />
           </Panel>
@@ -161,7 +180,7 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
             {direction === 'in' ? 'Receiving' : 'Paying out'}
           </Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 21, color: colors.ink }}>{money(amt)}</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(amt)}</Text>
         </View>
         <Button
           label={direction === 'in' ? 'Record receipt' : 'Record payment'}

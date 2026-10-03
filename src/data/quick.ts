@@ -39,7 +39,7 @@ export const QUICK: QuickGroup[] = [
       { n: 'Quotation', i: 'doc', route: 'EstimateNew' },
       { n: 'Delivery note', i: 'box', route: 'ChallanNew' },
       { n: 'Return goods', i: 'swap', route: 'CreditNoteNew' },
-      { n: 'Recurring bill', i: 'calendar', route: 'RecurringNew' },
+      { n: 'Recurring sale', i: 'calendar', route: 'RecurringNew' },
       { n: 'Instalment plan', i: 'coins', route: 'PlanNew' },
       { n: 'New offer', i: 'tag', route: 'OfferNew' },
       { n: 'Price tags', i: 'tag', route: 'PriceTags' },

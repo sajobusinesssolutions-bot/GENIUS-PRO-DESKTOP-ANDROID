@@ -53,6 +53,12 @@ export interface Product {
   active: boolean; emoji?: string;
   trackBatches?: boolean; batches?: ProductBatch[];
   trackSerials?: boolean; serials?: string[];
+  /** Phones: a dual-SIM handset has two IMEIs; each unit in stock then carries both. */
+  dualImei?: boolean;
+  /** Ask whether each unit is new or used when it is booked in. */
+  askCondition?: boolean;
+  /** What else is known about each serial in `serials`, keyed by that serial (IMEI 1). */
+  serialInfo?: Record<string, SerialInfo>;
 
   // --- the full item editor, reference SCREENS.itemEdit (9192) + wrapper (16886) ---
   kind?: ProductKind;
@@ -64,7 +70,11 @@ export interface Product {
   taxExempt?: boolean;
   priceChangeAllowed?: boolean;
   defaultQty?: number;
+  /** On a bill the quantity starts filled in (with defaultQty, or 1). Off: it starts empty and must be typed. */
+  startQtyFilled?: boolean;
   note?: string;
+  /** What it is, for the customer and the staff: condition, specifications, colour, size. */
+  description?: string;
   /** Colour tag from ITEM_COLOR and the picked picture from ITEM_EMOJI. */
   color?: string; image?: string;
   /** A real photograph, stored as a local file uri. */
@@ -92,10 +102,17 @@ export interface Account {
   branch?: string;
 }
 
+export type ItemCondition = 'new' | 'used';
+export interface SerialInfo { imei2?: string; condition?: ItemCondition }
+/** One serialised unit on a bill: its IMEI (or serial), a second IMEI on a dual-SIM phone, and its condition. */
+export interface SoldSerial { imei: string; imei2?: string; condition?: ItemCondition }
+
 export interface SaleLine {
   productId: string; name: string; sku: string; unit: string;
   qty: number; price: number; cost: number; taxRate: number;
   batchNo?: string; serialNo?: string;
+  /** The units sold on this line, one per unit, for an item that tracks IMEIs or serials. */
+  serials?: SoldSerial[];
   /**
    * Stock units used by one of this line's unit. 1 for the item's main unit;
    * 1/24 for a piece of a 24-piece carton. Stock is always counted in the main
@@ -189,6 +206,8 @@ export interface BillReceipt { paymentId: string; amount: number; ts: string }
 export interface Entry {
   id: string; ts: string; direction: 'in' | 'out' | 'transfer'; accountId: string; toId?: string;
   category: string; amount: number; note: string;
+  /** The income or expense ledger it was posted to; the old default ledgers when absent. */
+  ledgerId?: string;
   userId?: string;
   /** The branch whose money moved. */
   branch?: string;
@@ -274,6 +293,12 @@ export interface PrintTemplate {
   showLogo: boolean; showTax: boolean; showServed: boolean; showParty: boolean; showSaved: boolean;
   showAddress: boolean; showBatch: boolean; showExpiry: boolean; showImei: boolean;
   showWarranty: boolean; showUnit: boolean; showRate: boolean;
+  /** Paid and change under the total. Absent means shown. */
+  showPaid?: boolean;
+  /** The heading printed on the document, e.g. "Cash sale". Empty uses the document's own name. */
+  title?: string;
+  /** Roll receipts: the look — classic, compact, detailed or bold. */
+  receiptStyle?: ReceiptStyle;
   /** A4/page templates only: a coloured bar under the shop name, e.g. '#1A7AE6'. */
   accentColor?: string;
   /** A4/page templates only: visible borders around every field and cell, ledger-style. */
@@ -285,8 +310,12 @@ export interface PrintTemplate {
 }
 
 /** `DB.printer` — reference ensureExtras() at 5454. */
+export type ReceiptStyle = 'classic' | 'compact' | 'detailed' | 'bold';
+
 export interface PrinterSettings {
   device: string; width: Paper; copies: number;
+  /** How a sales receipt prints by default: on the roll, or as an A4 page. Absent means the roll. */
+  receiptMode?: 'thermal' | 'a4';
   autoPrint: boolean; openDrawer: boolean; showLogo: boolean;
   header: string; footer: string;
 }
@@ -324,6 +353,10 @@ export interface SyncDevice { id: string; name: string; kind: 'phone' | 'laptop'
 export interface SyncPending { id: string; type: string; ref: string; note: string; ts: string; by: string }
 export interface SyncLogEntry { id: string; ts: string; how: string; up: number; down: number; by: string; ok: boolean; note: string }
 export interface SyncCfg {
+  /** A full copy of the books should go up on the next run (after an import, or new business details). */
+  snapshotDue?: boolean;
+  /** Imported records have been queued for sync once (books imported before that was automatic). */
+  importsQueued?: boolean;
   on: boolean; freq: SyncFreq; wifiOnly: boolean; conflict: ConflictRule;
   scope: 'all' | 'one'; pending: SyncPending[]; log: SyncLogEntry[];
   devices: SyncDevice[]; lastAt: string;
@@ -378,6 +411,8 @@ export interface BusinessAccessGrant {
 }
 
 export interface Settings {
+  /** Payment reminders: whether they are on, and the words for each way of sending. */
+  reminders?: Partial<import('./messages').ReminderSettings>;
   // money & language
   currency: string; currencyName: string; symbolBefore: boolean; decimals: 0 | 2;
   dateFormat: string; firstDay: 'Mon' | 'Sun'; language: string; timezone: string;
@@ -526,6 +561,8 @@ export interface DB {
   activeFirmId: string;
   /** The current reporting year; rollover carries balances into the next one. */
   financialYear?: { start: string; openedAt: string; previousStart?: string };
+  /** Records brought in from another app, by their id there — so a second import adds nothing twice. */
+  imports?: Record<string, string>;
   archivedFinancialYears?: ArchivedFinancialYear[];
   settings: Settings;
   /** Reference DB.roles — the editable permission matrix, 7596. */

@@ -242,7 +242,7 @@ describe('batch reports', () => {
     const db = makeDb();
     const r = runReport(db, 'batch-balances', ALL.from, ALL.to);
     expect(r.error).toBeFalsy();
-    expect(r.cols.map((c) => c.h)).toContain('Days');
+    expect(r.cols.map((c) => c.h)).toContain('Left');
   });
 
   it('reports both as implemented', () => {
@@ -272,7 +272,8 @@ describe('REPORTS catalogue', () => {
     expect(voucher.error).toBeFalsy();
     expect(coa.error).toBeFalsy();
     expect(ledger.cols.map((c) => c.h).slice(0, 3)).toEqual(['Ledger', 'Debit', 'Credit']);
-    expect(voucher.cols.map((c) => c.h).slice(0, 3)).toEqual(['Date', 'Vch Type', 'Vch No']);
+    expect(voucher.cols.map((c) => c.h)).toEqual(['Vch Type', 'Vouchers', 'Debit', 'Credit']);
+    expect(voucher.rows.map((r) => r[0])).toEqual(['Journal']); // a hand-made entry, not a sale
     expect(coa.rows.some((r) => String(r[1]).includes('Cash'))).toBe(true);
   });
 
@@ -384,7 +385,7 @@ describe('sale-summary', () => {
     expect(by('Discounts given')).toBe(0);
     expect(by('VAT included')).toBe(0);        // the fixture sells zero-rated goods
     expect(by('Cost of goods sold')).toBe(450); // 200 + 150 + 100
-    expect(by('Average bill')).toBe(300);
+    expect(by('Average sale')).toBe(300);
     expect(by('Settled at the till')).toBe(600); // the credit bill of 300 is open
 
     // the pinned totals row carries gross profit
@@ -643,5 +644,15 @@ describe('sortRows', () => {
     const r = runReport(db, 'invoice-list', ALL.from, ALL.to);
     const asc = sortRows(r, 3, 'asc');
     expect(cellText(asc.rows[0][3])).toBe('Acme Ltd');
+  });
+});
+
+describe('voucher summary by type', () => {
+  it('names sales, purchases and expenses for what they are, not all as journals', () => {
+    const { db } = seededFull();
+    const r = runReport(db, 'voucher-summary', ALL.from, ALL.to);
+    const types = r.rows.map((x) => cellText(x[0]));
+    expect(types.some((t) => t === 'Cash sale' || t === 'Sales invoice')).toBe(true);
+    expect(r.rowRefs!.every((ref) => ref?.kind === 'vouchertype')).toBe(true);
   });
 });

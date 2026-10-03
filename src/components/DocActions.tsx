@@ -3,7 +3,8 @@
  * plus the helpers that turn a stored record into something printable.
  */
 import React, { useState } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Alert, Linking } from 'react-native';
+import { View, Text, ActivityIndicator, Alert } from 'react-native';
+import { Pressable } from './Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from './Toast';
@@ -11,7 +12,11 @@ import { Icon, IconName } from './icons';
 import Sheet from './Sheet';
 import { ListRow } from './kit';
 import { printDoc, shareDoc, docText, DocMeta } from '../data/docPrint';
-import { printOptsFor, docKindOf, defaultPrinter, paperOf } from '../data/printSetup';
+import { printOptsFor, docKindOf, defaultPrinter, paperOf, shareOptsFor } from '../data/printSetup';
+import { reportError } from '../data/crashReporter';
+import SendSheet from './SendSheet';
+import { docMessage } from '../data/messages';
+import { PrinterError } from '../data/rawPrinter';
 import type { Sale, Purchase, Payment, Printer } from '../data/types';
 
 /** Builds the printable form of a sale, including batch and expiry per line. */
@@ -50,6 +55,7 @@ export function useDocBuilder() {
         return {
           name: l.name, qty: l.qty, price: l.price, unit: l.unit,
           batchNo: l.batchNo, expiry: b?.expiry,
+          serials: l.serials || (l.serialNo ? [{ imei: l.serialNo }] : undefined),
         };
       }),
       subtotal: sale.gross,
@@ -158,12 +164,13 @@ export interface MoreAction {
  * Print, share and a kebab for everything else. `compact` renders the icon-only
  * row that sits on a list card; the full form spells the actions out.
  */
-export function DocActions({ doc, more, compact, phone }: {
+export function DocActions({ doc, more, compact, phone, email }: {
   doc: () => DocMeta;
   more?: MoreAction[];
   compact?: boolean;
   /** When given, a WhatsApp entry is offered in the more menu. */
   phone?: string;
+  email?: string;
 }) {
   const { colors } = useTheme();
   const { money, db } = useAppData();
@@ -171,6 +178,7 @@ export function DocActions({ doc, more, compact, phone }: {
   const [busy, setBusy] = useState<'print' | 'share' | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [choosing, setChoosing] = useState(false);
+  const [sending, setSending] = useState<DocMeta | null>(null);
   const printers = db?.printers || [];
   const dflt = defaultPrinter(db);
 
@@ -182,36 +190,23 @@ export function DocActions({ doc, more, compact, phone }: {
       if (what === 'print') await printDoc(d, money, opts);
       else {
         // a shared copy is A4 unless it is a receipt for a roll
-        const ok = await shareDoc(d, money, { ...opts, paper: opts.tpl?.kind === 'thermal' ? opts.paper : 'A4' });
+        const ok = await shareDoc(d, money, shareOptsFor(db, d.docKind || docKindOf(d.kind)));
         if (!ok) error('Sharing is not available on this device.');
       }
     } catch (e: any) {
       error(e?.message || 'That could not be ' + (what === 'print' ? 'printed' : 'shared'));
+      // a printer that is off is not a bug; anything else is worth a report
+      if (!(e instanceof PrinterError)) void reportError(e, { extra: { where: what, printer: printer?.kind || dflt?.kind } });
     } finally {
       setBusy(null);
     }
   }
 
-  async function whatsapp() {
+  /** The document as a ready-written message, to send by WhatsApp, SMS, email or any app. */
+  function message() {
     setMoreOpen(false);
     const d = doc();
-    const body = encodeURIComponent(docText(d, money));
-    const to = (phone || '').replace(/[^0-9]/g, '');
-    // whatsapp://send?phone=…&text=… — used here before — is an unofficial
-    // scheme that has become unreliable at carrying phone and text together:
-    // WhatsApp often opens straight to the chat with the text box empty,
-    // which reads as "nothing to send" even though the app did open. Meta's
-    // own documented format, wa.me, reliably pre-fills text for a specific
-    // number; the plain app-scheme version (no phone) already works fine for
-    // "let the person pick who to send it to", so only the phone case changes.
-    const url = to ? `https://wa.me/${to}?text=${body}` : `whatsapp://send?text=${body}`;
-    try {
-      const can = to ? true : await Linking.canOpenURL(url);
-      if (!can) { error('WhatsApp is not installed.'); return; }
-      await Linking.openURL(url);
-    } catch {
-      error('WhatsApp could not be opened.');
-    }
+    setTimeout(() => setSending(d), 250);
   }
 
   function copyText() {
@@ -251,7 +246,7 @@ export function DocActions({ doc, more, compact, phone }: {
         icon="dots"
         onClose={() => setMoreOpen(false)}
       >
-        <ListRow card icon="phone" tone="good" title="Send on WhatsApp" subtitle="As a message the customer can keep" onPress={whatsapp} />
+        <ListRow card icon="phone" tone="good" title="Send as message" subtitle="WhatsApp, SMS, email or another app" onPress={message} />
         <ListRow card icon="doc" tone="accent" title="Show as text" subtitle="Copy the figures by hand" onPress={copyText} />
         <ListRow
           card
@@ -274,6 +269,17 @@ export function DocActions({ doc, more, compact, phone }: {
         ))}
       </Sheet>
 
+      <SendSheet
+        visible={!!sending}
+        onClose={() => setSending(null)}
+        title={sending ? 'Send ' + sending.kind.toLowerCase() + ' ' + sending.no : 'Send'}
+        to={sending?.partyName}
+        phone={phone || sending?.partyPhone}
+        email={email}
+        subject={sending ? sending.kind + ' ' + sending.no + ' from ' + sending.firmName : undefined}
+        text={sending ? docMessage(sending, money) : ''}
+      />
+
       <Sheet visible={choosing} title="Print on" icon="print" onClose={() => setChoosing(false)}>
         {printers.map((p) => (
           <ListRow
@@ -287,7 +293,7 @@ export function DocActions({ doc, more, compact, phone }: {
           />
         ))}
         {!printers.length ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, paddingVertical: 12 }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, paddingVertical: 12 }}>
             No printers are set up. Add them under Settings, Printing.
           </Text>
         ) : null}

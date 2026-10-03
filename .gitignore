@@ -48,3 +48,6 @@ yarn-error.*
 server/.env
 secrets/
 *.pem
+
+# local build logs
+build*.log

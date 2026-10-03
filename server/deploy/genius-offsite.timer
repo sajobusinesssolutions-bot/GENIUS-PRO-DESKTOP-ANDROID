@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly off-site copy of Genius backups
+
+[Timer]
+# after the API's own nightly dump, which runs soon after 02:00 UTC
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

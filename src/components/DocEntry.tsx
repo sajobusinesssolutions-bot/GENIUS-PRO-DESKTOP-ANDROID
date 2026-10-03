@@ -84,7 +84,7 @@ export default function DocEntry({
               <Icon name={icon} size={22} color={fg} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: colors.ink }}>{kind}</Text>
+              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{kind}</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {lines.length ? lines.length + ' line' + (lines.length === 1 ? '' : 's') + ' · ' + units + ' units' : 'Nothing added yet'}
               </Text>
@@ -113,7 +113,7 @@ export default function DocEntry({
 
         <View style={{ height: 8 }} />
         <SectionLabel right={
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
             {lines.length} line{lines.length === 1 ? '' : 's'}
           </Text>
         }>
@@ -161,7 +161,7 @@ export default function DocEntry({
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
               {units} unit{units === 1 ? '' : 's'}
             </Text>
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 21, color: colors.ink }}>{money(total)}</Text>
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(total)}</Text>
           </View>
         ) : null}
         <Button

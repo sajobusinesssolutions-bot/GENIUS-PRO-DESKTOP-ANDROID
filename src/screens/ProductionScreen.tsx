@@ -35,7 +35,7 @@ export default function ProductionScreen() {
                     <Text style={{ fontSize: 20 }}>{p.emoji || '🧩'}</Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{p.name}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{p.name}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                       {stockOf(p)} {p.unit} in stock
                     </Text>
@@ -45,7 +45,7 @@ export default function ProductionScreen() {
                 <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 12 }} />
 
                 <SectionLabel>Needs per unit</SectionLabel>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.soft, marginBottom: 14 }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 19, color: colors.soft, marginBottom: 14 }}>
                   {(p.bom || []).map((b) => `${b.qty} × ${product(b.productId)?.name || b.productId}`).join(' · ')}
                 </Text>
 
@@ -103,10 +103,10 @@ export default function ProductionScreen() {
               <Icon name="factory" size={19} color={colors.good} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
                 {product(item.productId)?.name || 'Item'}
               </Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {new Date(item.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
               </Text>
             </View>

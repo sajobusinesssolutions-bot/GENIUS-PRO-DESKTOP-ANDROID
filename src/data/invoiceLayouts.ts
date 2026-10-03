@@ -53,6 +53,8 @@ export function numberToWords(value: number): string {
 }
 
 export interface LayoutCtx {
+  /** The IMEI lines for an item, already as HTML (empty when switched off). */
+  imeiHtml?: (l: DocLine) => string;
   showLogo: boolean; showTax: boolean; showServed: boolean; showParty: boolean;
   showBatch: boolean; showExpiry: boolean;
   head: string; foot: string; code: string; tight: boolean; accent: string;
@@ -95,7 +97,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
     const cols = 6 + extra;
     const rows = d.lines.map((l, i) => `<tr>
       <td class="c">${i + 1}</td>
-      <td class="l"><b>${esc(l.name)}</b></td>
+      <td class="l"><b>${esc(l.name)}</b>${c.imeiHtml ? c.imeiHtml(l) : ''}</td>
       ${bCell(l)}${eCell(l)}
       <td class="r"><b>${l.qty} ${esc(l.unit || '')}</b></td>
       <td class="r">${esc(money(l.price))}</td>
@@ -195,7 +197,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
 
   if (style === 'quickbooks') {
     const rows = d.lines.map((l) => `<tr>
-      <td class="l">${esc(l.name)}</td>
+      <td class="l">${esc(l.name)}${c.imeiHtml ? c.imeiHtml(l) : ''}</td>
       ${bCell(l)}${eCell(l)}
       <td class="r">${l.qty}${l.unit ? ' ' + esc(l.unit) : ''}</td>
       <td class="r">${esc(money(l.price))}</td>
@@ -282,7 +284,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
     const cols = 5 + extra;
     const rows = d.lines.map((l, i) => `<tr>
       <td class="c">${i + 1}</td>
-      <td class="l"><b>${esc(l.name)}</b></td>
+      <td class="l"><b>${esc(l.name)}</b>${c.imeiHtml ? c.imeiHtml(l) : ''}</td>
       ${bCell(l)}${eCell(l)}
       <td class="c">${l.qty} ${esc((l.unit || '').toUpperCase())}</td>
       <td class="r">${esc(money(l.price))}</td>
@@ -416,7 +418,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
   // plain
   const rows = d.lines.map((l, i) => `<tr>
     <td class="n">${i + 1}</td>
-    <td class="l">${esc(l.name)}</td>
+    <td class="l">${esc(l.name)}${c.imeiHtml ? c.imeiHtml(l) : ''}</td>
     ${bCell(l)}${eCell(l)}
     <td class="r">${l.qty} ${esc(l.unit || '')}</td>
     <td class="r">${esc(money(l.price))}</td>

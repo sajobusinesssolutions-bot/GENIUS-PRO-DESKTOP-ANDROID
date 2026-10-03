@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, View, Text, Pressable, TextInput, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { ToastHost } from './Toast';
+import { Modal, View, Text, TextInput, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { Pressable } from './Press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts } from '../theme';
 import { Icon } from './icons';
+import { Field } from './form';
 import type { Product } from '../data/types';
 
 /**
@@ -68,8 +71,8 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
             flexDirection: 'row', alignItems: 'center', gap: 10,
             backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.line,
           }}>
-            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>{title}</Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
+            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{title}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
               {results.length} match{results.length === 1 ? '' : 'es'}
             </Text>
             <Pressable onPress={onClose} hitSlop={10} style={{ padding: 4 }}>
@@ -98,14 +101,14 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                 <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name="plus" size={18} color={colors.accentInk} />
                 </View>
-                <Text numberOfLines={1} style={{ flex: 1, color: colors.accent, fontFamily: fonts.uiBold, fontSize: 14 }}>
+                <Text numberOfLines={1} style={{ flex: 1, color: colors.accent, fontFamily: fonts.uiBold, fontSize: 15 }}>
                   {q.trim() ? 'Create “' + q.trim() + '” as a new item' : 'Create a new item'}
                 </Text>
               </Pressable>
             ) : null}
             ListFooterComponent={results.length || onCreate ? null : (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint }}>No items match “{q}”</Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>No items match “{q}”</Text>
               </View>
             )}
             renderItem={({ item: p }) => {
@@ -121,15 +124,15 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                   }}
                 >
                   <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: colors.accent, fontFamily: fonts.uiBold, fontSize: 16 }}>{p.name.charAt(0).toUpperCase()}</Text>
+                    <Text style={{ color: colors.accent, fontFamily: fonts.uiBold, fontSize: 15 }}>{p.name.charAt(0).toUpperCase()}</Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ color: colors.ink, fontFamily: fonts.uiSemi, fontSize: 14 }}>{p.name}</Text>
-                    <Text numberOfLines={1} style={{ color: out ? colors.danger : colors.faint, fontFamily: fonts.ui, fontSize: 11, marginTop: 2 }}>
+                    <Text numberOfLines={1} style={{ color: colors.ink, fontFamily: fonts.uiSemi, fontSize: 15 }}>{p.name}</Text>
+                    <Text numberOfLines={1} style={{ color: out ? colors.danger : colors.faint, fontFamily: fonts.ui, fontSize: 12.5, marginTop: 2 }}>
                       {p.sku} · {p.kind === 'service' ? 'Service' : out ? 'Out of stock' : stock + ' ' + p.unit + ' in stock'}
                     </Text>
                   </View>
-                  <Text style={{ color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 13 }}>{money(priceOf ? priceOf(p) : p.price)}</Text>
+                  <Text style={{ color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 12.5 }}>{money(priceOf ? priceOf(p) : p.price)}</Text>
                 </Pressable>
               );
             }}
@@ -155,19 +158,17 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                     borderWidth: 1, borderColor: cat === c ? colors.accent : colors.line,
                   }}
                 >
-                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: cat === c ? colors.accentInk : colors.soft }}>{c}</Text>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: cat === c ? colors.accentInk : colors.soft }}>{c}</Text>
                 </Pressable>
               )}
             />
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.sunk, borderRadius: 14, borderWidth: 1, borderColor: colors.lineHard, paddingLeft: 12 }}>
-              <Icon name="search" size={17} color={colors.faint} />
-              <TextInput
-                ref={inputRef}
+            <Field
+                icon="search"
+                label="Search name, SKU or barcode"
+                inputRef={inputRef}
                 value={q}
                 onChangeText={setQ}
-                placeholder="Search name, SKU or barcode"
-                placeholderTextColor={colors.faint}
                 autoCorrect={false}
                 returnKeyType="search"
                 onSubmitEditing={() => {
@@ -175,20 +176,24 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                   const ok = canSell ? canSell(results[0]) : stockOf(results[0]) > 0;
                   if (ok) onPick(results[0]);
                 }}
-                style={{ flex: 1, paddingVertical: 13, color: colors.ink, fontFamily: fonts.uiSemi, fontSize: 15 }}
+                style={{ marginBottom: 0 }}
+                trailing={
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    {q.length > 0 ? (
+                      <Pressable onPress={() => setQ('')} hitSlop={8}>
+                        <Icon name="x" size={16} color={colors.faint} />
+                      </Pressable>
+                    ) : null}
+                    <Pressable onPress={onScan} hitSlop={8} accessibilityLabel="Scan a barcode">
+                      <Icon name="box" size={19} color={colors.accent} />
+                    </Pressable>
+                  </View>
+                }
               />
-              {q.length > 0 && (
-                <Pressable onPress={() => setQ('')} hitSlop={8} style={{ paddingHorizontal: 4 }}>
-                  <Icon name="x" size={16} color={colors.faint} />
-                </Pressable>
-              )}
-              <Pressable onPress={onScan} style={{ paddingHorizontal: 14, paddingVertical: 13, borderLeftWidth: 1, borderLeftColor: colors.line }}>
-                <Icon name="box" size={18} color={colors.accent} />
-              </Pressable>
-            </View>
           </View>
         </KeyboardAvoidingView>
       </View>
+      <ToastHost />
     </Modal>
   );
 }

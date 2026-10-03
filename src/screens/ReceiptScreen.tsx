@@ -7,6 +7,9 @@ import { Icon } from '../components/icons';
 import { DocActions, useDocBuilder } from '../components/DocActions';
 import { printDoc } from '../data/docPrint';
 import { printOptsFor, docKindOf } from '../data/printSetup';
+import { useToast } from '../components/Toast';
+import { reportError } from '../data/crashReporter';
+import { PrinterError } from '../data/rawPrinter';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
@@ -20,12 +23,17 @@ export default function ReceiptScreen({ route, navigation }: Props) {
 
   // Settings, Printing → "Print automatically after a sale". Saved, and never
   // acted on; now the receipt goes to the default printer as this screen opens.
+  const { error: toastError } = useToast();
   const printed = useRef(false);
   useEffect(() => {
     if (printed.current || !sale || !db?.printer?.autoPrint) return;
     printed.current = true;
     const d = saleDoc(sale);
-    printDoc(d, money, printOptsFor(db, d.docKind || docKindOf(d.kind))).catch(() => { /* the buttons are still there */ });
+    printDoc(d, money, printOptsFor(db, d.docKind || docKindOf(d.kind))).catch((e) => {
+      // said, not swallowed: a receipt that silently did not print is a customer left waiting
+      toastError('The receipt did not print: ' + (e?.message || 'the printer did not answer') + ' Tap Print to try again.');
+      if (!(e instanceof PrinterError)) void reportError(e, { extra: { where: 'autoPrint' } });
+    });
   }, [sale?.id]);
 
   if (!sale) return null;
@@ -58,7 +66,7 @@ export default function ReceiptScreen({ route, navigation }: Props) {
           <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 14 }} />
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.soft }}>
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft }}>
               Print, share or send it
             </Text>
             <DocActions doc={() => saleDoc(sale)} phone={pt?.phone} />
@@ -66,23 +74,23 @@ export default function ReceiptScreen({ route, navigation }: Props) {
         </Panel>
 
         <View style={{ backgroundColor: colors.surface, borderRadius: 18, padding: 20, shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2 }}>
-          <Text style={{ textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, letterSpacing: 0.4 }}>{db?.firm.name}</Text>
-          <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, marginTop: 8 }}>{db?.firm.address}</Text>
-          <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 10, color: colors.faint, marginBottom: 12 }}>TIN {db?.firm.tin}</Text>
+          <Text style={{ textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: 0.4 }}>{db?.firm.name}</Text>
+          <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 8 }}>{db?.firm.address}</Text>
+          <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 12 }}>TIN {db?.firm.tin}</Text>
 
           <View style={{ borderTopWidth: 1, borderTopColor: colors.line, borderStyle: 'dashed', marginVertical: 8 }} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>Receipt</Text>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.ink }}>{sale.no}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Receipt</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{sale.no}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>Date</Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.ink }}>{new Date(sale.ts).toLocaleString()}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Date</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.ink }}>{new Date(sale.ts).toLocaleString()}</Text>
           </View>
           {pt ? (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>Customer</Text>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.ink }}>{pt.name}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Customer</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{pt.name}</Text>
             </View>
           ) : null}
 
@@ -96,11 +104,11 @@ export default function ReceiptScreen({ route, navigation }: Props) {
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, flex: 1 }} numberOfLines={1}>{l.name}</Text>
                   <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.ink }}>{money(l.qty * l.price)}</Text>
                 </View>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                   {l.qty} {l.unit} × {money(l.price)}
                 </Text>
                 {l.batchNo ? (
-                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 10.5, color: colors.accent, marginTop: 2 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent, marginTop: 2 }}>
                     Batch {l.batchNo}{exp ? ' · exp ' + exp : ''}
                   </Text>
                 ) : null}
@@ -110,27 +118,27 @@ export default function ReceiptScreen({ route, navigation }: Props) {
 
           <View style={{ borderTopWidth: 1, borderTopColor: colors.line, borderStyle: 'dashed', marginVertical: 8 }} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.ink }}>TOTAL</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>TOTAL</Text>
             <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(sale.total)}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>Paid via</Text>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 10.5, color: colors.ink }}>{sale.method.toUpperCase()}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Paid via</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{sale.method.toUpperCase()}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>Due</Text>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 10.5, color: sale.due > 0 ? colors.warn : colors.good }}>{money(sale.due)}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Due</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: sale.due > 0 ? colors.warn : colors.good }}>{money(sale.due)}</Text>
           </View>
           {sale.additionalCharges ? (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>Additional charges</Text>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 10.5, color: colors.ink }}>{money(sale.additionalCharges)}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Additional charges</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{money(sale.additionalCharges)}</Text>
             </View>
           ) : null}
-          {sale.note ? <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, marginTop: 9 }}>Note: {sale.note}</Text> : null}
-          {sale.terms ? <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, marginTop: 4 }}>Terms: {sale.terms}</Text> : null}
-          {sale.fdn ? <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: colors.faint, marginTop: 8 }}>EFRIS FDN {sale.fdn}</Text> : null}
-          <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, marginTop: 12 }}>Thank you for shopping with us!</Text>
+          {sale.note ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 9 }}>Note: {sale.note}</Text> : null}
+          {sale.terms ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>Terms: {sale.terms}</Text> : null}
+          {sale.fdn ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 8 }}>EFRIS FDN {sale.fdn}</Text> : null}
+          <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 12 }}>Thank you for shopping with us!</Text>
         </View>
       </ScrollView>
 

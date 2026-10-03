@@ -24,15 +24,28 @@ import { useToast } from '../components/Toast';
 const EVERY_MS = 15 * 1000;
 /** However long the backoff has grown, never wait longer than this between tries. */
 const MAX_BACKOFF_MS = 10 * 60 * 1000;
-/** A copy of the books goes up at least this often even with nothing queued. */
-const SNAPSHOT_EVERY_MS = 30 * 60 * 1000;
+/** How often to ask the cloud for what other phones recorded. */
+const PULL_EVERY_MS = 5 * 1000;
+/** A screen opening asks at most this often, however fast someone taps around. */
+const PULL_GAP_MS = 2 * 1000;
+
+/**
+ * Any screen can ask for a fresh look at the cloud — the navigators do it
+ * each time a screen comes into view, so what is on it is current.
+ */
+const pullListeners = new Set<(force?: boolean) => Promise<unknown>>();
+/** Resolves once the check is done. `force` skips the short gap between checks — for a pull-to-refresh. */
+export function requestSync(force = false): Promise<void> {
+  return Promise.all([...pullListeners].map((fn) => fn(force))).then(() => undefined);
+}
 /** Stay quiet about a blip; only speak up once trouble looks ongoing. */
 const NOTIFY_AFTER_FAILURES = 3;
 
 export default function SyncKeeper() {
   const { db, ready, licFeature } = useAppData();
   const { account } = useAuth();
-  const { run } = useSyncRun();
+  const { run, pull } = useSyncRun();
+  const lastPull = useRef(0);
   const { error: toastError } = useToast();
   const last = useRef(0);
   const failures = useRef(0);
@@ -84,6 +97,21 @@ export default function SyncKeeper() {
     }
     previousWaiting.current = waiting;
   }, [ready, on, online, waiting]);
+
+  // the quick pull: on request (a screen opening), and every few seconds
+  const pullNow = useRef<(force?: boolean) => Promise<unknown>>(() => Promise.resolve());
+  pullNow.current = (force) => {
+    if (!ready || !on || !online || failures.current > 0) return Promise.resolve();
+    if (!force && Date.now() - lastPull.current < PULL_GAP_MS) return Promise.resolve();
+    lastPull.current = Date.now();
+    return pull().catch(() => 0);
+  };
+  useEffect(() => {
+    const onAsk = (force?: boolean) => pullNow.current(force);
+    pullListeners.add(onAsk);
+    const t = setInterval(() => { void pullNow.current(); }, PULL_EVERY_MS);
+    return () => { pullListeners.delete(onAsk); clearInterval(t); };
+  }, []);
 
   useEffect(() => {
     const t = setInterval(() => tick.current(), EVERY_MS);

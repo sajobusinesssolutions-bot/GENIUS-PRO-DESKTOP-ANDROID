@@ -1,5 +1,8 @@
 # Automatic updates on the VPS
 
+> Server lost, or moving to a new one? See [RECOVERY.md](RECOVERY.md) — it also
+> covers the nightly off-site backup of the database, secrets and licence key.
+
 The server checks GitHub every five minutes. When `main` has a new commit it
 copies `server/` over `/opt/genius/api`, installs dependencies if they changed,
 applies any new file in `server/sql/` (each file once, recorded in the

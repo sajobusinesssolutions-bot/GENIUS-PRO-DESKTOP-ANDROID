@@ -24,14 +24,15 @@
  * Every field, sheet and rule from the previous editor is kept.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, TextInput, Image } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
 import {
   Card, Cap, Button, Grid, KV, Pill, ChipStrip, TopTabs,
   TypeChips, HighlightToggle, InfoBanner,
-  Field, SelectField, ChipRow, ActionChip, FieldNote, ToggleRow, Swatch,
+  Field, SelectField, ChipRow, ActionChip, FieldNote, ToggleRow, Swatch, Seg, Sw,
 } from '../components/ui';
 import { Icon, CAT_ICON, IconName } from '../components/icons';
 import { Sheet } from '../components/Sheet';
@@ -40,9 +41,10 @@ import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import * as ImagePicker from 'expo-image-picker';
 import { keepPhoto } from '../data/photos';
 import { ITEM_COLOR, ITEM_EMOJI, SERVICE_RATE } from '../data/defaults';
-import type { Product, ProductBatch, ProductKind, ServiceRate } from '../data/types';
+import type { Product, ProductBatch, ProductKind, ServiceRate, SerialInfo } from '../data/types';
 import BatchEditor from '../components/BatchEditor';
 import SerialEditor from '../components/SerialEditor';
+import SegmentSlider from '../components/SegmentSlider';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
@@ -73,11 +75,11 @@ function MarginCard({ cost, price }: { cost: number; price: number }) {
     }}>
       <View>
         <Cap style={{ color: fg }}>Profit on each one</Cap>
-        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 16.5, color: fg, marginTop: 3 }}>{money(profit)}</Text>
+        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: fg, marginTop: 3 }}>{money(profit)}</Text>
       </View>
       <View style={{ alignItems: 'flex-end' }}>
         <Cap style={{ color: fg }}>Margin</Cap>
-        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 16.5, color: fg, marginTop: 3 }}>{m}%</Text>
+        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: fg, marginTop: 3 }}>{m}%</Text>
       </View>
     </View>
   );
@@ -97,7 +99,7 @@ function ScanBox() {
       overflow: 'hidden', marginBottom: 12,
     }}>
       <View style={{ position: 'absolute', left: 18, right: 18, height: 2, backgroundColor: colors.danger, opacity: 0.8 }} />
-      <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Point the camera at the barcode</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Point the camera at the barcode</Text>
     </View>
   );
 }
@@ -115,7 +117,7 @@ function TrackChip({ label, on, onPress }: { label: string; on: boolean; onPress
         borderWidth: 1, borderColor: on ? colors.accent : colors.line,
       }}
     >
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: on ? colors.accent : colors.soft }}>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>
         {(on ? '✓ ' : '+ ') + label}
       </Text>
     </Pressable>
@@ -127,7 +129,7 @@ function SumChip({ label, on }: { label: string; on: boolean }) {
   const { colors } = useTheme();
   return (
     <View style={{ paddingVertical: 4, paddingHorizontal: 8, borderRadius: radius.pill, backgroundColor: on ? colors.goodSoft : colors.sunk }}>
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: on ? colors.good : colors.faint }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.good : colors.faint }}>{label}</Text>
     </View>
   );
 }
@@ -146,14 +148,16 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   const [name, setName] = useState(existing?.name || '');
   const [sku, setSku] = useState(existing?.sku || '');
   const [unit, setUnit] = useState(existing?.unit || 'PC');
-  const [category, setCategory] = useState(existing?.category || db?.categories[0] || 'General');
+  // no category is picked for the owner: they choose one, or make their own
+  const [category, setCategory] = useState(existing?.category || '');
+  const [description, setDescription] = useState(existing?.description || '');
   const [barcodes, setBarcodes] = useState<string[]>(existing?.barcodes || []);
   const [image, setImage] = useState(existing?.emoji || existing?.image || '📦');
   const [color, setColor] = useState(existing?.color || '');
 
   const [cost, setCost] = useState(String(existing?.cost ?? ''));
   const [price, setPrice] = useState(String(existing?.price ?? ''));
-  const [taxRate, setTaxRate] = useState(String(existing?.taxRate ?? db?.settings.taxRate ?? 18));
+  const [taxRate, setTaxRate] = useState(existing ? String(existing.taxRate ?? '') : '');
   const [taxExempt, setTaxExempt] = useState(!!existing?.taxExempt);
   /** A real photo taken or chosen from the gallery; falls back to the emoji. */
   const [photo, setPhoto] = useState(existing?.photo || '');
@@ -163,20 +167,22 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   const [priceChangeAllowed, setPriceChangeAllowed] = useState(!!existing?.priceChangeAllowed);
 
   const [trackInventory, setTrackInventory] = useState(existing?.trackInventory !== false);
-  const [reorder, setReorder] = useState(String(existing?.reorder ?? 0));
-  const [warrantyMonths, setWarrantyMonths] = useState(String(existing?.warrantyMonths ?? 0));
+  const [reorder, setReorder] = useState(existing?.reorder ? String(existing.reorder) : '');
+  const [warrantyMonths, setWarrantyMonths] = useState(existing?.warrantyMonths ? String(existing.warrantyMonths) : '');
   // a new item starts with the shop's own choice: Settings → "Track batches and expiry"
   const [trackBatches, setTrackBatches] = useState(existing ? !!existing.trackBatches : !!ctx.db?.settings.trackBatches);
   const [batchList, setBatchList] = useState<ProductBatch[]>(existing?.batches || []);
   const [trackSerials, setTrackSerials] = useState(!!existing?.trackSerials);
   const [serialList, setSerialList] = useState<string[]>(existing?.serials || []);
-  const [opening, setOpening] = useState<Record<string, string>>(() => {
-    const o: Record<string, string> = {};
-    (db?.warehouses || []).forEach((w) => { o[w.id] = '0'; });
-    return o;
-  });
+  const [serialInfo, setSerialInfo] = useState<Record<string, SerialInfo>>(existing?.serialInfo || {});
+  const [dualImei, setDualImei] = useState(!!existing?.dualImei);
+  const [askCondition, setAskCondition] = useState(!!existing?.askCondition);
+  /** Opening stock of a new item, into the branch this phone is working in. */
+  const [openingQty, setOpeningQty] = useState('');
+  const [codeFocus, setCodeFocus] = useState(false);
 
-  const [defaultQty, setDefaultQty] = useState(String(existing?.defaultQty || 1));
+  const [startQtyFilled, setStartQtyFilled] = useState(!!existing?.startQtyFilled);
+  const [defaultQty, setDefaultQty] = useState(existing?.defaultQty && existing.defaultQty !== 1 ? String(existing.defaultQty) : '');
   const [note, setNote] = useState(existing?.note || '');
   const [salesAccount, setSalesAccount] = useState(existing?.salesAccount || 'n_sales');
   const [cogsAccount, setCogsAccount] = useState(existing?.cogsAccount || 'n_cogs');
@@ -190,7 +196,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   const [materials, setMaterials] = useState(!!existing?.materials);
 
   /* ---- sheets ---- */
-  const [sheet, setSheet] = useState<null | 'emoji' | 'unit' | 'category' | 'barcode'>(null);
+  const [sheet, setSheet] = useState<null | 'photo' | 'unit' | 'secondUnit' | 'category'>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [newUnit, setNewUnit] = useState('');
   const [newCat, setNewCat] = useState('');
@@ -203,10 +209,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   const units = db?.units || ['PC'];
   const cats = db?.categories || ['General'];
 
-  const totalOpening = useMemo(
-    () => Object.keys(opening).reduce((s, k) => s + num(opening[k]), 0),
-    [opening],
-  );
+  const totalOpening = num(openingQty);
 
   /**
    * What the batches are a breakdown of: the opening stock typed in for a new
@@ -263,7 +266,8 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       error('The batches add up to ' + batchTotal + ' but the item holds ' + batchTarget + '. Reduce a batch before saving.');
       return;
     }
-    const track = svc ? false : trackInventory;
+    // every product is counted: stock has to be accounted for
+    const track = !svc;
     const patch: Partial<Product> = {
       name: name.trim(),
       sku: sku.trim() || 'ITM-' + (db!.products.length + 1),
@@ -272,6 +276,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       conversionRate: num(conversionRate),
       secondaryPrice: num(secondaryPrice),
       category: category || 'General',
+      description: description.trim(),
       cost: num(cost), price: num(price),
       taxRate: taxExempt ? 0 : (num(taxRate) || db!.settings.taxRate),
       reorder: svc ? 0 : num(reorder),
@@ -279,10 +284,13 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       barcodes: svc ? [] : barcodes,
       trackInventory: track,
       trackBatches: svc ? false : trackBatches,
-      batches: svc || !trackBatches ? [] : batchList,
+      batches: svc || !trackBatches ? [] : batchList.map((b, i) => ({ ...b, no: b.no.trim() || (sku || 'B').toUpperCase().slice(0, 4) + '-' + String(i + 1).padStart(3, '0') })),
       trackSerials: svc ? false : trackSerials,
       serials: svc || !trackSerials ? [] : serialList,
-      priceChangeAllowed, defaultQty: num(defaultQty) || 1,
+      serialInfo: svc || !trackSerials ? {} : serialInfo,
+      dualImei: !svc && trackSerials && dualImei,
+      askCondition: !svc && trackSerials && askCondition,
+      priceChangeAllowed, defaultQty: num(defaultQty) || 1, startQtyFilled,
       note, color, emoji: image, image,
       photo: photo || undefined,
       taxExempt,
@@ -297,7 +305,8 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       updateProduct(existing.id, patch);
     } else {
       const stock: Record<string, number> = {};
-      db!.warehouses.forEach((w) => { stock[w.id] = svc ? 0 : num(opening[w.id]); });
+      const here = db!.session.warehouse || db!.warehouses[0]?.id;
+      db!.warehouses.forEach((w) => { stock[w.id] = !svc && w.id === here ? num(openingQty) : 0; });
       addProduct({ ...(patch as Omit<Product, 'id'>), stock, bom: null, active });
     }
     navigation.goBack();
@@ -329,95 +338,148 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
 
   /* ================= tab bodies ================= */
 
+  /**
+   * A box that opens a list — category, unit. Like a text field, its name is
+   * the placeholder while empty and a small caption once something is chosen.
+   */
+  const pickBox = (label: string, value: string, onPress: () => void) => (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => ({
+        flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, marginBottom: 14,
+        paddingHorizontal: 15, paddingVertical: 8, borderRadius: radius.md, borderWidth: 1.4,
+        borderColor: colors.line, backgroundColor: pressed ? colors.sunk : colors.surface,
+      })}
+    >
+      <View style={{ flex: 1 }}>
+        {value ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 2 }}>{label}</Text> : null}
+        <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: value ? colors.ink : colors.faint }}>{value || label}</Text>
+      </View>
+      <Icon name="down" size={16} color={colors.faint} />
+    </Pressable>
+  );
+
   const basics = (
     <>
       <View style={{ height: 12 }} />
-      {/* 1 — what is it */}
-      <TypeChips
+      {/* what is it */}
+      <SegmentSlider
         value={kind}
         options={[
           { v: 'product' as ProductKind, l: 'Product', i: 'box' as IconName },
           { v: 'service' as ProductKind, l: 'Service', i: 'tools' as IconName },
         ]}
         onChange={(k: ProductKind) => { setKind(k); if (k === 'service' && tab === 'stock') setTab('basics'); }}
-        style={{ marginBottom: 10 }}
       />
-
-      {/* 2 — small tracking chips, products only; editors are on the Stock tab */}
-      {!svc ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 }}>
-          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint, marginRight: 2 }}>Track</Text>
-          <TrackChip label="Batches" on={trackBatches} onPress={toggleBatches} />
-          <TrackChip label="IMEI / serial" on={trackSerials} onPress={toggleSerials} />
-        </View>
-      ) : <View style={{ height: 6 }} />}
-
-      {/* photo: camera, gallery or a picture from the emoji set */}
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        <Button size="sm" label={photo ? 'Retake' : 'Camera'} icon={<Icon name="phone" size={15} color={colors.ink} />} onPress={takePhoto} />
-        <Button size="sm" label={photo ? 'Replace' : 'Gallery'} onPress={pickPhoto} />
-        <Button size="sm" label={image ? 'Emoji ' + image : 'Emoji'} onPress={() => setSheet('emoji')} />
-      </View>
 
       <Field
-        icon="tag"
-        label="Name *"
+        label="Name"
         value={name}
         onChangeText={(v: string) => { setName(v); if (nameErr && v.trim()) setNameErr(false); }}
-        placeholder={svc ? 'What the service is called' : 'What the item is called'}
+        error={nameErr ? 'Give it a name.' : undefined}
       />
-      {nameErr ? (
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.danger, marginTop: -6, marginBottom: 10 }}>
-          Give it a name.
-        </Text>
-      ) : null}
-      <Field icon="doc" label="Item code" value={sku} onChangeText={setSku} placeholder="Left blank, one is made for you" />
 
-      <SelectField
-        icon="tag"
-        label="Category"
-        value={category}
-        options={cats.map((c) => ({ v: c, l: c }))}
-        onChange={setCategory}
-        placeholder="Select category"
-      />
-      <View style={{ marginTop: -4, marginBottom: 6 }}>
-        <Button size="sm" label="New category" icon={<Icon name="plus" size={15} color={colors.ink} />} onPress={() => setSheet('category')} />
+      {/* the photo: a field like the others, with the camera and the gallery inside it */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, marginBottom: 14,
+        paddingLeft: photo ? 8 : 15, paddingRight: 6, paddingVertical: 8, borderRadius: radius.md, borderWidth: 1.4,
+        borderColor: colors.line, backgroundColor: colors.surface,
+      }}>
+        {photo ? (
+          <Image source={{ uri: photo }} style={{ width: 44, height: 44, borderRadius: 9 }} />
+        ) : null}
+        <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15, color: photo ? colors.ink : colors.faint }}>
+          {photo ? 'Photo added' : 'Photo'}
+        </Text>
+        <Pressable onPress={() => void takePhoto()} accessibilityLabel="Take a photo" hitSlop={4}
+          style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.accentSoft : 'transparent' })}>
+          <Icon name="camera" size={20} color={colors.accent} />
+        </Pressable>
+        <Pressable onPress={() => void pickPhoto()} accessibilityLabel="Choose from the gallery" hitSlop={4}
+          style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.accentSoft : 'transparent' })}>
+          <Icon name="image" size={20} color={colors.accent} />
+        </Pressable>
+        {photo ? (
+          <Pressable onPress={() => setPhoto('')} accessibilityLabel="Remove the photo" hitSlop={4}
+            style={{ width: 34, height: 42, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="x" size={16} color={colors.faint} />
+          </Pressable>
+        ) : null}
       </View>
 
-      <View style={{ height: 8 }} />
-      <SelectField label="Sold by" value={unit} options={units.map((u) => ({ v: u, l: u }))} onChange={setUnit} />
-      <Button size="sm" label="+ New unit" onPress={() => setSheet('unit')} />
+      <Field label="Item code" value={sku} onChangeText={setSku} placeholder="Leave empty and one is made" />
+      {pickBox('Category', category, () => setSheet('category'))}
+      {pickBox('Unit', unit ? unit + (secondaryUnit ? ' · also by ' + secondaryUnit + (num(conversionRate) ? ' (' + num(conversionRate) + ' in one)' : '') : '') : '', () => setSheet('unit'))}
 
       {svc ? null : (
         <>
-          <SectionCap style={{ marginTop: 16 }}>Barcodes</SectionCap>
-          <Card style={{ marginBottom: 8 }}>
-            {barcodes.length ? barcodes.map((b, i) => (
-              <View key={b} style={{
-                flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: 14,
-                borderBottomWidth: i === barcodes.length - 1 ? 0 : 1, borderBottomColor: colors.line,
-              }}>
-                <Text style={{ flex: 1, fontFamily: fonts.mono, fontSize: 13, letterSpacing: 0.6, color: colors.ink }}>{b}</Text>
-                <Pressable hitSlop={8} onPress={() => setBarcodes(barcodes.filter((x) => x !== b))}>
-                  <Icon name="x" size={15} color={colors.faint} />
+          {/* one barcode box: type and press enter, scan with the camera, or let the app make one */}
+          <Field
+            label="Barcode"
+            value={typedCode}
+            onChangeText={setTypedCode}
+            onSubmitEditing={() => { addBarcode(typedCode); setTypedCode(''); }}
+            onFocus={() => setCodeFocus(true)}
+            onBlur={() => { setCodeFocus(false); if (typedCode.trim()) { addBarcode(typedCode); setTypedCode(''); } }}
+            placeholder={barcodes.length ? 'Another barcode, then press enter' : 'Type, then press enter'}
+            numeric
+            keepFocus
+            returnKeyType="done"
+            style={{ marginBottom: barcodes.length ? 8 : 14 }}
+            trailing={
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: -6 }}>
+                <Pressable
+                  onPress={() => addBarcode(makeBarcode())}
+                  accessibilityLabel="Create a barcode"
+                  style={({ pressed }) => ({
+                    paddingHorizontal: 11, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                    flexDirection: 'row', gap: 5, backgroundColor: pressed ? colors.accent : colors.accentSoft,
+                  })}
+                >
+                  <Icon name="plus" size={14} color={colors.accent} />
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Auto</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setScanOpen(true)}
+                  accessibilityLabel="Scan a barcode"
+                  style={({ pressed }) => ({
+                    width: 40, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: pressed ? colors.accentSoft : 'transparent',
+                  })}
+                >
+                  <Icon name="camera" size={21} color={colors.accent} />
                 </Pressable>
               </View>
-            )) : (
-              <View style={{ paddingVertical: 16, paddingHorizontal: 14 }}>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, textAlign: 'center' }}>
-                  No barcode yet. Scan one, type it, or let the app make one.
-                </Text>
-              </View>
-            )}
-          </Card>
-          <Grid cols={3}>
-            <Button size="sm" label="Scan" icon={<Icon name="search" size={14} color={colors.ink} />} onPress={() => setSheet('barcode')} />
-            <Button size="sm" label="Type it" onPress={() => { setTypedCode(''); setSheet('barcode'); }} />
-            <Button size="sm" label="Generate" onPress={() => addBarcode(makeBarcode())} />
-          </Grid>
+            }
+          />
+          {barcodes.length ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+              {barcodes.map((b) => (
+                <View key={b} style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 12, paddingRight: 8, paddingVertical: 7,
+                  borderRadius: radius.pill, backgroundColor: colors.sunk,
+                }}>
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 12.5, letterSpacing: 0.5, color: colors.ink }}>{b}</Text>
+                  <Pressable hitSlop={8} onPress={() => setBarcodes(barcodes.filter((x) => x !== b))} accessibilityLabel={'Remove ' + b}>
+                    <Icon name="x" size={14} color={colors.faint} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </>
       )}
+
+      <Field
+        inset
+        label="Description"
+        value={description}
+        onChangeText={setDescription}
+        multiline
+        placeholder={svc ? 'What is included, how it is done' : 'Condition, specifications, colour, size…'}
+      />
     </>
   );
 
@@ -425,106 +487,50 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     <>
       <View style={{ height: 14 }} />
       {svc ? (
-        <>
-          <SectionCap>How it is priced</SectionCap>
-          <ChipRow
-            value={rateType}
-            options={SERVICE_RATE.map((r) => ({ v: r[0], l: r[1] }))}
-            onChange={setRateType}
-            style={{ marginBottom: 8 }}
-          />
-          <FieldNote>{(SERVICE_RATE.find((r) => r[0] === rateType) || SERVICE_RATE[0])[2]}</FieldNote>
-        </>
+        <ChipRow
+          value={rateType}
+          options={SERVICE_RATE.map((r) => ({ v: r[0], l: r[1] }))}
+          onChange={setRateType}
+          style={{ marginBottom: 14 }}
+        />
       ) : null}
 
       {showCost ? (
         <>
-          <SectionCap>Pricing</SectionCap>
           <Grid cols={2} gap={12}>
-            <Field icon="money" label={svc ? 'What it costs you' : 'Cost price'} value={cost} onChangeText={setCost} numeric decimal placeholder="0" />
-            <Field icon="coins" label="Sale price" value={price} onChangeText={setPrice} numeric decimal placeholder="0" />
+            <Field inset icon="money" label={svc ? 'Cost to you' : 'Cost price'} value={cost} onChangeText={setCost} numeric decimal placeholder="0" />
+            <Field inset icon="coins" label="Sale price" value={price} onChangeText={setPrice} numeric decimal placeholder="0" />
           </Grid>
-          <SectionCap style={{ marginTop: 4 }}>Set the price from a markup</SectionCap>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
-            {[10, 15, 20, 25, 30, 50, 100].map((m) => (
-              <ActionChip key={m} label={m + '%'} onPress={() => applyMarkup(m)} />
-            ))}
-          </View>
-          <MarginCard cost={num(cost)} price={num(price)} />
+          {can('inventory.view_profit') ? <MarginCard cost={num(cost)} price={num(price)} /> : null}
         </>
       ) : (
-        <Field icon="coins" label="Sale price" value={price} onChangeText={setPrice} numeric placeholder="0" />
+        <Field inset icon="coins" label="Sale price" value={price} onChangeText={setPrice} numeric placeholder="0" />
       )}
 
-      {db.settings.taxEnabled === false ? (
-        <InfoBanner
-          tone="neutral"
-          icon="bank"
-          text={'Tax is switched off for the whole shop, so nothing is charged on this item. Turn it on under Settings → Selling → Tax.'}
-        />
-      ) : (
+      {db.settings.taxEnabled === false ? null : (
         <>
           <HighlightToggle
             tone="warn"
-            title={'This item is ' + (db.settings.taxName || 'VAT') + ' exempt'}
-            sub={'No ' + (db.settings.taxName || 'VAT') + ' is charged on it, whatever the shop rate is'}
+            title={(db.settings.taxName || 'VAT') + ' exempt'}
+            sub={'No ' + (db.settings.taxName || 'VAT') + ' is charged on it'}
             on={taxExempt}
             onChange={setTaxExempt}
           />
           {!taxExempt ? (
-            <Field icon="pie" label={(db.settings.taxName || 'VAT') + ' %'} value={taxRate} onChangeText={setTaxRate} numeric decimal />
+            <Field inset icon="pie" label={(db.settings.taxName || 'VAT') + ' %'} value={taxRate} onChangeText={setTaxRate} numeric decimal placeholder={String(db.settings.taxRate ?? 18) + ' (the shop rate)'} />
           ) : null}
         </>
       )}
       <ToggleRow label="Staff may change the price at the till" on={priceChangeAllowed} onChange={setPriceChangeAllowed} />
 
-      {/* the one second-unit block (was on both Pricing and Stock). Kept in
-          the exact direction LineEditSheet.tsx's unitsFor() expects: `unit`
-          is what `price` is for, `secondaryUnit` is the smaller breakdown,
-          and the secondary price divides down rather than multiplies up —
-          a piece must never come out priced above the carton it came from. */}
-      {!svc ? (
-        <>
-          <View style={{ height: 9 }} />
-          <SectionCap>Second unit &amp; price</SectionCap>
-          <FieldNote>Sell the same item two ways — a carton and a piece, a sack and a kilo.</FieldNote>
-          <Grid cols={2}>
-            <SelectField
-              label="Second unit"
-              value={secondaryUnit}
-              options={[{ v: '', l: '— none —' }].concat(units.map((u) => ({ v: u, l: u })))}
-              onChange={setSecondaryUnit}
-            />
-            <Field label={'How many in one ' + (unit || 'unit')} value={conversionRate} onChangeText={setConversionRate} numeric placeholder="A number, such as 24" />
-          </Grid>
-          {secondaryUnit && num(conversionRate) > 0 ? (
-            <>
-              <Field
-                label={'Price for one ' + secondaryUnit}
-                value={secondaryPrice}
-                onChangeText={setSecondaryPrice}
-                numeric
-                placeholder={String(Math.round(num(price) / num(conversionRate)))}
-              />
-              <View style={{ backgroundColor: colors.accentSoft, borderRadius: radius.md, padding: 12, marginBottom: 12 }}>
-                <Cap style={{ color: colors.accent }}>Works out as</Cap>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent, marginTop: 3 }}>
-                  1 {unit} = {num(conversionRate)} {secondaryUnit} · {money(num(price))} vs{' '}
-                  {money(num(secondaryPrice) || Math.round(num(price) / num(conversionRate)))} each
-                </Text>
-              </View>
-            </>
-          ) : null}
-        </>
-      ) : null}
     </>
   );
 
-  /** Reference the service Delivery tab injected by the wrapper at 16893. */
+  /** A service's Delivery tab. */
   const delivery = (
     <>
       <View style={{ height: 14 }} />
-      <Field icon="clock" label="How long it usually takes" value={duration} onChangeText={setDuration} placeholder={rateType === 'hour' ? '2 hours' : 'Half a day'} />
+      <Field inset icon="clock" label="How long it usually takes" value={duration} onChangeText={setDuration} placeholder={rateType === 'hour' ? '2 hours' : 'Half a day'} />
       <SelectField
         label="Who normally does it"
         value={staffId}
@@ -536,76 +542,50 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         <View style={{ height: 1, backgroundColor: colors.line }} />
         <ToggleRow label="Materials billed separately" on={materials} onChange={setMaterials} bare />
       </Card>
-      <Field icon="shield" label="Warranty (months)" value={warrantyMonths} onChangeText={setWarrantyMonths} numeric />
-      <FieldNote>
-        A service has no shelf, so there is nothing to count — but it still has a cost, and it can still carry a guarantee.
-      </FieldNote>
+      <Field inset icon="shield" label="Warranty (months)" value={warrantyMonths} onChangeText={setWarrantyMonths} numeric />
     </>
   );
 
+  const onHand = existing ? Object.values(existing.stock || {}).reduce((s, q) => s + (Number(q) || 0), 0) : 0;
   const stock = (
     <>
-      <View style={{ height: 10 }} />
-      <ToggleRow label="Keep count of this item" on={trackInventory} onChange={setTrackInventory} />
-      {!trackInventory ? (
-        <FieldNote>Off means you sell it without counting — handy for things bought fresh each morning.</FieldNote>
+      <View style={{ height: 14 }} />
+      {/* the one figure this tab is about */}
+      {!existing ? (
+        <Field
+          inset
+          big
+          label="Opening stock"
+          value={openingQty}
+          onChangeText={setOpeningQty}
+          numeric
+          placeholder="0"
+          suffix={unit}
+        />
       ) : (
-        <>
-          {!existing ? (
-            <>
-              <SectionCap style={{ marginTop: 10 }}>Opening quantity</SectionCap>
-              <Card style={{ marginBottom: 6 }}>
-                {db.warehouses.map((w, i) => (
-                  <View key={w.id} style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 14,
-                    borderBottomWidth: i === db.warehouses.length - 1 ? 0 : 1, borderBottomColor: colors.line,
-                  }}>
-                    <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{w.name}</Text>
-                    <Field
-                      value={opening[w.id] || '0'}
-                      onChangeText={(v: string) => setOpening({ ...opening, [w.id]: v })}
-                      numeric compact
-                      style={{ width: 96, marginBottom: 0 }}
-                    />
-                  </View>
-                ))}
-              </Card>
-              <FieldNote>Posted as opening stock against owner equity, dated today. {totalOpening ? '(' + totalOpening + ' ' + unit + ' in all)' : ''}</FieldNote>
-            </>
-          ) : (
-            <Card style={{ marginTop: 10, marginBottom: 12 }}>
-              {db.warehouses.map((w, i) => (
-                <View key={w.id} style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: 14,
-                  borderBottomWidth: i === db.warehouses.length - 1 ? 0 : 1, borderBottomColor: colors.line,
-                }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{w.name}</Text>
-                    <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>on hand now</Text>
-                  </View>
-                  <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: colors.ink }}>
-                    {(existing.stock || {})[w.id] || 0} {unit}
-                  </Text>
-                </View>
-              ))}
-            </Card>
-          )}
-
-          <View style={{ height: 14 }} />
-          <SectionCap>Stock rules</SectionCap>
-          <Grid cols={2} gap={12}>
-            <Field icon="alert" label="Reorder at" value={reorder} onChangeText={setReorder} numeric />
-            <Field icon="shield" label="Warranty (months)" value={warrantyMonths} onChangeText={setWarrantyMonths} numeric />
-          </Grid>
-        </>
+        <View style={{ borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.line, backgroundColor: colors.surface, paddingHorizontal: 15, paddingVertical: 12, marginBottom: 14 }}>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>On hand</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 34, color: colors.ink }}>
+            {onHand} <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>{unit}</Text>
+          </Text>
+          {db.warehouses.length > 1 ? (
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
+              {db.warehouses.map((w) => w.name + ' ' + ((existing.stock || {})[w.id] || 0)).join(' · ')}
+            </Text>
+          ) : null}
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>Change it with a stock adjustment or a purchase.</Text>
+        </View>
       )}
 
-      <View style={{ height: 6 }} />
-      <SectionCap>Batches</SectionCap>
-      <Card style={{ paddingHorizontal: 13, marginBottom: 12 }}>
+      <Grid cols={2} gap={12}>
+        <Field inset icon="alert" label="Reorder at" value={reorder} onChangeText={setReorder} numeric />
+        <Field inset icon="shield" label="Warranty (months)" value={warrantyMonths} onChangeText={setWarrantyMonths} numeric />
+      </Grid>
+
+      <Card style={{ paddingHorizontal: 13, paddingVertical: 2, marginBottom: 10 }}>
         <ToggleRow label="Track batches and expiry" on={trackBatches} onChange={() => toggleBatches()} bare />
         {trackBatches ? (
-          <View style={{ marginTop: 14, marginBottom: 12 }}>
+          <View style={{ paddingBottom: 12 }}>
             <BatchEditor
               batches={batchList}
               onChange={setBatchList}
@@ -617,15 +597,35 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         ) : null}
       </Card>
 
-      <SectionCap>IMEI / serial numbers</SectionCap>
-      <Card style={{ paddingHorizontal: 13 }}>
-        <ToggleRow label="Track serial numbers or IMEIs" on={trackSerials} onChange={() => toggleSerials()} bare />
+      <Card style={{ paddingHorizontal: 13, paddingVertical: 2 }}>
+        <ToggleRow label="Track IMEI" on={trackSerials} onChange={() => toggleSerials()} bare />
         {trackSerials ? (
-          <View style={{ marginTop: 14, marginBottom: 12 }}>
+          <View style={{ paddingBottom: 12 }}>
+            {/* how many IMEIs each phone carries, and whether to ask its condition */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.soft }}>IMEIs per phone</Text>
+              <Seg
+                value={dualImei ? '2' : '1'}
+                onChange={(v) => setDualImei(v === '2')}
+                options={[{ v: '1', l: 'One' }, { v: '2', l: 'Two' }]}
+                style={{ width: 150, padding: 3 }}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.soft }}>Condition</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 1 }}>New or used, printed on the receipt</Text>
+              </View>
+              <Sw on={askCondition} onPress={() => setAskCondition(!askCondition)} />
+            </View>
             <SerialEditor
               serials={serialList}
               onChange={setSerialList}
-              expected={existing ? Object.values(existing.stock || {}).reduce((a, b) => a + (b || 0), 0) : undefined}
+              info={serialInfo}
+              onInfoChange={setSerialInfo}
+              dual={dualImei}
+              askCondition={askCondition}
+              expected={existing ? onHand : num(openingQty) || undefined}
             />
           </View>
         ) : null}
@@ -636,15 +636,22 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   const more = (
     <>
       <View style={{ height: 14 }} />
-      <SectionCap>Colour tag</SectionCap>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-        {ITEM_COLOR.map((c) => <Swatch key={c || 'none'} color={c} on={color === c} onPress={() => setColor(c)} />)}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14, borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.line, backgroundColor: colors.surface, paddingHorizontal: 15, paddingVertical: 10 }}>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Colour</Text>
+        <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {ITEM_COLOR.map((c) => <Swatch key={c || 'none'} color={c} on={color === c} onPress={() => setColor(c)} />)}
+        </View>
       </View>
-      <Field icon="cart" label="Default quantity on a bill" value={defaultQty} onChangeText={setDefaultQty} numeric />
-      <Field icon="doc" label="Note for staff" value={note} onChangeText={setNote} multiline placeholder="Anything they should know when selling it" />
-
-      <View style={{ height: 6 }} />
-      <SectionCap>Where it posts in the books</SectionCap>
+      <ToggleRow
+        label="Fill in the quantity on a bill"
+        sub={startQtyFilled ? 'The quantity starts at the number below' : 'Off: the cashier types the quantity each time'}
+        on={startQtyFilled}
+        onChange={setStartQtyFilled}
+      />
+      {startQtyFilled ? (
+        <Field label="Starts at" value={defaultQty} onChangeText={setDefaultQty} numeric placeholder="1" suffix={unit} />
+      ) : null}
+      <Field inset icon="doc" label="Note for staff" value={note} onChangeText={setNote} multiline placeholder="Anything they should know when selling it" />
       <Grid cols={2}>
         <SelectField
           label="Sales account"
@@ -659,8 +666,10 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           onChange={setCogsAccount}
         />
       </Grid>
-      <ToggleRow label="Active — offer it for sale" on={active} onChange={setActive} />
-      {existing ? (
+      {can('inventory.delete') || active === false ? (
+        <ToggleRow label="Active — offer it for sale" on={active} onChange={setActive} />
+      ) : null}
+      {existing && can('inventory.delete') ? (
         <View style={{ marginTop: 16 }}>
           <Button variant="dngr" label="Remove this item" onPress={remove} />
         </View>
@@ -681,9 +690,9 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     summary.push({ l: (SERVICE_RATE.find((r) => r[0] === rateType) || SERVICE_RATE[0])[1], on: true });
     summary.push({ l: bookable ? 'Booking' : 'Walk-in', on: bookable });
   } else {
-    summary.push({ l: trackInventory ? (existing ? 'Counted' : totalOpening + ' ' + unit + ' opening') : 'Not counted', on: trackInventory });
-    summary.push({ l: trackBatches ? 'Batches on' : 'Batches off', on: trackBatches });
-    summary.push({ l: trackSerials ? 'IMEI on' : 'IMEI off', on: trackSerials });
+    summary.push({ l: existing ? onHand + ' ' + unit + ' on hand' : (num(openingQty) || 0) + ' ' + unit + ' opening', on: true });
+    if (trackBatches) summary.push({ l: 'Batches', on: true });
+    if (trackSerials) summary.push({ l: 'IMEI', on: true });
   }
 
   return (
@@ -720,83 +729,132 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         </View>
       </Foot>
 
-      {/* SHEETS.pickEmoji — reference 9378 */}
-      <Sheet visible={sheet === 'emoji'} title="Pick a picture" icon="tag" onClose={() => setSheet(null)}>
+      {/* the picture: camera, gallery or an emoji */}
+      <Sheet visible={sheet === 'photo'} title="Picture" icon="camera" onClose={() => setSheet(null)}>
+        <View style={{ gap: 8 }}>
+          <Button label={photo ? 'Take a new photo' : 'Take a photo'} icon={<Icon name="camera" size={16} color={colors.ink} />} onPress={() => { setSheet(null); void takePhoto(); }} />
+          <Button label="Choose from the gallery" icon={<Icon name="image" size={16} color={colors.ink} />} onPress={() => { setSheet(null); void pickPhoto(); }} />
+        </View>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginTop: 16, marginBottom: 8 }}>Or an emoji</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {ITEM_EMOJI.map((e) => (
             <Pressable
               key={e}
-              onPress={() => { setImage(e); setSheet(null); }}
+              onPress={() => { setImage(e); setPhoto(''); setSheet(null); }}
               style={{
-                width: 52, height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center',
-                backgroundColor: e === image ? colors.accentSoft : colors.sunk,
-                borderWidth: 1, borderColor: e === image ? colors.accent : 'transparent',
+                width: 50, height: 50, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: e === image && !photo ? colors.accentSoft : colors.sunk,
+                borderWidth: 1, borderColor: e === image && !photo ? colors.accent : 'transparent',
               }}
             >
               <Text style={{ fontSize: 24 }}>{e}</Text>
             </Pressable>
           ))}
         </View>
-        <View style={{ height: 12 }} />
-        <Button size="sm" label="Use no picture" onPress={() => { setImage(''); setSheet(null); }} />
+        {photo || image ? (
+          <View style={{ marginTop: 14 }}>
+            <Button size="sm" variant="dngr" label="No picture" onPress={() => { setImage(''); setPhoto(''); setSheet(null); }} />
+          </View>
+        ) : null}
       </Sheet>
 
-      {/* SHEETS.newUnit — reference 9424 */}
-      <Sheet
-        visible={sheet === 'unit'}
-        title="New unit"
-        icon="swap"
-        onClose={() => setSheet(null)}
-        footer={<Button variant="pri" label="Add unit" onPress={() => {
-          const v = newUnit.trim().toUpperCase();
-          if (!v) return;
-          addUnit(v); setUnit(v); setNewUnit(''); setSheet(null);
-        }} />}
-      >
-        <Field label="Short name" value={newUnit} onChangeText={setNewUnit} placeholder="A second unit, if any" />
-        <FieldNote>Keep it short — it prints on the receipt beside every quantity.</FieldNote>
-        <Cap style={{ marginBottom: 8 }}>Already set up</Cap>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {units.map((u) => <Pill key={u} label={u} />)}
-        </View>
-      </Sheet>
-
-      {/* SHEETS.newCategory — reference 9431 */}
-      <Sheet
+      <PickSheet
         visible={sheet === 'category'}
-        title="New category"
-        icon="tag"
+        title="Category"
+        options={cats}
+        value={category}
         onClose={() => setSheet(null)}
-        footer={<Button variant="pri" label="Add category" onPress={() => {
-          const v = newCat.trim();
-          if (!v) return;
-          addCategory(v); setCategory(v); setNewCat(''); setSheet(null);
-        }} />}
-      >
-        <Field label="Name" value={newCat} onChangeText={setNewCat} placeholder="A new category" />
-        <Cap style={{ marginBottom: 8 }}>Already set up</Cap>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {cats.map((c) => <Pill key={c} label={c} />)}
-        </View>
-      </Sheet>
-
-      {/* SHEETS.scanBarcode / typeBarcode — reference 9392-9410 */}
-      <Sheet visible={sheet === 'barcode'} title="Add a barcode" icon="box" onClose={() => setSheet(null)}>
-        <ScanBox />
-        <Button label="Open the camera" icon={<Icon name="search" size={15} color={colors.ink} />} onPress={() => setScanOpen(true)} />
-        <View style={{ height: 12 }} />
-        <Field label="Or enter it by hand" value={typedCode} onChangeText={setTypedCode} placeholder="6201234567890" numeric />
-        <Button variant="pri" label="Add this barcode" onPress={() => { addBarcode(typedCode); setTypedCode(''); setSheet(null); }} />
-        <View style={{ height: 9 }} />
-        <Button size="sm" label="Generate one instead" onPress={() => { addBarcode(makeBarcode()); setSheet(null); }} />
-      </Sheet>
+        onPick={(v) => { setCategory(v); setSheet(null); }}
+        onCreate={(v) => { addCategory(v); setCategory(v); setSheet(null); }}
+        createHint="A new category"
+        newLabel="New category"
+      />
+      <UnitSheet
+        visible={sheet === 'unit'}
+        units={units}
+        unit={unit}
+        secondaryUnit={secondaryUnit}
+        conversionRate={conversionRate}
+        secondaryPrice={secondaryPrice}
+        price={num(price)}
+        money={money}
+        onUnit={setUnit}
+        onSecondary={setSecondaryUnit}
+        onConversion={setConversionRate}
+        onSecondaryPrice={setSecondaryPrice}
+        onAddUnit={addUnit}
+        onClose={() => setSheet(null)}
+      />
 
       <BarcodeScannerModal
         visible={scanOpen}
         onClose={() => setScanOpen(false)}
-        onScan={(code) => { setScanOpen(false); setSheet(null); addBarcode(code); }}
+        onScan={(code) => { setScanOpen(false); addBarcode(code); }}
       />
     </View>
+  );
+}
+
+/**
+ * Choose one from a list, or make a new one right there — the category and
+ * unit pickers. Typing narrows the list; if nothing matches, the typed name
+ * can be created with one tap.
+ */
+function PickSheet({ visible, title, options, value, onClose, onPick, onCreate, createHint, noneLabel, upper, newLabel }: {
+  visible: boolean; title: string; options: string[]; value: string;
+  onClose: () => void; onPick: (v: string) => void; onCreate: (v: string) => void;
+  createHint: string; noneLabel?: string; upper?: boolean;
+  /** An always-visible row that starts making a new one. */
+  newLabel?: string;
+}) {
+  const { colors } = useTheme();
+  const [q, setQ] = useState('');
+  const [making, setMaking] = useState(false);
+  const [draft, setDraft] = useState('');
+  React.useEffect(() => { if (visible) { setQ(''); setMaking(false); setDraft(''); } }, [visible]);
+  const typed = upper ? q.trim().toUpperCase() : q.trim();
+  const shown = options.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase()));
+  const exists = options.some((o) => o.toLowerCase() === typed.toLowerCase());
+  const row = (label: string, on: boolean, onPress: () => void, create?: boolean) => (
+    <Pressable
+      key={(create ? '+' : '') + label}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 4,
+        borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: pressed ? colors.sunk : 'transparent',
+      })}
+    >
+      <Icon name={create ? 'plus' : 'tag'} size={17} color={create || on ? colors.accent : colors.faint} />
+      <Text style={{ flex: 1, fontFamily: on || create ? fonts.uiBold : fonts.ui, fontSize: 15, color: create || on ? colors.accent : colors.ink }}>{label}</Text>
+      {on ? <Icon name="check" size={18} color={colors.accent} /> : null}
+    </Pressable>
+  );
+  return (
+    <Sheet visible={visible} title={title} icon="tag" onClose={onClose}>
+      {making ? (
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+          <View style={{ flex: 1 }}>
+            <Field label={'Name of the ' + (newLabel || title).replace(/^New /, '').toLowerCase()} value={draft} onChangeText={setDraft} autoFocus autoCapitalize={upper ? 'characters' : 'sentences'} />
+          </View>
+          <View style={{ width: 96, marginTop: 6 }}>
+            <Button variant="pri" label="Add" disabled={!draft.trim()} onPress={() => onCreate(upper ? draft.trim().toUpperCase() : draft.trim())} />
+          </View>
+        </View>
+      ) : (
+        <Field label="Search" value={q} onChangeText={setQ} placeholder={createHint} autoCapitalize={upper ? 'characters' : 'sentences'} />
+      )}
+      {newLabel && !making ? row('＋ ' + newLabel, false, () => { setMaking(true); setDraft(q.trim()); }, true) : null}
+      <ScrollView style={{ maxHeight: 380 }} keyboardShouldPersistTaps="handled">
+        {typed && !exists && !making ? row('Create “' + typed + '”', false, () => onCreate(typed), true) : null}
+        {noneLabel ? row(noneLabel, !value, () => onPick('')) : null}
+        {shown.map((o) => row(o, o === value, () => onPick(o)))}
+        {!options.length && !typed ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', paddingVertical: 18 }}>
+            None yet. Type a name above to create the first.
+          </Text>
+        ) : null}
+      </ScrollView>
+    </Sheet>
   );
 }
 
@@ -823,8 +881,8 @@ export function UnitsCategoriesScreen() {
                   borderBottomWidth: i === db.units.length - 1 ? 0 : 1, borderBottomColor: colors.line,
                 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{u}</Text>
-                    <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{n} item{n === 1 ? '' : 's'}</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{u}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{n} item{n === 1 ? '' : 's'}</Text>
                   </View>
                   {n ? <Pill label="in use" /> : (
                     <Pressable hitSlop={8} onPress={() => removeUnit(u)}><Icon name="trash" size={15} color={colors.danger} /></Pressable>
@@ -842,8 +900,8 @@ export function UnitsCategoriesScreen() {
                 }}>
                   <Icon name={CAT_ICON[c] || 'box'} size={17} color={colors.rail} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{c}</Text>
-                    <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{items.length} item{items.length === 1 ? '' : 's'}</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{c}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{items.length} item{items.length === 1 ? '' : 's'}</Text>
                   </View>
                   <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.ink }}>{money(val)}</Text>
                   {items.length ? null : (
@@ -876,5 +934,152 @@ export function UnitsCategoriesScreen() {
         <Field label={sheet === 'unit' ? 'Short name' : 'Name'} value={draft} onChangeText={setDraft} placeholder={sheet === 'unit' ? 'CTN' : 'Hardware'} />
       </Sheet>
     </View>
+  );
+}
+
+/*
+ * The unit an item is sold in, and optionally a second, smaller one — a
+ * carton and the pieces inside it, a sack and a kilo. Two dropdowns, then one
+ * question: how many of the small one are inside the big one. Kept in the
+ * direction LineEditSheet's unitsFor() expects: `unit` is what the price is
+ * for, the second unit is the breakdown, and its price divides down.
+ */
+function UnitDropdown({ label, value, options, open, onOpen, onPick, onAdd, noneLabel }: {
+  label: string; value: string; options: string[]; open: boolean;
+  onOpen: () => void; onPick: (v: string) => void; onAdd: (v: string) => void; noneLabel?: string;
+}) {
+  const { colors } = useTheme();
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  React.useEffect(() => { if (!open) { setAdding(false); setDraft(''); } }, [open]);
+  const shown = value || noneLabel || '';
+  const item = (text: string, on: boolean, onPress: () => void, accent?: boolean, last?: boolean) => (
+    <Pressable
+      key={text}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 15,
+        borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
+        backgroundColor: on ? colors.accentSoft : pressed ? colors.sunk : colors.surface,
+      })}
+    >
+      <Text style={{ flex: 1, fontFamily: on || accent ? fonts.uiSemi : fonts.ui, fontSize: 15, color: accent || on ? colors.accent : colors.ink }}>{text}</Text>
+      {on ? <Icon name="check" size={17} color={colors.accent} /> : null}
+    </Pressable>
+  );
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Pressable
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={({ pressed }) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingHorizontal: 15, paddingVertical: 8,
+          borderRadius: radius.md, borderWidth: 1.4, borderColor: open ? colors.accent : colors.line,
+          backgroundColor: pressed ? colors.sunk : colors.surface,
+        })}
+      >
+        <View style={{ flex: 1 }}>
+          {shown ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: open ? colors.accent : colors.faint, marginBottom: 2 }}>{label}</Text> : null}
+          <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: shown ? colors.ink : colors.faint }}>{shown || label}</Text>
+        </View>
+        <Icon name={open ? 'up' : 'down'} size={17} color={colors.faint} />
+      </Pressable>
+      {open ? (
+        <View style={{ marginTop: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, overflow: 'hidden' }}>
+          <ScrollView style={{ maxHeight: 230 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {noneLabel ? item(noneLabel, !value, () => onPick('')) : null}
+            {options.map((o) => item(o, o === value, () => onPick(o)))}
+          </ScrollView>
+          {adding ? (
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start', padding: 10, borderTopWidth: 1, borderTopColor: colors.line }}>
+              <View style={{ flex: 1 }}>
+                <Field label="New unit, e.g. CTN" value={draft} onChangeText={setDraft} autoFocus autoCapitalize="characters" style={{ marginBottom: 0 }} />
+              </View>
+              <View style={{ width: 84, marginTop: 6 }}>
+                <Button variant="pri" label="Add" disabled={!draft.trim()} onPress={() => onAdd(draft.trim().toUpperCase())} />
+              </View>
+            </View>
+          ) : (
+            <View style={{ borderTopWidth: 1, borderTopColor: colors.line }}>
+              {item('＋ New unit', false, () => setAdding(true), true, true)}
+            </View>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function UnitSheet({
+  visible, units, unit, secondaryUnit, conversionRate, secondaryPrice, price, money,
+  onUnit, onSecondary, onConversion, onSecondaryPrice, onAddUnit, onClose,
+}: {
+  visible: boolean; units: string[]; unit: string; secondaryUnit: string;
+  conversionRate: string; secondaryPrice: string; price: number; money: (n: number) => string;
+  onUnit: (v: string) => void; onSecondary: (v: string) => void;
+  onConversion: (v: string) => void; onSecondaryPrice: (v: string) => void;
+  onAddUnit: (v: string) => void; onClose: () => void;
+}) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState<null | 'main' | 'second'>(null);
+  React.useEffect(() => { if (visible) setOpen(null); }, [visible]);
+  const rate = Number(String(conversionRate).replace(/[^0-9.]/g, '')) || 0;
+  const big = unit || 'unit';
+
+  return (
+    <Sheet visible={visible} title="Unit" icon="box" onClose={onClose} footer={<Button variant="pri" label="Done" onPress={onClose} />}>
+      <ScrollView style={{ maxHeight: 560 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+        <UnitDropdown
+          label="Sold by"
+          value={unit}
+          options={units}
+          open={open === 'main'}
+          onOpen={() => setOpen(open === 'main' ? null : 'main')}
+          onPick={(v) => { onUnit(v); if (secondaryUnit === v) onSecondary(''); setOpen(null); }}
+          onAdd={(v) => { onAddUnit(v); onUnit(v); setOpen(null); }}
+        />
+        <UnitDropdown
+          label="Also sold by (optional)"
+          value={secondaryUnit}
+          noneLabel="None"
+          options={units.filter((u) => u !== unit)}
+          open={open === 'second'}
+          onOpen={() => setOpen(open === 'second' ? null : 'second')}
+          onPick={(v) => { onSecondary(v); setOpen(null); }}
+          onAdd={(v) => { onAddUnit(v); onSecondary(v); setOpen(null); }}
+        />
+
+        {secondaryUnit ? (
+          <>
+            <Field
+              label={'How many ' + secondaryUnit + ' inside one ' + big + '?'}
+              value={conversionRate}
+              onChangeText={onConversion}
+              numeric
+              placeholder="e.g. 24"
+              suffix={secondaryUnit}
+            />
+            <Field
+              label={'Price per ' + secondaryUnit + ' (optional)'}
+              value={secondaryPrice}
+              onChangeText={onSecondaryPrice}
+              numeric
+              placeholder={rate > 0 ? String(Math.round(price / rate)) + ' — worked out from the ' + big + ' price' : ''}
+            />
+            {rate > 0 ? (
+              <View style={{ borderRadius: radius.md, backgroundColor: colors.accentSoft, padding: 12 }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>
+                  1 {big} = {rate} {secondaryUnit}
+                </Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft, marginTop: 2 }}>
+                  {money(price)} a {big} · {money(Number(secondaryPrice) || Math.round(price / rate))} a {secondaryUnit}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        ) : null}
+      </ScrollView>
+    </Sheet>
   );
 }

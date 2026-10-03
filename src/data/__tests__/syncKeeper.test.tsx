@@ -22,7 +22,7 @@ jest.mock('../AppDataContext', () => ({
 jest.mock('../AuthContext', () => ({ useAuth: () => ({ account: { id: 'a1', localOnly: false } }) }));
 
 const mockRun = jest.fn();
-jest.mock('../useSyncRun', () => ({ useSyncRun: () => ({ run: mockRun }) }));
+jest.mock('../useSyncRun', () => ({ useSyncRun: () => ({ run: mockRun, pull: jest.fn(() => Promise.resolve(0)) }) }));
 
 import { ToastProvider } from '../../components/Toast';
 import SyncKeeper from '../SyncKeeper';

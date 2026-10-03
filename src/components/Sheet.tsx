@@ -1,5 +1,7 @@
 import React from 'react';
-import { Modal, View, Text, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { ToastHost } from './Toast';
+import { Modal, View, Text, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { Pressable } from './Press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts, radius, shadow } from '../theme';
 import { Icon, IconName } from './icons';
@@ -104,6 +106,7 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
         </View>
         </View>
       </KeyboardAvoidingView>
+      <ToastHost />
     </Modal>
   );
 }

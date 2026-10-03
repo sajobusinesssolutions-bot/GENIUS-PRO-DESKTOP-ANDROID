@@ -11,12 +11,15 @@
  * phone are sent up first, so switching never throws away work.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
-import { Panel, ListRow, SectionLabel, ProgressBar, DetailRow, Badge, StatGrid } from '../components/ui';
-import { Button } from '../components/ui';
+import { ProgressBar } from '../components/ui';
+import { Tap } from '../components/Tap';
+import { Logo } from '../components/Logo';
+
 import { Icon } from '../components/icons';
 import { useGoReset } from '../nav/navigate';
 import { listBusinesses, downloadSnapshot, setBusinessStatus, RemoteBusiness, filterVisibleBusinesses } from '../data/syncClient';
@@ -26,12 +29,6 @@ import { fmtDate } from '../data/helpers';
 
 /** Enough of the unique id to tell two shops with the same name apart. */
 const shortId = (id: string) => 'ID ' + id.replace(/-/g, '').slice(0, 8).toUpperCase();
-const snapshotSize = (bytes: number | null) => {
-  if (!bytes) return 'No saved data';
-  if (bytes < 1024) return bytes + ' B saved';
-  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB saved';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB saved';
-};
 
 export default function BusinessesScreen() {
   const { colors } = useTheme();
@@ -141,109 +138,115 @@ export default function BusinessesScreen() {
     }
   }
 
-  const row = (b: RemoteBusiness, current: boolean, i: number, n: number) => (
-    <ListRow
-      key={b.id}
-      icon="home"
-      title={b.name}
-      subtitle={shortId(b.id) + ' · ' + (b.role ? b.role.toUpperCase() + ' · ' : '') + (current
-        ? 'On this phone'
-        : b.snapshot_at ? 'Last saved ' + fmtDate(b.snapshot_at) : 'Not saved to the account yet')}
-      right={busy === b.id ? <ActivityIndicator color={colors.accent} /> : !current ? (
-        <Pressable onPress={() => Alert.alert('Deactivate ' + b.name + '?', 'It will no longer appear on this account or open on another device.', [
+  /* An id only earns its place when two businesses share a name. */
+  const named = (b: { name: string }) => (list || []).filter((x) => x.name === b.name).length > 1;
+
+  function more(b: RemoteBusiness) {
+    Alert.alert(b.name, undefined, [
+      { text: 'Open', onPress: () => void open(b) },
+      {
+        text: 'Deactivate', style: 'destructive',
+        onPress: () => Alert.alert('Deactivate ' + b.name + '?', 'It will no longer appear on this account or open on another device.', [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Deactivate', style: 'destructive', onPress: () => void deactivate(b) },
-        ])} hitSlop={8}>
-          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.danger }}>Deactivate</Text>
+        ]),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  const card = (o: { key: string; name: string; sub: string; current?: boolean; off?: boolean; loading?: boolean; onPress?: () => void; onMore?: () => void; idLine?: string }) => (
+    <Tap
+      key={o.key}
+      feel="soft"
+      disabled={!!busy || o.off}
+      onPress={o.onPress}
+      accessibilityLabel={'Open ' + o.name}
+      style={({ pressed }) => ({
+        flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 18, marginBottom: 10,
+        backgroundColor: pressed ? colors.sunk : colors.surface,
+        borderWidth: o.current ? 1.6 : 1, borderColor: o.current ? colors.accent : colors.line,
+        opacity: o.off ? 0.55 : 1,
+      })}
+    >
+      <View style={{
+        width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: o.current ? colors.accent : colors.accentSoft,
+      }}>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: o.current ? colors.accentInk : colors.accent }}>
+          {(o.name.trim()[0] || '?').toUpperCase()}
+        </Text>
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{o.name}</Text>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: o.current ? colors.accent : colors.faint, marginTop: 3 }}>
+          {o.sub}{o.idLine ? ' · ' + o.idLine : ''}
+        </Text>
+      </View>
+      {o.loading ? <ActivityIndicator color={colors.accent} /> : o.onMore ? (
+        <Pressable onPress={o.onMore} hitSlop={10} accessibilityLabel={'More for ' + o.name} style={{ padding: 4 }}>
+          <Icon name="dots" size={20} color={colors.faint} />
         </Pressable>
-      ) : undefined}
-      onPress={busy ? undefined : () => void open(b)}
-      last={i === n - 1}
-    />
+      ) : <Icon name="chev" size={18} color={colors.faint} />}
+    </Tap>
   );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingTop: 56, paddingBottom: 40 }}>
-      <View style={{ alignItems: 'center', paddingBottom: 22 }}>
-        <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name="home" size={30} color={colors.accent} />
-        </View>
-        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: colors.ink, marginTop: 14 }}>Choose a business</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.faint, marginTop: 6 }}>{account?.email || ''}</Text>
-      </View>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 64, paddingBottom: 40 }}>
+      <View style={{ marginBottom: 18 }}><Logo size={48} /></View>
+      <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: colors.ink, letterSpacing: -0.5 }}>Your businesses</Text>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint, marginTop: 6, marginBottom: 24 }}>
+        {account?.email ? 'Signed in as ' + account.email : 'Choose the one to open'}
+      </Text>
 
       {list === null ? (
-        <ActivityIndicator color={colors.accent} style={{ marginTop: 30 }} />
+        <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
       ) : (
         <>
           {progress > 0 && progress < 100 ? (
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink, marginBottom: 7 }}>Downloading business data {progress}%</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, marginBottom: 7 }}>Opening… {progress}%</Text>
               <ProgressBar pct={progress} />
             </View>
           ) : null}
           {problem ? (
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger, marginBottom: 12 }}>{problem}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, backgroundColor: colors.dangerSoft, marginBottom: 16 }}>
+              <Icon name="alert" size={17} color={colors.danger} />
+              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger }}>{problem}</Text>
+              <Pressable onPress={() => void load()} hitSlop={8}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.danger }}>Retry</Text>
+              </Pressable>
+            </View>
           ) : null}
 
-          {hasBooks && db ? (
-            <>
-              <SectionLabel>On this phone</SectionLabel>
-              <Panel flush>
-                {here ? row(here, true, 0, 1) : (
-                  <ListRow icon="home" title={db.firm.name} subtitle={(hereId ? shortId(hereId) + ' · ' : '') + 'On this phone · not on the account yet'} onPress={() => goReset('PinLock')} last />
-                )}
-              </Panel>
-            </>
-          ) : null}
+          {hasBooks && db ? card({
+            key: 'here', name: here?.name || db.firm.name, current: true,
+            sub: here ? 'On this phone' : 'On this phone · not saved to your account yet',
+            idLine: here && named(here) ? shortId(here.id) : undefined,
+            onPress: () => goReset('PinLock'),
+          }) : null}
 
-          {others.length ? (
-            <>
-              <SectionLabel style={{ marginTop: 18 }} right={<Badge label={others.length + ' to compare'} tone="accent" />}>Compare account businesses</SectionLabel>
-              <StatGrid
-                items={[
-                  { icon: 'home', label: 'Businesses', value: String(visible.length), tone: 'accent' },
-                  { icon: 'check', label: 'Available', value: String(visible.filter((b) => b.active !== false).length), tone: 'good' },
-                  { icon: 'cloud', label: 'With snapshots', value: String(visible.filter((b) => !!b.snapshot_at && Number(b.snapshot_bytes || 0) > 0).length), tone: 'warn' },
-                ]}
-              />
-              <View style={{ height: 10 }} />
-              {others.map((b, i) => (
-                <Panel key={b.id} style={{ marginBottom: 10 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: b.active === false ? colors.sunk : colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                      <Icon name="factory" size={19} color={b.active === false ? colors.faint : colors.accent} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{b.name}</Text>
-                      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{shortId(b.id)}</Text>
-                    </View>
-                    <Badge label={b.active === false ? 'Disabled' : b.role || 'Available'} tone={b.active === false ? 'neutral' : 'accent'} />
-                  </View>
-                  <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 11 }} />
-                  <DetailRow label="Access" value={(b.role || 'available').toUpperCase()} />
-                  <DetailRow label="Last saved" value={b.snapshot_at ? fmtDate(b.snapshot_at) : 'Not saved yet'} />
-                  <DetailRow label="Saved data" value={snapshotSize(b.snapshot_bytes)} last />
-                  <Button label="Open business" size="sm" variant="pri" onPress={() => void open(b)} loading={busy === b.id} />
-                </Panel>
-              ))}
-            </>
-          ) : null}
+          {others.map((b) => card({
+            key: b.id, name: b.name, off: b.active === false, loading: busy === b.id,
+            sub: b.active === false ? 'Deactivated' : b.snapshot_at ? 'Saved ' + fmtDate(b.snapshot_at) : 'Nothing saved yet',
+            idLine: named(b) ? shortId(b.id) : undefined,
+            onPress: () => void open(b),
+            onMore: b.active === false ? undefined : () => more(b),
+          }))}
 
-          <View style={{ marginTop: 22 }}>
-            <Button
-              label="Start a new business"
-              icon={<Icon name="plus" size={17} color={colors.ink} />}
-              loading={busy === 'new'}
-              disabled={!!busy}
-              onPress={() => void startNew()}
-            />
-          </View>
-          {problem ? (
-            <Pressable onPress={() => void load()} style={{ alignSelf: 'center', marginTop: 14 }} hitSlop={8}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.accent }}>Try again</Text>
-            </Pressable>
-          ) : null}
+          <Tap
+            feel="soft"
+            disabled={!!busy}
+            onPress={() => void startNew()}
+            style={({ pressed }) => ({
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8, padding: 16,
+              borderRadius: 18, borderWidth: 1.4, borderStyle: 'dashed', borderColor: colors.lineHard,
+              backgroundColor: pressed ? colors.sunk : 'transparent',
+            })}
+          >
+            {busy === 'new' ? <ActivityIndicator color={colors.accent} /> : <Icon name="plus" size={18} color={colors.accent} />}
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>Start a new business</Text>
+          </Tap>
         </>
       )}
     </ScrollView>

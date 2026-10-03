@@ -17,15 +17,18 @@
  * Reference: SCREENS.menu, line 6565, with the firm-switching card from 12515.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
-import { MENU_GROUPS, searchMenu, MenuCtx } from '../data/menuGroups';
+import { MENU_GROUPS, searchMenu, MenuCtx, itemShown } from '../data/menuGroups';
 import {
   Card, Grid, Avatar, Button, Panel, Badge, ListRow, SectionLabel, Search, EmptyState,
 } from '../components/ui';
 import { AppBar } from '../components/AppBar';
+import { Sheet } from '../components/Sheet';
+import ThemePicker from '../components/ThemePicker';
 import { Icon } from '../components/icons';
 import { useGo, useGoReset } from '../nav/navigate';
 import { useToneColor } from '../components/Quick';
@@ -44,18 +47,19 @@ export default function MenuScreen() {
   const { developer } = useDeveloper();
   const tone = useToneColor();
   const [q, setQ] = useState('');
+  const [signingOut, setSigningOut] = useState(false);
 
   const role = db?.session.role;
   const isOwner = role === 'owner';
 
   const groups = useMemo(() => MENU_GROUPS.filter((g) => {
     if (g.perm && !canFor(role, g.perm)) return false;
-    return g.items.some((it) => canFor(role, it.perm));
+    return g.items.some((it) => canFor(role, it.perm) && itemShown(it, db));
   }), [role]);
 
   // a row the signed-in person cannot open should not be findable either
   const hits = useMemo(
-    () => searchMenu(q).filter((h) => canFor(role, h.item.perm) && (!h.group.perm || canFor(role, h.group.perm))),
+    () => searchMenu(q).filter((h) => canFor(role, h.item.perm) && itemShown(h.item, db) && (!h.group.perm || canFor(role, h.group.perm))),
     [q, role],
   );
 
@@ -69,7 +73,7 @@ export default function MenuScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <AppBar title="Menu" />
+      <AppBar brand title="Menu" />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 20 }}
@@ -84,7 +88,7 @@ export default function MenuScreen() {
             >
               <Avatar name={user?.name || '?'} id={user?.id} size={46} />
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
                   {user?.name || '—'}
                 </Text>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
@@ -114,10 +118,10 @@ export default function MenuScreen() {
                 <Icon name="home" size={15} color={colors.accent} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>
                   {branch?.name || 'No branch chosen'}
                 </Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                   {isOwner ? 'Working branch · own stock and own books' : 'The branch you are working in'}
                 </Text>
               </View>
@@ -195,7 +199,7 @@ export default function MenuScreen() {
               <Grid cols={2} gap={12}>
                 {groups.map((g) => {
                   const [fg, bg] = tone(g.tone as any);
-                  const shown = g.items.filter((it) => canFor(role, it.perm)).length;
+                  const shown = g.items.filter((it) => canFor(role, it.perm) && itemShown(it, db)).length;
                   return (
                     <Pressable
                       key={g.id}
@@ -216,15 +220,20 @@ export default function MenuScreen() {
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                         <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{g.n}</Text>
-                        <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{shown}</Text>
+                        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{shown}</Text>
                       </View>
-                      <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, lineHeight: 16 }}>
+                      <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, lineHeight: 16 }}>
                         {g.b(ctx)}
                       </Text>
                     </Pressable>
                   );
                 })}
               </Grid>
+            </View>
+
+            {/* how the app looks — moved here from Settings, where it was buried */}
+            <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
+              <ThemePicker />
             </View>
 
             {/* one quiet footer line, rather than a panel repeating the Business card */}
@@ -244,7 +253,7 @@ export default function MenuScreen() {
                 onPress={() => go('PinLock')}
               />
               <Text style={{
-                fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint,
+                fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint,
                 textAlign: 'center', marginTop: 14,
               }}>
                 {account?.email ? account.email + ' · ' : ''}Genius POS {BUILD} · till {db.session.till}
@@ -261,24 +270,11 @@ export default function MenuScreen() {
                   <Pressable
                     accessibilityRole="button"
                     hitSlop={8}
-                    onPress={() => Alert.alert(
-                      'Sign out of ' + (account?.email || 'this account') + '?',
-                      'Staff will not be able to use this phone until you sign in again with the account '
-                      + 'email and password. To hand the till over, use "Lock the till" instead. '
-                      + 'The shop\'s books stay on this phone.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Sign out',
-                          style: 'destructive',
-                          onPress: async () => { await signOut(); goReset('AuthGate'); },
-                        },
-                      ],
-                    )}
+                    onPress={() => setSigningOut(true)}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12 }}
                   >
                     <Icon name="arrow" size={14} color={colors.danger} />
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger }}>Sign out of the account</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger }}>Sign out</Text>
                   </Pressable>
                 </View>
               ) : null}
@@ -286,6 +282,59 @@ export default function MenuScreen() {
           </>
         )}
       </ScrollView>
+      <SignOutSheet
+        visible={signingOut}
+        email={account?.email || ''}
+        till={db?.session.till || ''}
+        onClose={() => setSigningOut(false)}
+        onLock={() => { setSigningOut(false); go('PinLock'); }}
+        onSignOut={async () => { await signOut(); setSigningOut(false); goReset('AuthGate'); }}
+      />
     </View>
+  );
+}
+
+/**
+ * Signing out, explained. The two ways out were easy to confuse: locking hands
+ * the phone to the next person, signing out leaves the account. So the safe
+ * choice sits first, and signing out is a clear red action of its own.
+ */
+function SignOutSheet({ visible, email, till, onClose, onLock, onSignOut }: {
+  visible: boolean; email: string; till: string;
+  onClose: () => void; onLock: () => void; onSignOut: () => Promise<void>;
+}) {
+  const { colors } = useTheme();
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { if (visible) setBusy(false); }, [visible]);
+  const initial = (email.trim()[0] || '?').toUpperCase();
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Sign out?">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, backgroundColor: colors.sunk }}>
+        <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.accentInk }}>{initial}</Text>
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{email || 'This account'}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>{till || 'This phone'}</Text>
+        </View>
+      </View>
+
+      <Pressable onPress={onLock} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 14 }}>
+        <Icon name="lock" size={16} color={colors.accent} />
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent }}>Lock the till instead</Text>
+      </Pressable>
+
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}><Button label="Cancel" onPress={onClose} disabled={busy} /></View>
+        <View style={{ flex: 1 }}>
+          <Button
+            variant="dngr"
+            label={busy ? 'Signing out…' : 'Sign out'}
+            loading={busy}
+            onPress={async () => { setBusy(true); try { await onSignOut(); } finally { setBusy(false); } }}
+          />
+        </View>
+      </View>
+    </Sheet>
   );
 }

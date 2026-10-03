@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, Pressable, ScrollView, TextInput } from 'react-native';
+import { ListPage, DocRow, SummaryTiles, PeriodBar, listPeriod, inPeriod } from '../components/DocList';
+import { View, Text, FlatList, ScrollView, TextInput } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
@@ -18,31 +20,48 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CreditNotes'>;
 export default function CreditNotesScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { db, money, party } = useAppData();
-
+  const [period, setPeriod] = useState(listPeriod('month'));
+  const [q, setQ] = useState('');
+  const inRange = [...(db?.creditNotes || [])].filter((c) => inPeriod(c.ts, period)).reverse();
+  const nameOf = (id: string | null) => (id ? party(id)?.name || 'Walk-in' : 'Walk-in');
+  const needle = q.trim().toLowerCase();
+  const list = inRange.filter((c) => !needle || (nameOf(c.partyId) + ' ' + c.no + ' ' + (c.reason || '')).toLowerCase().includes(needle));
+  const REFUND: Record<string, string> = { cash: 'Cash back', bank: 'Bank', momo: 'Mobile money', account: 'To account' };
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <FlatList
-        data={[...(db?.creditNotes || [])].reverse()}
-        keyExtractor={(c) => c.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: 96, flexGrow: 1 }}
-        ListEmptyComponent={<Empty title="No credit notes" subtitle="Return items against a past sale" />}
-        renderItem={({ item }) => (
-          <DocCard
-            icon="arrow"
-            tone="danger"
-            title={item.partyId ? party(item.partyId)?.name || 'Walk-in' : 'Walk-in'}
-            subtitle={item.reason || 'Return'}
-            amount={'− ' + money(item.total)}
+    <ListPage
+      top={(
+        <>
+          <PeriodBar value={period} onChange={setPeriod} />
+          <SummaryTiles tiles={[
+            { label: 'Returns', value: String(inRange.length) },
+            { label: 'Refunded', value: money(inRange.reduce((s, c) => s + c.total, 0)), tone: colors.danger },
+          ]} />
+        </>
+      )}
+      search={{ value: q, onChange: setQ, placeholder: 'Search returns' }}
+      data={list}
+      keyExtractor={(c) => c.id}
+      empty={{ text: 'No returns in this period. Take one back against a past sale with Add return.' }}
+      add={{ label: 'Add return', onPress: () => navigation.navigate('CreditNoteNew', {}) }}
+      renderItem={({ item: c }) => {
+        const sale = c.saleId ? db?.sales.find((x) => x.id === c.saleId) : undefined;
+        return (
+          <DocRow
+            title={nameOf(c.partyId)}
+            pill={{ label: REFUND[c.refund || 'cash'] || 'Return', tone: c.refund === 'account' ? 'accent' : 'danger' }}
+            amount={'− ' + money(c.total)}
             amountTone={colors.danger}
-            no={item.no}
-            date={new Date(item.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            refText={'Return #' + c.no}
+            ts={c.ts}
+            lines={[
+              ...(c.reason ? [{ label: 'Reason', value: c.reason }] : []),
+              ...(sale ? [{ label: 'From sale', value: sale.no }] : []),
+            ]}
+            action={sale ? { label: 'See invoice', onPress: () => navigation.navigate('Receipt', { saleId: sale.id }) } : undefined}
           />
-        )}
-      />
-      <Pressable onPress={() => navigation.navigate('CreditNoteNew', {})} style={{ position: 'absolute', right: 18, bottom: 18, width: 52, height: 52, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: colors.accentInk, fontSize: 24, fontFamily: fonts.uiBold }}>+</Text>
-      </Pressable>
-    </View>
+        );
+      }}
+    />
   );
 }
 
@@ -152,7 +171,7 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
                 text="Find the bill the goods came off. Returning against the original bill keeps the price, the stock and the customer's balance correct."
               />
               <Search value={q} onChange={setQ} placeholder="Invoice number or customer name" />
-              <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{candidates.length} shown</Text>}>
+              <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{candidates.length} shown</Text>}>
                 Recent bills
               </SectionLabel>
             </View>
@@ -175,14 +194,14 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
                   <Icon name="receipt" size={20} color={colors.accent} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{name}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{name}</Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     {item.no} · {item.lines.length} item{item.lines.length === 1 ? '' : 's'} · {item.method}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 3 }}>
-                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16, color: colors.ink }}>{money(item.total)}</Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>
+                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>{money(item.total)}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                     {new Date(item.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
                   </Text>
                 </View>
@@ -206,14 +225,14 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
               <Icon name="arrow" size={21} color={colors.danger} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{sale.no}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{sale.no}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {customer?.name || 'Walk-in'} · {new Date(sale.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
               </Text>
             </View>
             {!preset ? (
               <Pressable onPress={() => { setSaleId(null); setQty({}); }} hitSlop={8} style={{ padding: 4 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Change</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Change</Text>
               </Pressable>
             ) : null}
           </View>
@@ -243,19 +262,19 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
             {r.left ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 13 }}>
                 <Pressable onPress={() => bump(r.l.productId, -1, r.left)} style={stepper(colors)}>
-                  <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 19 }}>−</Text>
+                  <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>−</Text>
                 </Pressable>
-                <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>
-                  {r.want} <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>of {r.left}</Text>
+                <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>
+                  {r.want} <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>of {r.left}</Text>
                 </Text>
                 <Pressable onPress={() => bump(r.l.productId, 1, r.left)} style={stepper(colors)}>
-                  <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 19 }}>+</Text>
+                  <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>+</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => setQty((prev) => ({ ...prev, [r.l.productId]: String(r.left) }))}
                   style={{ paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, borderWidth: 1.4, borderColor: colors.line }}
                 >
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>All</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>All</Text>
                 </Pressable>
               </View>
             ) : (
@@ -319,7 +338,7 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
             {refund === 'account' ? 'To credit' : 'To refund'}
           </Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 21, color: colors.ink }}>{money(refundDue)}</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(refundDue)}</Text>
         </View>
         <Button
           label="Record the return"

@@ -116,14 +116,14 @@ export default function LegalScreen({ route }: Props) {
       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>Last updated {LEGAL_UPDATED}</Text>
       {blocks.map((b, i) => (
         <View key={b.h} style={{ marginTop: 20 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{i + 1}. {b.h}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{i + 1}. {b.h}</Text>
           {b.p.map((para, j) => (
-            <Text key={j} style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 21, color: colors.soft, marginTop: 8 }}>{para}</Text>
+            <Text key={j} style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 21, color: colors.soft, marginTop: 8 }}>{para}</Text>
           ))}
         </View>
       ))}
       {LEGAL_CONTACT ? (
-        <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 21, color: colors.soft, marginTop: 24 }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 21, color: colors.soft, marginTop: 24 }}>
           Questions? Write to {LEGAL_CONTACT}.
         </Text>
       ) : null}

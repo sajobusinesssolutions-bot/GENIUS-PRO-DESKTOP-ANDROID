@@ -7,7 +7,8 @@
  * readable in the documents folder, is removed the first time this opens.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
+import { Pressable } from '../components/Press';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
@@ -19,6 +20,7 @@ import { useToast } from '../components/Toast';
 import { ToolCard, ChoiceChips } from '../components/ToolCard';
 import { fmtDate } from '../data/helpers';
 import { BACKUP_MIME } from '../data/backupCrypto';
+import { pickReadableFile } from '../data/pickFile';
 import {
   BackupSchedule, DeviceBackup, backupFolderPath, deleteBackup, listBackups, readBackup, writeBackup,
 } from '../data/deviceBackup';
@@ -33,7 +35,7 @@ export function sizeText(n: number): string {
   return (n / 1024 / 1024).toFixed(1) + ' MB';
 }
 
-export default function DataToolsScreen() {
+export default function DataToolsScreen({ navigation }: { navigation?: any } = {}) {
   const { colors } = useTheme();
   const { db, startFinancialYear, restoreBackup, addProduct, setSetting } = useAppData();
   const { success, error } = useToast();
@@ -112,19 +114,18 @@ export default function DataToolsScreen() {
   }
 
   async function restoreFromFile() {
-    const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-    if (picked.canceled || !picked.assets?.[0]?.uri) return;
-    const a = picked.assets[0];
+    const a = await pickReadableFile();
+    if (!a) return;
     if (!/\.(sa|json)$/i.test(a.name || '')) { error('Choose a Genius POS backup — a file ending in .sa'); return; }
-    confirmRestore(() => readBackup(a.uri), a.name);
+    confirmRestore(() => readBackup(a.file), a.name);
   }
 
   async function importItems() {
     if (!db) return;
-    const picked = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'text/plain'], copyToCacheDirectory: true });
-    if (picked.canceled || !picked.assets?.[0]?.uri) return;
+    const picked = await pickReadableFile(['text/csv', 'text/comma-separated-values', 'text/plain']);
+    if (!picked) return;
     try {
-      const raw = await new File(picked.assets[0].uri).text();
+      const raw = await picked.file.text();
       const rows = raw.split(/\r?\n/).map((line) => line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''))).filter((r) => r.some(Boolean));
       const head = rows.shift()?.map((x) => x.toLowerCase()) || [];
       const at = (r: string[], key: string) => r[head.indexOf(key)] || '';
@@ -183,7 +184,7 @@ export default function DataToolsScreen() {
       })}
     >
       <Icon name={icon} size={18} color={tone || colors.soft} />
-      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14.5, color: tone || colors.ink }}>{label}</Text>
+      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: tone || colors.ink }}>{label}</Text>
       <Icon name="chev" size={16} color={colors.faint} />
     </Pressable>
   );
@@ -202,17 +203,17 @@ export default function DataToolsScreen() {
           style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
         >
           <Icon name="box" size={17} color={colors.good} />
-          <Text numberOfLines={1} ellipsizeMode="middle" style={{ flex: 1, fontFamily: fonts.mono, fontSize: 12, color: colors.faint }}>{backupFolderPath()}</Text>
+          <Text numberOfLines={1} ellipsizeMode="middle" style={{ flex: 1, fontFamily: fonts.mono, fontSize: 12.5, color: colors.faint }}>{backupFolderPath()}</Text>
           <Icon name="alert" size={17} color={colors.faint} />
         </Pressable>
 
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.faint, marginTop: 16, marginBottom: 10 }}>Auto-backup schedule</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginTop: 16, marginBottom: 10 }}>Auto-backup schedule</Text>
         <ChoiceChips value={schedule} options={SCHEDULES} onChange={(v) => setSetting({ backupSchedule: v })} />
 
         <View style={{ marginTop: 16 }}>
           <Button variant="pri" label="Backup now" loading={busy === 'backup'} icon={<Icon name="up" size={17} color={colors.accentInk} />} onPress={backupNow} />
         </View>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 8, textAlign: 'center' }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 8, textAlign: 'center' }}>
           Last backup: {db.settings.lastBackupAt ? fmtDate(db.settings.lastBackupAt) : 'never'}
         </Text>
 
@@ -222,8 +223,8 @@ export default function DataToolsScreen() {
           <View key={b.uri} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line }}>
             <Icon name="lock" size={17} color={colors.good} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{b.name}</Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{b.name}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                 {(b.at ? fmtDate(new Date(b.at).toISOString()) : '') + ' · ' + sizeText(b.size) + (b.auto ? ' · scheduled' : '')}
               </Text>
             </View>
@@ -234,7 +235,7 @@ export default function DataToolsScreen() {
         )) : (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.sunk, borderRadius: 12, padding: 16 }}>
             <Icon name="box" size={20} color={colors.faint} />
-            <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint }}>No device backups found.</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint }}>No device backups found.</Text>
           </View>
         )}
 
@@ -244,6 +245,7 @@ export default function DataToolsScreen() {
       </ToolCard>
 
       <ToolCard icon="swap" tone="accent" title="Import and export" sub="Items in and out as spreadsheet files.">
+        {row('swap', 'Move from Vyapar (.vyb backup)', () => navigation?.navigate('VyaparImport'))}
         {row('down', 'Import items from a CSV file', importItems)}
         {row('doc', 'Download the item import template', () => shareText(
           'genius-pos-item-import-template.csv',
@@ -256,7 +258,7 @@ export default function DataToolsScreen() {
       </ToolCard>
 
       <ToolCard icon="calendar" tone="warn" title="Financial year" sub={db.financialYear?.start ? 'Current year began ' + db.financialYear.start.slice(0, 10) : 'No year started yet'}>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginBottom: 4 }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 4 }}>
           {(db.archivedFinancialYears?.length || 0) + ' year' + ((db.archivedFinancialYears?.length || 0) === 1 ? '' : 's') + ' archived · '}
           {counts.map(([l, n]) => n + ' ' + l.toLowerCase()).join(' · ')}
         </Text>

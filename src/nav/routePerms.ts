@@ -18,7 +18,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   // getting in, and the shell
   AuthGate: null, SignIn: null, CreateAccount: null, GoogleSignIn: null, Welcome: null,
   Onboarding: null, PinLock: null, Businesses: null, Main: null, MenuGroup: null, Notifications: null,
-  About: null, Legal: null, Help: null, Faq: null, Install: null, Update: null, Versions: null, LicenceStop: null,
+  About: null, Legal: null, Help: null, Faq: null, Versions: null, LicenceStop: null,
 
   // selling
   NewSale: 'sales.create',
@@ -83,6 +83,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   PaymentNew: 'finance.create',
   PaymentDetail: 'finance.view',
   EntryNew: 'expenses.create',
+  CashEntries: 'expenses.view',
   Transfer: 'finance.create',
   Shift: (p) => (p && p.close ? 'shifts.close' : 'shifts.open'),
   Accounting: 'reports.money',
@@ -100,15 +101,17 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   ReportDetail: 'reports.view',
 
   // branches and the business
-  Branches: 'branches.manage',
+  Branches: 'branches.view',
   NewBranch: 'branches.manage',
-  BranchAnalysis: 'branches.manage',
+  BranchAnalysis: 'branches.view',
   Settings: 'settings.view',
   Business: 'settings.view',
   Printing: 'settings.manage',
   PrintingReceipt: 'settings.manage',
   PrintingInvoice: 'settings.manage',
   DataTools: 'settings.manage',
+  VyaparImport: 'settings.manage',
+  ReminderSettings: 'settings.manage',
   Firms: 'settings.manage',
   AuditLog: 'settings.view',
   Plans: 'settings.view',
@@ -143,7 +146,7 @@ const PHRASES: Record<string, string> = {
   'inventory.view_cost_price': 'see cost prices',
   'finance.manage_accounts': 'post to the books directly',
   'sales.refund': 'take returns',
-  'sales.void': 'void a bill',
+  'sales.void': 'void a sale',
   'sales.discount': 'give discounts',
   'sales.price_edit': 'change prices at the till',
   'sales.view_all': "see other staff's bills",

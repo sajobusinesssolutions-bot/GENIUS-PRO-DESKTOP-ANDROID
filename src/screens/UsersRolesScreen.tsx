@@ -14,7 +14,8 @@
  * manage staff and settings.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
@@ -171,14 +172,14 @@ export default function UsersRolesScreen() {
               <View key={member.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.line }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{member.name || member.email}</Text>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{member.email} · {member.role.toUpperCase()}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{member.email} · {member.role.toUpperCase()}</Text>
                 </View>
                 <ActionChip label="Revoke" onPress={() => Alert.alert('Revoke access?', member.email, [
                   { text: 'Cancel', style: 'cancel' },
                   { text: 'Revoke', style: 'destructive', onPress: () => void removeRemoteMember(member) },
                 ])} />
               </View>
-            )) : <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginBottom: 8 }}>No remote members have been assigned.</Text>}
+            )) : <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>No remote members have been assigned.</Text>}
             <View style={{ height: 8 }} />
             <Field label="Account email" value={memberEmail} onChangeText={setMemberEmail} placeholder="staff@example.com" />
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
@@ -187,7 +188,7 @@ export default function UsersRolesScreen() {
               </View>
               <Button label="Grant access" loading={memberBusy} disabled={memberBusy} onPress={() => void addRemoteMember()} />
             </View>
-            {remoteProblem ? <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.warn, marginTop: 5 }}>{remoteProblem}</Text> : null}
+            {remoteProblem ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.warn, marginTop: 5 }}>{remoteProblem}</Text> : null}
             <View style={{ height: 12 }} />
           </>
         ) : null}
@@ -197,8 +198,8 @@ export default function UsersRolesScreen() {
           return (
             <View key={u.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{u.name}</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{soy}</Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{u.name}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{soy}</Text>
               </View>
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 <ActionChip label="Staff" onPress={() => grantBusinessAccess(u.id, db.sync.businessId || 'local', 'staff')} />
@@ -236,7 +237,7 @@ export default function UsersRolesScreen() {
                   {!u.active ? <Badge label="Disabled" tone="neutral" /> : null}
                 </View>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                  {r?.name} · {plural(ss.length, 'bill')} in 30 days
+                  {r?.name} · {plural(ss.length, 'sale')} in 30 days
                 </Text>
               </View>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(v)}</Text>
@@ -267,10 +268,10 @@ export default function UsersRolesScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{r.name}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{r.name}</Text>
                     {r.builtin ? <Badge label="Built in" tone="neutral" /> : null}
                   </View>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, lineHeight: 16.5, color: colors.faint, marginTop: 3 }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 16.5, color: colors.faint, marginTop: 3 }}>
                     {r.description || 'No description'}
                   </Text>
                 </View>
@@ -283,8 +284,8 @@ export default function UsersRolesScreen() {
                 tone={on === total ? colors.good : on === 0 ? colors.lineHard : colors.accent}
               />
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{on} of {total} permissions</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{plural(staff.length, 'profile')}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{on} of {total} permissions</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{plural(staff.length, 'profile')}</Text>
               </View>
             </Pressable>
 
@@ -292,12 +293,12 @@ export default function UsersRolesScreen() {
             {staff.length ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
                 {staff.slice(0, 6).map((u) => <Avatar key={u.id} name={u.name} id={u.id} size={24} />)}
-                <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>
+                <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                   {staff.map((u) => u.name.split(' ')[0]).join(', ')}
                 </Text>
               </View>
             ) : (
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 10 }}>Nobody is on this role yet.</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 10 }}>Nobody is on this role yet.</Text>
             )}
 
             <View style={{ flexDirection: 'row', gap: 7, marginTop: 11 }}>
@@ -416,7 +417,7 @@ function RoleEditor({ draft, onChange, onCancel, onSave, onDelete }: {
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
             {draft.id ? 'Edit this role' : 'Define the role'}
           </Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 3, marginBottom: 12 }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3, marginBottom: 12 }}>
             Give it a name, then tick what it may do.
           </Text>
           <Field
@@ -451,7 +452,7 @@ function RoleEditor({ draft, onChange, onCancel, onSave, onDelete }: {
             borderRadius: radius.md, padding: 12, marginBottom: 12,
           }}>
             <Icon name="alert" size={15} color={colors.warn} />
-            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 11.5, lineHeight: 16.5, color: colors.warn }}>
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, lineHeight: 16.5, color: colors.warn }}>
               The owner always has everything. These stay on.
             </Text>
           </View>
@@ -474,7 +475,7 @@ function RoleEditor({ draft, onChange, onCancel, onSave, onDelete }: {
                 </Pressable>
                 <Icon name={g.i} size={15} color={colors.rail} />
                 <Pressable style={{ flex: 1 }} onPress={() => setGroup(g.k, gon !== g.acts.length)}>
-                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{g.n}</Text>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{g.n}</Text>
                 </Pressable>
                 <Pressable onPress={() => setGroup(g.k, gon !== g.acts.length)}>
                   <Pill label={gon + '/' + g.acts.length} tone={gon === g.acts.length ? 'g' : gon ? 'a' : 'default'} />
@@ -500,7 +501,7 @@ function RoleEditor({ draft, onChange, onCancel, onSave, onDelete }: {
                           }}
                         >
                           <Checkbox on={yes} onPress={() => tick(key)} size={18} />
-                          <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 11.5, color: yes ? colors.ink : colors.soft }}>
+                          <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: yes ? colors.ink : colors.soft }}>
                             {a[1]}
                           </Text>
                         </Pressable>
@@ -593,9 +594,9 @@ function UserSheet({ state, onClose, roles, onSave }: {
         <Card style={{ padding: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 11 }}>
           <Avatar name={existing.name} id={existing.id} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{existing.name}</Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>
-              {plural(bills, 'bill')} all time
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{existing.name}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>
+              {plural(bills, 'sale')} all time
             </Text>
           </View>
         </Card>

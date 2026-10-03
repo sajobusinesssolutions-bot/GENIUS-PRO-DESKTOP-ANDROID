@@ -4,6 +4,7 @@ import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Empty, Button, Cap, Chip, DocCard, Badge, FAB, Field, InfoBanner } from '../components/ui';
 import DocEntry from '../components/DocEntry';
+import { ListPage, DocRow, StatusChips, SummaryTiles } from '../components/DocList';
 import { LineEditor, CartLine } from '../components/LineEditor';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
@@ -13,32 +14,44 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Challans'>;
 export default function ChallansScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { db, party, markChallanDelivered } = useAppData();
-
+  const [filter, setFilter] = React.useState<'all' | 'out' | 'delivered'>('all');
+  const [q, setQ] = React.useState('');
+  const all = [...(db?.challans || [])].reverse();
+  const nameOf = (id: string | null) => (id ? party(id)?.name || 'Walk-in' : 'Walk-in');
+  const needle = q.trim().toLowerCase();
+  const list = all.filter((c) => {
+    if (filter === 'out' && c.status !== 'dispatched') return false;
+    if (filter === 'delivered' && c.status !== 'delivered') return false;
+    return !needle || (nameOf(c.partyId) + ' ' + c.no).toLowerCase().includes(needle);
+  });
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <FlatList
-        data={[...(db?.challans || [])].reverse()}
-        keyExtractor={(c) => c.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: 96, flexGrow: 1 }}
-        ListEmptyComponent={<Empty title="No delivery challans" subtitle="Dispatch goods without invoicing yet" actionLabel="New challan" onAction={() => navigation.navigate('ChallanNew', {})} />}
-        renderItem={({ item }) => (
-          <DocCard
-            icon="swap"
-            tone={item.status === 'delivered' ? 'good' : 'warn'}
-            title={item.partyId ? party(item.partyId)?.name || 'Walk-in' : 'Walk-in'}
-            subtitle={item.lines.length + ' item' + (item.lines.length === 1 ? '' : 's')}
-            no={item.no}
-            date={new Date(item.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-            badges={<Badge label={item.status} tone={item.status === 'delivered' ? 'good' : 'warn'} />}
-          >
-            {item.status === 'dispatched' ? (
-              <Button size="sm" label="Mark delivered" onPress={() => markChallanDelivered(item.id)} />
-            ) : null}
-          </DocCard>
-        )}
-      />
-      <FAB label="New challan" icon="plus" tone="accent" onPress={() => navigation.navigate('ChallanNew', {})} />
-    </View>
+    <ListPage
+      top={(
+        <>
+          <StatusChips value={filter} onChange={setFilter} options={[{ v: 'all', l: 'All' }, { v: 'out', l: 'Still out' }, { v: 'delivered', l: 'Delivered' }]} />
+          <SummaryTiles tiles={[
+            { label: 'Still out', value: String(all.filter((c) => c.status === 'dispatched').length), tone: colors.warn },
+            { label: 'Delivered', value: String(all.filter((c) => c.status === 'delivered').length) },
+          ]} />
+        </>
+      )}
+      search={{ value: q, onChange: setQ, placeholder: 'Search delivery notes' }}
+      data={list}
+      keyExtractor={(c) => c.id}
+      empty={{ text: 'No delivery notes yet. Send goods out without invoicing with Add delivery note.' }}
+      add={{ label: 'Add delivery note', onPress: () => navigation.navigate('ChallanNew', {}) }}
+      renderItem={({ item: c }) => (
+        <DocRow
+          title={nameOf(c.partyId)}
+          pill={c.status === 'delivered' ? { label: 'Delivered', tone: 'good' } : { label: 'Out', tone: 'warn' }}
+          amount={c.lines.length + ' item' + (c.lines.length === 1 ? '' : 's')}
+          refText={'Note #' + c.no}
+          ts={c.ts}
+          lines={[{ label: 'Pieces', value: String(c.lines.reduce((s, l) => s + l.qty, 0)) }]}
+          action={c.status === 'dispatched' ? { label: 'Mark delivered', onPress: () => markChallanDelivered(c.id) } : undefined}
+        />
+      )}
+    />
   );
 }
 

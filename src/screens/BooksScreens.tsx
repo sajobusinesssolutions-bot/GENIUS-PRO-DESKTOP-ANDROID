@@ -82,7 +82,7 @@ export function AccountingScreen() {
           {d.rows.length ? d.rows.map((r, i) => (
             <DetailRow key={r.acc} label={accName(r.acc)} value={money(r.dr - r.cr)} last={i === d.rows.length - 1} />
           )) : (
-            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, paddingVertical: 8 }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, paddingVertical: 8 }}>
               Nothing posted in this period.
             </Text>
           )}
@@ -111,8 +111,8 @@ export function JournalsScreen() {
       {entries.map((e) => (
         <Card key={e.id} style={{ paddingVertical: 12, paddingHorizontal: 14 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink, flex: 1 }} numberOfLines={1}>{e.memo}</Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{fmtDate(e.ts)}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, flex: 1 }} numberOfLines={1}>{e.memo}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{fmtDate(e.ts)}</Text>
           </View>
           {e.lines.map((l, i) => (
             <KV
@@ -155,10 +155,10 @@ export function TaxScreen() {
         <Cap style={{ marginBottom: 8 }}>Setup</Cap>
         <Card style={{ paddingVertical: 12, paddingHorizontal: 14 }}>
           <KV label="Default rate" value={db.settings.taxRate + '%'} />
-          <KV label="Bills in period" value={String(ss.length)} />
+          <KV label="Sales in period" value={String(ss.length)} />
           <KV label="TIN" value={db.firm.tin || '—'} last />
         </Card>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 10, lineHeight: 16 }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 10, lineHeight: 16 }}>
           Change the default rate under Settings. Electronic fiscalisation is not part of this build.
         </Text>
       </View>
@@ -187,8 +187,8 @@ export function AccountDetailScreen({ route }: any) {
   const kind = acc.type === 'cash' ? 'Cash drawer' : acc.type === 'bank' ? 'Bank account' : 'Mobile money';
   const cell = (label: string, value: string, color: string) => (
     <View style={{ flex: 1 }}>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{label}</Text>
-      <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color, marginTop: 3 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color, marginTop: 3 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
     </View>
   );
 
@@ -198,7 +198,7 @@ export function AccountDetailScreen({ route }: any) {
 
       <View style={{ marginTop: 14, backgroundColor: colors.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: colors.line }}>
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>{acc.name} · {kind}</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 10 }}>Balance at the end of {period.label.toLowerCase()}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 10 }}>Balance at the end of {period.label.toLowerCase()}</Text>
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, color: colors.ink, letterSpacing: -0.8 }} numberOfLines={1} adjustsFontSizeToFit>{money(flow.closing)}</Text>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line }}>
           {cell('Opening', money(flow.opening), colors.ink)}
@@ -210,9 +210,9 @@ export function AccountDetailScreen({ route }: any) {
       {flow.days.length ? flow.days.map((g) => (
         <View key={g.day} style={{ marginTop: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 8, paddingHorizontal: 2 }}>
-            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>{g.label}</Text>
-            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12, color: colors.good }}>+{money0(g.inflow)}</Text>
-            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12, color: colors.danger, marginLeft: 10 }}>−{money0(g.outflow)}</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.ink }}>{g.label}</Text>
+            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.good }}>+{money0(g.inflow)}</Text>
+            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.danger, marginLeft: 10 }}>−{money0(g.outflow)}</Text>
           </View>
           <Card>
             {g.rows.map((r, i) => (
@@ -227,12 +227,12 @@ export function AccountDetailScreen({ route }: any) {
                   <Icon name={r.delta >= 0 ? 'down' : 'up'} size={15} color={r.delta >= 0 ? colors.good : colors.danger} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{r.memo}</Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{r.memo}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>
                     {new Date(r.ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · balance {money0(r.balance)}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: r.delta >= 0 ? colors.good : colors.danger }}>
+                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: r.delta >= 0 ? colors.good : colors.danger }}>
                   {(r.delta >= 0 ? '+' : '−') + money0(Math.abs(r.delta))}
                 </Text>
               </View>

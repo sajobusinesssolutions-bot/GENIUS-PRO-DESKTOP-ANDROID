@@ -1,22 +1,31 @@
 {
   "expo": {
-    "name": "genius-pro",
+    "name": "Genius Pro",
     "slug": "genius-pro",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#EBEBEB",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "package": "tech.saljoetech.geniuspro",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -26,7 +35,8 @@
       "expo-sharing",
       "@react-native-community/datetimepicker",
       "expo-asset",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-sqlite"
     ],
     "scheme": "geniuspos"
   }

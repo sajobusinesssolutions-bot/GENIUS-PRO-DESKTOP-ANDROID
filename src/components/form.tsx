@@ -9,7 +9,7 @@
  * them without a cycle.
  */
 import React from 'react';
-import { View, Text, TextInput, ViewStyle } from 'react-native';
+import { View, Text, TextInput, ViewStyle, Animated } from 'react-native';
 import { useTheme, radius, fonts } from '../theme';
 import { Icon, IconName } from './icons';
 import { Tap, TapProps } from './Tap';
@@ -19,7 +19,7 @@ const SoftTap = (p: TapProps) => <Tap feel="soft" {...p} />;
 function CapText({ children, style }: { children: React.ReactNode; style?: any }) {
   const { colors } = useTheme();
   return (
-    <Text style={[{ fontFamily: fonts.uiBold, fontSize: 10.5, letterSpacing: 0.6, color: colors.faint, textTransform: 'uppercase' }, style]}>
+    <Text style={[{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 0.6, color: colors.faint, textTransform: 'uppercase' }, style]}>
       {children}
     </Text>
   );
@@ -44,7 +44,7 @@ export function Seg<T extends string>({ value, options, onChange, style }: {
             }}
           >
             {o.i ? <Icon name={o.i} size={16} color={on ? colors.accentInk : colors.faint} /> : null}
-            <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accentInk : colors.faint }}>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accentInk : colors.faint }}>
               {o.l}
             </Text>
           </Tap>
@@ -58,98 +58,194 @@ export function Seg<T extends string>({ value, options, onChange, style }: {
 export function FieldNote({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
   return (
-    <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, lineHeight: 16.5, color: colors.faint, marginTop: 6, marginBottom: 10 }}>
+    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 16.5, color: colors.faint, marginTop: 6, marginBottom: 10 }}>
       {children}
     </Text>
   );
 }
 
 /**
- * The outlined field from the supplied Edit Item reference: a rounded outline
- * with the label notched into the top border, a leading glyph, and an optional
- * trailing control. The label only floats when one is given; otherwise the
- * placeholder sits on the baseline.
+ * The app's text field. The label sits inside the box, where a placeholder
+ * would be; when the field is tapped (or holds a value) it slides up and
+ * shrinks to a small faint caption, leaving the box for what is typed. The
+ * placeholder — a hint such as "e.g. 24" — only shows once the field is in
+ * use, so an empty form reads as a list of plain names.
  */
 export function Field({
   label, value, onChangeText, placeholder, numeric, decimal, multiline, readOnly, right, style,
-  compact, error, icon, secure, maxLength, autoCapitalize, onFocus, onBlur, suffix, autoFocus, inputRef,
+  compact, error, icon, secure, maxLength, autoCapitalize, onFocus, onBlur, suffix, autoFocus, inputRef, big, keyboard,
+  trailing, returnKeyType, onSubmitEditing, autoCorrect, keepFocus,
 }: {
   label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string;
   numeric?: boolean; decimal?: boolean; multiline?: boolean; readOnly?: boolean; right?: React.ReactNode;
   style?: ViewStyle; compact?: boolean; error?: string; icon?: IconName;
   secure?: boolean; maxLength?: number; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   onFocus?: () => void; onBlur?: () => void; suffix?: string; autoFocus?: boolean; inputRef?: React.Ref<TextInput>;
+  /** Kept for callers written for the earlier inset style; every label is inset now. */
+  inset?: boolean;
+  /** A large number, for the one figure a screen is about (opening stock). */
+  big?: boolean;
+  /** A text keyboard other than the plain one, for phone numbers and emails. */
+  keyboard?: 'phone-pad' | 'email-address';
+  /** Inside the box at its right edge — a clear button, a scan button. */
+  trailing?: React.ReactNode;
+  returnKeyType?: 'done' | 'search' | 'next' | 'go';
+  onSubmitEditing?: () => void;
+  autoCorrect?: boolean;
+  /** Stay in the box after Enter, for typing or scanning several in a row. */
+  keepFocus?: boolean;
 }) {
   const { colors } = useTheme();
   const [focused, setFocused] = React.useState(false);
   const hasError = !!error;
-  const border = hasError ? colors.danger : focused ? colors.accent : colors.line;
-  const labelColor = hasError ? colors.danger : focused ? colors.accent : colors.faint;
   const bg = readOnly ? colors.sunk : colors.surface;
+  const hasLabel = !!label;
+  // a lone zero in a number box is a blank, not a value: it clears on focus
+  // so the first key typed replaces it instead of landing after it
+  const raw = String(value ?? '');
+  const shown = numeric && focused && raw !== '' && /^0*(\.0*)?$/.test(raw) ? '' : value;
+  const filled = raw !== '';
+  const up = !hasLabel || big || focused || filled;
+
+  // two clocks, both 100ms: `lift` moves the label (up while focused or
+  // filled), `glow` turns the border and label blue (only while focused)
+  const lift = React.useRef(new Animated.Value(up ? 1 : 0)).current;
+  const glow = React.useRef(new Animated.Value(focused ? 1 : 0)).current;
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(lift, { toValue: up ? 1 : 0, duration: FLOAT_MS, useNativeDriver: false }),
+      Animated.timing(glow, { toValue: focused ? 1 : 0, duration: FLOAT_MS, useNativeDriver: false }),
+    ]).start();
+  }, [up, focused, lift, glow]);
+
+  const rowH = big ? 84 : multiline ? 104 : compact ? 48 : 56;
+  const restTop = multiline ? 14 : (rowH - 2.8) / 2 - LABEL_H / 2;
+  const padH = compact ? 12 : 15;
+  const restLeft = padH + (icon ? 31 : 0) - 4;
+  const idle = hasError ? colors.danger : colors.line;
+  const lit = hasError ? colors.danger : colors.accent;
 
   return (
-    <View style={[{ marginBottom: hasError ? 6 : 14 }, style]}>
+    <View style={[{ marginTop: hasLabel ? 6 : 0, marginBottom: hasError ? 6 : 14 }, style]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View style={{
+        <Animated.View style={{
           flex: 1, flexDirection: 'row', alignItems: multiline ? 'flex-start' : 'center', gap: 12,
-          minHeight: multiline ? 96 : compact ? 46 : 62,
-          borderRadius: radius.md, borderWidth: 1.4, borderColor: border,
+          minHeight: compact && !hasLabel ? 46 : rowH,
+          borderRadius: radius.md, borderWidth: 1.4,
+          borderColor: glow.interpolate({ inputRange: [0, 1], outputRange: [idle, lit] }),
           backgroundColor: bg,
-          paddingHorizontal: 15,
-          paddingTop: multiline ? 14 : label ? 6 : 0,
-          paddingBottom: multiline ? 12 : 0,
+          paddingHorizontal: padH,
+          paddingVertical: multiline ? 14 : 0,
         }}>
           {icon ? (
-            <View style={{ paddingTop: multiline ? 1 : 0 }}>
-              <Icon name={icon} size={20} color={hasError ? colors.danger : colors.ink} />
+            <View style={{ alignSelf: multiline ? 'flex-start' : 'center', marginTop: multiline ? 1 : 0 }}>
+              <Icon name={icon} size={19} color={hasError ? colors.danger : focused ? colors.accent : colors.soft} />
             </View>
           ) : null}
 
           <TextInput
             ref={inputRef}
-            value={value}
+            value={shown}
             onChangeText={onChangeText}
             editable={!readOnly}
             placeholder={placeholder}
-            placeholderTextColor={colors.faint}
-            keyboardType={numeric ? (decimal ? 'decimal-pad' : 'numeric') : 'default'}
+            placeholderTextColor={focused || !hasLabel ? colors.faint : 'transparent'}
+            keyboardType={keyboard || (numeric ? (decimal ? 'decimal-pad' : 'numeric') : 'default')}
             multiline={multiline}
             secureTextEntry={secure}
             maxLength={maxLength}
             autoCapitalize={autoCapitalize}
             autoFocus={autoFocus}
+            returnKeyType={returnKeyType}
+            onSubmitEditing={onSubmitEditing}
+            autoCorrect={autoCorrect}
+            submitBehavior={keepFocus ? 'submit' : undefined}
             onFocus={() => { setFocused(true); onFocus?.(); }}
             onBlur={() => { setFocused(false); onBlur?.(); }}
             style={{
-              flex: 1, padding: 0,
-              minHeight: multiline ? 68 : undefined,
+              flex: 1, padding: 0, alignSelf: 'stretch',
+              minHeight: multiline ? 70 : undefined,
               color: readOnly ? colors.faint : colors.ink,
-              fontFamily: numeric ? fonts.monoSemi : fonts.ui,
-              fontSize: 16,
-              textAlign: numeric && compact ? 'right' : 'left',
+              fontFamily: big ? fonts.uiBold : numeric ? fonts.mono : fonts.ui,
+              fontSize: big ? 30 : 15,
+              textAlign: numeric && compact && !hasLabel ? 'right' : 'left',
               textAlignVertical: multiline ? 'top' : 'center',
             }}
           />
 
           {suffix ? (
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint }}>{suffix}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>{suffix}</Text>
           ) : null}
+          {trailing}
 
-          {/* the label notched into the top border */}
-          {label ? (
-            <View style={{
-              position: 'absolute', top: -8, left: 13,
-              backgroundColor: bg, paddingHorizontal: 5,
-            }}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: labelColor }}>{label}</Text>
-            </View>
+          {/* the label: the placeholder while empty, a caption cut into the border once in use */}
+          {hasLabel ? (
+            <FloatLabel
+              text={label!}
+              bg={bg}
+              lift={lift}
+              glow={glow}
+              restTop={restTop}
+              restLeft={restLeft}
+              upLeft={padH - 5}
+              idle={hasError ? colors.danger : colors.faint}
+              lit={lit}
+            />
           ) : null}
-        </View>
+        </Animated.View>
         {right}
       </View>
       {hasError ? (
-        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.danger, marginTop: 6, marginBottom: 7 }}>{error}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger, marginTop: 6, marginBottom: 7 }}>{error}</Text>
       ) : null}
+    </View>
+  );
+}
+
+const FLOAT_MS = 100;
+const LABEL_H = 18;
+/** Where a raised label sits: centred on the 1.4px top border. */
+const UP_TOP = -1.4 / 2 - 1.4 - LABEL_H / 2 + 1.4;
+
+/**
+ * The label of an outlined field. At rest it sits where the text would be;
+ * raised, it shrinks onto the top border and a strip of the field's own
+ * colour behind it cuts the notch in the line.
+ */
+function FloatLabel({ text, bg, lift, glow, restTop, restLeft, upLeft, idle, lit }: {
+  text: string; bg: string; lift: Animated.Value; glow: Animated.Value;
+  restTop: number; restLeft: number; upLeft: number; idle: string; lit: string;
+}) {
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute', height: LABEL_H, maxWidth: '88%', paddingHorizontal: 4, justifyContent: 'center',
+        top: lift.interpolate({ inputRange: [0, 1], outputRange: [restTop, UP_TOP] }),
+        left: lift.interpolate({ inputRange: [0, 1], outputRange: [restLeft, upLeft] }),
+      }}
+    >
+      <Animated.View style={{ position: 'absolute', left: 0, right: 0, top: LABEL_H / 2 - 2, height: 4, backgroundColor: bg, opacity: lift }} />
+      <Animated.Text
+        numberOfLines={1}
+        style={{
+          fontFamily: fonts.ui,
+          fontSize: lift.interpolate({ inputRange: [0, 1], outputRange: [15, 12] }),
+          color: glow.interpolate({ inputRange: [0, 1], outputRange: [idle, lit] }),
+        }}
+      >
+        {text}
+      </Animated.Text>
+    </Animated.View>
+  );
+}
+
+/** A label already raised onto the border, for boxes that always hold a value. */
+function StaticLabel({ text, bg, color, left }: { text: string; bg: string; color: string; left: number }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: UP_TOP, left, height: LABEL_H, maxWidth: '88%', paddingHorizontal: 4, justifyContent: 'center' }}>
+      <View style={{ position: 'absolute', left: 0, right: 0, top: LABEL_H / 2 - 2, height: 4, backgroundColor: bg }} />
+      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color }}>{text}</Text>
     </View>
   );
 }
@@ -163,24 +259,19 @@ export function FieldShell({ label, icon, children, onPress, right, style, tone,
   const Comp: any = onPress ? SoftTap : View;
   const border = error ? colors.danger : tone || colors.line;
   return (
-    <View style={[{ marginBottom: 14 }, style]}>
+    <View style={[{ marginTop: label ? 6 : 0, marginBottom: 14 }, style]}>
       <Comp
         onPress={onPress}
         style={{
-          flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 62,
+          flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56,
           borderRadius: radius.md, borderWidth: 1.4, borderColor: border,
-          backgroundColor: colors.surface, paddingHorizontal: 15,
-          paddingTop: label ? 6 : 0,
+          backgroundColor: colors.surface, paddingHorizontal: 15, paddingVertical: 8,
         }}
       >
-        {icon ? <Icon name={icon} size={20} color={error ? colors.danger : colors.ink} /> : null}
+        {icon ? <Icon name={icon} size={19} color={error ? colors.danger : colors.soft} /> : null}
         <View style={{ flex: 1, minWidth: 0 }}>{children}</View>
         {right}
-        {label ? (
-          <View style={{ position: 'absolute', top: -8, left: 13, backgroundColor: colors.surface, paddingHorizontal: 5 }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: error ? colors.danger : colors.faint }}>{label}</Text>
-          </View>
-        ) : null}
+        {label ? <StaticLabel text={label} bg={colors.surface} color={error ? colors.danger : colors.faint} left={10} /> : null}
       </Comp>
     </View>
   );
@@ -235,9 +326,9 @@ export function HighlightToggle({ title, sub, on, onChange, tone = 'good' }: {
       }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{title}</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{title}</Text>
         {sub ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 18, color: colors.soft, marginTop: 3 }}>{sub}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: colors.soft, marginTop: 3 }}>{sub}</Text>
         ) : null}
       </View>
       <Sw on={on} onPress={() => onChange(!on)} />
@@ -261,7 +352,7 @@ export function DropZone({ label, onPress, children, tone = 'good' }: {
       }}
     >
       {children ?? <Icon name="plus" size={34} color={fg} />}
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: fg }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: fg }}>{label}</Text>
     </Tap>
   );
 }
@@ -276,26 +367,23 @@ export function SelectField<T extends string>({ label, value, options, onChange,
   const cur = options.find((o) => o.v === value);
   const border = open ? colors.accent : colors.line;
   return (
-    <View style={[{ marginBottom: 14 }, style]}>
+    <View style={[{ marginTop: label ? 6 : 0, marginBottom: 14 }, style]}>
       <Tap feel="soft"
         onPress={() => setOpen((o) => !o)}
         style={{
-          minHeight: 62, borderRadius: radius.md, borderWidth: 1.4, borderColor: border,
-          backgroundColor: colors.surface, paddingHorizontal: 15,
-          paddingTop: label ? 6 : 0,
+          minHeight: 56, borderRadius: radius.md, borderWidth: 1.4, borderColor: border,
+          backgroundColor: colors.surface, paddingHorizontal: 15, paddingVertical: 8,
           flexDirection: 'row', alignItems: 'center', gap: 12,
         }}
       >
-        {icon ? <Icon name={icon} size={20} color={open ? colors.accent : colors.ink} /> : null}
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 16, color: cur ? colors.ink : colors.faint }}>
-          {cur ? cur.l : placeholder || 'Select…'}
-        </Text>
-        <Icon name={open ? 'up' : 'down'} size={19} color={colors.soft} />
-        {label ? (
-          <View style={{ position: 'absolute', top: -8, left: 13, backgroundColor: colors.surface, paddingHorizontal: 5 }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: open ? colors.accent : colors.faint }}>{label}</Text>
-          </View>
-        ) : null}
+        {icon ? <Icon name={icon} size={19} color={open ? colors.accent : colors.soft} /> : null}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: cur ? colors.ink : colors.faint }}>
+            {cur ? cur.l : placeholder || 'Select…'}
+          </Text>
+        </View>
+        <Icon name={open ? 'up' : 'down'} size={18} color={colors.faint} />
+        {label ? <StaticLabel text={label} bg={colors.surface} color={open ? colors.accent : colors.faint} left={10} /> : null}
       </Tap>
       {open ? (
         <View style={{ marginTop: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, overflow: 'hidden' }}>
@@ -339,7 +427,7 @@ export function ChipRow<T extends string>({ value, options, onChange, style }: {
             }}
           >
             {o.i ? <Icon name={o.i} size={13} color={on ? colors.bg : colors.faint} /> : null}
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: on ? colors.bg : colors.soft }}>{o.l}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.bg : colors.soft }}>{o.l}</Text>
           </Tap>
         );
       })}
@@ -355,7 +443,7 @@ export function ActionChip({ label, onPress }: { label: string; onPress: () => v
       paddingVertical: 7, paddingHorizontal: 11, borderRadius: radius.pill,
       borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface,
     }}>
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.soft }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft }}>{label}</Text>
     </Tap>
   );
 }
@@ -372,7 +460,7 @@ export function BigAmount({ caption, value, onChangeText, hint, currency }: {
     }}>
       {caption ? <CapText style={{ marginBottom: 6 }}>{caption}</CapText> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-        {currency ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 19, color: colors.faint }}>{currency}</Text> : null}
+        {currency ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 20, color: colors.faint }}>{currency}</Text> : null}
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -385,7 +473,7 @@ export function BigAmount({ caption, value, onChangeText, hint, currency }: {
           }}
         />
       </View>
-      {hint ? <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 7, textAlign: 'center' }}>{hint}</Text> : null}
+      {hint ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 7, textAlign: 'center' }}>{hint}</Text> : null}
     </View>
   );
 }
@@ -426,7 +514,7 @@ export function ToggleRow({ label, sub, on, onChange, bare }: {
       }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{label}</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{label}</Text>
         {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>{sub}</Text> : null}
       </View>
       <Sw on={on} onPress={() => onChange(!on)} />
@@ -467,7 +555,7 @@ export function Swatch({ color, on, onPress }: { color: string; on: boolean; onP
         alignItems: 'center', justifyContent: 'center',
       }}
     >
-      {color ? null : <Text style={{ color: colors.faint, fontFamily: fonts.uiSemi, fontSize: 13 }}>—</Text>}
+      {color ? null : <Text style={{ color: colors.faint, fontFamily: fonts.uiSemi, fontSize: 12.5 }}>—</Text>}
     </Tap>
   );
 }
@@ -479,7 +567,7 @@ export function SettingGroup({ title, children, style }: { title: string; childr
   if (!kids.length) return null;
   return (
     <View style={[{ marginBottom: 18 }, style]}>
-      <CapText style={{ marginBottom: 10 }}>{title}</CapText>
+      <CapText style={{ marginBottom: 8, marginLeft: 4 }}>{title}</CapText>
       <View style={{
         backgroundColor: colors.surface, borderRadius: radius.lg, overflow: 'hidden',
         shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
@@ -494,59 +582,85 @@ export function SettingGroup({ title, children, style }: { title: string; childr
   );
 }
 
+/*
+ * Every settings row is built from the same three parts, so a list of them
+ * lines up: an icon tile of one size, a label column that starts at the same
+ * x on every row, and the control on the right. Rows used to differ in
+ * padding, font size and whether they had an icon at all, which is why labels
+ * zig-zagged down a group.
+ */
+const ROW = { padH: 16, padV: 12, gap: 14, minH: 62, tile: 36 } as const;
+
+function RowTile({ icon, danger }: { icon?: IconName; danger?: boolean }) {
+  const { colors } = useTheme();
+  if (!icon) return null;
+  return (
+    <View style={{
+      width: ROW.tile, height: ROW.tile, borderRadius: 11,
+      backgroundColor: danger ? colors.dangerSoft : colors.accentSoft, alignItems: 'center', justifyContent: 'center',
+    }}>
+      <Icon name={icon} size={18} color={danger ? colors.danger : colors.accent} />
+    </View>
+  );
+}
+
+function RowText({ label, sub, danger }: { label: string; sub?: string; danger?: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, lineHeight: 20, color: danger ? colors.danger : colors.ink }}>{label}</Text>
+      {sub ? <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.faint, marginTop: 2 }}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+const rowStyle = {
+  flexDirection: 'row' as const, alignItems: 'center' as const, gap: ROW.gap,
+  paddingVertical: ROW.padV, paddingHorizontal: ROW.padH, minHeight: ROW.minH,
+};
+
 /** `setRow(k, v, action)` — label on the left, current value and a chevron on the right. */
 export function SettingRow({ label, value, onPress, danger, icon, sub }: {
   label: string; value?: string; onPress?: () => void; danger?: boolean; icon?: IconName; sub?: string;
 }) {
   const { colors } = useTheme();
   const Comp: any = onPress ? SoftTap : View;
-  const fg = danger ? colors.danger : colors.accent;
   return (
-    <Comp onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 15, minHeight: 60 }}>
-      {icon ? (
-        <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: danger ? colors.dangerSoft : colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon name={icon} size={19} color={fg} />
-        </View>
-      ) : null}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: danger ? colors.danger : colors.ink }}>{label}</Text>
-        {sub ? <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{sub}</Text> : null}
-      </View>
+    <Comp onPress={onPress} style={rowStyle}>
+      <RowTile icon={icon} danger={danger} />
+      <RowText label={label} sub={sub} danger={danger} />
       {value ? (
-        <Text numberOfLines={1} style={{ maxWidth: '46%', fontFamily: fonts.uiSemi, fontSize: 13, color: colors.faint, textAlign: 'right' }}>
+        <Text numberOfLines={1} style={{ maxWidth: '42%', fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'right' }}>
           {value}
         </Text>
       ) : null}
-      {onPress ? <Icon name="chev" size={17} color={colors.faint} /> : null}
+      {onPress ? <Icon name="chev" size={16} color={colors.lineHard} /> : null}
     </Comp>
   );
 }
 
 /** `setToggle(label, key)` — the same row with a switch instead of a chevron. */
-export function SettingToggle({ label, sub, on, onChange }: {
-  label: string; sub?: string; on: boolean; onChange: (v: boolean) => void;
+export function SettingToggle({ label, sub, on, onChange, icon }: {
+  label: string; sub?: string; on: boolean; onChange: (v: boolean) => void; icon?: IconName;
 }) {
-  const { colors } = useTheme();
   return (
-    <Tap feel="soft" onPress={() => onChange(!on)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 15, minHeight: 60 }}>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{label}</Text>
-        {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{sub}</Text> : null}
-      </View>
+    <Tap feel="soft" onPress={() => onChange(!on)} accessibilityRole="switch" accessibilityState={{ checked: on }} style={rowStyle}>
+      <RowTile icon={icon} />
+      <RowText label={label} sub={sub} />
       <Sw on={on} onPress={() => onChange(!on)} />
     </Tap>
   );
 }
 
 /** A settings row whose right-hand side is a small segmented control (Theme). */
-export function SettingSeg<T extends string>({ label, value, options, onChange }: {
-  label: string; value: T; options: { v: T; l: string }[]; onChange: (v: T) => void;
+export function SettingSeg<T extends string>({ label, value, options, onChange, icon }: {
+  label: string; value: T; options: { v: T; l: string }[]; onChange: (v: T) => void; icon?: IconName;
 }) {
-  const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 14 }}>
-      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{label}</Text>
-      <Seg value={value} options={options} onChange={onChange} style={{ width: 186 }} />
+    <View style={rowStyle}>
+      <RowTile icon={icon} />
+      <RowText label={label} />
+      <Seg value={value} options={options} onChange={onChange} style={{ width: 180 }} />
     </View>
   );
 }

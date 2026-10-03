@@ -105,3 +105,31 @@ export function byUrgency<T extends { state: ExpiryState; days: number | null }>
     return a.days - b.days;
   });
 }
+
+/**
+ * Keeps a batch-tracked item's batches from adding up to more than it holds.
+ *
+ * Stock can move without naming a batch — a sale where none was picked, an
+ * adjustment or transfer of the whole item. Those used to change the item's
+ * total and leave the batches as they were, so an item holding 39 could show
+ * batches worth 44. Any excess comes off the batches that expire soonest, the
+ * way the goods leave the shelf. Stock held outside any batch (less in the
+ * batches than on hand) is allowed and left alone.
+ *
+ * Returns how much the batches were reduced by.
+ */
+export function reconcileBatches(p: Product | undefined | null): number {
+  if (!p || !p.trackBatches || !p.batches?.length) return 0;
+  const held = Math.max(0, Object.values(p.stock || {}).reduce((s, q) => s + (Number(q) || 0), 0));
+  const r = (n: number) => Math.round(n * 1000) / 1000;
+  let excess = r(batchTotal(p) - held);
+  if (excess <= 0) return 0;
+  const cut = excess;
+  for (const b of liveBatches(p)) {
+    const take = Math.min(b.qty, excess);
+    b.qty = r(b.qty - take);
+    excess = r(excess - take);
+    if (excess <= 0) break;
+  }
+  return cut;
+}

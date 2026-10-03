@@ -91,14 +91,14 @@ function StaffReportScreenBody() {
       <StatGrid
         items={[
           { icon: 'coins', label: 'Takings · ' + d.R.label, value: money(d.grand), tone: 'good' },
-          { icon: 'receipt', label: 'Bills', value: String(d.bills), tone: 'accent' },
+          { icon: 'receipt', label: 'Sales', value: String(d.bills), tone: 'accent' },
           { icon: 'user', label: 'Staff selling', value: String(d.staff), tone: 'warn' },
-          { icon: 'chart', label: 'Average bill', value: money(d.bills ? d.grand / d.bills : 0), tone: 'accent' },
+          { icon: 'chart', label: 'Average sale', value: money(d.bills ? d.grand / d.bills : 0), tone: 'accent' },
         ]}
       />
 
       <View style={{ height: 20 }} />
-      <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>by takings</Text>}>
+      <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>by takings</Text>}>
         Scoreboard
       </SectionLabel>
 
@@ -118,18 +118,18 @@ function StaffReportScreenBody() {
                   position: 'absolute', right: -4, bottom: -4,
                   backgroundColor: colors.good, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2,
                 }}>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 10, color: colors.accentInk }}>1st</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accentInk }}>1st</Text>
                 </View>
               ) : null}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{r.name}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{r.name}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                {r.role ? r.role.charAt(0).toUpperCase() + r.role.slice(1) : 'Staff'} · {r.count} bill{r.count === 1 ? '' : 's'}
+                {r.role ? r.role.charAt(0).toUpperCase() + r.role.slice(1) : 'Staff'} · {r.count} sale{r.count === 1 ? '' : 's'}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 3 }}>
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(r.total)}</Text>
+              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(r.total)}</Text>
               <Badge label={Math.round(r.share) + '% of takings'} tone={i === 0 ? 'good' : 'neutral'} />
             </View>
           </View>
@@ -159,7 +159,7 @@ function StaffReportScreenBody() {
       {top && d.rows.length > 1 ? (
         <Panel>
           <SectionLabel>Read this carefully</SectionLabel>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.soft }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 19, color: colors.soft }}>
             {top.name} took {Math.round(top.share)}% of the money in this period. A high share can mean a strong
             seller, or simply the person who works the busiest shift — check bills and hours before drawing a
             conclusion about anyone.

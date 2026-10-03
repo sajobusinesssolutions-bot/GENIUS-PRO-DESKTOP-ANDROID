@@ -26,6 +26,18 @@ const mockFns = {
 };
 
 jest.mock('../data/docPrint', () => ({ printDoc: (...a: any[]) => mockFns.printDoc(...a) }));
+const mockRaw = {
+  scanBluetooth: jest.fn(), testBluetooth: jest.fn(), printBluetooth: jest.fn(), testNetwork: jest.fn(),
+};
+/* The radio and the socket are faked; what counts as a printer and the test page itself are real. */
+jest.mock('../data/rawPrinter', () => ({
+  ...jest.requireActual('../data/rawPrinter'),
+  stopScan: () => Promise.resolve(),
+  scanBluetooth: (...a: any[]) => mockRaw.scanBluetooth(...a),
+  testBluetooth: (...a: any[]) => mockRaw.testBluetooth(...a),
+  printBluetooth: (...a: any[]) => mockRaw.printBluetooth(...a),
+  testNetwork: (...a: any[]) => mockRaw.testNetwork(...a),
+}));
 jest.mock('../nav/navigate', () => ({ useGo: () => mockFns.go }));
 jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ goBack: mockFns.goBack }) }));
 jest.mock('expo-image-picker', () => ({}));
@@ -48,6 +60,7 @@ const wrap = (el: React.ReactElement) => render(<ToastProvider>{el}</ToastProvid
 beforeEach(() => {
   jest.useFakeTimers();
   Object.values(mockFns).forEach((f) => f.mockReset());
+  Object.values(mockRaw).forEach((f) => f.mockReset());
   mockFns.addPrinter.mockImplementation((p: any) => ({ ...p, id: 'p2' }));
   mockDb = {
     settings: { theme: 'light', taxName: 'VAT', taxRate: 18 },
@@ -70,49 +83,104 @@ describe('the Printing hub', () => {
     expect(mockFns.go).toHaveBeenCalledWith('PrintingInvoice');
   });
 
-  it('shows the printer in use and prints a real test page to it', async () => {
+  it('shows the printer in use and sends a test page straight to it', async () => {
+    mockRaw.testNetwork.mockResolvedValue(undefined);
+    wrap(<PrintingScreen />);
+    expect(screen.getAllByText('Counter printer').length).toBeGreaterThan(0);
+    expect(screen.getByText('Wi-Fi / network · 80mm · 192.168.1.50:9100')).toBeTruthy();
+    await act(async () => { fireEvent.press(screen.getByText('Print a test page')); });
+    expect(mockRaw.testNetwork).toHaveBeenCalledWith('192.168.1.50', 9100, expect.any(Uint8Array));
+    expect(mockFns.printDoc).not.toHaveBeenCalled();
+  });
+
+  it('still uses the print dialog for a printer with no address', async () => {
+    mockDb.printers = [{ ...mockPrinter, kind: 'bluetooth', address: '' }];
     mockFns.printDoc.mockResolvedValue(undefined);
     wrap(<PrintingScreen />);
-    expect(screen.getByText(/Counter printer · Wi-Fi/)).toBeTruthy();
-    await act(async () => { fireEvent.press(screen.getByText('Test print')); });
+    await act(async () => { fireEvent.press(screen.getByText('Print a test page')); });
     expect(mockFns.printDoc).toHaveBeenCalledTimes(1);
     expect(mockFns.printDoc.mock.calls[0][0].footer).toContain('Counter printer');
   });
 
   it('refuses an address that is not one, instead of saving a printer that can never work', async () => {
     wrap(<PrintingScreen />);
-    fireEvent.changeText(screen.getByPlaceholderText('Printer IP address'), '192.168.1.300');
-    await act(async () => { fireEvent.press(screen.getByText('Connect / Test')); });
+    fireEvent.changeText(screen.getByPlaceholderText('192.168.1.50'), '192.168.1.300');
+    await act(async () => { fireEvent.press(screen.getByText('Connect and test')); });
     expect(mockFns.addPrinter).not.toHaveBeenCalled();
     expect(screen.getByText(/Enter the printer's IP address/)).toBeTruthy();
   });
 
-  it('saves a new network printer, makes it the one in use, and sends it a test page', async () => {
-    mockFns.printDoc.mockResolvedValue(undefined);
+  it('sends a test page to a new network printer, then saves it and makes it the one in use', async () => {
+    mockRaw.testNetwork.mockResolvedValue(undefined);
     wrap(<PrintingScreen />);
-    fireEvent.changeText(screen.getByPlaceholderText('Printer IP address'), '192.168.1.77');
+    fireEvent.changeText(screen.getByPlaceholderText('192.168.1.50'), '192.168.1.77');
     fireEvent.changeText(screen.getByDisplayValue('9100'), '9101');
-    await act(async () => { fireEvent.press(screen.getByText('Connect / Test')); });
+    await act(async () => { fireEvent.press(screen.getByText('Connect and test')); });
+    expect(mockRaw.testNetwork).toHaveBeenCalledWith('192.168.1.77', 9101, expect.any(Uint8Array));
     expect(mockFns.addPrinter).toHaveBeenCalledWith(expect.objectContaining({ kind: 'wifi', address: '192.168.1.77', port: 9101, dflt: true }));
     expect(mockFns.makeDefaultPrinter).toHaveBeenCalledWith('p2');
-    expect(mockFns.printDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an error and saves nothing when no printer answers at that address', async () => {
+    mockRaw.testNetwork.mockRejectedValue(new Error('No reply from 192.168.1.77:9100. Check the IP address.'));
+    wrap(<PrintingScreen />);
+    fireEvent.changeText(screen.getByPlaceholderText('192.168.1.50'), '192.168.1.77');
+    await act(async () => { fireEvent.press(screen.getByText('Connect and test')); });
+    expect(mockFns.addPrinter).not.toHaveBeenCalled();
+    expect(mockFns.makeDefaultPrinter).not.toHaveBeenCalled();
+    expect(screen.getAllByText(/No reply from 192.168.1.77:9100/).length).toBeGreaterThan(0);
   });
 
   it('updates the saved printer when the same address is connected again', async () => {
-    mockFns.printDoc.mockResolvedValue(undefined);
+    mockRaw.testNetwork.mockResolvedValue(undefined);
     wrap(<PrintingScreen />);
     fireEvent.changeText(screen.getByDisplayValue('9100'), '9200');
-    await act(async () => { fireEvent.press(screen.getByText('Connect / Test')); });
+    await act(async () => { fireEvent.press(screen.getByText('Connect and test')); });
     expect(mockFns.addPrinter).not.toHaveBeenCalled();
     expect(mockFns.updatePrinter).toHaveBeenCalledWith('p1', expect.objectContaining({ port: 9200 }));
   });
 
-  it('adds a paired Bluetooth printer by name', () => {
+  it('scans for Bluetooth printers, connects to the one tapped and keeps it', async () => {
+    mockRaw.scanBluetooth.mockResolvedValue([{ name: 'MTP-II', address: 'AA:BB', paired: true, majorClass: 0x0600, deviceClass: 0x0680 }]);
+    mockRaw.testBluetooth.mockResolvedValue(undefined);
     wrap(<PrintingScreen />);
     fireEvent.press(screen.getByText('Bluetooth'));
-    fireEvent.changeText(screen.getByPlaceholderText("Paired printer's name"), 'MTP-II');
-    fireEvent.press(screen.getByText('Add Bluetooth printer'));
-    expect(mockFns.addPrinter).toHaveBeenCalledWith(expect.objectContaining({ name: 'MTP-II', kind: 'bluetooth' }));
+    await act(async () => { fireEvent.press(screen.getByText('Scan for printers')); });
+    await act(async () => { fireEvent.press(screen.getByText('MTP-II')); });
+    expect(mockRaw.testBluetooth).toHaveBeenCalledWith(expect.objectContaining({ address: 'AA:BB' }), expect.any(Uint8Array));
+    expect(mockFns.addPrinter).toHaveBeenCalledWith(expect.objectContaining({ name: 'MTP-II', kind: 'bluetooth', address: 'AA:BB' }));
+    expect(mockFns.makeDefaultPrinter).toHaveBeenCalledWith('p2');
+  });
+
+  it('refuses a device that is not a printer, with an error, and does not connect', async () => {
+    mockRaw.scanBluetooth.mockResolvedValue([{ name: 'Galaxy A14', address: 'CC:DD', paired: true, majorClass: 0x0200, deviceClass: 0x020C }]);
+    wrap(<PrintingScreen />);
+    fireEvent.press(screen.getByText('Bluetooth'));
+    await act(async () => { fireEvent.press(screen.getByText('Scan for printers')); });
+    await act(async () => { fireEvent.press(screen.getByText('Galaxy A14')); });
+    expect(mockRaw.testBluetooth).not.toHaveBeenCalled();
+    expect(mockFns.addPrinter).not.toHaveBeenCalled();
+    expect(screen.getAllByText(/Galaxy A14 is a phone, not a printer/).length).toBeGreaterThan(0);
+  });
+
+  it('shows an error when a Bluetooth device will not connect as a printer', async () => {
+    mockRaw.scanBluetooth.mockResolvedValue([{ name: 'Mystery', address: 'EE:FF', paired: false }]);
+    mockRaw.testBluetooth.mockRejectedValue(new Error('Could not connect to Mystery. Check it is a receipt printer.'));
+    wrap(<PrintingScreen />);
+    fireEvent.press(screen.getByText('Bluetooth'));
+    await act(async () => { fireEvent.press(screen.getByText('Scan for printers')); });
+    await act(async () => { fireEvent.press(screen.getByText('Mystery')); });
+    expect(mockFns.addPrinter).not.toHaveBeenCalled();
+    expect(screen.getAllByText(/Could not connect to Mystery/).length).toBeGreaterThan(0);
+  });
+});
+
+describe('a phone with no receipt printer yet', () => {
+  it('says so, rather than showing a printer nobody added', () => {
+    mockDb.printers = [{ id: 'prn_3', name: 'Save as PDF', kind: 'pdf', width: 'A4', address: '', port: 0, dflt: true, online: true, note: '' }];
+    wrap(<PrintingScreen />);
+    expect(screen.getByText('No receipt printer yet')).toBeTruthy();
+    expect(screen.queryByText('Print a test page')).toBeNull();
   });
 });
 

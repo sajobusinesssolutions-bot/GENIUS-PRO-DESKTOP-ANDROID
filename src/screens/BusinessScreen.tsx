@@ -20,6 +20,8 @@ import {
 import { Icon, IconName } from '../components/icons';
 import { useGo } from '../nav/navigate';
 import { keepPhoto, dropPhoto } from '../data/photos';
+import { SvgXml } from 'react-native-svg';
+import SignaturePad, { svgFromUri } from '../components/SignaturePad';
 import { canFor } from '../data/perms';
 
 const TYPES = [
@@ -42,9 +44,11 @@ const TYPES = [
  * or a signed sheet in front of them will photograph it, not go looking for a
  * file.
  */
-function ImageSlot({ label, hint, uri, onPick, onClear, tall }: {
+function ImageSlot({ label, hint, uri, onPick, onClear, tall, onDraw }: {
   label: string; hint: string; uri?: string;
   onPick: (uri: string) => void; onClear: () => void; tall?: boolean;
+  /** Offer drawing it on the screen — for a signature. */
+  onDraw?: () => void;
 }) {
   const { colors } = useTheme();
   const { error } = useToast();
@@ -66,8 +70,8 @@ function ImageSlot({ label, hint, uri, onPick, onClear, tall }: {
   return (
     <View style={{ gap: 10 }}>
       <View>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{label}</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, lineHeight: 16.5, color: colors.faint, marginTop: 2 }}>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{label}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 16.5, color: colors.faint, marginTop: 2 }}>
           {hint}
         </Text>
       </View>
@@ -82,22 +86,31 @@ function ImageSlot({ label, hint, uri, onPick, onClear, tall }: {
         alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',
       }}>
-        {uri ? (
+        {uri && svgFromUri(uri) ? (
+          <View style={{ width: '100%', height: '100%', backgroundColor: '#FFFFFF' }}>
+            <SvgXml xml={svgFromUri(uri)!} width="100%" height="100%" />
+          </View>
+        ) : uri ? (
           <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
         ) : (
           <View style={{ alignItems: 'center', gap: 6 }}>
             <Icon name="camera" size={22} color={colors.lineHard} />
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Nothing chosen</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Nothing chosen</Text>
           </View>
         )}
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 8 }}>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+        {onDraw ? (
+          <View style={{ flexBasis: '100%' }}>
+            <Button size="sm" variant="pri" label="Draw signature" icon={<Icon name="pencil" size={15} color={colors.accentInk} />} onPress={onDraw} />
+          </View>
+        ) : null}
         <View style={{ flex: 1 }}>
-          <Button size="sm" label="Take a picture" icon={<Icon name="camera" size={15} color={colors.ink} />} onPress={fromCamera} />
+          <Button size="sm" label={onDraw ? 'Photo' : 'Take a picture'} icon={<Icon name="camera" size={15} color={colors.ink} />} onPress={fromCamera} />
         </View>
         <View style={{ flex: 1 }}>
-          <Button size="sm" label="Choose a file" icon={<Icon name="box" size={15} color={colors.ink} />} onPress={fromGallery} />
+          <Button size="sm" label={onDraw ? 'File' : 'Choose a file'} icon={<Icon name="box" size={15} color={colors.ink} />} onPress={fromGallery} />
         </View>
         {uri ? (
           <Button size="sm" variant="dngr" label="Remove" onPress={onClear} />
@@ -130,6 +143,7 @@ export default function BusinessScreen() {
   const [footer, setFooter] = useState('');
   const [logo, setLogo] = useState<string | undefined>();
   const [signature, setSignature] = useState<string | undefined>();
+  const [drawing, setDrawing] = useState(false);
 
   // loaded once the book is there, and again if the firm is switched
   useEffect(() => {
@@ -209,7 +223,7 @@ export default function BusinessScreen() {
                 : <Icon name="factory" size={25} color={colors.accent} />}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: colors.ink }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>
                 {name || firm.name}
               </Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
@@ -265,7 +279,8 @@ export default function BusinessScreen() {
           <ImageSlot
             tall
             label="Signature"
-            hint="Printed above the signature line on invoices and delivery notes. Photograph a signed sheet of paper."
+            hint="Printed above the signature line on invoices and delivery notes. Draw it here, or photograph a signed sheet."
+            onDraw={mayEdit ? () => setDrawing(true) : undefined}
             uri={signature}
             onPick={takeImage(setSignature, signature, 'sign')}
             onClear={() => { dropPhoto(signature); setSignature(undefined); }}
@@ -319,6 +334,11 @@ export default function BusinessScreen() {
           />
         </StickyBar>
       ) : null}
+      <SignaturePad
+        visible={drawing}
+        onClose={() => setDrawing(false)}
+        onSave={(uri) => { dropPhoto(signature); setSignature(uri); }}
+      />
     </View>
   );
 }

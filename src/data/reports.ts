@@ -21,6 +21,24 @@ export type ReportCategory =
 export interface ReportDef { id: string; cat: ReportCategory; name: string; sub: string }
 
 /**
+ * The analysis a paid plan (or the free trial) opens. Once a trial has ended
+ * or a plan has run out these are locked; the everyday reports a shop needs to
+ * close the day, count stock and chase money stay open, so the books are never
+ * unreadable.
+ */
+export const PREMIUM_REPORTS = new Set<string>([
+  'hourly-sales', 'sales-by-category', 'sales-by-customer', 'sales-by-user', 'sale-summary-by-user',
+  'sale-summary-by-category-item', 'user-profit', 'user-hourly', 'user-time', 'bill-profit', 'sales-by-items',
+  'profit-margin', 'discounts-granted', 'offer-usage', 'quote-conversion', 'purchase-by-item', 'purchase-by-supplier',
+  'cash-flow', 'payment-types-by-user', 'payment-types-by-customer', 'ar-aging-summary', 'ar-aging-details',
+  'ap-aging-summary', 'ap-aging-details', 'receivable-details', 'payable-details', 'stock-movement',
+  'days-out-of-stock', 'amc', 'aamc', 'aawc', 'reorder-list', 'batch-movement', 'batch-balances', 'fast-moving',
+  'slow-moving', 'stock-valuation', 'production-report', 'ledger-summary', 'voucher-summary', 'trial-balance',
+  'general-ledger', 'pnl', 'balance-sheet', 'zreport-summary', 'daybook',
+]);
+export const isPremiumReport = (id: string) => PREMIUM_REPORTS.has(id);
+
+/**
  * Reference REPORTS, line 3359 — the prototype's 67 entries less the EFRIS
  * log, which this build does not carry, so 66.
  */
@@ -28,11 +46,11 @@ export const REPORTS: ReportDef[] = [
   // Sales
   { id: 'day-close', cat: 'Sales', name: 'Z report · end of day', sub: 'Close the day — takings by mode and cashier' },
   { id: 'x-report', cat: 'Sales', name: 'X report', sub: 'Today so far, without closing' },
-  { id: 'sale-summary', cat: 'Sales', name: 'Sale summary', sub: 'All bills with tax and dues' },
+  { id: 'sale-summary', cat: 'Sales', name: 'Sale summary', sub: 'All sales with tax and dues' },
   { id: 'daily-sales', cat: 'Sales', name: 'Daily sales', sub: 'Each sale with cash and credit detail' },
   { id: 'daybook', cat: 'Sales', name: 'Day book', sub: 'All transactions in the range, with debit and credit columns' },
   { id: 'hourly-sales', cat: 'Sales', name: 'Hourly sales', sub: 'Which hours sell the most' },
-  { id: 'invoice-list', cat: 'Sales', name: 'Invoice list', sub: 'Every bill in the range' },
+  { id: 'invoice-list', cat: 'Sales', name: 'Invoice list', sub: 'Every sale in the range' },
   { id: 'item-sales', cat: 'Sales', name: 'Item list (units sold)', sub: 'Quantity and revenue per item' },
   { id: 'sales-by-category', cat: 'Sales', name: 'Sales by category', sub: 'Product groups ranked by revenue' },
   { id: 'sales-by-customer', cat: 'Sales', name: 'Sales by customer', sub: 'Who buys the most' },
@@ -42,14 +60,14 @@ export const REPORTS: ReportDef[] = [
   { id: 'user-profit', cat: 'Sales', name: 'User sales & profit', sub: 'Revenue, cost, profit and margin per rep' },
   { id: 'user-hourly', cat: 'Sales', name: 'User sales by hour', sub: 'When each rep sells through the day' },
   { id: 'user-time', cat: 'Sales', name: 'User time on shift', sub: 'Hours worked and average shift length' },
-  { id: 'bill-profit', cat: 'Sales', name: 'Bill-wise profit', sub: 'Profit earned on each bill' },
-  { id: 'sales-by-items', cat: 'Sales', name: 'Sales by items (per bill)', sub: 'Each sale grouped, with per-line profit' },
+  { id: 'bill-profit', cat: 'Sales', name: 'Sale-wise profit', sub: 'Profit earned on each sale' },
+  { id: 'sales-by-items', cat: 'Sales', name: 'Sales by items (per sale)', sub: 'Each sale grouped, with per-line profit' },
   { id: 'profit-margin', cat: 'Sales', name: 'Profit & margin', sub: 'Revenue vs cost per item' },
-  { id: 'discounts-granted', cat: 'Sales', name: 'Discounts granted', sub: 'Every discounted bill, who and how much' },
+  { id: 'discounts-granted', cat: 'Sales', name: 'Discounts granted', sub: 'Every discounted sale, who and how much' },
   { id: 'refunds', cat: 'Sales', name: 'Refunds', sub: 'Credit notes issued in the range' },
-  { id: 'voided-items', cat: 'Sales', name: 'Voided bills', sub: 'Everything voided, by whom and why' },
+  { id: 'voided-items', cat: 'Sales', name: 'Voided sales', sub: 'Everything voided, by whom and why' },
   { id: 'offer-usage', cat: 'Sales', name: 'Offer take-up', sub: 'Which promotions are actually used' },
-  { id: 'quote-conversion', cat: 'Sales', name: 'Quote conversion', sub: 'How many quotations turn into bills' },
+  { id: 'quote-conversion', cat: 'Sales', name: 'Quote conversion', sub: 'How many quotations turn into sales' },
   // Purchase
   { id: 'purchase-summary', cat: 'Purchase', name: 'Purchase summary', sub: 'All supplier bills' },
   { id: 'bill-list', cat: 'Purchase', name: 'Purchase bill list', sub: 'Every supplier bill in the range' },
@@ -67,17 +85,19 @@ export const REPORTS: ReportDef[] = [
   { id: 'expenses-by-category', cat: 'Money', name: 'Expenses by category', sub: 'Where the money went' },
   // Receivables
   { id: 'ar-aging-summary', cat: 'Receivables', name: 'AR ageing summary', sub: 'What each customer owes, by how overdue' },
-  { id: 'ar-aging-details', cat: 'Receivables', name: 'AR ageing details', sub: 'Every open bill with its age' },
-  { id: 'invoice-details', cat: 'Receivables', name: 'Invoice details', sub: 'Every bill and how much is settled' },
+  { id: 'ar-aging-details', cat: 'Receivables', name: 'AR ageing details', sub: 'Every open sale with its age' },
+  { id: 'invoice-details', cat: 'Receivables', name: 'Invoice details', sub: 'Every sale and how much is settled' },
   { id: 'quote-details', cat: 'Receivables', name: 'Quote details', sub: 'Quotations with their status' },
   { id: 'customer-balance-summary', cat: 'Receivables', name: 'Customer balance summary', sub: 'Invoiced, paid and still owing' },
   { id: 'receivable-summary', cat: 'Receivables', name: 'Receivable summary', sub: 'The debtors book in age buckets' },
+  { id: 'receivable-statement', cat: 'Receivables', name: 'Receivable statement', sub: 'Every customer: opening, sales, payments and closing balance' },
   { id: 'receivable-details', cat: 'Receivables', name: 'Receivable details', sub: 'Everything owed to you, oldest first' },
   // Payables
   { id: 'ap-aging-summary', cat: 'Payables', name: 'AP ageing summary', sub: 'What you owe each supplier' },
   { id: 'ap-aging-details', cat: 'Payables', name: 'AP ageing details', sub: 'Every open supplier bill with its age' },
   { id: 'supplier-balance-summary', cat: 'Payables', name: 'Supplier balance summary', sub: 'Billed, paid and still owing' },
   { id: 'payable-summary', cat: 'Payables', name: 'Payable summary', sub: 'The creditors book in age buckets' },
+  { id: 'payable-statement', cat: 'Payables', name: 'Payable statement', sub: 'Every supplier: opening, bills, payments and closing balance' },
   { id: 'payable-details', cat: 'Payables', name: 'Payable details', sub: 'Everything you owe, oldest first' },
   // Stock
   { id: 'stock-summary', cat: 'Stock', name: 'Stock summary', sub: 'Quantity and value of every item' },
@@ -90,7 +110,7 @@ export const REPORTS: ReportDef[] = [
   { id: 'reorder-list', cat: 'Stock', name: 'Reorder list', sub: 'What to buy now, with suggested quantity' },
   { id: 'expiry', cat: 'Stock', name: 'Batch / expiry', sub: 'Tracked batches by days to expiry' },
   { id: 'batch-movement', cat: 'Stock', name: 'Batch movement', sub: 'Every in and out, by lot, with a running balance' },
-  { id: 'batch-balances', cat: 'Stock', name: 'Batch balances', sub: 'What each lot holds and what it is worth' },
+  { id: 'batch-balances', cat: 'Stock', name: 'Batches & expiry', sub: 'What each lot holds, when it expires and what it is worth' },
   { id: 'loss-damage', cat: 'Stock', name: 'Loss & damage', sub: 'Stock written off, with value' },
   { id: 'fast-moving', cat: 'Stock', name: 'Fast-moving products', sub: 'Best sellers with current stock' },
   { id: 'slow-moving', cat: 'Stock', name: 'Slow-moving products', sub: 'Holding stock with no sales in range' },
@@ -117,6 +137,78 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
 /** The five the prototype pinned above the list — reference SCREENS.reports.body, 5359. */
 export const FAVOURITE_REPORTS = ['day-close', 'sale-summary', 'ar-aging-summary', 'reorder-list', 'pnl'];
 
+/*
+ * REPORTS THAT ARE ONE REPORT.
+ *
+ * Many of the 76 reports are the same figures cut another way — a summary and
+ * its detail, the same totals by cashier or by customer. Listed separately
+ * they buried the one a shop owner was looking for. A group is one entry in
+ * the list; the report opens on its first view and chips switch between the
+ * others. Every view keeps its own id and calculation, so favourites, links
+ * and the Windows till's matching reports are untouched.
+ */
+export interface ReportGroup { key: string; name: string; sub: string; views: { id: string; label: string }[] }
+
+export const REPORT_GROUPS: ReportGroup[] = [
+  { key: 'end-of-day', name: 'End of day', sub: 'Today so far, closing the day, and past closes', views: [
+    { id: 'day-close', label: 'Close the day (Z)' }, { id: 'x-report', label: 'So far today (X)' }, { id: 'zreport-summary', label: 'Past closes' }] },
+  { key: 'sales-register', name: 'Sales register', sub: 'Every bill: summary, by day, list and settlement', views: [
+    { id: 'sale-summary', label: 'Summary' }, { id: 'daily-sales', label: 'By day' }, { id: 'invoice-list', label: 'Bill list' }, { id: 'invoice-details', label: 'Settlement' }] },
+  { key: 'sales-items', name: 'Sales by item & category', sub: 'What sold, by item, category or sale', views: [
+    { id: 'item-sales', label: 'Items' }, { id: 'sales-by-category', label: 'Categories' }, { id: 'sale-summary-by-category-item', label: 'Category & item' }, { id: 'sales-by-items', label: 'Per sale' }] },
+  { key: 'staff', name: 'Staff sales', sub: 'Each cashier: totals, profit, hours and shifts', views: [
+    { id: 'sales-by-user', label: 'Totals' }, { id: 'sale-summary-by-user', label: 'Summary' }, { id: 'user-profit', label: 'Profit' }, { id: 'user-hourly', label: 'By hour' }, { id: 'user-time', label: 'Time on shift' }] },
+  { key: 'profit', name: 'Profit', sub: 'What each item and each sale earned', views: [
+    { id: 'profit-margin', label: 'Per item' }, { id: 'bill-profit', label: 'Per sale' }] },
+  { key: 'quotes', name: 'Quotations', sub: 'Quotes, their status and how many become sales', views: [
+    { id: 'quote-details', label: 'Details' }, { id: 'quote-conversion', label: 'Conversion' }] },
+  { key: 'purchases', name: 'Purchases', sub: 'Supplier bills: summary, list, by product and supplier', views: [
+    { id: 'purchase-summary', label: 'Summary' }, { id: 'bill-list', label: 'Bill list' }, { id: 'purchase-by-item', label: 'By product' }, { id: 'purchase-by-supplier', label: 'By supplier' }] },
+  { key: 'payment-types', name: 'Payment types', sub: 'Cash, mobile money and bank — in total, by cashier, by customer', views: [
+    { id: 'payment-types', label: 'Totals' }, { id: 'payment-types-by-user', label: 'By cashier' }, { id: 'payment-types-by-customer', label: 'By customer' }] },
+  { key: 'receivables', name: 'Customers who owe', sub: 'Balances, ageing and every unpaid sale', views: [
+    { id: 'ar-aging-summary', label: 'Ageing' }, { id: 'ar-aging-details', label: 'Ageing details' }, { id: 'customer-balance-summary', label: 'Balances' },
+    { id: 'receivable-summary', label: 'Debtors book' }, { id: 'receivable-details', label: 'Oldest first' }, { id: 'unpaid-sales', label: 'Unpaid sales' }] },
+  { key: 'payables', name: 'Suppliers you owe', sub: 'Balances, ageing and every unpaid supplier bill', views: [
+    { id: 'ap-aging-summary', label: 'Ageing' }, { id: 'ap-aging-details', label: 'Ageing details' }, { id: 'supplier-balance-summary', label: 'Balances' },
+    { id: 'payable-summary', label: 'Creditors book' }, { id: 'payable-details', label: 'Oldest first' }, { id: 'unpaid-purchases', label: 'Unpaid bills' }] },
+  { key: 'stock-value', name: 'Stock on hand', sub: 'Quantity and value of every item, and by category', views: [
+    { id: 'stock-summary', label: 'Items' }, { id: 'stock-valuation', label: 'Value by category' }] },
+  { key: 'reorder', name: 'Low stock & reorder', sub: 'What is running out, and how much to buy', views: [
+    { id: 'reorder-list', label: 'Reorder list' }, { id: 'low-stock', label: 'Low stock' }] },
+  { key: 'movers', name: 'Fast & slow movers', sub: 'Best sellers, and stock that is not moving', views: [
+    { id: 'fast-moving', label: 'Fast' }, { id: 'slow-moving', label: 'Slow' }] },
+];
+
+/**
+ * Reports left out of the list because another shows the same thing: the
+ * expiry list is the batch balances in another order.
+ */
+const HIDDEN = new Set(['expiry']);
+
+const GROUP_OF = new Map<string, ReportGroup>();
+REPORT_GROUPS.forEach((g) => g.views.forEach((v) => GROUP_OF.set(v.id, g)));
+export const groupOf = (id: string): ReportGroup | undefined => GROUP_OF.get(id);
+
+/** A row in the report list: a group standing in for its views, or a report on its own. */
+export interface ReportEntry extends ReportDef { group?: ReportGroup }
+
+/** The list as shown: each group once, where its first member sits; everything else as it is. */
+export function reportEntries(): ReportEntry[] {
+  const seen = new Set<string>();
+  const out: ReportEntry[] = [];
+  for (const r of REPORTS) {
+    if (HIDDEN.has(r.id)) continue;
+    const g = GROUP_OF.get(r.id);
+    if (!g) { out.push(r); continue; }
+    if (seen.has(g.key)) continue;
+    seen.add(g.key);
+    const first = REPORTS.find((x) => x.id === g.views[0].id) || r;
+    out.push({ id: first.id, cat: first.cat, name: g.name, sub: g.sub, group: g });
+  }
+  return out;
+}
+
 export function reportById(id: string): ReportDef | undefined {
   return REPORTS.find((r) => r.id === id);
 }
@@ -137,7 +229,10 @@ export interface ReportCol { h: string; r?: boolean; key?: string }
 export interface ReportStat { k: string; v: string; tone?: 'g' | 'w' | 'd' | 'a' }
 
 /** What a tapped row opens. */
-export type RowRefKind = 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month';
+export type RowRefKind = 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month' | 'ledger' | 'party' | 'voucher' | 'vouchertype';
+
+/** How a row of a statement is drawn: a section heading, an ordinary line, a subtotal, or the bottom line. */
+export type RowKind = 'head' | 'line' | 'sub' | 'total';
 export interface RowRef { kind: RowRefKind; id: string }
 
 export const INVENTORY_METRIC_REPORTS = ['days-out-of-stock', 'amc', 'aamc', 'aawc'] as const;
@@ -159,6 +254,13 @@ export interface ReportResult {
   notImplemented?: boolean;
   /** Set when the builder threw, so the UI can say so calmly. */
   error?: string;
+  /**
+   * Drawn as a financial statement (sections, lines, subtotals and a bottom
+   * line) rather than as a grid. Parallel to `rows` when given.
+   */
+  rowKinds?: RowKind[];
+  /** Offer a search box over the rows — for lists that run long. */
+  searchable?: boolean;
 }
 
 export function cellText(c: Cell): string {
@@ -631,7 +733,7 @@ const NOMINAL: Record<string, string> = {
   n_discount: 'Discounts given', n_loyalty: 'Loyalty redemptions',
 };
 function accName(db: DB, id: string): string {
-  return NOMINAL[id] || db.accounts.find((a) => a.id === id)?.name || id;
+  return db.coa?.find((l) => l.id === id)?.name || NOMINAL[id] || db.accounts.find((a) => a.id === id)?.name || id;
 }
 /** Reference allAccountIds(), 3192 — this port has no DB.coa, so: real accounts + the nominals actually posted to. */
 function allAccountIds(db: DB): string[] {
@@ -760,7 +862,7 @@ RPT['day-close'] = (db, _f, _t, money) => {
       { k: 'Opening float', v: money(sh.openingFloat) },
       { k: 'Cash sales', v: money(z.cash), tone: 'g' },
       { k: 'Expected in drawer', v: money(z.expected), tone: 'a' },
-      { k: 'Bills', v: String(z.count) },
+      { k: 'Sales', v: String(z.count) },
     ],
     cols: [{ h: 'Line' }, { h: 'Amount', r: true }],
     rows,
@@ -800,7 +902,7 @@ RPT['sale-summary'] = (db, from, to, money) => {
     title: 'Sale summary',
     stats: [
       { k: 'Total sales', v: money(gross), tone: 'g' },
-      { k: 'Bills', v: String(sales.length) },
+      { k: 'Sales', v: String(sales.length) },
       { k: 'Gross profit', v: money(profit), tone: 'a' },
       { k: 'Still owing', v: money(due), tone: due ? 'w' : undefined },
     ],
@@ -811,7 +913,7 @@ RPT['sale-summary'] = (db, from, to, money) => {
       ['VAT included', m(tax)],
       ['Net of VAT', m(gross - tax)],
       ['Cost of goods sold', m(cogs)],
-      ['Average bill', m(sales.length ? gross / sales.length : 0)],
+      ['Average sale', m(sales.length ? gross / sales.length : 0)],
       ['Settled at the till', m(gross - due)],
     ],
     foot: ['Gross profit', m(profit)],
@@ -915,7 +1017,7 @@ RPT['hourly-sales'] = (db, from, to) => {
   return {
     title: 'Hourly sales',
     stats: rows.length ? [{ k: 'Busiest hour', v: pad2(best) + ':00', tone: 'a' }] : undefined,
-    cols: [{ h: 'Hour' }, { h: 'Bills', r: true }, { h: 'Sales', r: true }],
+    cols: [{ h: 'Hour' }, { h: 'Count', r: true }, { h: 'Sales', r: true }],
     rows,
     foot: ['Total', sumCol(rows, 1), m(sumCol(rows, 2))],
   };
@@ -974,7 +1076,7 @@ RPT['sales-by-customer'] = (db, from, to) => {
     .sort((a, b) => b.v - a.v);
   return {
     title: 'Sales by customer',
-    cols: [{ h: 'Customer' }, { h: 'Bills', r: true }, { h: 'Value', r: true }, { h: 'Unpaid', r: true }],
+    cols: [{ h: 'Customer' }, { h: 'Sales', r: true }, { h: 'Value', r: true }, { h: 'Unpaid', r: true }],
     rows: groups.map((g) => [g.n, g.c, m(g.v), dash(g.d)]),
     foot: ['Total', groups.reduce((a, g) => a + g.c, 0),
       m(groups.reduce((a, g) => a + g.v, 0)), m(groups.reduce((a, g) => a + g.d, 0))],
@@ -991,7 +1093,7 @@ RPT['sales-by-user'] = (db, from, to) => {
   const value = groups.reduce((a, g) => a + g.v, 0);
   return {
     title: 'Sales by cashier',
-    cols: [{ h: 'Cashier' }, { h: 'Bills', r: true }, { h: 'Value', r: true }, { h: 'Average', r: true }],
+    cols: [{ h: 'Cashier' }, { h: 'Sales', r: true }, { h: 'Value', r: true }, { h: 'Average', r: true }],
     rows: groups.map((g) => [g.n, g.c, m(g.v), m(g.c ? g.v / g.c : 0)]),
     foot: ['Total', bills, m(value), m(bills ? value / bills : 0)],
   };
@@ -1077,7 +1179,7 @@ RPT['user-hourly'] = (db, from, to) => {
   });
   return {
     title: 'User sales by hour',
-    cols: [{ h: 'Rep' }, { h: 'Hour' }, { h: 'Bills', r: true }, { h: 'Sales', r: true }],
+    cols: [{ h: 'Rep' }, { h: 'Hour' }, { h: 'Count', r: true }, { h: 'Sales', r: true }],
     rows,
     foot: ['Total', '', sumCol(rows, 2), m(sumCol(rows, 3))],
   };
@@ -1116,8 +1218,8 @@ RPT['bill-profit'] = (db, from, to) => {
   const total = sumCol(rows, 2);
   const profit = sumCol(rows, 3);
   return {
-    title: 'Bill-wise profit',
-    cols: [{ h: 'Bill' }, { h: 'Customer' }, { h: 'Total', r: true }, { h: 'Profit', r: true }, { h: 'Margin', r: true }],
+    title: 'Sale-wise profit',
+    cols: [{ h: 'Sale' }, { h: 'Customer' }, { h: 'Total', r: true }, { h: 'Profit', r: true }, { h: 'Margin', r: true }],
     rows,
     foot: ['Total', '', m(total), m(profit), pct(total ? profit / total * 100 : 0)],
     rowRefs: sales.map((s) => ({ kind: 'sale' as const, id: s.id })),
@@ -1137,15 +1239,15 @@ RPT['sales-by-items'] = (db, from, to) => {
     });
   });
   return {
-    title: 'Sales by items (per bill)',
+    title: 'Sales by items (per sale)',
     cols: [
-      { h: 'Bill' }, { h: 'Customer' }, { h: 'Item' }, { h: 'Qty', r: true },
+      { h: 'Sale' }, { h: 'Customer' }, { h: 'Item' }, { h: 'Qty', r: true },
       { h: 'Price', r: true }, { h: 'Value', r: true }, { h: 'Profit', r: true },
     ],
     rows,
     foot: ['Total', '', '', sumCol(rows, 3), '', m(sumCol(rows, 5)), m(sumCol(rows, 6))],
     rowRefs: refs,
-    note: sales.length === 30 ? 'The 30 most recent bills in the range.' : undefined,
+    note: sales.length === 30 ? 'The 30 most recent sales in the range.' : undefined,
   };
 };
 
@@ -1176,7 +1278,7 @@ RPT['discounts-granted'] = (db, from, to) => {
   ]);
   return {
     title: 'Discounts granted',
-    cols: [{ h: 'Bill' }, { h: 'By' }, { h: 'Customer' }, { h: 'Total', r: true }, { h: 'Discount', r: true }],
+    cols: [{ h: 'Sale' }, { h: 'By' }, { h: 'Customer' }, { h: 'Total', r: true }, { h: 'Discount', r: true }],
     rows,
     foot: ['Total', '', '', m(sumCol(rows, 3)), m(sumCol(rows, 4))],
     rowRefs: sales.map((s) => ({ kind: 'sale' as const, id: s.id })),
@@ -1206,8 +1308,8 @@ RPT['voided-items'] = (db, from, to) => {
     s.no, fmtDay(s.voidedAt || s.ts), userName(db, s.userId), s.voidReason || '—', m(s.total),
   ]);
   return {
-    title: 'Voided bills',
-    cols: [{ h: 'Bill' }, { h: 'Voided' }, { h: 'By' }, { h: 'Reason' }, { h: 'Value', r: true }],
+    title: 'Voided sales',
+    cols: [{ h: 'Sale' }, { h: 'Voided' }, { h: 'By' }, { h: 'Reason' }, { h: 'Value', r: true }],
     rows,
     foot: ['Total', '', '', '', m(sumCol(rows, 4))],
     rowRefs: sales.map((s) => ({ kind: 'sale' as const, id: s.id })),
@@ -1271,7 +1373,7 @@ RPT['purchase-summary'] = (db, from, to, money) => {
     title: 'Purchase summary',
     stats: [
       { k: 'Bought', v: money(tot) },
-      { k: 'Bills', v: String(ps.length) },
+      { k: 'Sales', v: String(ps.length) },
       { k: 'Still owing', v: money(due), tone: due ? 'w' : undefined },
     ],
     cols: [{ h: 'Bill' }, { h: 'Supplier' }, { h: 'Total', r: true }, { h: 'Due', r: true }],
@@ -1398,7 +1500,7 @@ RPT['payment-types'] = (db, from, to) => {
   const tot = ss.reduce((a, s) => a + s.total, 0);
   return {
     title: 'Payment types',
-    cols: [{ h: 'Tender' }, { h: 'Bills', r: true }, { h: 'Value', r: true }, { h: 'Share', r: true }],
+    cols: [{ h: 'Tender' }, { h: 'Sales', r: true }, { h: 'Value', r: true }, { h: 'Share', r: true }],
     rows: Object.keys(map).map((k) => [
       METHOD_NAMES[k] || k, map[k].c, m(map[k].v), pct(tot ? map[k].v / tot * 100 : 0),
     ]),
@@ -1464,11 +1566,11 @@ RPT['unpaid-sales'] = (db) => {
   });
   return {
     title: 'Unpaid sales',
-    cols: [{ h: 'Bill' }, { h: 'Customer' }, { h: 'Age', r: true }, { h: 'Due', r: true }],
+    cols: [{ h: 'Sale' }, { h: 'Customer' }, { h: 'Age', r: true }, { h: 'Due', r: true }],
     rows,
     foot: ['Total', '', '', m(sumCol(rows, 3))],
     rowRefs: ss.map((s) => ({ kind: 'sale' as const, id: s.id })),
-    note: 'Every open customer bill, oldest first — the range does not apply.',
+    note: 'Every open customer sale, oldest first — the range does not apply.',
   };
 };
 
@@ -1566,7 +1668,7 @@ RPT['ar-aging-details'] = (db) => {
   });
   return {
     title: 'AR ageing details',
-    cols: [{ h: 'Bill' }, { h: 'Customer' }, { h: 'Date' }, { h: 'Age', r: true }, { h: 'Bucket' }, { h: 'Due', r: true }],
+    cols: [{ h: 'Sale' }, { h: 'Customer' }, { h: 'Date' }, { h: 'Age', r: true }, { h: 'Bucket' }, { h: 'Due', r: true }],
     rows,
     foot: ['Total', '', '', '', '', m(sumCol(rows, 5))],
     rowRefs: ss.map((s) => ({ kind: 'sale' as const, id: s.id })),
@@ -1581,7 +1683,7 @@ RPT['invoice-details'] = (db, from, to) => {
   ]);
   return {
     title: 'Invoice details',
-    cols: [{ h: 'Bill' }, { h: 'Customer' }, { h: 'Total', r: true }, { h: 'Settled', r: true }, { h: 'Due', r: true }],
+    cols: [{ h: 'Sale' }, { h: 'Customer' }, { h: 'Total', r: true }, { h: 'Settled', r: true }, { h: 'Due', r: true }],
     rows,
     foot: ['Total', '', m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4))],
     rowRefs: ss.map((s) => ({ kind: 'sale' as const, id: s.id })),
@@ -1792,44 +1894,53 @@ RPT['batch-movement'] = (db, from, to) => {
 
 /* --- Batch balances: what each lot still holds --- */
 RPT['batch-balances'] = (db) => {
+  // each item once, its lots listed beneath it — soonest expiry first in both
+  const daysTo = (iso: string) => (iso ? Math.floor((new Date(iso).getTime() - Date.now()) / 86400000) : null);
+  const items = db.products
+    .filter((p) => p.trackBatches && (p.batches || []).some((b) => b.qty > 0))
+    .map((p) => {
+      const lots = (p.batches || []).filter((b) => b.qty > 0)
+        .map((b) => ({ b, days: daysTo(b.expiry) }))
+        .sort((x, y) => (x.days ?? 1e9) - (y.days ?? 1e9));
+      return { p, lots, soonest: lots[0]?.days ?? 1e9 };
+    })
+    .sort((x, y) => x.soonest - y.soonest);
+
   const rows: Cell[][] = [];
-  db.products.forEach((p) => {
-    if (!p.trackBatches) return;
-    (p.batches || []).forEach((b) => {
-      if (b.qty <= 0) return;
-      const days = b.expiry
-        ? Math.floor((new Date(b.expiry).getTime() - Date.now()) / 86400000)
-        : null;
-      const tone: CellTone = days === null ? 'muted'
-        : days < 0 ? 'danger'
-          : days <= 7 ? 'danger'
-            : days <= 90 ? 'warn' : 'good';
+  let qty = 0;
+  let value = 0;
+  items.forEach(({ p, lots }) => {
+    const q = lots.reduce((t, l) => t + l.b.qty, 0);
+    qty += q;
+    value += q * p.cost;
+    rows.push([
+      { text: p.name, tone: 'accent' as CellTone },
+      { text: lots.length + (lots.length === 1 ? ' lot' : ' lots'), tone: 'muted' as CellTone },
+      '',
+      { text: String(q), n: q },
+      m(q * p.cost),
+    ]);
+    lots.forEach(({ b, days }) => {
+      const tone: CellTone = days === null ? 'muted' : days <= 7 ? 'danger' : days <= 90 ? 'warn' : 'good';
       rows.push([
-        p.name,
-        b.no,
-        { text: b.expiry ? shortDay(b.expiry) : 'none', tone },
-        { text: days === null ? '—' : String(days), n: days ?? 0, tone },
+        { text: '   ' + b.no, tone: 'muted' as CellTone },
+        { text: b.expiry ? shortDay(b.expiry) : 'No expiry', tone },
+        { text: days === null ? '—' : days < 0 ? 'Expired' : days + 'd', n: days ?? 0, tone },
         { text: String(b.qty), n: b.qty },
         m(b.qty * p.cost),
       ]);
     });
   });
 
-  rows.sort((a, b) => {
-    const x = typeof a[3] === 'object' ? (a[3] as any).n : 0;
-    const y = typeof b[3] === 'object' ? (b[3] as any).n : 0;
-    return x - y;
-  });
-
   return {
-    title: 'Batch balances',
+    title: 'Batches & expiry',
     cols: [
-      { h: 'Item' }, { h: 'Batch' }, { h: 'Expires' }, { h: 'Days', r: true },
+      { h: 'Item / lot' }, { h: 'Expires' }, { h: 'Left', r: true },
       { h: 'Qty', r: true }, { h: 'Value', r: true },
     ],
     rows,
-    foot: ['Total', '', '', '', { text: String(sumCol(rows, 4)), n: sumCol(rows, 4) }, m(sumCol(rows, 5))],
-    note: rows.length ? 'Soonest to expire first.' : 'No tracked lot is holding stock.',
+    foot: ['Total', '', '', { text: String(qty), n: qty }, m(value)],
+    note: rows.length ? 'Items whose lots expire soonest come first.' : 'No tracked lot is holding stock.',
   };
 };
 
@@ -2087,28 +2198,95 @@ RPT['tax-summary'] = (db, from, to, money) => {
   };
 };
 
+/*
+ * Receivable and payable statements: every customer (or supplier) with money
+ * moving in the period or a balance carried into it — their opening balance,
+ * each bill and payment with a running balance, and what they close on.
+ * Owed is shown positive both ways: what a customer owes you, what you owe a
+ * supplier.
+ */
+function statementReport(db: DB, from: number, to: number, type: 'customer' | 'supplier'): ReportResult {
+  const title = type === 'customer' ? 'Receivable statement' : 'Payable statement';
+  const cols: ReportCol[] = [
+    { h: 'Date' }, { h: type === 'customer' ? 'Customer' : 'Supplier' }, { h: 'Detail' },
+    { h: type === 'customer' ? 'Billed' : 'Paid', r: true }, { h: type === 'customer' ? 'Received' : 'Billed', r: true }, { h: 'Balance', r: true },
+  ];
+  const sign = type === 'customer' ? 1 : -1;
+  const rows: Cell[][] = [];
+  const refs: (RowRef | null)[] = [];
+  let totalDr = 0; let totalCr = 0; let totalClose = 0; let parties = 0;
+  db.parties.filter((p) => p.type === type).forEach((p) => {
+    const all = partyLedgerRows(db, p.id);
+    const before = all.filter((r) => from && new Date(r.ts).getTime() < from);
+    const inRange = all.filter((r) => within(r.ts, from, to));
+    const opening = sign * (before.length ? before[before.length - 1].balance : 0);
+    if (!inRange.length && Math.abs(opening) < 0.5) return;
+    parties++;
+    rows.push([from ? shortDay(new Date(from).toISOString()) : '', p.name, 'Opening balance', '', '', m(opening)]);
+    refs.push(null);
+    let run = opening;
+    inRange.forEach((r) => {
+      run += sign * (r.debit - r.credit);
+      const a = type === 'customer' ? r.debit : r.debit;
+      const b = type === 'customer' ? r.credit : r.credit;
+      totalDr += a; totalCr += b;
+      rows.push([shortDay(r.ts), p.name, r.memo, dash(a, 'accent'), dash(b, 'good'), m(run)]);
+      refs.push(r.ref || null);
+    });
+    rows.push(['', p.name, 'Closing balance', '', '', { text: money0(run), n: run, tone: run > 0 ? 'warn' : 'good' }]);
+    refs.push(null);
+    totalClose += run;
+  });
+  if (!parties) return empty(title, cols, 'No ' + type + ' has a balance or any sales in this period.');
+  return {
+    title,
+    stats: [
+      { k: type === 'customer' ? 'Customers' : 'Suppliers', v: String(parties) },
+      { k: type === 'customer' ? 'Owed to you' : 'You owe', v: money0(totalClose), tone: totalClose > 0 ? 'w' : 'g' },
+    ],
+    cols,
+    rows,
+    rowRefs: refs,
+    foot: ['Total', '', '', m(totalDr), m(totalCr), m(totalClose)],
+    note: (type === 'customer' ? 'Every customer' : 'Every supplier') + ' with a balance or activity in the period, oldest first.',
+  };
+}
+RPT['receivable-statement'] = (db, from, to) => statementReport(db, from, to, 'customer');
+RPT['payable-statement'] = (db, from, to) => statementReport(db, from, to, 'supplier');
+
 /* --- Party statement — reference 4072. The prototype read the chosen party
        from `UI.params`; with no picker here it runs on the first active
        party, which the note says. --- */
-RPT['party-statement'] = (db) => {
-  const p = db.parties.filter((x) => x.active)[0];
+RPT['party-statement'] = (db, from, to) => {
   const cols: ReportCol[] = [
-    { h: 'Date' }, { h: 'Detail' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Balance', r: true },
+    { h: 'Party' }, { h: 'Type' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Balance', r: true },
   ];
-  if (!p) return empty('Party statement', cols, 'No parties yet — add a customer or supplier first.');
-  const rows = partyLedgerRows(db, p.id);
-  const view = rows.slice().reverse();
-  const closing = rows.length ? rows[rows.length - 1].balance : 0;
+  const parties = db.parties.filter((x) => x.active);
+  if (!parties.length) return empty('Party statement', cols, 'No parties yet — add a customer or supplier first.');
+  const rows: Cell[][] = [];
+  const rowRefs: RowRef[] = [];
+  parties
+    .map((p) => {
+      const all = partyLedgerRows(db, p.id);
+      const inRange = all.filter((r) => within(r.ts, from, to));
+      const closing = all.filter((r) => new Date(r.ts).getTime() <= to).reduce((t, r) => t + r.debit - r.credit, 0);
+      return { p, dr: inRange.reduce((t, r) => t + r.debit, 0), cr: inRange.reduce((t, r) => t + r.credit, 0), closing };
+    })
+    .sort((a, b) => Math.abs(b.closing) - Math.abs(a.closing))
+    .forEach(({ p, dr, cr, closing }) => {
+      rows.push([p.name, p.type === 'supplier' ? 'Supplier' : 'Customer', dash(dr, 'accent'), dash(cr, 'good'), {
+        text: money0(Math.abs(closing)) + (closing >= 0 ? ' Dr' : ' Cr'), n: closing, tone: closing > 0 ? 'warn' : closing < 0 ? 'good' : 'muted',
+      }]);
+      rowRefs.push({ kind: 'party', id: p.id });
+    });
   return {
     title: 'Party statement',
-    stats: [{ k: p.name, v: money0(closing), tone: closing > 0 ? 'w' : 'g' }],
     cols,
-    rows: view.map((r) => [
-      shortDay(r.ts), r.memo, dash(r.debit, 'accent'), dash(r.credit, 'good'), m(r.balance),
-    ]),
-    foot: ['Closing balance', '', '', '', m(closing)],
-    rowRefs: view.map((r) => r.ref || null),
-    note: 'Running ledger for ' + p.name + '.',
+    rows,
+    foot: ['Total', '', m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4))],
+    rowRefs,
+    searchable: true,
+    note: 'Tap a customer or supplier for their statement over the range.',
   };
 };
 
@@ -2140,27 +2318,34 @@ RPT['ledger-summary'] = (db, from, to) => {
     cols: [{ h: 'Ledger' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Closing', r: true }, { h: 'Opening', r: true }, { h: 'Current', r: true }],
     rows,
     foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4)), m(sumCol(rows, 5))],
-    rowRefs: ids.map((id) => ({ kind: 'entry', id })),
-    note: 'All ledgers, grouped by asset, equity and liability, with opening, current and closing balances.',
+    rowRefs: ids.map((id) => ({ kind: 'ledger', id })),
+    note: 'All ledgers, grouped by asset, equity and liability, with opening, current and closing balances. Tap one for its postings.',
+    searchable: true,
   };
 };
 
 /* --- Voucher summary — every journal voucher in the period, with a debit and credit total --- */
 RPT['voucher-summary'] = (db, from, to) => {
-  const rows: Cell[][] = db.journal
-    .filter((e) => within(e.ts, from, to))
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
-    .map((e) => {
-      const dr = e.lines.reduce((a, l) => a + (l.dr || 0), 0);
-      const cr = e.lines.reduce((a, l) => a + (l.cr || 0), 0);
-      return [shortDay(e.ts), 'Journal', e.ref || '—', e.memo || '—', m(dr), m(cr)];
-    });
+  // every voucher in the range, gathered under the kind of transaction it records
+  const groups = new Map<string, { n: number; dr: number; cr: number }>();
+  db.journal.filter((e) => within(e.ts, from, to)).forEach((e) => {
+    const t = voucherTypeOf(db, e);
+    const g = groups.get(t) || { n: 0, dr: 0, cr: 0 };
+    g.n += 1;
+    g.dr += e.lines.reduce((a, l) => a + (l.dr || 0), 0);
+    g.cr += e.lines.reduce((a, l) => a + (l.cr || 0), 0);
+    groups.set(t, g);
+  });
+  const order = [...groups.entries()].sort((x, y) => VOUCHER_ORDER.indexOf(x[0]) - VOUCHER_ORDER.indexOf(y[0]));
+  const rows: Cell[][] = order.map(([t, g]) => [t, { text: String(g.n), n: g.n }, m(g.dr), m(g.cr)]);
   return {
     title: 'Voucher summary',
-    cols: [{ h: 'Date' }, { h: 'Vch Type' }, { h: 'Vch No' }, { h: 'Narration' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }],
+    cols: [{ h: 'Vch Type' }, { h: 'Vouchers', r: true }, { h: 'Debit', r: true }, { h: 'Credit', r: true }],
     rows,
-    foot: ['Total', '', '', '', m(sumCol(rows, 4)), m(sumCol(rows, 5))],
-    note: 'Every journal voucher in the range, with its supporting debit and credit totals.',
+    foot: ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, m(sumCol(rows, 2)), m(sumCol(rows, 3))],
+    rowRefs: order.map(([t]) => ({ kind: 'vouchertype' as const, id: t })),
+    searchable: true,
+    note: 'Vouchers in the range by type. Tap a type for its vouchers, and a voucher for the ledgers it moved.',
   };
 };
 
@@ -2190,7 +2375,7 @@ RPT['chart-of-accounts'] = (db) => {
       const balance = dr - cr;
       groupDr += dr; groupCr += cr; groupBalance += balance;
       rows.push([l.code || l.id, l.name, (l.type || accType(db, l.id)).toString(), m(dr), m(cr), { text: money0(Math.abs(balance)) + (balance >= 0 ? ' Dr' : ' Cr'), n: balance }]);
-      rowRefs.push({ kind: 'entry', id: l.id });
+      rowRefs.push({ kind: 'ledger', id: l.id });
     });
     totalDr += groupDr; totalCr += groupCr; totalBalance += groupBalance;
     rows.push(['', `Total ${label}`, '', m(groupDr), m(groupCr), { text: money0(Math.abs(groupBalance)) + (groupBalance >= 0 ? ' Dr' : ' Cr'), n: groupBalance }]);
@@ -2222,12 +2407,14 @@ RPT['trial-balance'] = (db, _f, _t, money) => {
   const tc = keys.reduce((a, k) => { const n = accs[k].d - accs[k].c; return a + (n < 0 ? -n : 0); }, 0);
   const rows: Cell[][] = [];
   const rowRefs: (RowRef | null)[] = [];
+  const kinds: RowKind[] = [];
   [0, 1, 2, 3, 4].forEach((typeOrder) => {
     const group = keys.filter((id) => accountTypeOrder(accType(db, id)) === typeOrder);
     if (!group.length) return;
     const label = typeOrder === 0 ? 'Assets' : typeOrder === 1 ? 'Equity' : typeOrder === 2 ? 'Liabilities' : typeOrder === 3 ? 'Income' : 'Expenses';
     rows.push([label, '', '']);
     rowRefs.push(null);
+    kinds.push('head');
     let groupDebit = 0; let groupCredit = 0;
     group.forEach((k) => {
       const net = accs[k].d - accs[k].c;
@@ -2235,13 +2422,16 @@ RPT['trial-balance'] = (db, _f, _t, money) => {
       const credit = net < 0 ? -net : 0;
       groupDebit += debit; groupCredit += credit;
       rows.push([accName(db, k), debit ? m(debit) : '', credit ? m(credit) : '']);
-      rowRefs.push({ kind: 'entry', id: k });
+      rowRefs.push({ kind: 'ledger', id: k });
+      kinds.push('line');
     });
     rows.push([`Total ${label}`, m(groupDebit), m(groupCredit)]);
     rowRefs.push(null);
+    kinds.push('sub');
   });
   const ok = Math.abs(td - tc) < 2;
   return {
+    rowKinds: kinds,
     title: 'Trial balance',
     stats: [{ k: ok ? 'Books balance' : 'Out by', v: ok ? '✓' : money(Math.abs(td - tc)), tone: ok ? 'g' : 'd' }],
     cols: [{ h: 'Account' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }],
@@ -2267,7 +2457,7 @@ RPT['general-ledger'] = (db) => {
     cols: [{ h: 'Account' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Closing', r: true }],
     rows,
     foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3))],
-    rowRefs: ids.map((id) => ({ kind: 'entry', id })),
+    rowRefs: ids.map((id) => ({ kind: 'ledger', id })),
     note: 'Ledger balances are grouped by asset, equity and liability to match the accounting structure.',
   };
 };
@@ -2285,6 +2475,31 @@ RPT['pnl'] = (db, from, to, money) => {
     .reduce((a, c) => a + (c.total - creditNoteTax(c)), 0);
   const gp = sale - ret - cogs;
   const np = gp + inc - exp;
+  // what the expenses went on, largest first
+  const byCat = new Map<string, number>();
+  const ledgerOf = new Map<string, string>();
+  db.entries.filter((e) => e.direction === 'out' && within(e.ts, from, to))
+    .forEach((e) => {
+      const c = e.category || 'Other';
+      byCat.set(c, (byCat.get(c) || 0) + e.amount);
+      if (e.ledgerId) ledgerOf.set(c, e.ledgerId);
+    });
+  const cats = [...byCat.entries()].sort((x, y) => y[1] - x[1]);
+  const neg = (n: number): Cell => ({ text: '(' + money0(n) + ')', n: -n, tone: 'muted' });
+  const rows: Cell[][] = [];
+  const kinds: RowKind[] = [];
+  const refs: (RowRef | null)[] = [];
+  const add = (row: Cell[], kind: RowKind, ref: RowRef | null = null) => { rows.push(row); kinds.push(kind); refs.push(ref); };
+  add(['Trading', ''], 'head');
+  add(['Sales (net of VAT)', m(sale)], 'line', { kind: 'ledger', id: 'n_sales' });
+  add(['Less returns', neg(ret)], 'line');
+  add(['Less cost of goods sold', neg(cogs)], 'line', { kind: 'ledger', id: 'n_cogs' });
+  add(['Gross profit', mTone(gp, 'accent')], 'sub');
+  add(['Other income', ''], 'head');
+  add(['Other income', m(inc)], 'line', { kind: 'ledger', id: 'n_income' });
+  add(['Expenses', ''], 'head');
+  cats.forEach(([c, v]) => add([c, neg(v)], 'line', { kind: 'ledger', id: ledgerOf.get(c) || 'n_expense' }));
+  add(['Less expenses', neg(exp)], 'sub', { kind: 'ledger', id: 'n_expense' });
   return {
     title: 'Profit & loss',
     stats: [
@@ -2292,14 +2507,9 @@ RPT['pnl'] = (db, from, to, money) => {
       { k: 'Net profit', v: money(np), tone: np >= 0 ? 'g' : 'd' },
     ],
     cols: [{ h: 'Line' }, { h: 'Amount', r: true }],
-    rows: [
-      ['Sales (net of VAT)', m(sale)],
-      ['Less returns', { text: '(' + money0(ret) + ')', n: -ret, tone: 'muted' }],
-      ['Less cost of goods sold', { text: '(' + money0(cogs) + ')', n: -cogs, tone: 'muted' }],
-      ['Gross profit', mTone(gp, 'accent')],
-      ['Other income', m(inc)],
-      ['Less expenses', { text: '(' + money0(exp) + ')', n: -exp, tone: 'muted' }],
-    ],
+    rows,
+    rowKinds: kinds,
+    rowRefs: refs,
     foot: ['Net profit', m(np)],
   };
 };
@@ -2309,22 +2519,35 @@ RPT['pnl'] = (db, from, to, money) => {
 RPT['balance-sheet'] = (db, _f, _t, money) => {
   const ids = allAccountIds(db);
   const assets = ids.filter((id) => accType(db, id) === 'asset')
-    .map((id) => ({ n: accName(db, id), v: accountBalance(db, id) }));
+    .map((id) => ({ id, n: accName(db, id), v: accountBalance(db, id) }));
   const liab = ids.filter((id) => accType(db, id) === 'liability')
-    .map((id) => ({ n: accName(db, id), v: -accountBalance(db, id) }));
+    .map((id) => ({ id, n: accName(db, id), v: -accountBalance(db, id) }));
   const ta = assets.reduce((a, r) => a + r.v, 0);
   const tl = liab.reduce((a, r) => a + r.v, 0);
   const retained = ['n_sales', 'n_income', 'n_cogs', 'n_expense', 'n_discount', 'n_loyalty']
     .reduce((a, k) => a + nominalTotal(db, k), 0);
   const eq = -accountBalance(db, 'n_equity');
   const rows: Cell[][] = [
+    ['Assets', 'Assets', ''],
     ...assets.map((r) => ['Assets', r.n, m(r.v)] as Cell[]),
     ['Assets', 'Total assets', mTone(ta, 'accent')],
+    ['Liabilities', 'Liabilities', ''],
     ...liab.map((r) => ['Liabilities', r.n, m(r.v)] as Cell[]),
     ['Liabilities', 'Total liabilities', mTone(tl, 'accent')],
+    ['Equity', 'Equity', ''],
     ['Equity', 'Owner equity', m(eq)],
     ['Equity', 'Retained profit', m(retained)],
     ['Equity', 'Total equity', mTone(eq + retained, 'accent')],
+  ];
+  const rowKinds: RowKind[] = [
+    'head', ...assets.map(() => 'line' as RowKind), 'sub',
+    'head', ...liab.map(() => 'line' as RowKind), 'sub',
+    'head', 'line', 'line', 'sub',
+  ];
+  const rowRefs: (RowRef | null)[] = [
+    null, ...assets.map((r) => ({ kind: 'ledger' as const, id: r.id })), null,
+    null, ...liab.map((r) => ({ kind: 'ledger' as const, id: r.id })), null,
+    null, { kind: 'ledger', id: 'n_equity' }, null, null,
   ];
   const balanced = Math.abs(ta - (tl + eq + retained)) < 2;
   return {
@@ -2335,6 +2558,8 @@ RPT['balance-sheet'] = (db, _f, _t, money) => {
     ],
     cols: [{ h: 'Section' }, { h: 'Line' }, { h: 'Amount', r: true }],
     rows,
+    rowKinds,
+    rowRefs,
     foot: ['Balance', balanced ? 'Balanced' : 'Out of balance', m(ta - (tl + eq + retained))],
   };
 };
@@ -2500,4 +2725,224 @@ export function sortRows(
     rows: idx.map((n) => result.rows[n]),
     rowRefs: refs ? idx.map((n) => refs[n] || null) : undefined,
   };
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Drill-downs: one ledger, one party, one voucher                     */
+/* ------------------------------------------------------------------ */
+
+/** Every posting to one ledger in the range, after its opening balance, with a running balance. */
+export function ledgerDrill(db: DB, accId: string, from: number, to: number): ReportResult {
+  const name = accName(db, accId);
+  let opening = 0;
+  const lines: { ts: string; ref: string; memo: string; dr: number; cr: number }[] = [];
+  db.journal.forEach((e) => {
+    const at = new Date(e.ts).getTime();
+    e.lines.forEach((l) => {
+      if (l.acc !== accId) return;
+      if (at < from) opening += (l.dr || 0) - (l.cr || 0);
+      else if (at <= to) lines.push({ ts: e.ts, ref: e.ref || '', memo: e.memo || '', dr: l.dr || 0, cr: l.cr || 0 });
+    });
+  });
+  lines.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  const bal = (n: number): Cell => ({ text: money0(Math.abs(n)) + (n >= 0 ? ' Dr' : ' Cr'), n });
+  let run = opening;
+  const rows: Cell[][] = [['', 'Opening Balance', '', '', bal(opening)]];
+  const rowRefs: (RowRef | null)[] = [null];
+  lines.forEach((l) => {
+    run += l.dr - l.cr;
+    rows.push([shortDay(l.ts), (l.ref ? l.ref + ' · ' : '') + l.memo, dash(l.dr, 'accent'), dash(l.cr, 'good'), bal(run)]);
+    const sale = l.ref ? db.sales.find((x) => x.no === l.ref) : undefined;
+    const pu = !sale && l.ref ? db.purchases.find((x) => x.no === l.ref) : undefined;
+    rowRefs.push(sale ? { kind: 'sale', id: sale.id } : pu ? { kind: 'purchase', id: pu.id } : null);
+  });
+  const dr = lines.reduce((t, l) => t + l.dr, 0);
+  const cr = lines.reduce((t, l) => t + l.cr, 0);
+  return {
+    title: name,
+    stats: [
+      { k: 'Opening', v: money0(opening), tone: 'a' },
+      { k: 'Closing', v: money0(run), tone: run >= 0 ? 'g' : 'w' },
+    ],
+    cols: [{ h: 'Date' }, { h: 'Particulars' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Balance', r: true }],
+    rows,
+    foot: ['Closing', '', m(dr), m(cr), bal(run)],
+    rowRefs,
+    searchable: true,
+    note: lines.length ? undefined : 'Nothing was posted to ' + name + ' in this range.',
+  };
+}
+
+/** One customer's or supplier's statement over the range, from their opening balance. */
+export function partyDrill(db: DB, partyId: string, from: number, to: number): ReportResult {
+  const p = db.parties.find((x) => x.id === partyId);
+  const all = partyLedgerRows(db, partyId);
+  const opening = all.filter((r) => new Date(r.ts).getTime() < from).reduce((t, r) => t + r.debit - r.credit, 0);
+  const inRange = all.filter((r) => within(r.ts, from, to));
+  let run = opening;
+  const rows: Cell[][] = [['', 'Opening Balance', '', '', m(opening)]];
+  const rowRefs: (RowRef | null)[] = [null];
+  inRange.forEach((r) => {
+    run += r.debit - r.credit;
+    rows.push([shortDay(r.ts), r.memo, dash(r.debit, 'accent'), dash(r.credit, 'good'), m(run)]);
+    rowRefs.push(r.ref || null);
+  });
+  return {
+    title: p?.name || 'Party',
+    stats: [
+      { k: 'Opening', v: money0(opening), tone: 'a' },
+      { k: 'Closing', v: money0(run), tone: run > 0 ? 'w' : 'g' },
+    ],
+    cols: [{ h: 'Date' }, { h: 'Detail' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Balance', r: true }],
+    rows,
+    foot: ['Closing balance', '', m(inRange.reduce((t, r) => t + r.debit, 0)), m(inRange.reduce((t, r) => t + r.credit, 0)), m(run)],
+    rowRefs,
+    searchable: true,
+  };
+}
+
+/** The ledgers one journal voucher moved; each opens its ledger. */
+export function voucherDrill(db: DB, entryId: string): ReportResult {
+  const e = db.journal.find((x) => x.id === entryId);
+  if (!e) return empty('Voucher', [{ h: 'Ledger' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }], 'That voucher is gone.');
+  const rows: Cell[][] = e.lines.map((l) => [accName(db, l.acc), dash(l.dr || 0, 'accent'), dash(l.cr || 0, 'good')]);
+  return {
+    title: (e.ref || 'Voucher') + ' · ' + shortDay(e.ts),
+    cols: [{ h: 'Ledger' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }],
+    rows,
+    foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2))],
+    rowRefs: e.lines.map((l) => ({ kind: 'ledger' as const, id: l.acc })),
+    note: e.memo || undefined,
+  };
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Voucher types                                                       */
+/* ------------------------------------------------------------------ */
+
+const VOUCHER_ORDER = [
+  'Cash sale', 'Sales invoice', 'Cost of sales', 'Sale void', 'Credit note', 'Receipt',
+  'Purchase', 'Purchase void', 'Payment', 'Expense', 'Income', 'Contra',
+  'Stock adjustment', 'Production', 'Cash short / over', 'Opening balance', 'Correction', 'Journal',
+];
+
+/** What a journal voucher records, read from the reference and narration it was posted with. */
+export function voucherTypeOf(db: DB, e: { ref?: string; memo?: string }): string {
+  const ref = e.ref || '';
+  const memo = e.memo || '';
+  if (/^Transfer\b/.test(memo)) return 'Contra';
+  const sale = ref ? db.sales.find((x) => x.no === ref) : undefined;
+  if (sale) {
+    if (/ — against /.test(memo)) return 'Expense';
+    if (/^(Cost of sale|Reverse cost)/.test(memo)) return 'Cost of sales';
+    if (/^Void/.test(memo)) return 'Sale void';
+    return sale.method === 'credit' || (sale.paidAtSale ?? sale.total) < sale.total ? 'Sales invoice' : 'Cash sale';
+  }
+  if (ref && db.purchases.some((x) => x.no === ref)) return /^Void/.test(memo) ? 'Purchase void' : 'Purchase';
+  if (ref && (db.creditNotes || []).some((x) => x.no === ref)) return 'Credit note';
+  if (ref === 'RCT') return 'Receipt';
+  if (ref === 'PAY') return 'Payment';
+  if (ref === 'EDIT' || ref === 'DEL') return /receipt/i.test(memo) ? 'Receipt' : /payment/i.test(memo) ? 'Payment' : 'Correction';
+  if (ref === 'EXP') return 'Expense';
+  if (ref === 'INC') return 'Income';
+  if (ref === 'OPENING' || ref === 'BRANCH') return 'Opening balance';
+  if (ref === 'SHIFT') return 'Cash short / over';
+  if (/^Production run/.test(memo)) return 'Production';
+  if (/stock|adjust/i.test(memo)) return 'Stock adjustment';
+  return 'Journal';
+}
+
+/** The vouchers of one type in the range; each opens its lines. */
+export function voucherTypeDrill(db: DB, type: string, from: number, to: number): ReportResult {
+  const list = db.journal
+    .filter((e) => within(e.ts, from, to) && voucherTypeOf(db, e) === type)
+    .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  const rows: Cell[][] = list.map((e) => {
+    const dr = e.lines.reduce((a, l) => a + (l.dr || 0), 0);
+    return [shortDay(e.ts), e.ref || '—', e.memo || '—', m(dr)];
+  });
+  return {
+    title: type,
+    cols: [{ h: 'Date' }, { h: 'Vch No' }, { h: 'Narration' }, { h: 'Amount', r: true }],
+    rows,
+    foot: ['Total', '', '', m(sumCol(rows, 3))],
+    rowRefs: list.map((e) => ({ kind: 'voucher' as const, id: e.id })),
+    searchable: true,
+    note: rows.length ? undefined : 'No ' + type.toLowerCase() + ' vouchers in this range.',
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Detailed ledgers: groups, their ledgers, opening and closing        */
+/* ------------------------------------------------------------------ */
+
+/** The detailed view of a statement, where it has one. */
+export const DETAIL_VIEW: Record<string, string> = {
+  'trial-balance': 'trial-balance-detail',
+  'balance-sheet': 'balance-sheet-detail',
+  'general-ledger': 'general-ledger-detail',
+};
+
+function detailedLedgers(db: DB, from: number, to: number, title: string, types: AccType[]): ReportResult {
+  const bal = (n: number): CellObj => ({ text: n ? money0(Math.abs(n)) + (n >= 0 ? ' Dr' : ' Cr') : '—', n, tone: n ? undefined : 'muted' });
+  const label: Record<AccType, string> = { asset: 'Assets', liability: 'Liabilities', equity: 'Equity', income: 'Income', expense: 'Expenses' };
+  const ids = orderedLedgerIds(db);
+  const rows: Cell[][] = [];
+  const rowRefs: (RowRef | null)[] = [];
+  const total = { o: 0, d: 0, c: 0, x: 0 };
+  types.forEach((t) => {
+    const mine = ids.filter((id) => accType(db, id) === t).map((id) => {
+      let o = 0; let d = 0; let c = 0;
+      db.journal.forEach((e) => {
+        const at = new Date(e.ts).getTime();
+        e.lines.forEach((l) => {
+          if (l.acc !== id) return;
+          if (at < from) o += (l.dr || 0) - (l.cr || 0);
+          else if (at <= to) { d += l.dr || 0; c += l.cr || 0; }
+        });
+      });
+      return { id, o, d, c, x: o + d - c };
+    }).filter((r) => r.o || r.d || r.c);
+    if (!mine.length) return;
+    rows.push([{ text: label[t].toUpperCase(), tone: 'accent' }, '', '', '', '']);
+    rowRefs.push(null);
+    const g = { o: 0, d: 0, c: 0, x: 0 };
+    mine.forEach((r) => {
+      rows.push(['   ' + accName(db, r.id), bal(r.o), dash(r.d, 'accent'), dash(r.c, 'good'), bal(r.x)]);
+      rowRefs.push({ kind: 'ledger', id: r.id });
+      g.o += r.o; g.d += r.d; g.c += r.c; g.x += r.x;
+    });
+    rows.push([{ text: 'Total ' + label[t], tone: 'accent' }, bal(g.o), m(g.d), m(g.c), bal(g.x)]);
+    rowRefs.push(null);
+    total.o += g.o; total.d += g.d; total.c += g.c; total.x += g.x;
+  });
+  return {
+    title,
+    cols: [{ h: 'Group / ledger' }, { h: 'Opening', r: true }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Closing', r: true }],
+    rows,
+    foot: ['Total', bal(total.o), m(total.d), m(total.c), bal(total.x)],
+    rowRefs,
+    searchable: true,
+    note: 'Opening is the balance before the range; debit and credit are the movement within it. Tap a ledger for its postings.',
+  };
+}
+
+RPT['trial-balance-detail'] = (db, from, to) =>
+  detailedLedgers(db, from, to, 'Trial balance · detailed', ['asset', 'equity', 'liability', 'income', 'expense']);
+RPT['balance-sheet-detail'] = (db, from, to) =>
+  detailedLedgers(db, from, to, 'Balance sheet · detailed', ['asset', 'liability', 'equity']);
+RPT['general-ledger-detail'] = (db, from, to) =>
+  detailedLedgers(db, from, to, 'General ledger · detailed', ['asset', 'equity', 'liability', 'income', 'expense']);
+
+/** Reports that show what was earned — behind "View profit". */
+export const PROFIT_REPORTS = new Set(['profit-margin', 'bill-profit', 'user-profit', 'sales-by-items', 'pnl']);
+
+/** The permission a report needs beyond "Reports: view", if any. */
+export function reportPermission(id: string): string | null {
+  if (PROFIT_REPORTS.has(id)) return 'inventory.view_profit';
+  const cat = reportById(id)?.cat;
+  if (cat === 'Money' || cat === 'Tax & books') return 'reports.money';
+  return null;
 }

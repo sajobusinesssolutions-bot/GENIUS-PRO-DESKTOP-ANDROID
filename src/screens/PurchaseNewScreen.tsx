@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, TextInput } from 'react-native';
+import { View, Text, ScrollView, Platform, TextInput } from 'react-native';
+import { Pressable } from '../components/Press';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
   Button, Panel, SectionLabel, DetailRow, InfoBanner, StickyBar,
-  EmptyBlock, OptionTiles, Field, Badge,
+  EmptyBlock, OptionTiles, Field, FieldShell, Badge,
 } from '../components/ui';
 import { Icon } from '../components/icons';
 import { useWho } from '../components/WhoSheet';
@@ -70,6 +71,10 @@ export function batchChoicesForProduct(product: Product | null | undefined, line
   }));
 }
 
+function allocated(line: PurchaseLine) {
+  return (line.batchAllocations || []).reduce((s, a) => s + Math.max(0, a.qty), 0);
+}
+
 function allocationsFor(line: PurchaseLine, product: Product): PurchaseBatchAllocation[] {
   if (line.batchAllocations?.length) return line.batchAllocations;
   if (line.batchNo) return [{ batchNo: line.batchNo, qty: line.qty, expiry: line.expiry }];
@@ -92,13 +97,15 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { db, createPurchase, editPurchase, money, stockOf, addParty, addProduct, can } = useAppData();
   const editingPurchase = db?.purchases.find((purchase) => purchase.id === route.params?.editPurchaseId);
+  /** What the purchase starts from: the one being edited, or one being duplicated. */
+  const seed = editingPurchase || db?.purchases.find((purchase) => purchase.id === route.params?.copyFromId);
   const { error } = useToast();
   const who = useWho('Who recorded this purchase?');
 
   const suppliers = useMemo(() => (db?.parties || []).filter((p) => p.type === 'supplier' && p.active !== false), [db]);
-  const [partyId, setPartyId] = useState<string | null>(editingPurchase?.partyId || (suppliers.length === 1 ? suppliers[0].id : null));
-  const [method, setMethod] = useState<PayMethod>(editingPurchase?.method || 'credit');
-  const [lines, setLines] = useState<PurchaseLine[]>(() => editingPurchase ? editingPurchase.lines.map((line) => ({
+  const [partyId, setPartyId] = useState<string | null>(seed?.partyId || (suppliers.length === 1 ? suppliers[0].id : null));
+  const [method, setMethod] = useState<PayMethod>(seed?.method || 'credit');
+  const [lines, setLines] = useState<PurchaseLine[]>(() => seed ? seed.lines.map((line) => ({
     ...line,
     batchAllocations: line.batchAllocations?.map((allocation) => ({ ...allocation })),
   })) : []);
@@ -113,7 +120,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
   const defaultInvoiceNo = 'PUR-' + String(100000 + (db?.counters?.purchase || 0) + 1).slice(1);
   const [invoiceNo, setInvoiceNo] = useState(editingPurchase?.no || '');
   const [invoiceAt, setInvoiceAt] = useState(() => editingPurchase ? new Date(editingPurchase.ts) : new Date());
-  const [metaVisible, setMetaVisible] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
 
   const [supplierPicker, setSupplierPicker] = useState(false);
@@ -177,10 +184,18 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
     setLines((prev) => prev.map((l) => (l.productId === id ? { ...l, ...p } : l)));
   }
 
+  /** What is still unallocated on a line: a batch picked next takes this much. */
+  function remaining(line: PurchaseLine) {
+    return Math.max(0, line.qty - allocated(line));
+  }
+
+  // The line's quantity is the total; batches share it out. A batch only
+  // raises the total when its own share goes past it.
   function setAllocations(line: PurchaseLine, product: Product, allocations: PurchaseBatchAllocation[]) {
     const next = allocations.filter((a) => a.batchNo.trim());
+    const sum = next.reduce((s, a) => s + Math.max(0, a.qty), 0);
     patch(line.productId, {
-      qty: next.reduce((sum, a) => sum + Math.max(0, a.qty), 0),
+      qty: Math.max(line.qty, sum),
       batchNo: next[0]?.batchNo || '',
       expiry: next[0]?.expiry,
       batchAllocations: next,
@@ -190,7 +205,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
   function addBatchAllocation(line: PurchaseLine, product: Product, batchNo: string, expiry?: string) {
     const allocations = allocationsFor(line, product);
     if (allocations.some((a) => a.batchNo === batchNo)) return;
-    setAllocations(line, product, [...allocations, { batchNo, qty: 0, expiry }]);
+    setAllocations(line, product, [...allocations, { batchNo, qty: remaining(line), expiry }]);
     setBatchChoice(null);
   }
 
@@ -199,7 +214,8 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
     setNewBatchLineId(line.productId);
     setNewBatchNoText(uniqueBatchNo(product, [...(product.batches || []).map((b) => b.no), ...allocationsFor(line, product).map((a) => a.batchNo)]));
     setNewBatchExpiry(defaultExpiry());
-    setNewBatchQty('');
+    const left = remaining(line);
+    setNewBatchQty(left > 0 ? String(left) : '');
   }
 
   function finishNewBatch() {
@@ -219,11 +235,14 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
   const total = lines.reduce((s, l) => s + l.qty * l.cost, 0);
   const needsBatch = lines.some((l) => {
     const p = db?.products.find((x) => x.id === l.productId);
-    return l.qty <= 0 || (p?.trackBatches && (!l.batchAllocations?.length || l.batchAllocations.some((a) => !a.batchNo.trim() || a.qty <= 0)));
+    return l.qty <= 0 || (p?.trackBatches && (!l.batchAllocations?.length
+      || l.batchAllocations.some((a) => !a.batchNo.trim() || a.qty <= 0)
+      || allocated(l) !== l.qty));
   });
 
   function save() {
     if (!partyId || !lines.length || needsBatch) return;
+    setCartOpen(false);
     who.ask((server) => {
       if (editingPurchase) {
         const out = editPurchase(editingPurchase.id, { partyId, lines, method, ref: invoiceNo.trim() }, 'Edited on the purchase');
@@ -237,79 +256,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
 
   if (!db) return null;
 
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 170 }} keyboardShouldPersistTaps="handled">
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
-          <MetaTile label="Invoice no." value={invoiceNo.trim() || defaultInvoiceNo} onPress={() => setMetaVisible(true)} colors={colors} />
-          <MetaTile label="Date" value={invoiceAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })} onPress={() => setPickerMode('date')} colors={colors} />
-          <MetaTile label="Time" value={invoiceAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} onPress={() => setPickerMode('time')} colors={colors} />
-        </View>
-        <SectionLabel>Supplier</SectionLabel>
-        <Pressable
-          onPress={() => (suppliers.length ? setSupplierPicker(true) : setSupplierForm(true))}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 62,
-            borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.line,
-            backgroundColor: colors.surface, paddingHorizontal: 15, marginBottom: 14,
-          }}
-        >
-          <Icon name="factory" size={19} color={colors.accent} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint }}>Received from</Text>
-            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: supplier ? colors.ink : colors.faint, marginTop: 2 }}>
-              {supplier ? supplier.name : suppliers.length ? 'Choose a supplier' : 'No suppliers yet — add one'}
-            </Text>
-          </View>
-          <Icon name={suppliers.length ? 'chev' : 'plus'} size={16} color={colors.accent} />
-        </Pressable>
-
-        <SectionLabel>How it was paid</SectionLabel>
-        <OptionTiles
-          value={method}
-          onChange={setMethod}
-          tone="warn"
-          options={[
-            { v: 'cash' as PayMethod, l: 'Cash', i: 'cash' },
-            { v: 'bank' as PayMethod, l: 'Bank', i: 'bank' },
-            { v: 'momo' as PayMethod, l: 'Mobile', i: 'phone' },
-            { v: 'credit' as PayMethod, l: 'On credit', i: 'card' },
-          ]}
-        />
-
-        <View style={{ height: 20 }} />
-        <SectionLabel>Add goods</SectionLabel>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Pressable
-            onPress={() => setSearching(true)}
-            style={{
-              flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, height: 54,
-              borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.lineHard,
-              backgroundColor: colors.sunk, paddingHorizontal: 14,
-            }}
-          >
-            <Icon name="search" size={18} color={colors.faint} />
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.faint }}>Search items, or create one</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setScanning(true)}
-            accessibilityLabel="Scan a barcode"
-            style={{ width: 54, height: 54, borderRadius: radius.md, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Icon name="box" size={20} color={colors.accentInk} />
-          </Pressable>
-        </View>
-
-        <View style={{ height: 20 }} />
-        <SectionLabel right={
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
-            {lines.length} line{lines.length === 1 ? '' : 's'}
-          </Text>
-        }>
-          On this delivery
-        </SectionLabel>
-
-        {lines.map((l) => {
+  const renderLine = (l: PurchaseLine) => {
           const p = db.products.find((x) => x.id === l.productId);
           const tracked = !!p?.trackBatches;
           const held = batchChoicesForProduct(p, l).map((b) => ({ no: b.no, qty: b.qty, expiry: b.expiry }));
@@ -341,7 +288,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                     </Text>
                     {tracked ? <Badge label="Batch" tone="accent" /> : null}
                   </View>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     {p ? stockOf(p) + ' ' + p.unit + ' in stock now' : ''}
                   </Text>
                 </View>
@@ -353,18 +300,16 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                 >
                   <Icon name="trash" size={16} color={colors.danger} />
                 </Pressable>
-                <Icon name={expanded ? 'up' : 'down'} size={16} color={colors.faint} />
+                {tracked ? <Icon name={expanded ? 'up' : 'down'} size={16} color={colors.faint} /> : null}
               </Pressable>
 
-              {!expanded ? (
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 8 }}>
-                  {l.qty} {p?.unit || 'units'}
-                  {tracked ? ` · ${batchSummary}` : ''}
-                  {' · Tap to edit'}
+              {!expanded && tracked ? (
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 8 }}>
+                  {batchSummary} · tap the name to edit batches
                 </Text>
               ) : null}
 
-              {expanded ? <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
                 <View style={{ flex: 1 }}>
                   <Field
                     compact
@@ -372,30 +317,35 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                     value={String(l.qty)}
                     onChangeText={(v) => {
                       const qty = num(v);
-                      const allocations = tracked ? allocationsFor(l, p!).map((a, i) => i === 0 ? { ...a, qty } : a) : undefined;
+                      // one batch follows the total; with several, the cashier shares it out
+                      const current = tracked ? allocationsFor(l, p!) : [];
+                      const allocations = current.length === 1 ? [{ ...current[0], qty }] : undefined;
                       patch(l.productId, { qty, ...(allocations ? { batchAllocations: allocations } : {}) });
                     }}
+                    numeric
                     decimal
-                    autoFocus={expanded && expandedId === l.productId}
+                    autoFocus={false}
                     inputRef={(ref) => { qtyRefs.current[l.productId] = ref; }}
                   />
                 </View>
                 <View style={{ flex: 1.3 }}>
                   <Field
                     compact
-                    label="Cost each"
+                    label="Cost price"
                     value={String(l.cost)}
                     onChangeText={(v) => patch(l.productId, { cost: num(v) })}
+                    numeric
                     decimal
                   />
                 </View>
-              </View> : null}
-              {expanded && canSetPrice ? (
+              </View>
+              {canSetPrice ? (
                 <Field
                   compact
-                  label={'Selling price' + (margin !== null ? ' · ' + margin + '% margin' : '')}
+                  label={'Sell price' + (margin !== null ? ' · ' + margin + '% margin' : '')}
                   value={String(price)}
                   onChangeText={(v) => patch(l.productId, { price: num(v) })}
+                  numeric
                   decimal
                   error={price > 0 && price < l.cost ? 'Selling below the new cost' : undefined}
                 />
@@ -405,6 +355,13 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                 <View style={{ marginTop: 4 }}>
                   <View style={{ height: 1, backgroundColor: colors.line, marginBottom: 12 }} />
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Batch allocation</Text>
+                  {batchAllocations.length && allocated(l) !== l.qty ? (
+                    <View style={{ marginBottom: 10 }}>
+                      <InfoBanner tone="warn" text={allocated(l) < l.qty
+                        ? (l.qty - allocated(l)) + " " + (p?.unit || "") + " not in a batch yet — add a batch or raise a batch qty."
+                        : "Batches add up to more than the qty."} />
+                    </View>
+                  ) : null}
                   {!batchReady ? (
                     <View style={{ marginBottom: 10 }}>
                       <InfoBanner tone="danger" text={`Add a lot number and quantity before saving this ${p?.unit || 'item'}.`} />
@@ -419,11 +376,11 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                             key={batch.no}
                             onPress={() => {
                               if (selected) return;
-                              setAllocations(l, p!, [...allocationsFor(l, p!), { batchNo: batch.no, qty: 0, expiry: batch.expiry }]);
+                              setAllocations(l, p!, [...allocationsFor(l, p!), { batchNo: batch.no, qty: remaining(l), expiry: batch.expiry }]);
                             }}
                             style={{ paddingVertical: 7, paddingHorizontal: 9, borderRadius: 8, borderWidth: 1, borderColor: selected ? colors.accent : colors.line, backgroundColor: selected ? colors.accentSoft : colors.surface }}
                           >
-                            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: selected ? colors.accent : colors.soft }}>{batch.no} · {batch.qty} left</Text>
+                            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: selected ? colors.accent : colors.soft }}>{batch.no} · {batch.qty} left</Text>
                           </Pressable>
                         );
                       })}
@@ -443,14 +400,14 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                           }}
                           style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: 10, borderWidth: 1, borderColor: colors.line, borderRadius: 9, backgroundColor: colors.sunk }}
                         >
-                          <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.ink }}>{allocation.batchNo}</Text>
-                          <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>
+                          <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{allocation.batchNo}</Text>
+                          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                             {heldBatch ? heldBatch.qty + ' available' : 'new batch'}
                             {allocation.expiry ? ' · expires ' + allocation.expiry : ' · no expiry'}
                           </Text>
                         </Pressable>
-                        <View style={{ width: 92 }}>
-                          <Field compact label="Qty" value={String(allocation.qty)} onChangeText={(v) => {
+                        <View style={{ width: 108 }}>
+                          <Field compact label="Batch qty" value={String(allocation.qty)} onChangeText={(v) => {
                             const next = allocationsFor(l, p!).map((a, i) => i === allocationIndex ? { ...a, qty: num(v) } : a);
                             setAllocations(l, p!, next);
                           }} numeric decimal />
@@ -473,31 +430,110 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                     }}
                     style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accentSoft }}
                   >
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.accent }}>+ Add batch / lot</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>+ Add batch / lot</Text>
                   </Pressable>
                 </View>
               ) : null}
             </View>
           );
-        })}
+  };
+
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
+        <SectionLabel>Purchase details</SectionLabel>
+        <FieldShell
+          label="Supplier"
+          icon="factory"
+          onPress={() => (suppliers.length ? setSupplierPicker(true) : setSupplierForm(true))}
+          right={<Icon name={suppliers.length ? 'down' : 'plus'} size={17} color={colors.accent} />}
+        >
+          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: supplier ? colors.ink : colors.faint }}>
+            {supplier ? supplier.name : suppliers.length ? 'Choose a supplier' : 'No suppliers yet — add one'}
+          </Text>
+        </FieldShell>
+        <FieldShell
+          label="Date"
+          icon="calendar"
+          onPress={() => setPickerMode('date')}
+          right={
+            <Pressable onPress={() => setPickerMode('time')} hitSlop={8} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.sunk }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>
+                {invoiceAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            </Pressable>
+          }
+        >
+          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>
+            {invoiceAt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </Text>
+        </FieldShell>
+        <Field
+          icon="tag"
+          label="Invoice Number (optional)"
+          value={invoiceNo}
+          onChangeText={setInvoiceNo}
+          placeholder={defaultInvoiceNo}
+          autoCapitalize="characters"
+        />
+
+        <View style={{ height: 6 }} />
+        <SectionLabel>Items</SectionLabel>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable
+            onPress={() => setSearching(true)}
+            style={{
+              flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, height: 54,
+              borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.lineHard,
+              backgroundColor: colors.sunk, paddingHorizontal: 14,
+            }}
+          >
+            <Icon name="search" size={18} color={colors.faint} />
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>Search items, or create one</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setScanning(true)}
+            accessibilityLabel="Scan a barcode"
+            style={{ width: 54, height: 54, borderRadius: radius.md, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Icon name="box" size={20} color={colors.accentInk} />
+          </Pressable>
+        </View>
 
         {!lines.length ? (
           <Panel>
-            <EmptyBlock icon="cart" title="Nothing on this delivery yet" hint="Search or scan above to add what arrived." />
+            <EmptyBlock icon='cart' title='Nothing on this purchase yet' hint='Search or scan above to add what arrived.' />
           </Panel>
         ) : (
-          <Panel>
-            <DetailRow label="Lines" value={String(lines.length)} />
-            <DetailRow label="Units" value={String(lines.reduce((s, l) => s + l.qty, 0))} />
-            <DetailRow label="Total cost" value={money(total)} bold last />
-          </Panel>
+          <>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4, marginBottom: 10 }}>
+              {lines.length} item(s) added — tap one to edit qty, cost, price or batch, or open the cart to pay and save.
+            </Text>
+            {lines.map((l) => {
+              const p = db.products.find((x) => x.id === l.productId);
+              return (
+                <Pressable
+                  key={l.productId}
+                  onPress={() => { setExpandedId(l.productId); setCartOpen(true); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}
+                >
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name='box' size={18} color={colors.good} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p?.name || l.productId}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
+                      {l.qty} {p?.unit || ''} × {money(l.cost)}
+                    </Text>
+                  </View>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
+                  <Icon name='chev' size={15} color={colors.faint} />
+                </Pressable>
+              );
+            })}
+          </>
         )}
-
-        {needsBatch ? (
-          <View style={{ marginTop: 14 }}>
-            <InfoBanner tone="danger" text="A batch-tracked line still needs its lot number before this can be recorded." />
-          </View>
-        ) : null}
       </ScrollView>
 
       {who.sheet}
@@ -568,27 +604,14 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
         }}
       />
 
-      <Sheet
-        visible={metaVisible}
-        title="Purchase details"
-        onClose={() => setMetaVisible(false)}
-        footer={<Button label="Done" variant="pri" onPress={() => setMetaVisible(false)} />}
-      >
-        <Field
-          label="Invoice number"
-          value={invoiceNo}
-          onChangeText={setInvoiceNo}
-          placeholder={defaultInvoiceNo}
-          autoCapitalize="characters"
-        />
-      </Sheet>
 
       {pickerMode ? (
         <DateTimePicker
           value={invoiceAt}
           mode={pickerMode}
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(_event, date) => {
+          onDismiss={() => setPickerMode(null)}
+          onValueChange={(_event, date) => {
             if (Platform.OS !== 'ios') setPickerMode(null);
             if (date) setInvoiceAt(date);
           }}
@@ -620,10 +643,10 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                   >
                     <Icon name="box" size={18} color={selected ? colors.faint : colors.accent} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{batch.no}</Text>
-                      <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{batch.qty} currently on hand{batch.expiry ? ' · expires ' + batch.expiry : ''}</Text>
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{batch.no}</Text>
+                      <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{batch.qty} currently on hand{batch.expiry ? ' · expires ' + batch.expiry : ''}</Text>
                     </View>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: selected ? colors.faint : colors.accent }}>{selected ? 'Added' : 'Choose'}</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: selected ? colors.faint : colors.accent }}>{selected ? 'Added' : 'Choose'}</Text>
                   </Pressable>
                 );
               })}
@@ -632,7 +655,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16 }}
                   >
                     <Icon name="plus" size={18} color={colors.accent} />
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent }}>Create a new batch</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accent }}>Create a new batch</Text>
               </Pressable>
             </>
           );
@@ -672,33 +695,65 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
         />
       </Sheet>
 
+      <Sheet
+        visible={cartOpen}
+        title='Cart'
+        icon='cart'
+        full
+        onClose={() => setCartOpen(false)}
+        footer={
+          <Button
+            label={editingPurchase ? 'Update purchase' : 'Save purchase'}
+            variant='pri'
+            disabled={!partyId || !lines.length || needsBatch}
+            icon={<Icon name='check' size={17} color={colors.accentInk} />}
+            onPress={save}
+          />
+        }
+      >
+        {lines.map(renderLine)}
+        {lines.length ? (
+          <Panel>
+            <DetailRow label='Items' value={String(lines.length)} />
+            <DetailRow label='Units' value={String(lines.reduce((s, l) => s + l.qty, 0))} />
+            <DetailRow label='Total cost' value={money(total)} bold last />
+          </Panel>
+        ) : null}
+
+        <View style={{ height: 16 }} />
+        <SectionLabel>Payment method</SectionLabel>
+        <OptionTiles
+          value={method}
+          onChange={setMethod}
+          tone='warn'
+          options={[
+            { v: 'cash' as PayMethod, l: 'Cash', i: 'cash' },
+            { v: 'bank' as PayMethod, l: 'Bank', i: 'bank' },
+            { v: 'momo' as PayMethod, l: 'Mobile', i: 'phone' },
+            { v: 'credit' as PayMethod, l: 'On credit', i: 'card' },
+          ]}
+        />
+
+        {!partyId ? (
+          <View style={{ marginTop: 14 }}><InfoBanner tone='warn' text='Choose a supplier on the purchase before saving.' /></View>
+        ) : null}
+        {needsBatch ? (
+          <View style={{ marginTop: 14 }}>
+            <InfoBanner tone='danger' text='Every line needs a qty, and batch-tracked lines need their batches to add up to it.' />
+          </View>
+        ) : null}
+      </Sheet>
+
       <StickyBar>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-            {supplier ? supplier.name : 'Choose a supplier'}
-          </Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 21, color: colors.ink }}>{money(total)}</Text>
-        </View>
         <Button
-          label={editingPurchase ? 'Update purchase' : 'Record purchase'}
-          variant="pri"
-          disabled={!partyId || !lines.length || needsBatch}
-          icon={<Icon name="check" size={17} color={colors.accentInk} />}
-          onPress={save}
+          label={lines.length ? 'View cart — ' + money(total) : 'Add items to continue'}
+          variant='pri'
+          disabled={!lines.length}
+          icon={<Icon name='cart' size={17} color={colors.accentInk} />}
+          onPress={() => setCartOpen(true)}
         />
       </StickyBar>
     </View>
   );
 }
 
-function MetaTile({ label, value, onPress, colors }: { label: string; value: string; onPress: () => void; colors: any }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{ flex: 1, minWidth: 0, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 10, paddingVertical: 9 }}
-    >
-      <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>{label}</Text>
-      <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, marginTop: 3 }}>{value}</Text>
-    </Pressable>
-  );
-}

@@ -13,6 +13,7 @@
  * instalment received posts through recordPayment, so the customer's balance
  * and the ledger stay correct.
  */
+import { ListPage, DocRow, StatusChips, SummaryTiles } from '../components/DocList';
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useTheme, fonts } from '../theme';
@@ -48,72 +49,54 @@ export function InstalmentsScreen() {
   const { colors } = useTheme();
   const go = useGo();
   const { db, money, party } = useAppData();
-
-  const list = db?.instalmentPlans || [];
-
-  const totals = useMemo(() => {
-    const owed = list.reduce((a, pl) => a + planOutstanding(pl), 0);
-    const late = list.filter((pl) => planIsLate(pl)).length;
-    return { owed, late };
-  }, [list]);
-
-  if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
-
-  if (!list.length) {
-    return (
-      <EmptyState
-        icon="calendar"
-        title="No instalment plans"
-        subtitle="Let a customer take the goods now and pay in agreed instalments. Every one you receive posts against their account."
-        action={<Button size="sm" variant="pri" label="New instalment plan" onPress={() => go('PlanNew')} />}
-      />
-    );
-  }
-
+  const [filter, setFilter] = React.useState<'all' | 'behind' | 'paying' | 'cleared'>('all');
+  const [q, setQ] = React.useState('');
+  const all = (db?.instalmentPlans || []).slice().reverse();
+  const cleared = (pl: typeof all[number]) => planOutstanding(pl) <= 0.5;
+  const needle = q.trim().toLowerCase();
+  const list = all.filter((pl) => {
+    if (filter === 'behind' && !planIsLate(pl)) return false;
+    if (filter === 'paying' && (cleared(pl) || planIsLate(pl))) return false;
+    if (filter === 'cleared' && !cleared(pl)) return false;
+    return !needle || ((party(pl.partyId || '')?.name || '') + ' ' + pl.no).toLowerCase().includes(needle);
+  });
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: 20 }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
-        <Grid cols={2}>
-          <Stat tone="d" label="Still owed" value={money(totals.owed)} />
-          <Stat label="Behind" value={String(totals.late)} />
-        </Grid>
-      </View>
-
-      {list.slice().reverse().map((pl, i, arr) => {
-        const pct = planPct(pl);
+    <ListPage
+      top={(
+        <>
+          <StatusChips value={filter} onChange={setFilter} options={[{ v: 'all', l: 'All' }, { v: 'behind', l: 'Behind' }, { v: 'paying', l: 'Paying' }, { v: 'cleared', l: 'Cleared' }]} />
+          <SummaryTiles tiles={[
+            { label: 'Still owed', value: money(all.reduce((a, pl) => a + planOutstanding(pl), 0)), tone: colors.danger },
+            { label: 'Behind', value: String(all.filter((pl) => planIsLate(pl)).length) },
+          ]} />
+        </>
+      )}
+      search={{ value: q, onChange: setQ, placeholder: 'Search by customer or plan' }}
+      data={list}
+      keyExtractor={(pl) => pl.id}
+      empty={{ text: 'No instalment plans. Let a customer pay in parts with Add instalment plan.' }}
+      add={{ label: 'Add instalment plan', onPress: () => go('PlanNew') }}
+      renderItem={({ item: pl }) => {
         const next = planNext(pl);
-        const od = !!next && new Date(next.due).getTime() < Date.now();
+        const late = planIsLate(pl);
+        const done = cleared(pl);
         return (
-          <Pressable
-            key={pl.id}
+          <DocRow
+            title={party(pl.partyId || '')?.name || 'Customer'}
+            pill={done ? { label: 'Cleared', tone: 'good' } : late ? { label: 'Behind', tone: 'danger' } : { label: 'Paying', tone: 'accent' }}
+            amount={money(pl.total)}
+            refText={'Plan #' + pl.no}
+            ts={pl.createdAt}
+            lines={done ? [{ label: 'Paid', value: '100%' }] : [
+              { label: 'Balance', value: money(planOutstanding(pl)), tone: colors.danger },
+              ...(next ? [{ label: late ? 'Overdue since' : 'Next due', value: fmtDay(next.due), tone: late ? colors.danger : undefined }] : []),
+              { label: 'Paid', value: planPct(pl) + '%' },
+            ]}
             onPress={() => go('PlanDetail', { planId: pl.id })}
-            style={{
-              flexDirection: 'row', alignItems: 'flex-start', gap: 11, paddingVertical: 12, paddingHorizontal: 16,
-              backgroundColor: colors.surface, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line,
-            }}
-          >
-            <IconTile
-              icon="calendar" size={34} round={11} iconSize={16}
-              bg={od ? colors.dangerSoft : colors.sunk}
-              color={od ? colors.danger : colors.faint}
-            />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>
-                {party(pl.partyId || '')?.name || '—'}
-              </Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>
-                {plural(pl.schedule.length, 'instalment')} · {next ? (od ? 'overdue ' : 'next ') + fmtDay(next.due) : 'cleared'}
-              </Text>
-              <View style={{ marginTop: 7 }}><Bar pct={pct} done={pct === 100} /></View>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: colors.ink }}>{money(pl.total)}</Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>{pct}%</Text>
-            </View>
-          </Pressable>
+          />
         );
-      })}
-    </ScrollView>
+      }}
+    />
   );
 }
 
@@ -170,7 +153,7 @@ export function PlanDetailScreen({ route }: DetailProps) {
               <Icon name="calendar" size={22} color={pct === 100 ? colors.good : overdue.length ? colors.danger : colors.warn} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: colors.ink }}>{pl.no}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{pl.no}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {customer?.name || 'Walk-in'} · started {fmtDay(pl.createdAt)}
               </Text>
@@ -188,7 +171,7 @@ export function PlanDetailScreen({ route }: DetailProps) {
             <Text style={{ fontFamily: fonts.uiExtra, fontSize: 32, letterSpacing: -0.8, color: outstanding > 0 ? colors.ink : colors.good }}>
               {money(outstanding)}
             </Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
               of {money(pl.total)} · {Math.round(pct)}% settled
             </Text>
           </View>
@@ -233,7 +216,7 @@ export function PlanDetailScreen({ route }: DetailProps) {
         ) : null}
 
         <View style={{ height: 20 }} />
-        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{pl.schedule.length} payments</Text>}>
+        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{pl.schedule.length} payments</Text>}>
           Schedule
         </SectionLabel>
 
@@ -262,7 +245,7 @@ export function PlanDetailScreen({ route }: DetailProps) {
                     {x.paidAt ? 'paid ' + fmtDay(x.paidAt) : od ? 'overdue' : 'scheduled'}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16, color: colors.ink }}>{money(x.amount)}</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>{money(x.amount)}</Text>
               </View>
 
               {!x.paidAt ? (
@@ -284,7 +267,7 @@ export function PlanDetailScreen({ route }: DetailProps) {
       <StickyBar>
         <ActionGrid
           actions={[
-            ...(sale ? [{ label: 'Open the bill', icon: 'receipt' as const, tone: 'accent' as const, onPress: () => go('SaleDetail', { saleId: sale.id }) }] : []),
+            ...(sale ? [{ label: 'Open the sale', icon: 'receipt' as const, tone: 'accent' as const, onPress: () => go('SaleDetail', { saleId: sale.id }) }] : []),
             ...(customer ? [{ label: 'Customer', icon: 'user' as const, tone: 'accent' as const, onPress: () => go('PartyDetail', { partyId: customer.id }) }] : []),
             { label: 'New plan', icon: 'plus', tone: 'warn', filled: true, onPress: () => go('PlanNew') },
           ]}
@@ -336,7 +319,7 @@ export function PlanNewScreen({ navigation }: NewProps) {
       linesLabel="Goods on the plan"
       saveLabel={'Create the plan · ' + money(total)}
       askWho="Who arranged this plan?"
-      blockedReason={wholeBill ? 'The down payment is the whole bill — lower it, or just sell it outright.' : undefined}
+      blockedReason={wholeBill ? 'The down payment is the whole sale — lower it, or just sell it outright.' : undefined}
       summary={
         preview.length ? (
           <Panel>
@@ -350,15 +333,15 @@ export function PlanNewScreen({ navigation }: NewProps) {
                 }}
               >
                 <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: colors.warn }}>{i + 1}</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.warn }}>{i + 1}</Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{fmtDay(x.due)}</Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{fmtDay(x.due)}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                     {i === 0 && down ? 'after the down payment' : 'due in ' + ((i + 1) * every) + ' days'}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{money(x.amount)}</Text>
+                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money(x.amount)}</Text>
               </View>
             ))}
             <View style={{ height: 12 }} />
@@ -413,7 +396,7 @@ export function PlanNewScreen({ navigation }: NewProps) {
 
       {total > 0 ? (
         <Panel style={{ marginBottom: 16 }}>
-          <DetailRow label="Bill total" value={money(total)} />
+          <DetailRow label="Sale total" value={money(total)} />
           <DetailRow label="Down payment today" value={money(down)} tone={colors.good} />
           <DetailRow label="Spread over" value={count + ' × ' + money(each)} />
           <DetailRow label="Left on account" value={money(Math.max(0, total - down))} bold tone={colors.warn} last />

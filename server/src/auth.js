@@ -226,7 +226,7 @@ export default async function authRoutes(app) {
         await c.query(
           `insert into licences (account_id, plan, term, seats, status, expires_at)
            values ($1, 'trial', 'monthly', $2, 'trial', now() + ($3 || ' days')::interval)`,
-          [acct.id, Number(process.env.TRIAL_SEATS || 2), String(process.env.TRIAL_DAYS || 30)],
+          [acct.id, Number(process.env.TRIAL_SEATS || 2), String(process.env.TRIAL_DAYS || 7)],
         );
         return acct;
       });
@@ -251,12 +251,20 @@ export default async function authRoutes(app) {
     );
     const account = rows[0];
 
-    // The same answer whether the address is unknown or the password is wrong,
-    // so this endpoint cannot be used to find out who has an account.
     const no = () => fail(reply, 401, 'badCredentials',
-      'That email and password do not match. Try again, or reset the password by email.');
+      'That password is not right. Try again, or reset it by email.');
 
-    if (!account || !account.password_hash) return no();
+    // An unknown address is said plainly, so the app can offer to create the
+    // account. Hiding it protected nothing: the sign-up and reset routes
+    // already say whether an address is taken.
+    if (!account) {
+      return fail(reply, 404, 'unknownEmail',
+        'There is no Genius account with that email. Check it, or create a new account.');
+    }
+    if (!account.password_hash) {
+      return fail(reply, 401, 'badCredentials',
+        'This account has no password yet: it signs in with Google. Continue with Google, or set a password with "Forgotten it?".');
+    }
     if (account.status !== 'active') {
       return fail(reply, 403, 'server', 'This account is not active. Contact support.');
     }

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, Pressable, FlatList } from 'react-native';
+import { View, Text, FlatList } from 'react-native';
+import { Pressable } from './Press';
 import { useTheme, fonts, spacing } from '../theme';
 import { Button, Field } from './ui';
 import { Sale } from '../data/types';
@@ -44,22 +45,22 @@ export default function PaymentAllocationSheet({ amount, money, bills, onConfirm
   return (
     <View style={{ backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, padding: spacing.lg, gap: spacing.lg, maxHeight: '80%' }}>
       <View>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.faint, marginBottom: 4 }}>Allocate payment</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 4 }}>Allocate payment</Text>
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(amount)}</Text>
       </View>
 
       {bills.length === 0 ? (
-        <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, textAlign: 'center', paddingVertical: 20 }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', paddingVertical: 20 }}>
           No open bills
         </Text>
       ) : (
         <>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
               Allocated: {money(allocated)} · Remaining: {money(remaining)}
             </Text>
             <Pressable onPress={smartAllocate}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.accent }}>Auto-allocate</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent }}>Auto-allocate</Text>
             </Pressable>
           </View>
 
@@ -72,8 +73,8 @@ export default function PaymentAllocationSheet({ amount, money, bills, onConfirm
               return (
                 <View key={item.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.line }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.ink }}>{item.no}</Text>
-                    <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12, color: colors.faint }}>Due: {money(item.due)}</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{item.no}</Text>
+                    <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.faint }}>Due: {money(item.due)}</Text>
                   </View>
                   <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
                     <View style={{ flex: 1 }}>

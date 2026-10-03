@@ -4,7 +4,8 @@
  * screen can filter with them.
  */
 import React, { useState } from 'react';
-import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
+import { View, Text, ScrollView, Platform } from 'react-native';
+import { Pressable } from './Press';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts, radius } from '../theme';
 import { finRange, fmtDay, startOfDay, endOfDay } from '../data/helpers';
@@ -68,8 +69,9 @@ export function RangeBar({ value, onChange }: { value: Period; onChange: (p: Per
             mode="date"
             maximumDate={new Date()}
             display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            onChange={(e, d) => {
-              if (e.type === 'dismissed' || !d) { setPicking(null); return; }
+            onDismiss={() => setPicking(null)}
+            onValueChange={(_e, d) => {
+              if (!d) { setPicking(null); return; }
               if (picking === 'from') {
                 const from = startOfDay(d.getTime());
                 setDraft((x) => ({ ...x, from }));

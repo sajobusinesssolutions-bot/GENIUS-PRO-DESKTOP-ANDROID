@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts, radius, shadow, control } from '../theme';
 import { Icon, IconName } from './icons';
 import { Tap, Rise } from './Tap';
+import { Field } from './form';
 
 type Tone = 'accent' | 'good' | 'warn' | 'danger' | 'neutral';
 
@@ -46,7 +47,7 @@ export function SectionLabel({ children, right, style }: { children: React.React
   const { colors } = useTheme();
   return (
     <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }, style]}>
-      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.7, color: colors.faint, textTransform: 'uppercase' }}>
+      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 0.7, color: colors.faint, textTransform: 'uppercase' }}>
         {children}
       </Text>
       {right}
@@ -61,7 +62,7 @@ export function AccentHead({ title, right, tone = 'good' }: { title: string; rig
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 11 }}>
       <View style={{ width: 3.5, height: 17, borderRadius: 2, backgroundColor: fg }} />
-      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{title}</Text>
+      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{title}</Text>
       {right}
     </View>
   );
@@ -121,7 +122,7 @@ export function ListRow({ icon, tone, title, subtitle, value, valueTone, right, 
         ) : null}
       </View>
       {value ? (
-        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: valueTone || colors.ink }}>{value}</Text>
+        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: valueTone || colors.ink }}>{value}</Text>
       ) : null}
       {right}
       {onPress && !right && !value ? <Icon name="chev" size={17} color={colors.faint} /> : null}
@@ -139,8 +140,8 @@ export function DetailRow({ label, value, tone, bold, last }: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14,
       paddingVertical: 11, borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
     }}>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint, flexShrink: 1 }}>{label}</Text>
-      <Text style={{ fontFamily: bold ? fonts.uiBold : fonts.uiSemi, fontSize: 14.5, color: tone || colors.ink }}>{value}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint, flexShrink: 1 }}>{label}</Text>
+      <Text style={{ fontFamily: bold ? fonts.uiBold : fonts.uiSemi, fontSize: 15, color: tone || colors.ink }}>{value}</Text>
     </View>
   );
 }
@@ -150,7 +151,7 @@ export function Badge({ label, tone = 'neutral' }: { label: string; tone?: Tone 
   const { bg, fg } = useTone(tone);
   return (
     <View style={{ backgroundColor: bg, borderRadius: radius.pill, paddingVertical: 3, paddingHorizontal: 9 }}>
-      <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, color: fg }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: fg }}>{label}</Text>
     </View>
   );
 }
@@ -172,7 +173,7 @@ export function StatCard({ icon, label, value, tone = 'accent' }: {
         {icon ? <Icon name={icon} size={15} color={fg} /> : null}
         <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{label}</Text>
       </View>
-      <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 21, color: colors.ink, marginTop: 8 }}>{value}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 8 }}>{value}</Text>
     </View>
   );
 }
@@ -223,7 +224,7 @@ export function FilterChips<T extends string>({ value, options, onChange, tone =
             }}
           >
             {on ? <Icon name="check" size={14} color={colors.accentInk} /> : o.i ? <Icon name={o.i} size={14} color={colors.faint} /> : null}
-            <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13.5, color: on ? colors.accentInk : colors.soft }}>{o.l}</Text>
+            <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 12.5, color: on ? colors.accentInk : colors.soft }}>{o.l}</Text>
           </Tap>
         );
       })}
@@ -277,7 +278,7 @@ export function TopTabs<T extends string>({ value, options, onChange, tone = 'ac
               style={{ minWidth: 92, alignItems: 'center', gap: 4, paddingTop: 10, paddingBottom: 9, paddingHorizontal: 14, borderBottomWidth: 2.5, borderBottomColor: on ? fg : 'transparent' }}
             >
               {o.i ? <Icon name={o.i} size={19} color={on ? fg : colors.faint} /> : null}
-              <Text numberOfLines={1} style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13, color: on ? fg : colors.faint }}>{o.l}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 12.5, color: on ? fg : colors.faint }}>{o.l}</Text>
             </Tap>
           );
         })}
@@ -308,7 +309,7 @@ export function OptionTiles<T extends string>({ value, options, onChange, tone =
             }}
           >
             {o.i ? <Icon name={o.i} size={20} color={on ? colors.accentInk : colors.soft} /> : null}
-            <Text numberOfLines={2} style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 12, color: on ? colors.accentInk : colors.soft }}>{o.l}</Text>
+            <Text numberOfLines={2} style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.accentInk : colors.soft }}>{o.l}</Text>
           </Tap>
         );
       })}
@@ -324,7 +325,7 @@ export function InfoBanner({ text, tone = 'accent', icon = 'alert' }: { text: st
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: bg, borderRadius: radius.md, padding: 13 }}>
       <Icon name={icon} size={17} color={fg} />
-      <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: fg }}>{text}</Text>
+      <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 19, color: fg }}>{text}</Text>
     </View>
   );
 }
@@ -337,8 +338,8 @@ export function Empty({ icon = 'box', title, hint, action }: {
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 56, paddingHorizontal: 32, gap: 8 }}>
       <Icon name={icon} size={46} color={colors.lineHard} />
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15.5, color: colors.soft, textAlign: 'center', marginTop: 6 }}>{title}</Text>
-      {hint ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.faint, textAlign: 'center' }}>{hint}</Text> : null}
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 6 }}>{title}</Text>
+      {hint ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 19, color: colors.faint, textAlign: 'center' }}>{hint}</Text> : null}
       {action ? <View style={{ marginTop: 14 }}>{action}</View> : null}
     </View>
   );
@@ -365,7 +366,7 @@ export function FAB({ label, icon = 'plus', onPress, tone = 'danger' }: {
       }}
     >
       <Icon name={icon} size={22} color={colors.accentInk} />
-      {label ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.accentInk }}>{label}</Text> : null}
+      {label ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>{label}</Text> : null}
     </Tap>
   );
 }
@@ -404,7 +405,7 @@ function GridAction({ label, icon, tone = 'accent', filled, onPress }: {
       }}
     >
       {icon ? <Icon name={icon} size={17} color={filled ? colors.accentInk : fg} /> : null}
-      <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: filled ? colors.accentInk : fg }}>{label}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: filled ? colors.accentInk : fg }}>{label}</Text>
     </Tap>
   );
 }
@@ -433,23 +434,17 @@ export function Search({ value, onChange, placeholder, right, error }: {
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-      <View style={{
-        flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
-        backgroundColor: colors.sunk, borderRadius: radius.md, paddingHorizontal: 14,
-        borderWidth: 1.4, borderColor: error ? colors.danger : colors.line, minHeight: 50,
-      }}>
-        <Icon name="search" size={18} color={colors.faint} />
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor={colors.faint}
-          style={{ flex: 1, paddingVertical: 12, color: colors.ink, fontFamily: fonts.ui, fontSize: 15 }}
-        />
-        {value ? (
-          <Tap onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Tap>
-        ) : null}
-      </View>
+      <Field
+        icon="search"
+        label={placeholder}
+        value={value}
+        onChangeText={onChange}
+        autoCorrect={false}
+        returnKeyType="search"
+        error={error ? ' ' : undefined}
+        style={{ flex: 1, marginBottom: 0 }}
+        trailing={value ? <Tap onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Tap> : null}
+      />
       {right}
     </View>
   );
@@ -498,13 +493,13 @@ export function DocCard({ icon, tone = 'accent', title, subtitle, amount, amount
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         {icon ? <Tile icon={icon} tone={tone} /> : null}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{title}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{title}</Text>
           {subtitle ? (
             <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>{subtitle}</Text>
           ) : null}
         </View>
         {amount ? (
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 17, color: amountTone || colors.ink }}>{amount}</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: amountTone || colors.ink }}>{amount}</Text>
         ) : null}
       </View>
 
@@ -512,10 +507,10 @@ export function DocCard({ icon, tone = 'accent', title, subtitle, amount, amount
         <>
           <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 12 }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-            {no ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12, color: colors.faint }}>{no}</Text> : null}
+            {no ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.faint }}>{no}</Text> : null}
             {badges}
             <View style={{ flex: 1 }} />
-            {date ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{date}</Text> : null}
+            {date ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{date}</Text> : null}
           </View>
         </>
       ) : null}
@@ -566,7 +561,7 @@ export function SegTabs<T extends string>({ value, options, onChange }: {
               numberOfLines={1}
               style={{
                 fontFamily: on ? fonts.uiBold : fonts.uiSemi,
-                fontSize: 13.5,
+                fontSize: 12.5,
                 color: on ? colors.accentInk : colors.soft,
               }}
             >

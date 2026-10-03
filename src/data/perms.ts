@@ -17,8 +17,8 @@ export interface PermGroup { k: string; n: string; i: IconName; acts: [string, s
 export const PERM_MATRIX: PermGroup[] = [
   { k: 'sales', n: 'Sales', i: 'doc', acts: [
     ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'], ['refund', 'Refund'],
-    ['void', 'Void a bill'], ['discount', 'Give discounts'], ['price_edit', 'Change prices at the till'],
-    ['view_all', "See other staff's bills"],
+    ['void', 'Void a sale'], ['discount', 'Give discounts'], ['price_edit', 'Change prices at the till'],
+    ['view_all', "See other staff's sales"],
     ['edit_offline', 'Edit offline'], ['delete_offline', 'Delete offline'], ['toggle_offline', 'Toggle offline'],
   ] },
   { k: 'inventory', n: 'Inventory', i: 'box', acts: [
@@ -33,14 +33,14 @@ export const PERM_MATRIX: PermGroup[] = [
   { k: 'finance', n: 'Finance', i: 'card', acts: [
     ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['manage_accounts', 'Manage accounts'],
   ] },
+  // Customers are never deleted (a party with history is kept, so its ledger
+  // stays whole), expenses are corrected by a new entry rather than edited, and
+  // there is no task list — so none of those are offered as switches that do nothing.
   { k: 'customers', n: 'Customers', i: 'user', acts: [
-    ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'], ['manage', 'Manage'],
+    ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['manage', 'Manage'],
   ] },
   { k: 'expenses', n: 'Expenses', i: 'arrow', acts: [
-    ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'],
-  ] },
-  { k: 'tasks', n: 'Tasks', i: 'check', acts: [
-    ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'], ['manage', 'Manage'],
+    ['view', 'View'], ['create', 'Create'],
   ] },
   { k: 'shifts', n: 'Till & shifts', i: 'till', acts: [
     ['open', 'Open a shift'], ['close', 'Close a shift'], ['view_all', "See other staff's shifts"],
@@ -50,7 +50,7 @@ export const PERM_MATRIX: PermGroup[] = [
   { k: 'exports', n: 'Exports (PDF & CSV)', i: 'print', acts: [['download', 'Download']] },
   { k: 'profiles', n: 'Profiles', i: 'user', acts: [['view', 'View'], ['manage', 'Manage']] },
   { k: 'settings', n: 'Settings', i: 'cog', acts: [['view', 'View'], ['manage', 'Manage']] },
-  { k: 'dashboard', n: 'Dashboard', i: 'home', acts: [
+  { k: 'dashboard', n: 'Home', i: 'home', acts: [
     ['view', 'View'], ['view_total_sales', 'View total sales'], ['view_gross_profit', 'View gross profit'],
     ['view_total_expenses', 'View total expenses'], ['view_inventory_value', 'View inventory value'],
     ['view_sales_types', 'View sales types'], ['view_avg_price', 'View average price'],
@@ -88,8 +88,8 @@ export type PermKey =
 /** Kept for menuGroups / quick, which label the coarse keys. */
 export const PERMS: { k: PermKey; l: string }[] = [
   { k: 'sell', l: 'Use the till and take payments' },
-  { k: 'sales', l: 'See sales and bills' },
-  { k: 'discount', l: 'Give discounts and void bills' },
+  { k: 'sales', l: 'See sales' },
+  { k: 'discount', l: 'Give discounts and void sales' },
   { k: 'parties', l: 'Customers and suppliers' },
   { k: 'items', l: 'Products and stock levels' },
   { k: 'purchases', l: 'Purchases and orders' },
@@ -116,7 +116,6 @@ export function builtinRoles(): RoleDef[] {
     'shifts.open', 'shifts.close',
     'inventory.view', 'inventory.view_selling_price',
     'customers.view', 'customers.create', 'customers.edit',
-    'tasks.view', 'tasks.create',
     'dashboard.view', 'dashboard.view_total_sales', 'dashboard.view_total_amount',
   ];
   return [

@@ -5,7 +5,8 @@
  * carries the loss if it is wrong — not merely on whoever is signed in.
  */
 import React, { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
+import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { verifyPin } from '../data/pinHash';
@@ -95,7 +96,7 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
         {owners.map((o) => (
           <View key={o.id} style={{ alignItems: 'center', gap: 6, width: 72 }}>
             <Avatar name={o.name} id={o.id} size={44} />
-            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint }}>{o.name}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>{o.name}</Text>
           </View>
         ))}
       </View>
@@ -112,7 +113,7 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
         ))}
       </View>
       {wrong ? (
-        <Text style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger, marginBottom: 10 }}>
+        <Text style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger, marginBottom: 10 }}>
           That is not an owner PIN.
         </Text>
       ) : null}
@@ -131,7 +132,7 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
           >
             {k === 'del'
               ? <Icon name="back" size={22} color={colors.faint} />
-              : <Text style={{ fontFamily: fonts.uiBold, fontSize: 23, color: colors.ink }}>{k}</Text>}
+              : <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>{k}</Text>}
           </Pressable>
         ))}
       </View>

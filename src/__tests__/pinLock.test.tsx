@@ -79,18 +79,28 @@ it('starts again when the second PIN does not match', () => {
 it('sends an owner who forgot the PIN to the email reset', () => {
   mockDb.users = [{ id: 'o', name: 'Amar', role: 'owner', pin: '1234', active: true }];
   renderIt();
-  fireEvent.press(screen.getByText('Forgot PIN?'));
+  fireEvent.press(screen.getByText('Forgot PIN? Reset with an email code'));
   expect(screen.getByText('reset sheet for owner@example.com')).toBeTruthy();
 });
 
-it('tells staff to ask the owner, rather than offering a reset', () => {
+it('offers staff the email reset too, with the code going to the owner', () => {
   mockDb.users = [{ id: 'c', name: 'Grace', role: 'cashier', pin: '1111', active: true }];
+  renderIt();
+  fireEvent.press(screen.getByText('Forgot PIN? Reset with an email code'));
+  // the sheet is handed the owner's address, never one the cashier could choose
+  expect(screen.getByText('reset sheet for owner@example.com')).toBeTruthy();
+});
+
+it('says why when the shop has no owner email to send a code to', () => {
+  mockDb.users = [{ id: 'c', name: 'Grace', role: 'cashier', pin: '1111', active: true }];
+  const keep = mockDb.ownerEmail;
+  mockDb.ownerEmail = '';
   const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   renderIt();
-  fireEvent.press(screen.getByText('Forgot PIN?'));
-  expect(spy.mock.calls[0][1]).toMatch(/Ask the owner/);
-  expect(screen.queryByText(/reset sheet/)).toBeNull();
+  fireEvent.press(screen.getByText('Forgot PIN? Reset with an email code'));
+  expect(spy.mock.calls[0][1]).toMatch(/no owner email/);
   spy.mockRestore();
+  mockDb.ownerEmail = keep;
 });
 
 it('shows a disabled branch as disabled, and will not open it', () => {

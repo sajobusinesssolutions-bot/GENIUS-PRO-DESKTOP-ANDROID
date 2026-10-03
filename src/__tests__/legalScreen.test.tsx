@@ -37,7 +37,7 @@ describe('Legal', () => {
     expect(g?.perm).toBeNull();
     expect(g?.open).toBe('Help');
     const names = g?.items.map((i) => i.n);
-    for (const n of ['Privacy policy', 'Terms and conditions', 'App & updates', 'Plan & licence', 'Share the app',
+    for (const n of ['Privacy policy', 'Terms and conditions', 'About Genius Pro', 'Plan & licence', 'Share the app',
       'Email support', 'WhatsApp support', 'Feature request', 'FAQs & help']) expect(names).toContain(n);
     expect(searchMenu('privacy').some((h) => h.item.route === 'Legal')).toBe(true);
     expect(searchMenu('faq').some((h) => h.item.route === 'Faq')).toBe(true);

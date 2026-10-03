@@ -225,3 +225,63 @@ export function trialBalance(d: DB, from = 0, to = Number.MAX_SAFE_INTEGER, bran
     totalCredit: rows.reduce((s, r) => s + r.credit, 0),
   };
 }
+
+/* ---------------------------------------------------------------- */
+/* Ledgers a business of each kind usually needs                      */
+/* ---------------------------------------------------------------- */
+
+type Starter = { name: string; type: LedgerType };
+
+/** What almost every shop spends on. */
+const COMMON: Starter[] = [
+  { name: 'Rent', type: 'expense' },
+  { name: 'Salaries & wages', type: 'expense' },
+  { name: 'Electricity & water', type: 'expense' },
+  { name: 'Transport & fuel', type: 'expense' },
+  { name: 'Airtime & internet', type: 'expense' },
+  { name: 'Repairs & maintenance', type: 'expense' },
+  { name: 'Bank & mobile money charges', type: 'expense' },
+  { name: 'Licences & taxes', type: 'expense' },
+  { name: 'Marketing', type: 'expense' },
+];
+
+/** What a business of this kind adds to that. Keys match the onboarding choices. */
+const BY_TYPE: Record<string, Starter[]> = {
+  retail: [{ name: 'Packaging', type: 'expense' }, { name: 'Breakages & losses', type: 'expense' }],
+  hardware: [{ name: 'Loading & delivery', type: 'expense' }, { name: 'Delivery charges', type: 'income' }, { name: 'Cutting & fitting fees', type: 'income' }],
+  restaurant: [
+    { name: 'Kitchen supplies', type: 'expense' }, { name: 'Gas & charcoal', type: 'expense' },
+    { name: 'Food spoilage', type: 'expense' }, { name: 'Service charge', type: 'income' },
+  ],
+  pharmacy: [
+    { name: 'Expired stock written off', type: 'expense' }, { name: 'Professional licence fees', type: 'expense' },
+    { name: 'Consultation fees', type: 'income' },
+  ],
+  salon: [{ name: 'Salon supplies', type: 'expense' }, { name: 'Commission to staff', type: 'expense' }, { name: 'Service income', type: 'income' }],
+  wholesale: [{ name: 'Loading & delivery', type: 'expense' }, { name: 'Agent commission', type: 'expense' }, { name: 'Delivery charges', type: 'income' }],
+  electronics: [
+    { name: 'Spare parts', type: 'expense' }, { name: 'Warranty repairs', type: 'expense' },
+    { name: 'Repair services', type: 'income' }, { name: 'Installation fees', type: 'income' },
+  ],
+};
+
+/**
+ * Adds the ledgers a business of this type usually needs, skipping any the
+ * chart already has by name. Returns how many were added.
+ */
+export function addStarterLedgers(d: any, businessType?: string): number {
+  d.coa = Array.isArray(d.coa) ? d.coa : [];
+  const want = [...COMMON, ...(BY_TYPE[businessType || ''] || [])];
+  let added = 0;
+  want.forEach((w) => {
+    if (d.coa.some((l: Ledger) => l.name.trim().toLowerCase() === w.name.toLowerCase())) return;
+    const base = w.type === 'income' ? 4100 : 6300;
+    const top = w.type === 'income' ? 4900 : 7000;
+    const used = d.coa.map((l: Ledger) => Number(l.code)).filter((n: number) => n >= base && n < top);
+    const code = String(used.length ? Math.max(...used) + 10 : base);
+    d.coa.push({ id: 'led_' + Math.random().toString(36).slice(2, 8), code, name: w.name, type: w.type, builtin: false, active: true });
+    added += 1;
+  });
+  d.coa.sort((a: Ledger, b: Ledger) => a.code.localeCompare(b.code));
+  return added;
+}

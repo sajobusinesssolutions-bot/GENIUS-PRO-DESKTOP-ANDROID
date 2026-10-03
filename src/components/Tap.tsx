@@ -34,7 +34,25 @@ function tick(kind: 'light' | 'select') {
   } catch { /* no haptics on this device */ }
 }
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+/**
+ * Style keys that place the box in its parent. They go on the outer touch
+ * area; everything that draws (background, border, padding, inner layout)
+ * goes on the inner layer that scales.
+ */
+const OUTER_KEYS = new Set([
+  'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight', 'marginHorizontal', 'marginVertical',
+  'marginStart', 'marginEnd', 'position', 'top', 'bottom', 'left', 'right', 'zIndex',
+  'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'alignSelf', 'width', 'minWidth', 'maxWidth',
+]);
+
+function split(style: ViewStyle) {
+  const outer: Record<string, unknown> = {};
+  const inner: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(style)) (OUTER_KEYS.has(k) ? outer : inner)[k] = v;
+  // the inner layer fills whatever room the outer one was given
+  if (outer.flex !== undefined || outer.flexGrow !== undefined || style.height === undefined) inner.flexGrow = 1;
+  return { outer: outer as ViewStyle, inner: inner as ViewStyle };
+}
 
 type StyleArg = StyleProp<ViewStyle> | ((s: { pressed: boolean }) => StyleProp<ViewStyle>);
 
@@ -92,9 +110,15 @@ export function Tap({
   const radius = (resolved.borderRadius as number) || 0;
   const d = Math.max(box.w, box.h) * 2.4;
 
+  const { outer, inner } = split(resolved as ViewStyle);
+
+  // The touch area is a plain view that never moves or shrinks, so the whole
+  // box catches the finger; only the drawn layer inside it springs. (A
+  // scaled, animated Pressable was being reduced on Android to its label.)
   return (
-    <AnimatedPressable
+    <Pressable
       {...rest}
+      collapsable={false}
       disabled={disabled}
       onPress={onPress}
       onPressIn={handleIn}
@@ -103,8 +127,9 @@ export function Tap({
         setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
         rest.onLayout?.(e);
       }}
-      style={[resolved, moves ? { transform: [{ scale }] } : null]}
+      style={outer}
     >
+      <Animated.View collapsable={false} style={[inner, moves ? { transform: [{ scale }] } : null]}>
       {feel === 'burst' && at && box.w ? (
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}>
           <Animated.View
@@ -118,7 +143,8 @@ export function Tap({
         </View>
       ) : null}
       {typeof children === 'function' ? children({ pressed }) : children}
-    </AnimatedPressable>
+      </Animated.View>
+    </Pressable>
   );
 }
 

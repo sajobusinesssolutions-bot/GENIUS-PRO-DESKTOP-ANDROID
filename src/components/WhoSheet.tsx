@@ -8,7 +8,8 @@
  * the stamp worth trusting.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
+import { Pressable } from './Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { verifyPin } from '../data/pinHash';
@@ -88,7 +89,8 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
   function finish() {
     const u = staff.find((x) => x.id === picked);
     if (!u) return;
-    if (needPin) { setPinFor(u.id); setPin(''); setWrong(false); return; }
+    // recording under somebody else's name takes their PIN, whatever the setting
+    if (needPin || (u.id !== current?.id && !!u.pin)) { setPinFor(u.id); setPin(''); setWrong(false); return; }
     close();
     onPick({ userId: u.id, userName: u.name });
   }
@@ -158,7 +160,7 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
                 >
                   <Avatar name={u.name} id={u.id} size={46} />
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{u.name}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{u.name}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                       {u.id === current?.id ? 'Signed in' : u.role.charAt(0).toUpperCase() + u.role.slice(1)}
                     </Text>
@@ -190,7 +192,7 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
             ))}
           </View>
           {wrong ? (
-            <Text style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger, marginBottom: 10 }}>
+            <Text style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger, marginBottom: 10 }}>
               That PIN is not right.
             </Text>
           ) : null}
@@ -208,7 +210,7 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
               >
                 {k === 'del'
                   ? <Icon name="back" size={22} color={colors.faint} />
-                  : <Text style={{ fontFamily: fonts.uiBold, fontSize: 23, color: colors.ink }}>{k}</Text>}
+                  : <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>{k}</Text>}
               </Pressable>
             ))}
           </View>

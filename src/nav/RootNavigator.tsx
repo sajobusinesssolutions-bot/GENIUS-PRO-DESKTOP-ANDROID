@@ -1,6 +1,8 @@
 import React from 'react';
+import { requestSync } from '../data/SyncKeeper';
+import { Platform } from 'react-native';
 import { ActivityIndicator, View } from 'react-native';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import AppLock from './AppLock';
 
 /** Shared so the app lock can send the till back to the PIN from anywhere. */
@@ -40,6 +42,8 @@ import PartyEditScreen from '../screens/PartyEditScreen';
 import PartyLedgerScreen from '../screens/PartyLedgerScreen';
 import PurchaseNewScreen from '../screens/PurchaseNewScreen';
 import PaymentNewScreen from '../screens/PaymentNewScreen';
+import VyaparImportScreen from '../screens/VyaparImportScreen';
+import ReminderSettingsScreen from '../screens/ReminderSettingsScreen';
 import UsersRolesScreen from '../screens/UsersRolesScreen';
 import BusinessScreen from '../screens/BusinessScreen';
 import WarrantiesScreen from '../screens/WarrantiesScreen';
@@ -70,6 +74,7 @@ import ReportsScreen from '../screens/ReportsScreen';
 import ReportDetailScreen from '../screens/ReportDetailScreen';
 import MenuGroupScreen from '../screens/MenuGroupScreen';
 import { EntryNewScreen, TransferScreen } from '../screens/MoneyEntryScreens';
+import CashEntriesScreen from '../screens/CashEntriesScreen';
 import { StockAdjustScreen, StockTransferScreen } from '../screens/StockScreens';
 import { AccountingScreen, JournalsScreen, TaxScreen, AccountDetailScreen } from '../screens/BooksScreens';
 import {
@@ -81,18 +86,37 @@ import HelpScreen, { FaqScreen } from '../screens/HelpScreen';
 import { InstalmentsScreen, PlanDetailScreen, PlanNewScreen } from '../screens/InstalmentScreens';
 import { BulkChangeScreen, BulkPreviewScreen } from '../screens/BulkScreens';
 import {
-  LicenceScreen, LicenceStopScreen, InstallScreen, UpdateScreen, SyncScreen,
-  OnlineScreen, VersionsScreen, AboutScreen, PlansScreen,
+  LicenceScreen, LicenceStopScreen, SyncScreen,
+  OnlineScreen, VersionsScreen, AboutScreen,
 } from '../screens/SystemScreens';
 import type { RootStackParamList } from './types';
 import { licBlocks } from '../data/logic';
+import { AfterTransition } from '../components/Skeleton';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+/* Screens that open without a slide, or are the first thing seen: no skeleton. */
+const NO_SKELETON = new Set(['AuthGate', 'SignIn', 'CreateAccount', 'GoogleSignIn', 'Welcome', 'Onboarding', 'PinLock', 'Businesses', 'Main', 'LicenceStop']);
+
+/** A pushed screen shows its skeleton while it slides in, and its content once it has arrived. */
+function Deferred({ navigation, children }: { navigation: any; children: React.ReactNode }) {
+  const subscribe = React.useCallback((done: () => void) => navigation.addListener('transitionEnd', (e: any) => {
+    if (!e?.data?.closing) done();
+  }), [navigation]);
+  return <AfterTransition subscribe={subscribe}>{children}</AfterTransition>;
+}
 
 export default function RootNavigator() {
   const { ready, db } = useAppData();
   const { ready: authReady, signedIn } = useAuth();
-  const { colors } = useTheme();
+  const { colors, dark } = useTheme();
+  /* Every screen sits on the app's own background. Without it a fading or
+     sliding screen shows the black window behind it for a moment. */
+  const navTheme = React.useMemo(() => {
+    const base = dark ? DarkTheme : DefaultTheme;
+    return { ...base, colors: { ...base.colors, background: colors.bg, card: colors.surface, border: colors.line, text: colors.ink, primary: colors.accent } };
+  }, [dark, colors]);
 
   if (!ready || !authReady) {
     return (
@@ -123,37 +147,46 @@ export default function RootNavigator() {
         : 'PinLock';
 
   return (
-    <NavigationContainer ref={navRef}>
+    <NavigationContainer ref={navRef} theme={navTheme}>
       <AppLock nav={navRef} />
       <Stack.Navigator
         initialRouteName={initialRoute}
+        /* each screen that opens asks the cloud for anything new — see SyncKeeper */
+        screenListeners={{ focus: () => requestSync() }}
         /* every screen keeps its fields and its Save bar above the keyboard — see KeyboardSafe */
         /* every screen: fields stay above the keyboard, and the role is checked — see RouteGuard */
-        screenLayout={({ children, route }) => (
+        screenLayout={({ children, route, navigation }) => (
           <KeyboardSafe>
-            <RouteGuard route={route.name} params={route.params}>{children}</RouteGuard>
+            <RouteGuard route={route.name} params={route.params}>
+              {/* a screen that fails to draw shows a way back, and is reported */}
+              <ErrorBoundary>
+                {NO_SKELETON.has(route.name) ? children : <Deferred navigation={navigation}>{children}</Deferred>}
+              </ErrorBoundary>
+            </RouteGuard>
           </KeyboardSafe>
         )}
         /* one shared header for every screen — reference render(), lines 1529-1536 */
         screenOptions={{
           header: (props) => <NavHeader {...props} />,
           contentStyle: { backgroundColor: colors.bg },
-          // the iOS slide with a parallax on both platforms; Android's default is an abrupt zoom
-          animation: 'ios_from_right',
-          animationDuration: 320,
+          // Android: no system animation. Its screen animations fade, and a fading
+          // screen draws every card's shadow as a dark block — the black boxes.
+          // The screen's content slides into place itself instead (AfterTransition).
+          animation: Platform.OS === 'ios' ? 'ios_from_right' : 'none',
+          animationDuration: 280,
           gestureEnabled: true,
           fullScreenGestureEnabled: true,
         }}
       >
-        <Stack.Screen name="AuthGate" component={AuthGateScreen} options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
+        <Stack.Screen name="AuthGate" component={AuthGateScreen} options={{ headerShown: false, animation: 'none', gestureEnabled: false }} />
         <Stack.Screen name="SignIn" component={SignInScreen} options={{ title: 'Sign in' }} />
         <Stack.Screen name="CreateAccount" component={CreateAccountScreen} options={{ title: 'Create an account' }} />
         <Stack.Screen name="GoogleSignIn" component={GoogleSignInScreen} options={{ title: 'Continue with Google' }} />
         <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="PinLock" component={PinLockScreen} options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
+        <Stack.Screen name="PinLock" component={PinLockScreen} options={{ headerShown: false, animation: 'none', gestureEnabled: false }} />
         <Stack.Screen name="Businesses" component={BusinessesScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
+        <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false, animation: 'none', gestureEnabled: false }} />
 
         <Stack.Screen name="MenuGroup" component={MenuGroupScreen} options={{ title: 'Menu' }} />
 
@@ -161,7 +194,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Receipt" component={ReceiptScreen} options={{ title: 'Receipt' }} />
         <Stack.Screen name="Sales" component={SalesListScreen} options={{ title: 'Sales' }} />
         <Stack.Screen name="SaleDetail" component={SaleDetailScreen} options={{ title: 'Sale' }} />
-        <Stack.Screen name="EditSale" component={EditSaleScreen} options={{ title: 'Edit bill' }} />
+        <Stack.Screen name="EditSale" component={EditSaleScreen} options={{ title: 'Edit sale' }} />
         <Stack.Screen name="Estimates" component={EstimatesScreen} options={{ title: 'Quotations' }} />
         <Stack.Screen name="EstimateNew" component={EstimateNewScreen} options={{ title: 'New quotation' }} />
         <Stack.Screen name="Challans" component={ChallansScreen} options={{ title: 'Delivery notes' }} />
@@ -170,8 +203,8 @@ export default function RootNavigator() {
         <Stack.Screen name="CreditNoteNew" component={CreditNoteNewScreen} options={{ title: 'Return goods' }} />
         <Stack.Screen name="Offers" component={OffersScreen} options={{ title: 'Offers' }} />
         <Stack.Screen name="OfferNew" component={OfferNewScreen} options={{ title: 'New offer' }} />
-        <Stack.Screen name="Recurring" component={RecurringScreen} options={{ title: 'Recurring bills' }} />
-        <Stack.Screen name="RecurringNew" component={RecurringNewScreen} options={{ title: 'New recurring bill' }} />
+        <Stack.Screen name="Recurring" component={RecurringScreen} options={{ title: 'Recurring sales' }} />
+        <Stack.Screen name="RecurringNew" component={RecurringNewScreen} options={{ title: 'New recurring sale' }} />
         <Stack.Screen name="Instalments" component={InstalmentsScreen} options={{ title: 'Instalment plans' }} />
         <Stack.Screen name="PlanDetail" component={PlanDetailScreen} options={{ title: 'Instalment plan' }} />
         <Stack.Screen name="PlanNew" component={PlanNewScreen} options={{ title: 'New plan' }} />
@@ -223,7 +256,8 @@ export default function RootNavigator() {
         <Stack.Screen name="AccountDetail" component={AccountDetailScreen} options={{ title: 'Account' }} />
         <Stack.Screen name="PaymentNew" component={PaymentNewScreen} options={{ title: 'Record payment' }} />
         <Stack.Screen name="PaymentDetail" component={PaymentDetailScreen} options={{ title: 'Payment' }} />
-        <Stack.Screen name="EntryNew" component={EntryNewScreen} options={{ title: 'Money in or out' }} />
+        <Stack.Screen name="EntryNew" component={EntryNewScreen} options={{ title: 'Adjust Money' }} />
+        <Stack.Screen name="CashEntries" component={CashEntriesScreen} options={{ title: 'Cash in' }} />
         <Stack.Screen name="Transfer" component={TransferScreen} options={{ title: 'Move money' }} />
         <Stack.Screen name="Accounting" component={AccountingScreen} options={{ title: 'Accounting' }} />
         <Stack.Screen name="Journals" component={JournalsScreen} options={{ title: 'Journal entries' }} />
@@ -240,16 +274,16 @@ export default function RootNavigator() {
         <Stack.Screen name="Faq" component={FaqScreen} options={{ title: 'FAQs & help' }} />
         <Stack.Screen name="Legal" component={LegalScreen} options={({ route }: any) => ({ title: route.params?.doc === 'privacy' ? 'Privacy policy' : route.params?.doc === 'terms' ? 'Terms and conditions' : 'Legal' })} />
         <Stack.Screen name="DataTools" component={DataToolsScreen} options={{ title: 'Data tools' }} />
+        <Stack.Screen name="VyaparImport" component={VyaparImportScreen} options={{ title: 'Move from Vyapar' }} />
+        <Stack.Screen name="ReminderSettings" component={ReminderSettingsScreen} options={{ title: 'Payment reminders' }} />
         <Stack.Screen name="Business" component={BusinessScreen} options={{ title: 'Business & branches' }} />
         <Stack.Screen name="Firms" component={FirmsScreen} options={{ title: 'Businesses' }} />
         <Stack.Screen name="AuditLog" component={AuditLogScreen} options={{ title: 'Audit log' }} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Needs you' }} />
-        <Stack.Screen name="Plans" component={PlansScreen} options={{ title: 'Subscription' }} />
+        <Stack.Screen name="Plans" component={LicenceScreen} options={{ title: 'Plan & licence' }} />
         <Stack.Screen name="About" component={AboutScreen} options={{ title: 'About' }} />
-        <Stack.Screen name="Licence" component={LicenceScreen} options={{ title: 'Licence' }} />
+        <Stack.Screen name="Licence" component={LicenceScreen} options={{ title: 'Plan & licence' }} />
         <Stack.Screen name="LicenceStop" component={LicenceStopScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Install" component={InstallScreen} options={{ title: 'Install on this phone' }} />
-        <Stack.Screen name="Update" component={UpdateScreen} options={{ title: 'Updates' }} />
         <Stack.Screen name="Sync" component={SyncScreen} options={{ title: 'Cloud sync' }} />
         <Stack.Screen name="Online" component={OnlineScreen} options={{ title: 'Online mode' }} />
         <Stack.Screen name="Versions" component={VersionsScreen} options={{ title: 'History' }} />

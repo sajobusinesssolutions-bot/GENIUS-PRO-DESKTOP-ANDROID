@@ -2,8 +2,10 @@
  * The bug these cover: a sale was refused for insufficient stock and the
  * message never reached the operator. Sheets in this app are Modals, and on
  * Android a Modal draws above everything else in the same tree, so a banner
- * rendered as a plain overlay sat behind the open checkout sheet. The stack is
- * now a Modal of its own, and an error is given long enough to be read.
+ * rendered as a plain overlay sat behind the open checkout sheet. A Modal of
+ * its own fixed that but took every touch on the screen until it faded. Now the
+ * stack is a plain overlay that lets touches through, and a sheet carries a
+ * ToastHost that draws the stack inside it while it is open.
  */
 import React from 'react';
 import { Text, Pressable, Modal } from 'react-native';
@@ -15,7 +17,7 @@ jest.mock('../data/AppDataContext', () => ({
   useAppDataSafe: () => ({ db: mockDb }),
 }));
 
-import { ToastProvider, useToast } from '../components/Toast';
+import { ToastProvider, ToastHost, useToast } from '../components/Toast';
 
 const MESSAGE = 'Not enough Widget A — 2 PC on hand, 5 needed';
 
@@ -31,7 +33,7 @@ function Thrower() {
 
 /** Stands in for an open checkout sheet, which is a Modal. */
 function OpenSheet() {
-  return <Modal visible><Text>Review and save</Text></Modal>;
+  return <Modal visible><Text>Review and save</Text><ToastHost /></Modal>;
 }
 
 function setup(withSheet = false) {
@@ -65,17 +67,34 @@ describe('the toast stack', () => {
     expect(screen.getByText(MESSAGE)).toBeTruthy();
   });
 
-  it('renders in a Modal of its own, which is what puts it above the sheet', () => {
+  it('is drawn inside the open sheet, so it shows above it', () => {
     setup(true);
     fireEvent.press(screen.getByText('refuse'));
-    const owner = screen.getByText(MESSAGE);
-    let node: any = owner.parent;
+    let node: any = screen.getByText(MESSAGE).parent;
     let inModal = false;
     while (node) {
       if (node.type === 'Modal' || node.type?.displayName === 'Modal') { inModal = true; break; }
       node = node.parent;
     }
     expect(inModal).toBe(true);
+    expect(screen.getAllByText(MESSAGE)).toHaveLength(1);
+  });
+
+  it('never sits in a Modal of its own, which would block every tap until it faded', () => {
+    setup();
+    fireEvent.press(screen.getByText('refuse'));
+    let node: any = screen.getByText(MESSAGE).parent;
+    while (node) {
+      expect(node.type === 'Modal' || node.type?.displayName === 'Modal').toBe(false);
+      node = node.parent;
+    }
+  });
+
+  it('leaves the screen underneath tappable while it is showing', () => {
+    setup();
+    fireEvent.press(screen.getByText('refuse'));
+    fireEvent.press(screen.getByText('ok'));
+    expect(screen.getByText('Saved')).toBeTruthy();
   });
 
   it('holds an error long enough to be read, unlike a confirmation', () => {
@@ -83,11 +102,11 @@ describe('the toast stack', () => {
     fireEvent.press(screen.getByText('ok'));
     fireEvent.press(screen.getByText('refuse'));
 
-    act(() => { jest.advanceTimersByTime(4000); });
+    act(() => { jest.advanceTimersByTime(3500); });
     expect(screen.queryByText('Saved')).toBeNull();
     expect(screen.getByText(MESSAGE)).toBeTruthy();
 
-    act(() => { jest.advanceTimersByTime(3500); });
+    act(() => { jest.advanceTimersByTime(3000); });
     expect(screen.queryByText(MESSAGE)).toBeNull();
   });
 

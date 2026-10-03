@@ -3,7 +3,8 @@
  * (which supersedes the earlier one at 5608), with the header from line 5608-5610.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
+import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor, PermKey } from '../data/perms';
@@ -84,7 +85,8 @@ export default function FinanceScreen() {
     { route: 'Money', i: 'card', n: 'Cash & bank', b: 'Every transaction' },
     { route: 'Reports', i: 'chart', n: 'Reports', b: REPORT_COUNT + ' of them', perm: 'reports' },
     { route: 'Accounting', i: 'pie', n: 'Accounting', b: 'Ledgers, P&L', perm: 'accounting' },
-    { route: 'Tax', i: 'receipt', n: 'Tax', b: taxOn ? taxName + ' ' + db.settings.taxRate + '%' : 'Switched off' },
+    // with tax not charged there is nothing to show under Tax
+    ...(taxOn ? [{ route: 'Tax', i: 'receipt', n: 'Tax', b: taxName + ' ' + db.settings.taxRate + '%' }] : []),
     { route: 'Instalments', i: 'calendar', n: 'Instalments', b: 'Pay-in-parts' },
     { route: 'CreditNotes', i: 'swap', n: 'Returns', b: plural((db.creditNotes || []).length, 'note') },
   ] as { route: string; i: IconName; n: string; b: string; perm?: PermKey }[]).filter((x) => canFor(role, x.perm));
@@ -127,7 +129,7 @@ export default function FinanceScreen() {
                         {(mv >= 0 ? '+' : '−') + ' ' + money0(Math.abs(mv))} in {d.R.label.toLowerCase()}
                       </Text>
                     </View>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{money(accountBalance(a.id))}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(accountBalance(a.id))}</Text>
                   </Card>
                 </Pressable>
               );
@@ -139,7 +141,7 @@ export default function FinanceScreen() {
         <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
           <AccentHead title={'Summary · ' + d.R.label} tone="accent" />
           <Panel>
-            <DetailRow label="Bills" value={String(d.ss.length)} />
+            <DetailRow label="Sales" value={String(d.ss.length)} />
             <DetailRow label={'Sales' + (taxOn ? ', net of ' + taxName : '')} value={money(d.net)} tone={colors.good} />
             {d.returns ? <DetailRow label="Returns" value={'(' + money0(d.returns) + ')'} tone={colors.danger} /> : null}
             <DetailRow label="Cost of goods sold" value={'(' + money0(d.cogs) + ')'} tone={colors.danger} />
@@ -158,7 +160,7 @@ export default function FinanceScreen() {
               <Button label="Money in" icon={<Icon name="down" size={16} color={colors.good} />} onPress={() => go('EntryNew', { direction: 'in' })} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button label="Money out" icon={<Icon name="up" size={16} color={colors.danger} />} onPress={() => go('EntryNew', { direction: 'out' })} />
+              <Button label="Add expense" icon={<Icon name="up" size={16} color={colors.danger} />} onPress={() => go('EntryNew', { direction: 'out' })} />
             </View>
             <View style={{ flex: 1 }}>
               <Button label="Transfer" icon={<Icon name="swap" size={16} color={colors.accent} />} onPress={() => go('Transfer')} />

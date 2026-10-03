@@ -220,6 +220,14 @@ const KIND_OF: Record<string, OpKind> = {
   creditNote: 'creditnote.create',
   product: 'record.upsert',
   party: 'record.upsert',
+  estimate: 'record.upsert',
+  ledger: 'record.upsert',
+  firm: 'record.upsert',
+};
+
+/** Which collection a record.upsert lands in, by queue kind. */
+const COLL_OF: Record<string, string> = {
+  product: 'products', party: 'parties', estimate: 'estimates', ledger: 'coa', firm: 'firm',
 };
 
 /** Finds the record a queue entry points at. */
@@ -236,6 +244,10 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
     case 'creditNote': return (d.creditNotes || []).find((x) => x.id === ref);
     case 'product': return d.products.find((x) => x.id === ref);
     case 'party': return d.parties.find((x) => x.id === ref);
+    case 'estimate': return (d.estimates || []).find((x) => x.id === ref);
+    case 'ledger': return (d.coa || []).find((x) => x.id === ref);
+    // the business's own details: name, phones, address, logo, signature…
+    case 'firm': return d.firm?.id === ref ? d.firm : undefined;
     default: return undefined;
   }
 }
@@ -261,7 +273,7 @@ export function opsFrom(d: DB, wiring: Wiring, limit = 200): { ops: Op[]; skippe
 
     lamport += 1;
     const payload = kind === 'record.upsert'
-      ? { coll: q.kind === 'product' ? 'products' : 'parties', recId: q.ref, doc: rec }
+      ? { coll: COLL_OF[q.kind] || 'parties', recId: q.ref, doc: rec }
       : rec;
 
     ops.push(buildOp(
