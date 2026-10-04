@@ -24,6 +24,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TextInput, Switch, Alert, ActivityIndicator, Platform, Linking } from 'react-native';
 import { Pressable } from '../components/Press';
 import Constants from 'expo-constants';
+import { PLAY_BUILD } from '../data/store';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
@@ -326,8 +327,8 @@ export function LicenceScreen() {
       </View>
 
       {/* the plans */}
-      {cap(a === 'paid' ? 'Plans' : 'Choose a plan')}
-      <View style={{ flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: colors.sunk, marginBottom: 12 }}>
+      {cap(a === 'paid' || PLAY_BUILD ? 'Plans' : 'Choose a plan')}
+      {PLAY_BUILD ? null : <View style={{ flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: colors.sunk, marginBottom: 12 }}>
         {(['month', 'quarter', 'year'] as const).map((t) => (
           <Pressable key={t} onPress={() => setTerm(t)} style={{
             flex: 1, paddingVertical: 10, borderRadius: 11, alignItems: 'center',
@@ -338,7 +339,7 @@ export function LicenceScreen() {
             </Text>
           </Pressable>
         ))}
-      </View>
+      </View>}
       {(['starter', 'pro'] as const).map((id) => {
         const p = PLANS[id];
         const mine = a === 'paid' && (lic ? lic.plan === id : db.subscription.plan === id);
@@ -353,10 +354,10 @@ export function LicenceScreen() {
               {mine ? <Badge label="Your plan" tone="good" /> : star ? <Badge label="Most popular" tone="accent" /> : null}
             </View>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: colors.faint, marginTop: 4 }}>{p.blurb}</Text>
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 26, color: colors.ink, marginTop: 10 }}>
+            {PLAY_BUILD ? null : <Text style={{ fontFamily: fonts.uiExtra, fontSize: 26, color: colors.ink, marginTop: 10 }}>
               {money(p.prices[term])}
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{term === 'month' ? ' / month' : term === 'quarter' ? ' / 3 months' : ' / year'}</Text>
-            </Text>
+            </Text>}
             <View style={{ gap: 6, marginTop: 10, marginBottom: 14 }}>
               {p.has.slice(0, 6).map((f) => (
                 <View key={f} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -365,7 +366,8 @@ export function LicenceScreen() {
                 </View>
               ))}
             </View>
-            <Button variant={mine ? 'default' : 'pri'} label={mine ? 'Your current plan' : 'Get ' + p.name} disabled={mine} onPress={() => choose(id)} />
+            {PLAY_BUILD ? (mine ? <Badge label="Your current plan" tone="good" /> : null)
+              : <Button variant={mine ? 'default' : 'pri'} label={mine ? 'Your current plan' : 'Get ' + p.name} disabled={mine} onPress={() => choose(id)} />}
           </View>
         );
       })}

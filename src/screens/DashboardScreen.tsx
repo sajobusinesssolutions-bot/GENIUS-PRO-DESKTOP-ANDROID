@@ -33,9 +33,10 @@ import { AppBar, IconBtn } from '../components/AppBar';
 import { Icon, IconName } from '../components/icons';
 import { TrendLine } from '../components/charts';
 import { useGo } from '../nav/navigate';
+import { PLAY_BUILD } from '../data/store';
 import { QuickSheet } from '../components/Quick';
 import { useDueReminders, ReminderRow, RemindSheet } from '../components/Reminders';
-import { FAB } from '../components/ui';
+import { FAB, useHideOnScroll, FAB_COLORS } from '../components/ui';
 import { access, accessDaysLeft } from '../data/logic';
 import {
   periodRange, plural, startOfDay, endOfDay, daysAgo, inRange, ageOfDays, fmtDate,
@@ -163,6 +164,39 @@ function SectionHead({ title, action, onAction }: { title: string; action?: stri
 
 /* ---------------------------------------------------------------- */
 
+const DAY_SHORT = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const DAY_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const hourLabel = (h: number) => (h % 12 || 12) + (h < 12 ? 'A' : 'P');
+const hourName = (h: number) => (h % 12 || 12) + (h < 12 ? ' AM' : ' PM');
+const shortDate = (t: number) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+/** The stretches the graph is drawn over for a period, oldest first. */
+export function trendPoints(period: Period, now = Date.now()): { from: number; to: number; label: string; name: string }[] {
+  if (period === 'today') {
+    const start = startOfDay(now);
+    return Array.from({ length: 8 }, (_, i) => {
+      const h = i * 3;
+      return {
+        from: start + h * 3600000, to: start + (h + 3) * 3600000 - 1,
+        label: hourLabel(h), name: hourName(h) + ' – ' + hourName((h + 3) % 24),
+      };
+    });
+  }
+  if (period === 'week') {
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = daysAgo(6 - i);
+      const w = new Date(day).getDay();
+      return { from: startOfDay(day), to: endOfDay(day), label: DAY_SHORT[w], name: DAY_LONG[w] + ' ' + shortDate(day) };
+    });
+  }
+  // the last 30 days in six stretches of five
+  return Array.from({ length: 6 }, (_, i) => {
+    const from = startOfDay(daysAgo(29 - i * 5));
+    const to = endOfDay(daysAgo(25 - i * 5));
+    return { from, to, label: shortDate(from).toUpperCase(), name: shortDate(from) + ' – ' + shortDate(to) };
+  });
+}
+
 export default function DashboardScreen() {
   const { colors } = useTheme();
   const go = useGo();
@@ -175,6 +209,7 @@ export default function DashboardScreen() {
   /** A day picked on the bar graph; its figures replace the period's until cleared. */
   const [dayPick, setDayPick] = useState<number | null>(null);
   const [quick, setQuick] = useState(false);
+  const fab = useHideOnScroll();
   /** The customer a payment reminder is being written for. */
   const [remind, setRemind] = useState<string | null>(null);
   /** Who has invoices open, as the reminder settings say. */
@@ -231,13 +266,12 @@ export default function DashboardScreen() {
     const stockValue = stocked.reduce((a, p) => a + Math.max(0, stockOf(p)) * (p.cost || 0), 0);
     const outOf = stocked.filter((p) => stockOf(p) <= 0).length;
 
-    // the last seven days, each with what it takes to show it on its own
-    const days: { v: number; idx: number; n: number; at: number }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const day = daysAgo(i);
-      const those = live.filter((s) => inRange(s.ts, startOfDay(day), endOfDay(day)));
-      days.push({ v: those.reduce((a, s) => a + s.total, 0), idx: new Date(day).getDay(), n: those.length, at: startOfDay(day) });
-    }
+    // the line follows the period: the day in three-hour blocks, the week by day,
+    // the month in five-day stretches — each with what it takes to show it alone
+    const days = trendPoints(period).map((b) => {
+      const those = live.filter((s) => inRange(s.ts, b.from, b.to));
+      return { ...b, v: those.reduce((a, s) => a + s.total, 0), n: those.length };
+    });
 
     // Settings → "Warn when stock runs low"; services have no shelf to run low
     const low = db.settings.lowStockAlerts === false
@@ -286,7 +320,7 @@ export default function DashboardScreen() {
         right={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
             <View>
-              <IconBtn name="alert" onPress={() => go('Notifications')} color={colors.soft} />
+              <IconBtn name="bell" size={26} onPress={() => go('Notifications')} color={colors.ink} />
               {d.alerts ? (
                 <View style={{
                   position: 'absolute', top: -1, right: -2, minWidth: 15, height: 15, paddingHorizontal: 4,
@@ -305,7 +339,7 @@ export default function DashboardScreen() {
         }
       />
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 96 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 96 }} onScroll={fab.onScroll} scrollEventThrottle={64}>
         {/*
           Shown only when it is something to act on. A standing "all synced"
           line is a banner the eye learns to skip, which is exactly what a
@@ -316,7 +350,7 @@ export default function DashboardScreen() {
             <Icon name="lock" size={18} color={colors.danger} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.danger }}>{plan === 'trialOver' ? 'Your free trial has ended' : 'Your plan has run out'}</Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger, marginTop: 2 }}>Nothing new can be added and sync is paused. Tap to choose a plan.</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger, marginTop: 2 }}>Nothing new can be added and sync is paused.{PLAY_BUILD ? '' : ' Tap to choose a plan.'}</Text>
             </View>
             <Icon name="chev" size={17} color={colors.danger} />
           </Pressable>
@@ -324,7 +358,7 @@ export default function DashboardScreen() {
           <Pressable onPress={() => go('Licence')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 16, marginBottom: 2, padding: 14, borderRadius: 16, backgroundColor: colors.accentSoft }}>
             <Icon name="gift" size={18} color={colors.accent} />
             <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>
-              {daysLeft <= 0 ? 'Your trial ends today' : plural(daysLeft, 'day') + ' left of your free trial'}. Choose a plan to keep adding sales.
+              {daysLeft <= 0 ? 'Your trial ends today' : plural(daysLeft, 'day') + ' left of your free trial'}.{PLAY_BUILD ? '' : ' Choose a plan to keep adding sales.'}
             </Text>
             <Icon name="chev" size={17} color={colors.accent} />
           </Pressable>
@@ -340,7 +374,7 @@ export default function DashboardScreen() {
         <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
           <Card style={{ paddingHorizontal: 16, paddingTop: 15, paddingBottom: 15, borderRadius: 18 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Cap>{picked ? 'Sales · ' + new Date(picked.at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Sales'}</Cap>
+              <Cap>{picked ? 'Sales · ' + picked.name : 'Sales'}</Cap>
               <PeriodSwitch value={period} onChange={(p) => { setPeriod(p); setDayPick(null); }} />
             </View>
 
@@ -361,7 +395,7 @@ export default function DashboardScreen() {
                   />
                 ) : null}
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-                  {shownCount ? plural(shownCount, 'sale') + (see('dashboard.view_avg_price') ? ' · ' + money(average) + ' average' : '') : picked ? 'No sales that day' : 'No sales yet'}
+                  {shownCount ? plural(shownCount, 'sale') + (see('dashboard.view_avg_price') ? ' · ' + money(average) + ' average' : '') : picked ? 'No sales then' : 'No sales yet'}
                 </Text>
               </View>
 
@@ -502,7 +536,7 @@ export default function DashboardScreen() {
             <Card style={{ borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13, gap: 8, flex: 1 }}>
               <Cap>Best sellers</Cap>
               {d.top.length ? d.top.map((t, i) => (
-                <View key={t.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View key={i + ':' + t.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={{ width: 16, fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>{i + 1}</Text>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{t.name}</Text>
@@ -564,7 +598,7 @@ export default function DashboardScreen() {
       </ScrollView>
 
       {/* everything that can be added, from the one place people look for it */}
-      <FAB label="Quick add" icon="plus" tone="accent" onPress={() => setQuick(true)} />
+      <FAB label="Quick add" icon="plus" color={FAB_COLORS.quickAdd} hidden={fab.hidden} onPress={() => setQuick(true)} />
       <QuickSheet visible={quick} onClose={() => setQuick(false)} />
       {remind ? <RemindSheet target={dueList.find((x) => x.partyId === remind) || null} onClose={() => setRemind(null)} /> : null}
     </View>

@@ -112,12 +112,15 @@ describe('the takings card', () => {
     mockState.sales = [sale({ total: 1000 }), sale({ id: 's2', total: 300, ts: yesterday })];
     render(<DashboardScreen />);
     expect(screen.getByTestId('takings')).toHaveTextContent('Sh 1,000');
-    const label = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(yesterday).getDay()];
-    fireEvent.press(screen.getByLabelText('Show ' + label));
+    // the week view picks a day; its point is named after the day and date
+    fireEvent.press(screen.getByText('Week'));
+    const name = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(yesterday).getDay()];
+    const label = screen.getAllByLabelText(new RegExp('^Show ' + name))[0];
+    fireEvent.press(label);
     expect(screen.getByTestId('takings')).toHaveTextContent('Sh 300');
     expect(mockGo).not.toHaveBeenCalledWith('Reports');
-    fireEvent.press(screen.getByLabelText('Show ' + label));
-    expect(screen.getByTestId('takings')).toHaveTextContent('Sh 1,000');
+    fireEvent.press(label);
+    expect(screen.getByTestId('takings')).toHaveTextContent('Sh 1,300');
   });
 });
 

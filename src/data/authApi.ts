@@ -235,3 +235,8 @@ export function revokeDevice(access: string, id: string) {
 export function fetchLicence(access: string) {
   return request<LicenceResponse>('/v1/licence/heartbeat', {}, access);
 }
+
+/** Deletes the signed-in account and everything kept for it on the server. `confirm` is its email, typed. */
+export function deleteAccount(access: string, confirm: string) {
+  return request<{ ok: boolean }>('/v1/account/delete', { confirm }, access);
+}

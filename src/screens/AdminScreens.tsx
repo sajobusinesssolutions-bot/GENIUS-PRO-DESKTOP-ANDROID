@@ -84,7 +84,7 @@ export function NotificationsScreen() {
   if (claims.length) rows.push({ t: plural(claims.length, 'warranty claim') + ' open', s: 'Waiting on a decision', route: 'Warranties', tone: colors.warn });
   if (due.length) rows.push({ t: plural(due.length, 'recurring sale') + ' due', s: 'Ready to be raised', route: 'Recurring', tone: colors.accent });
 
-  if (!rows.length && !reminders.length) return <EmptyState icon="check" title="Nothing needs you" subtitle="Stock, sales and claims are all in order." />;
+  if (!rows.length && !reminders.length) return <EmptyState icon="check" title="All caught up" subtitle="Stock, sales and claims are all in order." />;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>

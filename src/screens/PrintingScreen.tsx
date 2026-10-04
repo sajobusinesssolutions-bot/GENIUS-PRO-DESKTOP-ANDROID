@@ -566,7 +566,7 @@ function ReceiptPreview({ d }: { d: ReceiptDraft }) {
       {d.showServed && !compact ? kv('Served by', 'Cashier') : null}
       {rule}
       {lines.map((l, i) => (
-        <View key={l.name} style={{ marginBottom: compact ? 1 : 3 }}>
+        <View key={i + ':' + l.name} style={{ marginBottom: compact ? 1 : 3 }}>
           {compact
             ? <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{t(l.qty + ' ' + l.name)}{t(money(l.qty * l.price))}</View>
             : <>
@@ -841,7 +841,7 @@ function ItemsMock({ d, head, headInk, ruled, tall }: { d: InvoiceDraft; head: s
   return (
     <View style={{ marginTop: 8, borderWidth: ruled ? 1 : 0, borderColor: '#000' }}>
       <View style={{ borderBottomWidth: 1, borderColor: ruled ? '#000' : '#ccc' }}>{row(cols(), true, headInk, head)}</View>
-      {lines.map((l) => <View key={l.name}>{row(cols(l), false, '#222')}</View>)}
+      {lines.map((l, i) => <View key={i + ':' + l.name}>{row(cols(l), false, '#222')}</View>)}
       {tall ? <View style={{ height: tall }} /> : null}
     </View>
   );

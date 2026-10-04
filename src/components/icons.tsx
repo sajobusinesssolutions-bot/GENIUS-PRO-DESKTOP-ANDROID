@@ -17,6 +17,7 @@ type Glyph = React.ComponentType<{ size?: number; color?: string; weight?: IconW
 // Plain require() per glyph: Metro bundles only these files, and the library's
 // .tsx source stays out of this project's type-check (its svg prop types clash).
 /* eslint-disable @typescript-eslint/no-require-imports */
+const HeadsetIcon: Glyph = require('phosphor-react-native/src/icons/Headset').HeadsetIcon;
 const SunIcon: Glyph = require('phosphor-react-native/src/icons/Sun').SunIcon;
 const MoonIcon: Glyph = require('phosphor-react-native/src/icons/Moon').MoonIcon;
 const CircleHalfIcon: Glyph = require('phosphor-react-native/src/icons/CircleHalf').CircleHalfIcon;
@@ -87,7 +88,7 @@ export type IconName =
   | 'swap' | 'print' | 'trash' | 'tag' | 'pie' | 'owner' | 'cashier' | 'money'
   | 'bank' | 'phone' | 'cash' | 'lock' | 'down' | 'up' | 'cart' | 'coins'
   | 'pencil' | 'tools' | 'wrench' | 'bulb' | 'chair' | 'brick' | 'food' | 'taxi'
-  | 'wifi' | 'bluetooth' | 'image' | 'mail' | 'pin' | 'dashboard' | 'menu' | 'camera' | 'barcode' | 'share' | 'filter' | 'sun' | 'moon' | 'contrast';
+  | 'wifi' | 'bluetooth' | 'image' | 'mail' | 'pin' | 'dashboard' | 'menu' | 'camera' | 'barcode' | 'share' | 'filter' | 'sun' | 'moon' | 'contrast' | 'support' | 'bell';
 
 export type { IconWeight };
 
@@ -95,6 +96,8 @@ const MAP: Record<IconName, Glyph> = {
   home: HouseIcon,
   filter: FunnelIcon,
   sun: SunIcon,
+  bell: BellIcon,
+  support: HeadsetIcon,
   moon: MoonIcon,
   contrast: CircleHalfIcon,
   till: CashRegisterIcon,

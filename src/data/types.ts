@@ -471,6 +471,8 @@ export interface Firm {
    * picker hands back a cache path the system is free to delete.
    */
   logo?: string;
+  /** The newest app version that has opened these books; older apps must update first. */
+  minAppVersion?: string;
   /** Printed above the signature line on an invoice. Same storage rule. */
   signature?: string;
   /** Words printed at the bottom of every document — terms, thanks, a slogan. */

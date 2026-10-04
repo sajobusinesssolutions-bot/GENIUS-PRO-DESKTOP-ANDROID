@@ -24,8 +24,8 @@ export const fonts = {
   uiSemi: 'Inter_600SemiBold',
   uiBold: 'Inter_700Bold',
   uiExtra: 'Inter_800ExtraBold',
-  mono: 'IBMPlexMono_500Medium',
-  monoSemi: 'IBMPlexMono_600SemiBold',
+  mono: 'Inter_500Medium',
+  monoSemi: 'Inter_600SemiBold',
 };
 
 export function useTheme(): { colors: ThemeColors; dark: boolean } {

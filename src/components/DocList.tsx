@@ -17,7 +17,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts } from '../theme';
 import { Icon, IconName } from './icons';
 import { Sheet } from './Sheet';
-import { Search, FAB } from './ui';
+import { Search, FAB, useHideOnScroll, FAB_COLORS } from './ui';
 import { useToast } from './Toast';
 import { useAppData } from '../data/AppDataContext';
 import { printDoc, shareDoc, DocMeta } from '../data/docPrint';
@@ -312,7 +312,7 @@ export function ListPage<T>({ top, data, renderItem, keyExtractor, empty, add, s
   renderItem: ListRenderItem<T>;
   keyExtractor: (t: T) => string;
   empty?: { title?: string; text?: string };
-  add?: { label: string; onPress: () => void };
+  add?: { label: string; onPress: () => void; color?: string };
   search?: { value: string; onChange: (v: string) => void; placeholder: string };
 }) {
   const { colors } = useTheme();
@@ -326,9 +326,12 @@ export function ListPage<T>({ top, data, renderItem, keyExtractor, empty, add, s
       ) : null}
     </View>
   ), [top, search?.value, search?.placeholder]);
+  const fab = useHideOnScroll();
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <FlatList
+        onScroll={fab.onScroll}
+        scrollEventThrottle={64}
         data={data}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
@@ -337,7 +340,7 @@ export function ListPage<T>({ top, data, renderItem, keyExtractor, empty, add, s
         contentContainerStyle={{ paddingBottom: 110, flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
       />
-      {add ? <FAB label={add.label} icon="plus" tone="accent" onPress={add.onPress} /> : null}
+      {add ? <FAB label={add.label} icon="plus" tone="accent" color={add.color} hidden={fab.hidden} onPress={add.onPress} /> : null}
     </View>
   );
 }

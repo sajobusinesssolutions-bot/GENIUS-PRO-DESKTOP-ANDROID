@@ -14,7 +14,7 @@ import argon2 from 'argon2';
 import { createHash, randomInt, randomBytes, timingSafeEqual } from 'node:crypto';
 import { q, tx } from './db.js';
 import { sendCode, mailConfigured } from './mail.js';
-import { issueAccess, newRefresh, hashRefresh, refreshMatches } from './tokens.js';
+import { issueAccess, readAccess, newRefresh, hashRefresh, refreshMatches } from './tokens.js';
 
 const OTP_TTL = Number(process.env.OTP_TTL || 600);
 const MAX_OTP_TRIES = 5;
@@ -325,6 +325,47 @@ export default async function authRoutes(app) {
   });
 
   /* --- refresh --------------------------------------------------------- */
+  /**
+   * Deleting an account, as Google Play requires an app with sign-up to offer.
+   * The person must be signed in and type their own email to confirm. Their
+   * businesses go first (their books, sync log, devices and cloud copies with
+   * them), then the account itself, its sign-ins and licences. It is one
+   * transaction: if anything refuses, nothing is deleted and the person is
+   * told to write to support. Crash reports are kept but no longer tied to them.
+   */
+  app.post('/v1/account/delete', async (req, reply) => {
+    const header = String(req.headers.authorization || '');
+    if (!header.startsWith('Bearer ')) return fail(reply, 401, 'badCredentials', 'Sign in again.');
+    let me;
+    try {
+      const claims = await readAccess(header.slice(7));
+      me = { id: claims.sub, email: String(claims.email || '') };
+    } catch {
+      return fail(reply, 401, 'badCredentials', 'That session has expired. Sign in again.');
+    }
+    const typed = String(req.body?.confirm || '').trim().toLowerCase();
+    if (!typed || typed !== me.email.toLowerCase()) {
+      return fail(reply, 400, 'malformed', 'Type the email address of this account to confirm.');
+    }
+    try {
+      await tx(async (c) => {
+        const has = async (table) => (await c.query('select to_regclass($1) as t', ['public.' + table])).rows[0]?.t != null;
+        if (await has('crash_reports')) await c.query('update crash_reports set account_id = null where account_id = $1', [me.id]);
+        await c.query('delete from businesses where account_id = $1', [me.id]);
+        for (const table of ['sessions', 'devices', 'licences']) {
+          if (await has(table)) await c.query(`delete from ${table} where account_id = $1`, [me.id]);
+        }
+        const gone = await c.query('delete from accounts where id = $1', [me.id]);
+        if (!gone.rowCount) throw new Error('account not found');
+      });
+    } catch (e) {
+      req.log.error({ err: e.message, account: me.id }, 'account deletion failed');
+      return fail(reply, 409, 'server', 'The account could not be deleted automatically. Write to support and it will be done for you.');
+    }
+    req.log.info({ account: me.id }, 'account deleted at the owner\'s request');
+    return { ok: true };
+  });
+
   app.post('/v1/auth/refresh', async (req, reply) => {
     const token = String(req.body?.refresh || '');
     if (!token) return fail(reply, 400, 'malformed', 'No refresh token was sent.');

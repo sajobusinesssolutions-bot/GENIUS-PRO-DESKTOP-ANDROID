@@ -15,7 +15,7 @@ import { useGo } from '../nav/navigate';
 import type { RootStackParamList } from '../nav/types';
 import { SUPPORT_EMAIL } from '../data/support';
 
-export const LEGAL_UPDATED = '27 September 2026';
+export const LEGAL_UPDATED = '4 October 2026';
 /** Where people write to about privacy. Empty hides the line. */
 export const LEGAL_CONTACT = SUPPORT_EMAIL;
 
@@ -44,9 +44,10 @@ export const PRIVACY: Block[] = [
   ] },
   { h: 'Permissions', p: [
     'Camera and photos: only when you choose to add a logo, signature or product picture, or scan a barcode. Bluetooth and network: only to reach a printer you set up.',
+    'On Android 11 and older, Android only lets an app search for Bluetooth printers if it holds the location permission. The app asks for it there for that reason alone and never reads your location. Newer Android versions do not ask.',
   ] },
   { h: 'Keeping and deleting', p: [
-    'Records stay on the phone until you delete them or remove the app. Synced records are kept on our server while your account is active. The owner can ask us to delete the account and its synced data.',
+    'Records stay on the phone until you delete them or remove the app. Synced records are kept on our server while your account is active. The owner can delete the account and everything kept for it on our server at any time from Menu, Delete account, or by asking at saljoetech.tech/delete-account.',
   ] },
   { h: 'Security', p: [
     'Connections to our server are encrypted. No system is perfectly secure, so keep the phone locked and give each member of staff their own PIN.',

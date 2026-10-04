@@ -1,7 +1,6 @@
 import 'react-native-gesture-handler';
 import React from 'react';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
-import { IBMPlexMono_500Medium, IBMPlexMono_600SemiBold } from '@expo-google-fonts/ibm-plex-mono';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppDataProvider } from './src/data/AppDataContext';
@@ -22,11 +21,11 @@ installRefusalHandler();
 installCrashReporting();
 import { ToastProvider } from './src/components/Toast';
 import RootNavigator from './src/nav/RootNavigator';
+import VersionGate from './src/components/VersionGate';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold,
-    IBMPlexMono_500Medium, IBMPlexMono_600SemiBold,
   });
 
   if (!fontsLoaded) {
@@ -48,7 +47,9 @@ export default function App() {
             <BackupKeeper />
             <CrashContext />
             <ErrorBoundary>
-              <RootNavigator />
+              <VersionGate>
+                <RootNavigator />
+              </VersionGate>
             </ErrorBoundary>
             <ThemedStatusBar />
           </ToastProvider>

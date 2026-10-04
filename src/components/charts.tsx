@@ -173,12 +173,14 @@ function smooth(pts: { x: number; y: number }[]): string {
 }
 
 /**
- * The week as a soft line with a shaded fill. Tapping a day drops a marker on
+ * A period as a soft line with a shaded fill — hours of a day, days of a week
+ * or stretches of a month. Tapping a day drops a marker on
  * the line, with a dashed guide down to its label and the day's figure in a
  * small bubble above it; tapping it again lets it go.
  */
 export function TrendLine({ days, height = 92, selected, onSelect, format }: {
-  days: { v: number; idx: number }[];
+  /** The points along the line: a figure, its short label under the axis and its full name. */
+  days: { v: number; label: string; name: string }[];
   height?: number;
   selected?: number | null;
   onSelect?: (i: number) => void;
@@ -235,7 +237,7 @@ export function TrendLine({ days, height = 92, selected, onSelect, format }: {
         {onSelect ? (
           <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, flexDirection: 'row' }}>
             {days.map((d, i) => (
-              <Pressable key={i} onPress={() => onSelect(i)} accessibilityLabel={'Show ' + DAY_NAMES[d.idx]} style={{ flex: 1 }} />
+              <Pressable key={i} onPress={() => onSelect(i)} accessibilityLabel={'Show ' + d.name} style={{ flex: 1 }} />
             ))}
           </View>
         ) : null}
@@ -248,7 +250,7 @@ export function TrendLine({ days, height = 92, selected, onSelect, format }: {
             <Pressable key={i} onPress={onSelect ? () => onSelect(i) : undefined} disabled={!onSelect} style={{ flex: 1, alignItems: 'center' }}>
               <View style={{ width: 1, height: 4, backgroundColor: colors.lineHard, marginBottom: 4 }} />
               <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 10.5, letterSpacing: 0.4, color: on ? colors.accent : colors.faint }}>
-                {DAY_SHORT[d.idx]}
+                {d.label}
               </Text>
             </Pressable>
           );

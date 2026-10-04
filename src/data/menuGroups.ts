@@ -82,7 +82,7 @@ const liveSales = (d: DB) => d.sales.filter((s) => s.status !== 'void');
 
 export const MENU_GROUPS: MenuGroupDef[] = [
   {
-    id: 'sell', n: 'Sell', i: 'till', tone: 'accent', perm: 'sales',
+    id: 'sell', n: 'Sales', i: 'till', tone: 'accent', perm: 'sales',
     b: (c) => plural(liveSales(c.db).length, 'sale'),
     items: [
       { route: 'Sales', i: 'doc', n: 'Activity', b: (c) => plural(liveSales(c.db).length, 'sale'), alt: 'sales invoices receipts transactions parties' },
@@ -101,7 +101,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
   {
     // Buying used to be a group of its own holding two rows. Stock arrives by
     // being bought, so the whole life of an item sits in one place.
-    id: 'stock', n: 'Stock & buying', i: 'box', tone: 'good', perm: 'items',
+    id: 'stock', n: 'Inventory', i: 'box', tone: 'good', perm: 'items',
     b: (c) => plural(c.db.products.filter((p) => p.active).length, 'item'),
     items: [
       { route: 'ItemsTab', i: 'box', n: 'Items', b: (c) => plural(c.db.products.filter((p) => p.active).length, 'product or service', 'products & services'), alt: 'products services catalogue' },
@@ -116,7 +116,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     ],
   },
   {
-    id: 'people', n: 'People', i: 'user', tone: 'rail', perm: 'parties',
+    id: 'people', n: 'Parties', i: 'user', tone: 'rail', perm: 'parties',
     b: (c) => plural(c.db.parties.filter((p) => p.active).length, 'party', 'parties'),
     items: [
       { route: 'Parties', i: 'user', n: 'Customers & suppliers', b: (c) => plural(c.db.parties.filter((p) => p.active).length, 'on file', 'on file'), alt: 'contacts debtors creditors' },
@@ -125,7 +125,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
   },
   {
     // The drawer, the accounts behind it, and the books built on both.
-    id: 'money', n: 'Money', i: 'card', tone: 'warnc', perm: 'money',
+    id: 'money', n: 'Finance', i: 'card', tone: 'warnc', perm: 'money',
     b: (c) => (c.activeShift() ? 'A shift is open' : plural(c.db.accounts.length, 'account')),
     items: [
       { route: 'Shift', i: 'till', n: 'Cash register', b: (c) => (c.activeShift() ? 'Open — count and close' : 'Closed — open a shift'), perm: 'sell', alt: 'drawer shift float' },
@@ -176,7 +176,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
   {
     // Legal pages, the app and its plan, and every way to reach support —
     // opened as one screen; the rows below are what the menu search finds.
-    id: 'help', n: 'Help & about', i: 'bulb', tone: 'soft', perm: null,
+    id: 'help', n: 'Help & Support', i: 'support', tone: 'soft', perm: null,
     b: () => 'Support, FAQs, plan, legal',
     open: 'Help',
     items: [

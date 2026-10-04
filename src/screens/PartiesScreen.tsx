@@ -5,6 +5,7 @@
  *  - Search by name or phone, then All / Customers / Suppliers chips with counts.
  *  - Contacts in one card, biggest balance first. Tap opens the party.
  */
+import { FAB_COLORS } from '../components/ui';
 import React, { useState, useMemo } from 'react';
 import { View, FlatList, Pressable, Text } from 'react-native';
 import { useTheme, fonts } from '../theme';
@@ -64,7 +65,7 @@ export default function PartiesScreen({ navigation }: Props) {
       data={parties}
       keyExtractor={(x) => x.p.id}
       empty={{ text: q ? 'No one matches that search.' : 'No customers or suppliers yet. Add your first with Add contact.' }}
-      add={{ label: 'Add contact', onPress: () => navigation.navigate('PartyEdit', {}) }}
+      add={{ label: 'Add contact', color: FAB_COLORS.addContact, onPress: () => navigation.navigate('PartyEdit', {}) }}
       renderItem={({ item }) => {
         const { p, bal } = item;
         const cust = p.type === 'customer';
