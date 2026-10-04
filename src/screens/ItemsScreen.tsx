@@ -12,6 +12,7 @@
  * which a FlatList can't wrap its rows in anyway without every row but the
  * first ending up with no shadow under it.
  */
+import { FAB_COLORS } from '../components/ui';
 import React, { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
 import { Pressable } from '../components/Press';
@@ -114,7 +115,7 @@ export default function ItemsScreen() {
         data={d.list}
         keyExtractor={(x) => x.id}
         empty={{ text: q || filter !== 'all' ? 'Nothing matches. Change the filter, or add an item or service.' : 'No items yet. Add your first with Add item.' }}
-        add={canFor(role, 'inventory.create') ? { label: 'Add item', onPress: () => go('ProductDetail', {}) } : undefined}
+        add={canFor(role, 'inventory.create') ? { label: 'Add item', color: FAB_COLORS.addItem, onPress: () => go('ProductDetail', {}) } : undefined}
         renderItem={({ item: x }) => {
           const st = stockOf(x);
           const svc = x.kind === 'service';

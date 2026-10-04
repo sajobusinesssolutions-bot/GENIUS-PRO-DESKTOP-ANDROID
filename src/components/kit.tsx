@@ -7,7 +7,7 @@
  * a single full-width primary action at the bottom of every form.
  */
 import React from 'react';
-import { View, Text, ScrollView, ViewStyle, TextInput } from 'react-native';
+import { View, Text, ScrollView, ViewStyle, TextInput, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts, radius, shadow, control } from '../theme';
 import { Icon, IconName } from './icons';
@@ -348,26 +348,64 @@ export function Empty({ icon = 'box', title, hint, action }: {
 /* ----------------------------------------------------------------- actions */
 
 /** The extended floating action button anchored bottom-right. */
-export function FAB({ label, icon = 'plus', onPress, tone = 'danger' }: {
+/** The main add buttons' own colours, so each screen's is recognisable at a glance. */
+export const FAB_COLORS = {
+  quickAdd: '#6D4AFF',
+  newSale: '#16A34A',
+  addItem: '#EA7A12',
+  addContact: '#0E9AA7',
+} as const;
+
+/**
+ * Hides a floating button while the list is scrolled down, and brings it back
+ * at the top — so it never sits over the row being read.
+ */
+export function useHideOnScroll(threshold = 24) {
+  const [hidden, setHidden] = React.useState(false);
+  const onScroll = React.useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const away = e.nativeEvent.contentOffset.y > threshold;
+    setHidden((h) => (h === away ? h : away));
+  }, [threshold]);
+  return { hidden, onScroll };
+}
+
+export function FAB({ label, icon = 'plus', onPress, tone = 'danger', color, hidden }: {
   label?: string; icon?: IconName; onPress: () => void; tone?: Tone;
+  /** Its own colour, instead of the tone's. */
+  color?: string;
+  /** Slides out of the way, e.g. while the list is scrolled down. */
+  hidden?: boolean;
 }) {
   const { colors } = useTheme();
   const { fg } = useTone(tone);
   const insets = useSafeAreaInsets();
+  const away = React.useRef(new Animated.Value(hidden ? 1 : 0)).current;
+  React.useEffect(() => {
+    Animated.timing(away, { toValue: hidden ? 1 : 0, duration: 180, useNativeDriver: true }).start();
+  }, [hidden, away]);
   return (
-    <Tap
-      feel="burst"
-      onPress={onPress}
+    // centred along the bottom, clear of the phone's own bar
+    <Animated.View
+      pointerEvents={hidden ? 'none' : 'box-none'}
       style={{
-        position: 'absolute', right: 18, bottom: 18 + insets.bottom,
-        flexDirection: 'row', alignItems: 'center', gap: 9,
-        height: 56, paddingHorizontal: label ? 22 : 0, width: label ? undefined : 56,
-        justifyContent: 'center', borderRadius: 28, backgroundColor: fg, ...shadow.raised,
+        position: 'absolute', left: 0, right: 0, bottom: 18 + insets.bottom, alignItems: 'center',
+        opacity: away.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+        transform: [{ translateY: away.interpolate({ inputRange: [0, 1], outputRange: [0, 90] }) }],
       }}
     >
-      <Icon name={icon} size={22} color={colors.accentInk} />
-      {label ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>{label}</Text> : null}
-    </Tap>
+      <Tap
+        feel="burst"
+        onPress={onPress}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 9,
+          height: 54, paddingHorizontal: label ? 24 : 0, width: label ? undefined : 54,
+          justifyContent: 'center', borderRadius: 27, backgroundColor: color || fg, ...shadow.raised,
+        }}
+      >
+        <Icon name={icon} size={21} color={color ? '#FFFFFF' : colors.accentInk} />
+        {label ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: color ? '#FFFFFF' : colors.accentInk }}>{label}</Text> : null}
+      </Tap>
+    </Animated.View>
   );
 }
 

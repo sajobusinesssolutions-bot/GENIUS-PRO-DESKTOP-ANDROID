@@ -17,6 +17,7 @@ import * as logic from './logic';
 import { importVyapar } from './vyapar';
 import { deviceTillName, isDefaultTillName } from './deviceName';
 import { addStarterLedgers } from './coa';
+import { APP_VERSION, compareVersions } from './appVersion';
 import { activeBranchId, branchJournal } from './branch';
 import { mayRecord, planRefusal, refusalMessage } from './recordGate';
 import { Refusal } from './refusal';
@@ -244,6 +245,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (!d) {
         d = seed();
         d.onboarded = false;
+        await saveDB(d);
+      }
+      // these books now need at least this version; the other phones learn it with the business details
+      if (d.firm && compareVersions(APP_VERSION, d.firm.minAppVersion) > 0) {
+        d.firm.minAppVersion = APP_VERSION;
+        const fi = (d.firms || []).findIndex((x) => x.id === d!.firm.id);
+        if (fi >= 0) d.firms[fi] = d.firm;
+        logic.enqueue(d, 'firm', d.firm.id);
         await saveDB(d);
       }
       // a till still called "Till 1" takes the name of this phone
@@ -565,7 +574,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (patch.active === false) requirePerm('inventory.delete');
       commit((d) => {
         const i = d.products.findIndex((p) => p.id === id);
-        if (i >= 0) d.products[i] = { ...d.products[i], ...patch };
+        if (i >= 0) { d.products[i] = { ...d.products[i], ...patch }; logic.enqueue(d, 'product', id); }
       });
     },
     adjustStock: (productId, warehouse, count, note, batchNo, userId) => {
@@ -584,18 +593,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       requireCreate();
       requirePerm('inventory.create');
       let np!: Product;
-      commit((d) => { np = { ...p, id: uid('prd') }; d.products.push(np); });
+      commit((d) => { np = { ...p, id: uid('prd') }; d.products.push(np); logic.enqueue(d, 'product', np.id); });
       return np;
     },
     updateParty: (id, patch) => commit((d) => {
       const i = d.parties.findIndex((p) => p.id === id);
-      if (i >= 0) d.parties[i] = { ...d.parties[i], ...patch };
+      if (i >= 0) { d.parties[i] = { ...d.parties[i], ...patch }; logic.enqueue(d, 'party', id); }
     }),
     addParty: (p) => {
       requireCreate();
       requirePerm(p.type === 'supplier' ? 'purchases.create' : 'customers.create');
       let np!: Party;
-      commit((d) => { np = { ...p, id: uid('pty') }; d.parties.push(np); });
+      commit((d) => { np = { ...p, id: uid('pty') }; d.parties.push(np); logic.enqueue(d, 'party', np.id); });
       return np;
     },
     resetAll: async () => {
@@ -1111,6 +1120,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const l = (d.coa || []).find((x) => x.id === id);
       if (!l) return;
       Object.assign(l, patch);
+      logic.enqueue(d, 'ledger', id);
       audit(d, 'Ledger changed', l.code + ' ' + l.name + (patch.active === false ? ' — deactivated' : ''));
     }),
     postJournal: (o) => {

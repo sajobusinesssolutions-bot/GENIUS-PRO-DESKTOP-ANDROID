@@ -17,7 +17,7 @@ import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
-import { Empty, Search, FAB, Button, SelectField } from '../components/ui';
+import { Empty, Search, FAB, Button, SelectField, useHideOnScroll, FAB_COLORS } from '../components/ui';
 import { AppBar } from '../components/AppBar';
 import { Icon, IconName } from '../components/icons';
 import { Sheet } from '../components/Sheet';
@@ -124,6 +124,7 @@ export default function SalesListScreen({ navigation }: Props) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [period, setPeriod] = useState('month');
   const [refreshing, setRefreshing] = useState(false);
+  const fab = useHideOnScroll();
   async function refresh() {
     setRefreshing(true);
     try { await requestSync(true); } finally { setRefreshing(false); }
@@ -486,6 +487,8 @@ export default function SalesListScreen({ navigation }: Props) {
           keyExtractor={(x) => x.key}
           contentContainerStyle={{ paddingBottom: 96, flexGrow: 1 }}
           keyboardShouldPersistTaps="handled"
+          onScroll={fab.onScroll}
+          scrollEventThrottle={64}
           ListHeaderComponent={header}
           // pull down: ask the cloud for what other phones recorded, now
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[colors.accent]} tintColor={colors.accent} />}
@@ -634,7 +637,7 @@ export default function SalesListScreen({ navigation }: Props) {
       />
 
       {tab === 'txn' ? (
-        <FAB label="New sale" icon="plus" tone="accent" onPress={() => navigation.navigate('NewSale')} />
+        <FAB label="New sale" icon="plus" color={FAB_COLORS.newSale} hidden={fab.hidden} onPress={() => navigation.navigate('NewSale')} />
       ) : null}
     </View>
   );

@@ -53,7 +53,7 @@ maybe('a book from the Windows till', () => {
   });
 
   it('runs every report without failing', () => {
-    const from = new Date(0), to = new Date(Date.now() + 86400000);
+    const from = 0, to = Date.now() + 86400000;
     const broken: string[] = [];
     for (const r of REPORTS) {
       try { runReport(db, r.id, from, to); } catch (e: any) { broken.push(r.id + ': ' + e.message); }

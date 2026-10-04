@@ -279,7 +279,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Business" component={BusinessScreen} options={{ title: 'Business & branches' }} />
         <Stack.Screen name="Firms" component={FirmsScreen} options={{ title: 'Businesses' }} />
         <Stack.Screen name="AuditLog" component={AuditLogScreen} options={{ title: 'Audit log' }} />
-        <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Needs you' }} />
+        <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
         <Stack.Screen name="Plans" component={LicenceScreen} options={{ title: 'Plan & licence' }} />
         <Stack.Screen name="About" component={AboutScreen} options={{ title: 'About' }} />
         <Stack.Screen name="Licence" component={LicenceScreen} options={{ title: 'Plan & licence' }} />

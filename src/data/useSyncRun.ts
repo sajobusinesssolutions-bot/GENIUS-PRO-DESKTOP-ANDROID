@@ -16,6 +16,7 @@ import { useAuth } from './AuthContext';
 import { refreshSession } from './authApi';
 import { ensureWiring, pushQueue, pullOps, uploadSnapshot } from './syncClient';
 import { plural } from './helpers';
+import { needsNewerApp } from './appVersion';
 
 export interface RunOutcome {
   ok: boolean;
@@ -68,6 +69,8 @@ export function useSyncRun() {
     if (!account) return { ok: false, sent: 0, message: 'Sign in to your account first.' };
     if (d.session.online === false) return { ok: false, sent: 0, message: 'This phone has no internet right now.' };
     if (syncRunning) return { ok: false, sent: 0, message: 'A sync is already running.' };
+    // an out-of-date app must not write to books a newer version has opened
+    if (needsNewerApp(d)) return { ok: false, sent: 0, message: 'Update the app to keep syncing.' };
 
     syncRunning = true;
     try {
@@ -153,7 +156,7 @@ export function useSyncRun() {
   const pull = useCallback(async (): Promise<number> => {
     const d = dbRef.current;
     if (!d || !d.sync.on || !account || account.localOnly || d.session.online === false || !licFeature('sync')) return 0;
-    if (!d.sync.businessId || syncRunning) return 0;
+    if (!d.sync.businessId || syncRunning || needsNewerApp(d)) return 0;
     syncRunning = true;
     try {
       const token = await accessToken();

@@ -13,6 +13,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useGo } from '../nav/navigate';
+import { PLAY_BUILD } from '../data/store';
 import { canFor } from '../data/perms';
 import { mayCreate } from '../data/logic';
 import { isPremiumReport, groupOf, reportPermission } from '../data/reports';
@@ -423,7 +424,7 @@ export default function ReportDetailScreen() {
           </Text>
         </View>
         <View style={{ height: 22 }} />
-        <Button variant="pri" label="See plans" onPress={() => go('Licence')} />
+        <Button variant="pri" label={PLAY_BUILD ? 'Your plan' : 'See plans'} onPress={() => go('Licence')} />
       </View>
       </View>
     );
