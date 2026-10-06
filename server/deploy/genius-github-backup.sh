@@ -23,7 +23,7 @@
 #
 # One-time setup: RECOVERY.md, "Back up to GitHub".
 #
-set -euo pipefail
+set -Eeuo pipefail
 
 REPO=${GENIUS_BACKUP_REPO:-git@github-genius-backup:sajobusinesssolutions-bot/GENIUS-SERVER-BACKUP.git}
 WORKTREE=${GENIUS_BACKUP_WORKTREE:-/var/lib/genius-github-backup}
@@ -34,6 +34,8 @@ LOG_TAG=genius-github-backup
 
 log() { logger -t "$LOG_TAG" -- "$*"; echo "$*"; }
 die() { log "FAILED: $*"; exit 1; }
+# any command that fails on its own still leaves a line saying which one
+trap 'rc=$?; [ $rc -ne 0 ] && log "FAILED (exit $rc) at line $LINENO: $BASH_COMMAND"' ERR
 
 for c in git gpg pg_dump pg_restore tar split sha256sum; do command -v "$c" >/dev/null || die "$c is not installed"; done
 [ -s "$PASSFILE" ] || die "no passphrase at $PASSFILE — see RECOVERY.md"
