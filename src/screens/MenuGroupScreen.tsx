@@ -16,8 +16,8 @@ export default function MenuGroupScreen({ route, navigation }: any) {
   const { db } = useAppData();
   const g = menuGroup(route?.params?.groupId);
 
-  // the title is the name that was tapped
-  useEffect(() => { if (g) navigation?.setOptions?.({ title: g.n }); }, [navigation, g]);
+
+
 
   if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   if (!g) return <EmptyState icon="dots" title="Not found" />;

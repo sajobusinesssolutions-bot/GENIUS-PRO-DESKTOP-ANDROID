@@ -10,9 +10,10 @@ import {
 } from '../components/ui';
 import { Icon } from '../components/icons';
 import { useWho } from '../components/WhoSheet';
-import ItemSearchSheet from '../components/ItemSearchSheet';
+import ItemEntrySheet, { EntryLine, useNewItem } from '../components/ItemEntrySheet';
+import BilledItems from '../components/BilledItems';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
-import { CustomerPickerSheet, CustomerFormSheet } from '../components/CustomerSheets';
+import { CustomerPickerSheet, CustomerFormSheet, BalanceTag } from '../components/CustomerSheets';
 import { QuickItemSheet, QuickItem } from '../components/QuickItemSheet';
 import { useToast } from '../components/Toast';
 import Sheet from '../components/Sheet';
@@ -95,7 +96,12 @@ function allocationsFor(line: PurchaseLine, product: Product): PurchaseBatchAllo
  */
 export default function PurchaseNewScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const { db, createPurchase, editPurchase, money, stockOf, addParty, addProduct, can } = useAppData();
+  const { db, createPurchase, editPurchase, money, stockOf, addParty, addProduct, can, partyBalance } = useAppData();
+  const newItem = useNewItem('cost');
+  /** The item entry: open, and on which line (null for a new one) or scanned item. */
+  const [entryOpen, setEntryOpen] = useState(false);
+  const [entryAt, setEntryAt] = useState<string | null>(null);
+  const [entryProduct, setEntryProduct] = useState<Product | null>(null);
   const editingPurchase = db?.purchases.find((purchase) => purchase.id === route.params?.editPurchaseId);
   /** What the purchase starts from: the one being edited, or one being duplicated. */
   const seed = editingPurchase || db?.purchases.find((purchase) => purchase.id === route.params?.copyFromId);
@@ -125,11 +131,9 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
 
   const [supplierPicker, setSupplierPicker] = useState(false);
   const [supplierForm, setSupplierForm] = useState(false);
-  const [searching, setSearching] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [creating, setCreating] = useState<{ name: string; barcode?: string } | null>(null);
 
-  const cats = useMemo(() => ['All', ...Array.from(new Set((db?.products || []).map((p) => p.category)))], [db]);
   const supplier = suppliers.find((s) => s.id === partyId);
   const canSetPrice = can('inventory.edit');
 
@@ -146,7 +150,6 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
   }
 
   function addLine(p: Product) {
-    setSearching(false);
     setExpandedId(p.id);
     setLines((prev) => {
       if (prev.some((l) => l.productId === p.id)) {
@@ -161,6 +164,47 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
       const line: PurchaseLine = { productId: p.id, qty: 0, cost: p.cost };
       return [...prev, line];
     });
+  }
+
+  function openEntry(p: Product | null, lineId: string | null = null) {
+    setEntryProduct(p);
+    setEntryAt(lineId);
+    setEntryOpen(true);
+  }
+
+  // a new purchase is typed in order: the supplier, then the first item
+  useEffect(() => {
+    if (seed) return;
+    const t = setTimeout(() => (partyId ? openEntry(null) : setSupplierPicker(true)), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function supplierChosen(id: string | null) {
+    setPartyId(id);
+    if (!lines.length) setTimeout(() => openEntry(null), 350);
+  }
+
+  /** A line from the item entry: qty, cost and description; batches are shared out on the line. */
+  function saveEntry(e: EntryLine, andNew: boolean) {
+    const id = e.product.id;
+    setLines((prev) => {
+      const i = prev.findIndex((l) => l.productId === id);
+      if (i < 0) return [...prev, { productId: id, qty: e.qty, cost: e.price, ...(e.note ? { note: e.note } : {}) }];
+      return prev.map((l, k) => {
+        if (k !== i) return l;
+        const qty = entryAt === id ? e.qty : l.qty + e.qty;
+        const allocations = l.batchAllocations?.length === 1 ? [{ ...l.batchAllocations[0], qty }] : l.batchAllocations;
+        return { ...l, qty, cost: e.price, note: e.note || undefined, ...(allocations ? { batchAllocations: allocations } : {}) };
+      });
+    });
+    setEntryAt(null);
+    setEntryProduct(null);
+    if (!andNew) {
+      setEntryOpen(false);
+      // a batch-tracked item still needs its lot: open it in the cart
+      if (e.product.trackBatches) { setExpandedId(id); setTimeout(() => setCartOpen(true), 300); }
+    }
   }
 
   function createItem(it: QuickItem) {
@@ -447,7 +491,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
           label="Supplier"
           icon="factory"
           onPress={() => (suppliers.length ? setSupplierPicker(true) : setSupplierForm(true))}
-          right={<Icon name={suppliers.length ? 'down' : 'plus'} size={17} color={colors.accent} />}
+          right={supplier ? <BalanceTag balance={partyBalance(supplier.id)} money={money} /> : <Icon name={suppliers.length ? 'down' : 'plus'} size={17} color={colors.accent} />}
         >
           <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: supplier ? colors.ink : colors.faint }}>
             {supplier ? supplier.name : suppliers.length ? 'Choose a supplier' : 'No suppliers yet — add one'}
@@ -482,15 +526,15 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
         <SectionLabel>Items</SectionLabel>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Pressable
-            onPress={() => setSearching(true)}
+            onPress={() => openEntry(null)}
             style={{
               flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, height: 54,
-              borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.lineHard,
-              backgroundColor: colors.sunk, paddingHorizontal: 14,
+              borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.accent,
+              backgroundColor: colors.accentSoft, paddingHorizontal: 14,
             }}
           >
-            <Icon name="search" size={18} color={colors.faint} />
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>Search items, or create one</Text>
+            <Icon name="plus" size={18} color={colors.accent} />
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>{lines.length ? 'Add another item' : 'Add item'}</Text>
           </Pressable>
           <Pressable
             onPress={() => setScanning(true)}
@@ -507,50 +551,53 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
           </Panel>
         ) : (
           <>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4, marginBottom: 10 }}>
-              {lines.length} item(s) added — tap one to edit qty, cost, price or batch, or open the cart to pay and save.
-            </Text>
-            {lines.map((l) => {
-              const p = db.products.find((x) => x.id === l.productId);
-              return (
-                <Pressable
-                  key={l.productId}
-                  onPress={() => { setExpandedId(l.productId); setCartOpen(true); }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}
-                >
-                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name='box' size={18} color={colors.good} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p?.name || l.productId}</Text>
-                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
-                      {l.qty} {p?.unit || ''} × {money(l.cost)}
-                    </Text>
-                  </View>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
-                  <Icon name='chev' size={15} color={colors.faint} />
-                </Pressable>
-              );
-            })}
+            <View style={{ height: 12 }} />
+            <BilledItems
+              lines={lines.map((l) => {
+                const p = db.products.find((x) => x.id === l.productId);
+                const unbatched = p?.trackBatches && !(l.batchAllocations || []).length;
+                return {
+                  name: p?.name || l.productId, qty: l.qty, unit: p?.unit, price: l.cost, note: l.note,
+                  batchNo: (l.batchAllocations || []).map((a) => a.batchNo).join(', ') || undefined,
+                  warning: unbatched ? 'Batch needed · tap to set it' : undefined,
+                };
+              })}
+              money={money}
+              onPress={(i) => {
+                const l = lines[i];
+                const p = db.products.find((x) => x.id === l.productId);
+                // lots are shared out in the cart; everything else in the item entry
+                if (p?.trackBatches) { setExpandedId(l.productId); setCartOpen(true); }
+                else openEntry(null, l.productId);
+              }}
+            />
           </>
         )}
       </ScrollView>
 
       {who.sheet}
 
-      <ItemSearchSheet
-        visible={searching}
-        title="Add to purchase"
+      <ItemEntrySheet
+        visible={entryOpen}
+        title={entryAt ? 'Edit Item' : 'Add Items to Purchase'}
         products={db.products.filter((p) => p.kind !== 'service')}
-        categories={cats}
         money={money}
         stockOf={stockOf}
-        canSell={() => true}
         priceOf={(p) => p.cost}
-        onPick={addLine}
-        onCreate={can('inventory.create') ? (name) => { setSearching(false); setCreating({ name }); } : undefined}
-        onScan={() => { setSearching(false); setScanning(true); }}
-        onClose={() => setSearching(false)}
+        rateLabel="Rate (Cost/Unit)"
+        discount={false}
+        askSellPrice
+        start={(() => {
+          const l = entryAt ? lines.find((x) => x.productId === entryAt) : null;
+          return l ? { productId: l.productId, qty: l.qty, listPrice: l.cost, note: l.note } : null;
+        })()}
+        startProduct={entryProduct}
+        canCreate={newItem.canCreate}
+        units={newItem.units}
+        onCreateProduct={newItem.create}
+        onSave={saveEntry}
+        onRemove={() => { const id = entryAt; if (id) setQty(id, 0); setEntryOpen(false); setEntryAt(null); }}
+        onClose={() => { setEntryOpen(false); setEntryAt(null); setEntryProduct(null); }}
       />
 
       <BarcodeScannerModal
@@ -565,7 +612,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
         onScan={(code: string) => {
           setScanning(false);
           const p = findByCode(code);
-          if (p) addLine(p);
+          if (p) openEntry(p);
           else if (can('inventory.create')) setCreating({ name: '', barcode: code });
         }}
       />
@@ -585,7 +632,9 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
         visible={supplierPicker}
         customers={suppliers}
         selectedId={partyId}
-        onSelect={(id) => setPartyId(id)}
+        onSelect={supplierChosen}
+        balanceOf={partyBalance}
+        money={money}
         onCreate={() => { setSupplierPicker(false); setSupplierForm(true); }}
         onClose={() => setSupplierPicker(false)}
       />
@@ -596,7 +645,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
         onSave={(p) => {
           try {
             const made = addParty(p);
-            setPartyId(made.id);
+            supplierChosen(made.id);
             setSupplierForm(false);
           } catch (e: any) {
             error(e?.why || e?.message || 'The supplier could not be added.');

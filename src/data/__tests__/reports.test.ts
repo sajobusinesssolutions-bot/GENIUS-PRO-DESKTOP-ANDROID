@@ -271,7 +271,7 @@ describe('REPORTS catalogue', () => {
     expect(ledger.error).toBeFalsy();
     expect(voucher.error).toBeFalsy();
     expect(coa.error).toBeFalsy();
-    expect(ledger.cols.map((c) => c.h).slice(0, 3)).toEqual(['Ledger', 'Debit', 'Credit']);
+    expect(ledger.cols.map((c) => c.h).slice(0, 4)).toEqual(['Particulars', 'Opening', 'Debit', 'Credit']);
     expect(voucher.cols.map((c) => c.h)).toEqual(['Vch Type', 'Vouchers', 'Debit', 'Credit']);
     expect(voucher.rows.map((r) => r[0])).toEqual(['Journal']); // a hand-made entry, not a sale
     expect(coa.rows.some((r) => String(r[1]).includes('Cash'))).toBe(true);

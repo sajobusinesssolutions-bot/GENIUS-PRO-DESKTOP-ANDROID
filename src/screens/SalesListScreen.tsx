@@ -94,7 +94,7 @@ function dayLabel(ts: string) {
 
 export default function SalesListScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party, deleteSale, deletePayment, deletePurchase, convertEstimate, canEditSale, can } = useAppData();
+  const { db, money, party, deleteSale, deletePayment, deletePurchase, convertEstimate, voidEstimate, canEditSale, can } = useAppData();
   const { saleDoc, paymentDoc, purchaseDoc } = useDocBuilder();
   /** A document being sent as a message, and to whom. */
   const [sending, setSending] = useState<{ doc: DocMeta; phone?: string; email?: string } | null>(null);
@@ -265,14 +265,19 @@ export default function SalesListScreen({ navigation }: Props) {
         dim: e.status === 'void',
         partyId: e.partyId,
         phone: phoneOf(e.partyId),
-        badge: { label: e.status, tone: e.status === 'converted' ? 'good' : open ? 'accent' : 'neutral' },
-        open: () => navigation.navigate('Estimates'),
+        badge: { label: e.status === 'void' ? 'deleted' : e.status, tone: e.status === 'converted' ? 'good' : open ? 'accent' : 'neutral' },
+        open: () => navigation.navigate('EstimateDetail', { estimateId: e.id }),
         // a quotation prints and sends like a sale, under its own name
         doc: () => saleDoc({
           ...(e as any), gross: e.lines.reduce((a, l) => a + l.qty * l.price, 0) , tax: 0, additionalCharges: 0,
           paid: 0, due: 0, method: 'cash', userId: db.session.userId,
         } as any, 'Quotation'),
-        edit: open ? () => navigation.navigate('Estimates') : undefined,
+        edit: open ? () => navigation.navigate('EstimateNew', { editEstimateId: e.id }) : undefined,
+        remove: open ? {
+          label: 'Delete quotation',
+          text: 'The quotation is closed and kept in the audit log. Nothing was posted, so no stock or money moves.',
+          run: () => { voidEstimate(e.id); success(e.no + ' deleted'); },
+        } : undefined,
         convert: open && can('sales.create') ? () => {
           const sale = convertEstimate(e.id, (db.settings.defaultMethod as PayMethod) || 'cash');
           if (!sale) { error('This quotation could not be converted.'); return; }

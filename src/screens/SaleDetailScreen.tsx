@@ -23,7 +23,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'SaleDetail'>;
  */
 export default function SaleDetailScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party, voidSale, deleteSale, canEditSale, can, logAudit } = useAppData();
+  const { db, money, party, deleteSale, canEditSale, can, logAudit } = useAppData();
   const { error } = useToast();
   // asked before an edit or delete when Settings require a PIN for it
   const ownerPin = useOwnerPin();
@@ -69,20 +69,6 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
         },
       ],
     );
-  }
-
-  function onVoid() {
-    if (!can('sales.void')) return refuse('Your role cannot void a sale.');
-    Alert.alert('Void ' + sale!.no + '?', 'This reverses stock and ledger entries.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Void', style: 'destructive', onPress: () => {
-          voidSale(sale!.id, 'Voided by user');
-          logAudit('Sale voided', sale!.no);
-          navigation.goBack();
-        },
-      },
-    ]);
   }
 
   const customer = sale.partyId ? party(sale.partyId)?.name || 'Walk-in' : 'Walk-in';
@@ -213,7 +199,6 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
             { label: 'Receipt', icon: 'print', tone: 'accent', onPress: () => navigation.navigate('Receipt', { saleId: sale.id }) },
             { label: 'History', icon: 'clock', tone: 'accent', onPress: () => navigation.navigate('Versions', { coll: 'sales', recordId: sale.id }) },
             ...(live ? [
-              { label: 'Void', icon: 'alert' as const, tone: 'warn' as const, onPress: onVoid },
               { label: 'Edit', icon: 'pencil' as const, tone: 'accent' as const, filled: true, onPress: onEdit },
               { label: 'Delete', icon: 'trash' as const, tone: 'danger' as const, filled: true, onPress: onDelete },
             ] : []),

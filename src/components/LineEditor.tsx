@@ -1,126 +1,99 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
 import { Pressable } from './Press';
-import { useTheme, fonts, radius, shadow } from '../theme';
+import { useTheme, fonts, radius } from '../theme';
 import { Icon } from './icons';
-import { Search } from './kit';
 import { Product } from '../data/types';
+import { useAppData } from '../data/AppDataContext';
+import ItemEntrySheet, { useNewItem } from './ItemEntrySheet';
+import BilledItems from './BilledItems';
 
-export interface CartLine { productId: string; name: string; qty: number; price: number; }
+export interface CartLine {
+  productId: string; name: string; qty: number;
+  /** Net rate, after any line discount. */
+  price: number;
+  unit?: string; unitFactor?: number;
+  listPrice?: number; discountPct?: number;
+  note?: string;
+}
 
-// Shared product-picker + line-item cart editor used by Estimates, Challans,
-// Credit notes, Purchase orders, and Recurring invoices — keeps those screens
-// small and consistent instead of re-implementing a product grid each time.
-export function LineEditor({ products, lines, setLines, priceOf, money }: {
+// Shared item entry + billed-items list used by Estimates, Challans, Credit
+// notes, Purchase orders, Recurring invoices and Instalment plans — one way of
+// adding a line everywhere: the full-screen entry, then a card per line.
+export function LineEditor({ products, lines, setLines, priceOf, money, openSignal, entryTitle = 'Add Items', rateLabel, rateIs = 'price' }: {
   products: Product[]; lines: CartLine[]; setLines: (l: CartLine[]) => void;
   priceOf: (p: Product) => number; money: (n: number) => string;
+  /** Bump to open the item entry from outside, as soon as a party is chosen. */
+  openSignal?: number;
+  entryTitle?: string;
+  rateLabel?: string;
+  /** Whether the rate is what the item sells for, or what it costs (an order to a supplier). */
+  rateIs?: 'price' | 'cost';
 }) {
   const { colors } = useTheme();
-  const [q, setQ] = useState('');
+  const { stockOf } = useAppData();
+  const isCost = rateIs === 'cost';
+  const newItem = useNewItem(isCost ? 'cost' : 'price');
+  const [open, setOpen] = useState(false);
+  const [editAt, setEditAt] = useState<number | null>(null);
 
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return [];
-    return products
-      .filter((p) => p.name.toLowerCase().includes(needle) || p.sku.toLowerCase().includes(needle))
-      .slice(0, 20);
-  }, [products, q]);
+  useEffect(() => {
+    if (openSignal) { setEditAt(null); setOpen(true); }
+  }, [openSignal]);
 
-  function add(p: Product) {
-    const existing = lines.find((l) => l.productId === p.id);
-    if (existing) setLines(lines.map((l) => l.productId === p.id ? { ...l, qty: l.qty + 1 } : l));
-    else setLines([...lines, { productId: p.id, name: p.name, qty: 1, price: priceOf(p) }]);
-    setQ('');
-  }
-
-  function setQty(id: string, qty: number) {
-    setLines(qty <= 0 ? lines.filter((l) => l.productId !== id) : lines.map((l) => l.productId === id ? { ...l, qty } : l));
-  }
-
-  const total = lines.reduce((s, l) => s + l.qty * l.price, 0);
+  const editing = editAt !== null ? lines[editAt] : null;
 
   return (
     <View style={{ gap: 12 }}>
-      <Search value={q} onChange={setQ} placeholder="Search a product to add" />
+      <Pressable
+        onPress={() => { setEditAt(null); setOpen(true); }}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10, height: 54,
+          borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.accent,
+          backgroundColor: colors.accentSoft, paddingHorizontal: 14,
+        }}
+      >
+        <Icon name="plus" size={18} color={colors.accent} />
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>{lines.length ? 'Add another item' : 'Add item'}</Text>
+      </Pressable>
 
-      {filtered.length > 0 && (
-        <View style={{ backgroundColor: colors.surface, borderRadius: radius.lg, overflow: 'hidden', ...shadow.card }}>
-          {filtered.map((p, i) => (
-            <Pressable
-              key={p.id}
-              onPress={() => add(p)}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 12,
-                paddingHorizontal: 14, paddingVertical: 12, minHeight: 60,
-                borderBottomWidth: i === filtered.length - 1 ? 0 : 1, borderBottomColor: colors.line,
-              }}
-            >
-              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>{p.name.charAt(0).toUpperCase()}</Text>
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{p.sku}</Text>
-              </View>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.ink }}>{money(priceOf(p))}</Text>
-              <Icon name="plus" size={19} color={colors.accent} />
-            </Pressable>
-          ))}
-        </View>
-      )}
-
-      <View style={{ gap: 10 }}>
-        {lines.map((l) => (
-          <View
-            key={l.productId}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 10,
-              backgroundColor: colors.surface, borderRadius: radius.lg,
-              paddingHorizontal: 12, paddingVertical: 11, ...shadow.card,
-            }}
-          >
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
-                {l.qty} × {money(l.price)}
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={() => setQty(l.productId, l.qty - 1)}
-              style={{ width: 36, height: 36, borderRadius: 12, borderWidth: 1.4, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>−</Text>
-            </Pressable>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, minWidth: 28, textAlign: 'center', color: colors.ink }}>{l.qty}</Text>
-            <Pressable
-              onPress={() => setQty(l.productId, l.qty + 1)}
-              style={{ width: 36, height: 36, borderRadius: 12, borderWidth: 1.4, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>+</Text>
-            </Pressable>
-
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, width: 84, textAlign: 'right', color: colors.ink }}>
-              {money(l.qty * l.price)}
-            </Text>
-          </View>
-        ))}
-
-        {!lines.length ? (
-          <View style={{ alignItems: 'center', paddingVertical: 28, gap: 7 }}>
+      <BilledItems
+        lines={lines.map((l) => ({ ...l, unit: l.unit || products.find((p) => p.id === l.productId)?.unit }))}
+        money={money}
+        onPress={(i) => { setEditAt(i); setOpen(true); }}
+        empty={(
+          <View style={{ alignItems: 'center', paddingVertical: 24, gap: 7 }}>
             <Icon name="cart" size={26} color={colors.lineHard} />
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Nothing added yet</Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Search above to add a product.</Text>
-          </View>
-        ) : (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, paddingHorizontal: 4 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
-              {lines.length} line{lines.length === 1 ? '' : 's'}
-            </Text>
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(total)}</Text>
           </View>
         )}
-      </View>
+      />
+
+      <ItemEntrySheet
+        visible={open}
+        title={editing ? 'Edit Item' : entryTitle}
+        products={products}
+        money={money}
+        stockOf={stockOf}
+        priceOf={priceOf}
+        rateLabel={rateLabel || (isCost ? 'Rate (Cost/Unit)' : 'Rate (Price/Unit)')}
+        start={editing ? { productId: editing.productId, qty: editing.qty, unit: editing.unit, listPrice: editing.listPrice ?? editing.price, discountPct: editing.discountPct, note: editing.note } : null}
+        canCreate={newItem.canCreate}
+        units={newItem.units}
+        onCreateProduct={newItem.create}
+        askSellPrice={isCost}
+        onRemove={() => { setLines(lines.filter((_, i) => i !== editAt)); setOpen(false); setEditAt(null); }}
+        onClose={() => { setOpen(false); setEditAt(null); }}
+        onSave={(e, andNew) => {
+          const line: CartLine = {
+            productId: e.product.id, name: e.product.name, qty: e.qty, price: e.price,
+            unit: e.unit, unitFactor: e.unitFactor, listPrice: e.listPrice, discountPct: e.discountPct, note: e.note || undefined,
+          };
+          setLines(editAt !== null ? lines.map((l, i) => (i === editAt ? line : l)) : [...lines, line]);
+          setEditAt(null);
+          if (!andNew) setOpen(false);
+        }}
+      />
     </View>
   );
 }

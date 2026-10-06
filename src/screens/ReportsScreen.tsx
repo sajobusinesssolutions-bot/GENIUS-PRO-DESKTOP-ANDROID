@@ -33,34 +33,22 @@ function ReportRow({ r, last, onPress, icon, isFav, onToggleFav }: {
       onPress={onPress}
       style={({ pressed }) => ({
         flexDirection: 'row', alignItems: 'center', gap: 12,
-        paddingVertical: 13, paddingHorizontal: 15, minHeight: 62,
+        paddingVertical: 12, paddingHorizontal: 16, minHeight: 52,
         borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
         backgroundColor: pressed ? colors.sunk : 'transparent',
       })}
     >
-      <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: live ? colors.accentSoft : colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name="chart" size={19} color={live ? colors.accent : colors.faint} />
-      </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }} numberOfLines={1}>
-          {r.name}
-        </Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }} numberOfLines={1}>
-          {r.sub}
-        </Text>
-        {r.group ? (
-          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent, marginTop: 3 }} numberOfLines={1}>
-            {r.group.views.length} views · {r.group.views.map((v) => v.label).join(' · ')}
-          </Text>
-        ) : null}
-      </View>
+      {/* the name says what it is; nothing underneath to read */}
+      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: live ? colors.ink : colors.faint }} numberOfLines={1}>
+        {r.name}
+      </Text>
       {!live ? <Badge label="Soon" tone="neutral" /> : locked ? <Icon name="lock" size={16} color={colors.faint} /> : null}
       {onToggleFav && (
         <Pressable onPress={onToggleFav} hitSlop={8} style={{ paddingHorizontal: 6 }}>
-          <Icon name="tag" size={18} color={isFav ? colors.accent : colors.lineHard} />
+          <Icon name="star" size={18} color={isFav ? colors.ink : colors.lineHard} weight={isFav ? 'fill' : 'regular'} />
         </Pressable>
       )}
-      <Icon name="chev" size={17} color={colors.faint} />
+      <Icon name="chev" size={14} color={colors.faint} />
     </Pressable>
   );
 }
@@ -168,7 +156,7 @@ export default function ReportsScreen() {
         ) : (
           groups.map((g) => (
             <Pad key={g.cat} style={{ paddingTop: 10, paddingBottom: 4 }}>
-              <Cap style={{ marginBottom: 8 }}>{g.cat} — {g.items.length}</Cap>
+              <Cap style={{ marginBottom: 8 }}>{g.cat}</Cap>
               <Card>
                 {g.items.map((r, i) => (
                   <ReportRow

@@ -17,7 +17,8 @@ export type RootStackParamList = {
   SaleDetail: { saleId: string };
   EditSale: { saleId: string };
   Estimates: undefined;
-  EstimateNew: undefined;
+  EstimateNew: { editEstimateId?: string } | undefined;
+  EstimateDetail: { estimateId: string };
   Challans: undefined;
   ChallanNew: { saleId?: string } | undefined;
   CreditNotes: undefined;
@@ -65,6 +66,7 @@ export type RootStackParamList = {
   Branches: undefined;
   NewBranch: undefined;
   BranchAnalysis: undefined;
+  BranchDetail: { id: string };
   AccountingHub: undefined;
   Reconciliation: undefined;
   ChartOfAccounts: undefined;

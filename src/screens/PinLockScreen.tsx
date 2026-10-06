@@ -169,8 +169,8 @@ export default function PinLockScreen({ navigation }: Props) {
   /* the shop these books belong to, so nobody unlocks the wrong one */
   const shopHead = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
-      <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name="home" size={20} color={colors.accent} />
+      <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="home" size={20} color={colors.ink} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{db?.firm.name || 'This shop'}</Text>

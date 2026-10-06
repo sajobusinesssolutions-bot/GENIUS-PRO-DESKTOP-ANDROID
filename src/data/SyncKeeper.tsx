@@ -66,6 +66,11 @@ export default function SyncKeeper() {
         notified.current = false;
         return;
       }
+      // another run held the line; that is not trouble, so no backoff — try again shortly
+      if (outcome.busy) {
+        setTimeout(() => { last.current = Date.now(); attempt.current(); }, 1000);
+        return;
+      }
       failures.current += 1;
       if (failures.current >= NOTIFY_AFTER_FAILURES && !notified.current) {
         notified.current = true;

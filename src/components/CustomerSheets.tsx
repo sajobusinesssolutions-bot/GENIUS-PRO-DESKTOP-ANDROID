@@ -22,11 +22,32 @@ function Field({ label, value, onChangeText, placeholder, keyboardType, multilin
   );
 }
 
-export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, onCreate, onClose, kind = 'customer' }: {
+/**
+ * A party's running balance as a small two-line tag: what they owe the shop
+ * (green, to receive) or what the shop owes them (red, to pay).
+ */
+export function BalanceTag({ balance, money, align = 'right' }: { balance: number; money: (n: number) => string; align?: 'left' | 'right' }) {
+  const { colors } = useTheme();
+  const settled = Math.abs(balance) < 0.005;
+  const tone = settled ? colors.faint : balance > 0 ? colors.good : colors.danger;
+  return (
+    <View style={{ alignItems: align === 'right' ? 'flex-end' : 'flex-start' }}>
+      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: tone }}>{money(Math.abs(balance))}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: tone, marginTop: 1 }}>
+        {settled ? 'Settled' : balance > 0 ? 'To receive' : 'To pay'}
+      </Text>
+    </View>
+  );
+}
+
+export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, onCreate, onClose, kind = 'customer', balanceOf, money }: {
   visible: boolean; customers: Party[]; selectedId: string | null;
   onSelect: (id: string | null) => void; onCreate: () => void; onClose: () => void;
   /** The same sheet picks a supplier on a purchase — there is no walk-in supplier. */
   kind?: 'customer' | 'supplier';
+  /** With both, each row shows what the party owes or is owed. */
+  balanceOf?: (id: string) => number;
+  money?: (n: number) => string;
 }) {
   const { colors } = useTheme();
   const [search, setSearch] = useState('');
@@ -80,6 +101,7 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
               {c.phone || 'No phone'}{c.address ? ' · ' + c.address : ''}
             </Text>
           </View>
+          {balanceOf && money ? <BalanceTag balance={balanceOf(c.id)} money={money} /> : null}
           {selectedId === c.id ? <Icon name="check" size={17} color={colors.good} /> : null}
         </Pressable>
       ))}

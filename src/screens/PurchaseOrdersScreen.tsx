@@ -71,7 +71,7 @@ export function PurchaseOrderNewScreen({ navigation }: NativeStackScreenProps<Ro
         />
         <Cap>Items to order</Cap>
         <View style={{ marginTop: 8 }}>
-          <LineEditor products={(db?.products || []).filter((p) => p.active)} lines={lines} setLines={setLines} priceOf={(p) => p.cost} money={money} />
+          <LineEditor products={(db?.products || []).filter((p) => p.active)} lines={lines} setLines={setLines} priceOf={(p) => p.cost} money={money} rateIs="cost" entryTitle="Add Items to Order" />
         </View>
       </ScrollView>
       <Button label="Create purchase order" variant="pri" onPress={save} disabled={!lines.length || !partyId} />

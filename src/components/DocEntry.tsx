@@ -7,16 +7,18 @@
  * commit bar live here once. The commit always passes through the "who is
  * recording this" prompt, so every document carries a name.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
-  Button, Panel, SectionLabel, DetailRow, InfoBanner, StickyBar, SelectField, Badge, EmptyBlock,
+  Button, Panel, SectionLabel, DetailRow, InfoBanner, StickyBar, FieldShell, Badge,
 } from './ui';
 import { Icon, IconName } from './icons';
 import { LineEditor, CartLine } from './LineEditor';
 import { useWho, WhoResult } from './WhoSheet';
+import { CustomerPickerSheet, CustomerFormSheet, BalanceTag } from './CustomerSheets';
+import { Pressable } from './Press';
 
 export interface DocEntryProps {
   /** What the document is, in the operator's words. */
@@ -48,6 +50,13 @@ export interface DocEntryProps {
   onSave: (who: WhoResult) => void;
   /** Hides the money column for documents that move goods, not money. */
   showTotals?: boolean;
+  /**
+   * Opens the party picker as the screen opens, then the item entry once the
+   * party is chosen. Off when changing a document already raised.
+   */
+  autoStart?: boolean;
+  /** The item entry's title, e.g. "Add Items to Estimate/Quotation". */
+  entryTitle?: string;
 }
 
 export default function DocEntry({
@@ -55,15 +64,39 @@ export default function DocEntry({
   partyType = 'customer', partyLabel, partyRequired, partyId, onPartyChange,
   lines, onLinesChange, priceOf = 'price', linesLabel = 'Items',
   children, summary, saveLabel, blockedReason, askWho, onSave, showTotals = true,
+  autoStart = true, entryTitle,
 }: DocEntryProps) {
   const { colors } = useTheme();
-  const { db, money } = useAppData();
+  const { db, money, partyBalance, addParty } = useAppData();
   const who = useWho(askWho || ('Who is raising this ' + kind.toLowerCase() + '?'));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  /** Bumped to open the item entry. */
+  const [entrySignal, setEntrySignal] = useState(0);
 
   const parties = useMemo(
     () => (db?.parties || []).filter((p) => p.active && (partyType === 'none' || p.type === partyType)),
     [db, partyType],
   );
+  const party = parties.find((p) => p.id === partyId);
+  const partyWord = partyLabel || (partyType === 'supplier' ? 'Supplier' : 'Customer');
+
+  // the order a document is typed in: who it is for, then what is on it
+  useEffect(() => {
+    if (!autoStart || lines.length) return;
+    const t = setTimeout(() => {
+      if (partyType !== 'none' && !partyId) setPickerOpen(true);
+      else setEntrySignal((n) => n + 1);
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** A party was chosen: go straight on to the first item. */
+  function chosen(id: string | null) {
+    onPartyChange(id);
+    if (!lines.length) setTimeout(() => setEntrySignal((n) => n + 1), 350);
+  }
 
   const products = useMemo(() => (db?.products || []).filter((p) => p.active), [db]);
   const total = lines.reduce((s, l) => s + l.qty * l.price, 0);
@@ -98,14 +131,18 @@ export default function DocEntry({
             <SectionLabel right={missingParty ? <Badge label="Required" tone="danger" /> : undefined}>
               {partyLabel || (partyType === 'supplier' ? 'Supplier' : 'Customer')}
             </SectionLabel>
-            <SelectField
+            <FieldShell
+              label={partyWord}
               icon={partyType === 'supplier' ? 'factory' : 'user'}
-              label={partyLabel || (partyType === 'supplier' ? 'Supplier' : 'Customer')}
-              value={partyId || ''}
-              options={parties.map((p) => ({ v: p.id, l: p.name }))}
-              onChange={onPartyChange}
-              placeholder={partyRequired ? 'Required' : 'Optional — leave blank for walk-in'}
-            />
+              onPress={() => setPickerOpen(true)}
+              error={!!missingParty}
+              right={party ? <BalanceTag balance={partyBalance(party.id)} money={money} /> : <Icon name="chev" size={17} color={colors.faint} />}
+            >
+              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: party ? colors.ink : colors.faint }}>
+                {party ? party.name : partyRequired ? 'Choose a ' + partyWord.toLowerCase() : partyType === 'supplier' ? 'Choose a supplier' : 'Walk-in customer'}
+              </Text>
+              {party?.phone ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{party.phone}</Text> : null}
+            </FieldShell>
           </>
         ) : null}
 
@@ -124,7 +161,10 @@ export default function DocEntry({
           lines={lines}
           setLines={onLinesChange}
           priceOf={(p) => (priceOf === 'cost' ? p.cost : p.price)}
+          rateIs={priceOf}
           money={money}
+          openSignal={entrySignal}
+          entryTitle={entryTitle || 'Add Items to ' + kind}
         />
 
         {showTotals && lines.length ? (
@@ -155,6 +195,28 @@ export default function DocEntry({
 
       {who.sheet}
 
+      {partyType !== 'none' ? (
+        <>
+          <CustomerPickerSheet
+            kind={partyType}
+            visible={pickerOpen}
+            customers={parties}
+            selectedId={partyId}
+            balanceOf={partyBalance}
+            money={money}
+            onSelect={chosen}
+            onCreate={() => { setPickerOpen(false); setFormOpen(true); }}
+            onClose={() => setPickerOpen(false)}
+          />
+          <CustomerFormSheet
+            kind={partyType}
+            visible={formOpen}
+            onClose={() => setFormOpen(false)}
+            onSave={(p) => { const made = addParty(p); setFormOpen(false); chosen(made.id); }}
+          />
+        </>
+      ) : null}
+
       <StickyBar>
         {showTotals ? (
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
@@ -184,11 +246,14 @@ export function toSaleLines(lines: CartLine[], products: ReturnType<typeof useAp
       productId: l.productId,
       name: p?.name || l.name,
       sku: p?.sku || '',
-      unit: p?.unit || '',
+      unit: l.unit || p?.unit || '',
       qty: l.qty,
       price: l.price,
-      cost: p?.cost || 0,
+      cost: (p?.cost || 0) * (l.unitFactor || 1),
       taxRate: p?.taxRate || 0,
+      ...(l.unitFactor && l.unitFactor !== 1 ? { unitFactor: l.unitFactor } : {}),
+      ...(l.listPrice !== undefined ? { listPrice: l.listPrice, discountPct: l.discountPct || 0 } : {}),
+      ...(l.note ? { note: l.note } : {}),
     };
   });
 }

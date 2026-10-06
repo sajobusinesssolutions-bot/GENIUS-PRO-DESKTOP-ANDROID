@@ -24,6 +24,7 @@ import {
   INVENTORY_METRIC_REPORTS, InventoryMetricReport,
   Cell, CellTone, ReportResult, RowRef, SortDir,
 } from '../data/reports';
+import { arrangeColumns, arrangedIndexes } from '../data/reportColumns';
 import { toPdf, preview, toExcel, shareTo, shareFile, fileNameFor, pickColumns, ExportMeta } from '../data/exporters';
 import { Card, Cap, Pad, EmptyState, Button, StatGrid, ListRow, InfoBanner } from '../components/ui';
 import { Field, Checkbox } from '../components/form';
@@ -128,7 +129,7 @@ export default function ReportDetailScreen() {
   const nav = useNavigation<any>();
   const route = useRoute<Rt>();
   const go = useGo();
-  const { db, money } = useAppData();
+  const { db, money, setSetting } = useAppData();
 
   const id = route.params?.id || 'sale-summary';
   const def = reportById(id);
@@ -171,7 +172,7 @@ export default function ReportDetailScreen() {
 
   const span = useMemo(() => spanFor(rangeKey, custom), [rangeKey, custom]);
 
-  const result = useMemo<ReportResult | null>(() => {
+  const raw = useMemo<ReportResult | null>(() => {
     if (!db || !allowed) return null;
     if (top) {
       return top.kind === 'ledger' ? ledgerDrill(db, top.id, span.from, span.to)
@@ -187,6 +188,35 @@ export default function ReportDetailScreen() {
     }
     return runReport(db, detailed && DETAIL_VIEW[id] ? DETAIL_VIEW[id] : id, span.from, span.to, money);
   }, [db, allowed, id, span.from, span.to, money, drillProductId, drillMonthKey, top, detailed]);
+
+  /* the columns as the owner set them for this report — on screen and in every export */
+  const colKey = top ? 'drill:' + top.kind : detailed && DETAIL_VIEW[id] ? DETAIL_VIEW[id] : id;
+  const colChoice = db?.settings.reportCols?.[colKey];
+  const result = useMemo(() => (raw ? arrangeColumns(raw, colChoice) : null), [raw, colChoice]);
+  const [colsOpen, setColsOpen] = useState(false);
+  const [draft, setDraft] = useState<{ h: string; on: boolean }[]>([]);
+  const openColumns = () => {
+    if (!raw) return;
+    const heads = raw.cols.map((c) => c.h).slice(1);
+    const order = arrangedIndexes(raw.cols.map((c) => c.h), colChoice ? { ...colChoice, hidden: [] } : null).slice(1);
+    setDraft(order.map((i) => ({ h: raw.cols[i].h, on: !colChoice?.hidden.includes(raw.cols[i].h) })).filter((x) => heads.includes(x.h)));
+    setColsOpen(true);
+  };
+  const moveCol = (i: number, by: number) => setDraft((d) => {
+    const j = i + by;
+    if (j < 0 || j >= d.length) return d;
+    const next = [...d];
+    [next[i], next[j]] = [next[j], next[i]];
+    return next;
+  });
+  const saveColumns = (reset?: boolean) => {
+    const all = { ...(db?.settings.reportCols || {}) };
+    if (reset) delete all[colKey];
+    else all[colKey] = { order: draft.map((x) => x.h), hidden: draft.filter((x) => !x.on).map((x) => x.h) };
+    setSetting({ reportCols: all });
+    setSort(null);
+    setColsOpen(false);
+  };
 
   const view = useMemo(() => {
     if (!result) return null;
@@ -264,6 +294,7 @@ export default function ReportDetailScreen() {
   useEffect(() => {
     nav.setOptions({
       title: group ? group.name : def ? def.name : 'Report',
+      headerRight: () => <IconBtn name="share" size={22} onPress={() => setExportOpen(true)} />,
     });
   }, [nav, def, group]);
 
@@ -473,26 +504,8 @@ export default function ReportDetailScreen() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 18 }}>
         <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.faint, letterSpacing: 0.6, textTransform: 'uppercase' }}>
-                {def?.cat || 'Report'}
-              </Text>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink, marginTop: 1 }} numberOfLines={1}>
-                {def?.name || result.title}
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => setExportOpen(true)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, paddingHorizontal: 14, borderRadius: 12, backgroundColor: colors.accent }}
-            >
-              <Icon name="share" size={15} color={colors.accentInk} />
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.accentInk }}>Export</Text>
-            </Pressable>
-          </View>
-
-          {/* one dropdown each: which view, which dates, which rows */}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+          {/* the name is the title; export is the icon beside it. Here only the choices */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {group && group.views.length > 1 ? (
               <DropBtn icon="doc" label={currentView?.label || 'View'} onPress={() => setPick('view')} />
             ) : null}
@@ -510,6 +523,9 @@ export default function ReportDetailScreen() {
                 <Icon name={detailed ? 'check' : 'doc'} size={14} color={detailed ? colors.accentInk : colors.accent} />
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: detailed ? colors.accentInk : colors.ink }}>Detailed</Text>
               </Pressable>
+            ) : null}
+            {raw && raw.cols.length > 2 ? (
+              <DropBtn icon="filter" label={colChoice ? 'Columns · ' + (result!.cols.length - 1) + ' of ' + (raw.cols.length - 1) : 'Columns'} onPress={openColumns} />
             ) : null}
             {rowFilterOptions.length > 1 ? (
               <DropBtn icon="filter" label={rowFilterOptions.find((x) => x.v === rowFilter)?.l || 'All rows'} onPress={() => setPick('rows')} />
@@ -721,6 +737,42 @@ export default function ReportDetailScreen() {
         {!canExport ? (
           <InfoBanner tone="warn" text="Your role can preview but not download or share." />
         ) : null}
+      </Sheet>
+
+      {/* which columns this report shows, and in what order */}
+      <Sheet
+        visible={colsOpen}
+        title="Columns"
+        subtitle={raw ? 'Always first: ' + raw.cols[0].h : undefined}
+        onClose={() => setColsOpen(false)}
+        footer={(
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}><Button label="Reset" onPress={() => saveColumns(true)} /></View>
+            <View style={{ flex: 1 }}><Button variant="pri" label="Save" onPress={() => saveColumns()} /></View>
+          </View>
+        )}
+      >
+        {draft.map((c, i) => (
+          <View key={c.h} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 52, borderBottomWidth: i === draft.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+            <Pressable
+              onPress={() => setDraft((d) => d.map((x, k) => (k === i ? { ...x, on: !x.on } : x)))}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: c.on }}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }}
+            >
+              <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: c.on ? colors.ink : colors.lineHard, backgroundColor: c.on ? colors.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                {c.on ? <Icon name="check" size={14} color={colors.bg} /> : null}
+              </View>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: c.on ? colors.ink : colors.faint }}>{c.h}</Text>
+            </Pressable>
+            <Pressable onPress={() => moveCol(i, -1)} disabled={i === 0} hitSlop={6} accessibilityLabel={'Move ' + c.h + ' up'} style={{ padding: 8, opacity: i === 0 ? 0.3 : 1 }}>
+              <Icon name="up" size={18} color={colors.ink} />
+            </Pressable>
+            <Pressable onPress={() => moveCol(i, 1)} disabled={i === draft.length - 1} hitSlop={6} accessibilityLabel={'Move ' + c.h + ' down'} style={{ padding: 8, opacity: i === draft.length - 1 ? 0.3 : 1 }}>
+              <Icon name="down" size={18} color={colors.ink} />
+            </Pressable>
+          </View>
+        ))}
       </Sheet>
 
       {/* which columns go on the page */}

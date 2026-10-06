@@ -720,6 +720,7 @@ export function createInstalmentPlan(
   };
   d.instalmentPlans.push(pl);
   audit(d, 'Instalment plan created', pl.no + ' — ' + schedule.length + ' over ' + Math.round(t.total));
+  enqueue(d, 'plan', pl.id);
   return pl;
 }
 
@@ -740,6 +741,7 @@ export function payInstalment(d: DB, planId: string, index: number, accountId?: 
     note: 'Instalment on ' + pl.no,
   }, when);
   audit(d, 'Instalment received', pl.no + ' — ' + Math.round(x.amount));
+  enqueue(d, 'plan', pl.id);
   return pay;
 }
 

@@ -123,16 +123,18 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                     paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8, opacity: out ? 0.55 : 1,
                   }}
                 >
-                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: colors.accent, fontFamily: fonts.uiBold, fontSize: 15 }}>{p.name.charAt(0).toUpperCase()}</Text>
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ color: colors.ink, fontFamily: fonts.uiSemi, fontSize: 15 }}>{p.name}</Text>
-                    <Text numberOfLines={1} style={{ color: out ? colors.danger : colors.faint, fontFamily: fonts.ui, fontSize: 12.5, marginTop: 2 }}>
-                      {p.sku} · {p.kind === 'service' ? 'Service' : out ? 'Out of stock' : stock + ' ' + p.unit + ' in stock'}
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.ink, fontFamily: fonts.monoSemi, fontSize: 12.5 }}>{money(priceOf ? priceOf(p) : p.price)}</Text>
+                  <Text numberOfLines={2} style={{ flex: 1, color: colors.ink, fontFamily: fonts.ui, fontSize: 15.5 }}>{p.name}</Text>
+                  {p.kind === 'service' ? (
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Service</Text>
+                  ) : (
+                    <View style={{
+                      minWidth: 64, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+                      backgroundColor: stock <= (p.reorder || 0) ? colors.dangerSoft : colors.sunk,
+                    }}>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: stock <= (p.reorder || 0) ? colors.danger : colors.ink }}>{stock}</Text>
+                      <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: stock <= (p.reorder || 0) ? colors.danger : colors.faint }}>{stock <= (p.reorder || 0) ? 'Low · ' + p.unit : p.unit}</Text>
+                    </View>
+                  )}
                 </Pressable>
               );
             }}

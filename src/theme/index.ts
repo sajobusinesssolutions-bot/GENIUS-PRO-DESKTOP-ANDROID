@@ -19,13 +19,18 @@ export const shadow = {
 
 /** Minimum comfortable tap target, and the standard control heights. */
 export const control = { field: 52, button: 52, buttonSm: 40, row: 60 };
+/**
+ * Google Sans across the app. It is narrower than Inter was, so long item
+ * names fit on one line; body text is the regular weight, as on the reference.
+ * The family has no 800, so the heaviest headings use 700.
+ */
 export const fonts = {
-  ui: 'Inter_500Medium',
-  uiSemi: 'Inter_600SemiBold',
-  uiBold: 'Inter_700Bold',
-  uiExtra: 'Inter_800ExtraBold',
-  mono: 'Inter_500Medium',
-  monoSemi: 'Inter_600SemiBold',
+  ui: 'Sans_400',
+  uiSemi: 'Sans_500',
+  uiBold: 'Sans_600',
+  uiExtra: 'Sans_700',
+  mono: 'Sans_400',
+  monoSemi: 'Sans_500',
 };
 
 export function useTheme(): { colors: ThemeColors; dark: boolean } {

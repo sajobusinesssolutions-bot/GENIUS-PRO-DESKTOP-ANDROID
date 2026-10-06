@@ -47,12 +47,16 @@ export type AuthFailure =
   | 'codeExpired'
   | 'rateLimited'
   | 'seatsFull'
+  | 'tooManyDevices'
+  | 'deviceRemoved'
   | 'server';
 
 export interface AuthError {
   failure: AuthFailure;
   /** What the person reads. Says what happened and what to do next. */
   message: string;
+  /** The rest of what the server said, such as the device list with tooManyDevices. */
+  detail?: any;
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: AuthError };
@@ -76,6 +80,10 @@ const MESSAGES: Record<AuthFailure, string> = {
     'That code has expired. Ask for a new one.',
   rateLimited:
     'Too many attempts. Wait a few minutes before trying again.',
+  tooManyDevices:
+    'All the devices your plan allows are in use. Remove one to use this device.',
+  deviceRemoved:
+    'This device was removed from your linked devices. Sign in to keep using it.',
   seatsFull:
     'Your licence does not cover another device. Remove a device from your account, or add seats, then try again.',
   server:
@@ -115,7 +123,7 @@ async function request<T>(path: string, body: unknown, token?: string, method: '
     // the server names its own failure; anything unrecognised is 'server'
     const code = (json && json.error) as AuthFailure | undefined;
     const known = code && code in MESSAGES ? code : 'server';
-    return fail<T>(known as AuthFailure, json?.message);
+    return { ok: false, error: { ...authError(known as AuthFailure, json?.message), detail: json } };
   } catch (e: any) {
     if (e?.name === 'AbortError') return fail<T>('timeout');
     return fail<T>('offline');
@@ -219,13 +227,25 @@ export function refreshSession(refresh: string) {
   return request<{ access: string }>('/v1/auth/refresh', { refresh });
 }
 
-/** Claims a device seat. Refused with `seatsFull` when the licence has none left. */
+export interface LinkedDevice { id: string; name: string; kind: string; platform: string; created_at: string; last_seen: string; current?: boolean }
+
+/**
+ * Links this device to the account, tied to the session signing in made. The
+ * same session asking again gets the same device. Refused with
+ * `tooManyDevices` — the list is in `error.detail.devices` — when every seat
+ * is taken.
+ */
 export function registerDevice(access: string, o: { name: string; kind: string; platform: string }) {
-  return request<{ deviceId: string; token: string; replacedDevice?: { id: string; name: string } }>('/v1/devices', o, access);
+  return request<{ deviceId: string; seats?: number }>('/v1/devices', o, access);
+}
+
+/** Whether this device is still linked. A removed one is refused with `deviceRemoved`. */
+export function deviceStatus(access: string) {
+  return request<{ linked: boolean; deviceId: string | null }>('/v1/devices/me', undefined, access, 'GET');
 }
 
 export function listDevices(access: string) {
-  return request<{ devices: Array<{ id: string; name: string; kind: string; platform: string; created_at: string; last_seen: string }> }>('/v1/devices', undefined, access, 'GET');
+  return request<{ devices: LinkedDevice[] }>('/v1/devices', undefined, access, 'GET');
 }
 
 export function revokeDevice(access: string, id: string) {

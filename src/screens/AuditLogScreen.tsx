@@ -50,8 +50,8 @@ export default function AuditLogScreen() {
               shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
             }}
           >
-            <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="shield" size={19} color={colors.accent} />
+            <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="shield" size={19} color={colors.ink} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{item.action}</Text>

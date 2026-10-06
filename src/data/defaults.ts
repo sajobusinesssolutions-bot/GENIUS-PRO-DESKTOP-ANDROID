@@ -236,8 +236,9 @@ export function defaultUpdate(): UpdateCfg {
 
 /* ---------------- what changed ---------------- */
 
-/** The running build of the app shell — reference BUILD, last set to '4.3'. */
-export const BUILD = '4.3';
+/** The running build — the one version, read from app.json, shown everywhere. */
+import { APP_VERSION } from './appVersion';
+export const BUILD = APP_VERSION;
 export const SCHEMA_VERSION = 6;
 
 export const CHANGELOG: [string, string][] = [

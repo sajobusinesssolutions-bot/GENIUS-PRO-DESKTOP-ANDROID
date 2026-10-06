@@ -97,16 +97,16 @@ export default function SettingsScreen() {
 
             {/* Company — reference the wrapper at 15396 */}
             <SettingGroup title="Company">
-              <SettingRow icon="factory" label="Businesses on this device" value={plural(db.firms.length, 'business', 'businesses')} onPress={() => go('Firms')} />
+              <SettingRow label="Businesses on this device" value={plural(db.firms.length, 'business', 'businesses')} onPress={() => go('Firms')} />
             </SettingGroup>
 
             {/* Date format, week start and language were switches with nothing behind them —
                 dates are shown in fixed forms and the app has one language — so they
                 are not offered until they do something. */}
             <SettingGroup title="Money">
-              <SettingRow icon="coins" label="Currency" value={s.currency + ' · ' + s.currencyName} onPress={() => setSheet('money')} />
-              <SettingRow icon="money" label="Symbol" value={s.symbolBefore ? 'Before the number' : 'After the number'} onPress={() => setSheet('money')} />
-              <SettingRow icon="pie" label="Decimals" value={String(s.decimals)} onPress={() => setSheet('money')} />
+              <SettingRow label="Currency" value={s.currency + ' · ' + s.currencyName} onPress={() => setSheet('money')} />
+              <SettingRow label="Symbol" value={s.symbolBefore ? 'Before the number' : 'After the number'} onPress={() => setSheet('money')} />
+              <SettingRow label="Decimals" value={String(s.decimals)} onPress={() => setSheet('money')} />
             </SettingGroup>
 
           </>
@@ -115,23 +115,22 @@ export default function SettingsScreen() {
         {tab === 'selling' ? (
           <>
             <SettingGroup title="Payment reminders">
-              <SettingRow icon="share" label="Reminders and their messages" value={s.reminders?.enabled === false ? 'Off' : 'On'} onPress={() => go('ReminderSettings')} />
+              <SettingRow label="Reminders and their messages" value={s.reminders?.enabled === false ? 'Off' : 'On'} onPress={() => go('ReminderSettings')} />
             </SettingGroup>
 
             <SettingGroup title="Selling & the till">
-              <SettingRow icon="cash" label="Default payment" value={s.defaultMethod} onPress={() => setSheet('till')} />
-              <SettingRow icon="coins" label="Round totals to" value={s.roundTo ? 'nearest ' + s.roundTo : 'no rounding'} onPress={() => setSheet('till')} />
-              <SettingRow icon="tag" label="Biggest discount a cashier may give" value={s.maxDiscountPct + '%'} onPress={() => setSheet('till')} />
-              <SettingToggle icon="clock" label="A shift must be open to sell" on={s.requireShift} onChange={(v) => set({ requireShift: v })} />
-              <SettingToggle icon="user" label="Ask for the customer on every sale" on={s.askCustomer} onChange={(v) => set({ askCustomer: v })} />
-              <SettingToggle icon="pencil" label="Let staff change the price at the till" on={s.allowPriceEdit} onChange={(v) => set({ allowPriceEdit: v })} />
+              <SettingRow label="Default payment" value={s.defaultMethod} onPress={() => setSheet('till')} />
+              <SettingRow label="Round totals to" value={s.roundTo ? 'nearest ' + s.roundTo : 'no rounding'} onPress={() => setSheet('till')} />
+              <SettingRow label="Biggest discount a cashier may give" value={s.maxDiscountPct + '%'} onPress={() => setSheet('till')} />
+              <SettingToggle label="A shift must be open to sell" on={s.requireShift} onChange={(v) => set({ requireShift: v })} />
+              <SettingToggle label="Ask for the customer on every sale" on={s.askCustomer} onChange={(v) => set({ askCustomer: v })} />
+              <SettingToggle label="Let staff change the price at the till" on={s.allowPriceEdit} onChange={(v) => set({ allowPriceEdit: v })} />
             </SettingGroup>
 
             {/* Selling rules — reference the wrapper at 15407 */}
             <SettingGroup title="Selling rules">
-              <SettingToggle icon="box" label="Refuse to sell what is not in stock" on={s.blockNegativeStock} onChange={(v) => set({ blockNegativeStock: v, allowNegativeStock: !v })} />
+              <SettingToggle label="Refuse to sell what is not in stock" on={s.blockNegativeStock} onChange={(v) => set({ blockNegativeStock: v, allowNegativeStock: !v })} />
               <SettingRow
-                icon="alert"
                 label="Stop selling below cost"
                 value={s.belowCost === 'block' ? 'On — refuse it' : s.belowCost === 'warn' ? 'Ask before selling' : 'Off — allow it'}
                 onPress={() => setSheet('belowCost')}
@@ -140,19 +139,19 @@ export default function SettingsScreen() {
 
             <SettingGroup title="Tax">
               <SettingToggle
-                icon="pie" label="Charge tax on sales"
+                label="Charge tax on sales"
                 sub="Off means no tax is added, shown on a bill, or reported"
                 on={s.taxEnabled !== false}
                 onChange={(v) => set({ taxEnabled: v })}
               />
               {s.taxEnabled !== false ? (
-                <SettingRow icon="bank" label="Tax name" value={s.taxName} onPress={() => setSheet('tax')} />
+                <SettingRow label="Tax name" value={s.taxName} onPress={() => setSheet('tax')} />
               ) : null}
               {s.taxEnabled !== false ? (
-                <SettingRow icon="pie" label="Rate" value={s.taxRate + '%'} onPress={() => setSheet('tax')} />
+                <SettingRow label="Rate" value={s.taxRate + '%'} onPress={() => setSheet('tax')} />
               ) : null}
               {s.taxEnabled !== false ? (
-                <SettingToggle icon="receipt" label="Prices already include tax" on={s.pricesIncludeTax} onChange={(v) => set({ pricesIncludeTax: v })} />
+                <SettingToggle label="Prices already include tax" on={s.pricesIncludeTax} onChange={(v) => set({ pricesIncludeTax: v })} />
               ) : null}
             </SettingGroup>
           </>
@@ -161,12 +160,12 @@ export default function SettingsScreen() {
         {tab === 'stock' ? (
           <>
             <SettingGroup title="Stock">
-              <SettingRow icon="box" label="Sell stock from" value={wh?.name || '—'} onPress={() => setSheet('stock')} />
-              <SettingRow icon="chart" label="Costing" value={s.costing === 'average' ? 'Weighted average' : 'Last cost'} onPress={() => setSheet('stock')} />
-              <SettingToggle icon="swap" label="Buy and sell in a second unit" on={s.useSecondaryUnit} onChange={(v) => set({ useSecondaryUnit: v })} />
-              <SettingToggle icon="alert" label="Warn when stock runs low" on={s.lowStockAlerts} onChange={(v) => set({ lowStockAlerts: v })} />
-              <SettingToggle icon="down" label="Allow selling below zero" on={s.allowNegativeStock} onChange={(v) => set({ allowNegativeStock: v, blockNegativeStock: !v })} />
-              <SettingToggle icon="calendar" label="Track batches and expiry" on={s.trackBatches} onChange={(v) => set({ trackBatches: v })} />
+              <SettingRow label="Sell stock from" value={wh?.name || '—'} onPress={() => setSheet('stock')} />
+              <SettingRow label="Costing" value={s.costing === 'average' ? 'Weighted average' : 'Last cost'} onPress={() => setSheet('stock')} />
+              <SettingToggle label="Buy and sell in a second unit" on={s.useSecondaryUnit} onChange={(v) => set({ useSecondaryUnit: v })} />
+              <SettingToggle label="Warn when stock runs low" on={s.lowStockAlerts} onChange={(v) => set({ lowStockAlerts: v })} />
+              <SettingToggle label="Allow selling below zero" on={s.allowNegativeStock} onChange={(v) => set({ allowNegativeStock: v, blockNegativeStock: !v })} />
+              <SettingToggle label="Track batches and expiry" on={s.trackBatches} onChange={(v) => set({ trackBatches: v })} />
             </SettingGroup>
 
             {/* Document numbers — reference 6817 */}
@@ -174,7 +173,6 @@ export default function SettingsScreen() {
               {(Object.keys(db.numbering) as NumberingKey[]).map((k) => (
                 <SettingRow
                   key={k}
-                  icon="doc"
                   label={NUMBER_LABEL[k] || k}
                   value={db.numbering[k] + '-00001'}
                   onPress={() => setSheet('numbering')}
@@ -187,15 +185,14 @@ export default function SettingsScreen() {
         {tab === 'security' ? (
           <>
             <SettingGroup title="Security">
-              <SettingToggle icon="lock" label="Ask for a PIN when the app opens" on={s.lockOnOpen} onChange={(v) => set({ lockOnOpen: v })} />
-              <SettingRow icon="lock" label="Lock after" value={s.autoLockMins ? s.autoLockMins + ' minutes idle' : 'never'} onPress={() => setSheet('security')} />
-              <SettingToggle icon="shield" label="Hide cost prices from cashiers" on={s.hideCostFromCashier} onChange={(v) => set({ hideCostFromCashier: v })} />
-              <SettingRow icon="user" label="Users and roles" value={plural(activePeople, 'person', 'people')} onPress={() => go('UsersRoles')} />
+              <SettingToggle label="Ask for a PIN when the app opens" on={s.lockOnOpen} onChange={(v) => set({ lockOnOpen: v })} />
+              <SettingRow label="Lock after" value={s.autoLockMins ? s.autoLockMins + ' minutes idle' : 'never'} onPress={() => setSheet('security')} />
+              <SettingToggle label="Hide cost prices from cashiers" on={s.hideCostFromCashier} onChange={(v) => set({ hideCostFromCashier: v })} />
+              <SettingRow label="Users and roles" value={plural(activePeople, 'person', 'people')} onPress={() => go('UsersRoles')} />
             </SettingGroup>
 
             <SettingGroup title="Accounting">
               <SettingRow
-                icon="lock"
                 label="Accounting period"
                 value={s.accountingLock ? 'Locked — ' + new Date(s.accountingLock.from).toLocaleDateString() : 'Open'}
                 onPress={() => {
@@ -211,35 +208,34 @@ export default function SettingsScreen() {
             {/* Changing what is recorded — reference the wrapper at 17926 */}
             <SettingGroup title="Accountability">
               <SettingToggle
-                icon="user" label="Ask who is recording each entry"
+                label="Ask who is recording each entry"
                 sub="Every sale, payment and count is stamped with a name"
                 on={s.askWhoOnSave !== false}
                 onChange={(v) => set({ askWhoOnSave: v })}
               />
               <SettingToggle
-                icon="lock" label="That person must enter their PIN"
+                label="That person must enter their PIN"
                 sub="Stops one person recording work as another"
                 on={s.requirePinOnSave === true}
                 onChange={(v) => set({ requirePinOnSave: v })}
               />
-              <SettingRow icon="chart" label="Staff performance" value="Who sold what" onPress={() => go('StaffReport')} />
+              <SettingRow label="Staff performance" value="Who sold what" onPress={() => go('StaffReport')} />
             </SettingGroup>
 
             <SettingGroup title="Changing what is recorded">
-              <SettingToggle icon="pencil" label="A PIN is needed to edit a transaction" on={s.requirePinToEdit} onChange={(v) => set({ requirePinToEdit: v })} />
-              <SettingToggle icon="trash" label="A PIN is needed to delete one" on={s.requirePinToDelete} onChange={(v) => set({ requirePinToDelete: v })} />
+              <SettingToggle label="A PIN is needed to edit a transaction" on={s.requirePinToEdit} onChange={(v) => set({ requirePinToEdit: v })} />
+              <SettingToggle label="A PIN is needed to delete one" on={s.requirePinToDelete} onChange={(v) => set({ requirePinToDelete: v })} />
               <SettingRow
-                icon="clock"
                 label="Edits allowed for"
                 value={s.editWindowDays > 0 ? plural(s.editWindowDays, 'day') + ' after the sale' : 'any sale, any age'}
                 onPress={() => setSheet('editWindow')}
               />
-              <SettingRow icon="shield" label="Audit log" value={plural(db.auditLog.length, 'entry', 'entries')} onPress={() => go('AuditLog')} />
+              <SettingRow label="Audit log" value={plural(db.auditLog.length, 'entry', 'entries')} onPress={() => go('AuditLog')} />
             </SettingGroup>
 
             <SettingGroup title="Alerts">
-              <SettingToggle icon="box" label="Low stock" on={s.notifyLowStock} onChange={(v) => set({ notifyLowStock: v })} />
-              <SettingToggle icon="clock" label="Overdue bills" on={s.notifyOverdue} onChange={(v) => set({ notifyOverdue: v })} />
+              <SettingToggle label="Low stock" on={s.notifyLowStock} onChange={(v) => set({ notifyLowStock: v })} />
+              <SettingToggle label="Overdue bills" on={s.notifyOverdue} onChange={(v) => set({ notifyOverdue: v })} />
             </SettingGroup>
           </>
         ) : null}
@@ -247,20 +243,19 @@ export default function SettingsScreen() {
         {tab === 'system' ? (
           <>
             <SettingGroup title="This device">
-              <SettingRow icon="till" label="Till name" value={db.session.till} onPress={() => setSheet('device')} />
-              <SettingRow icon="print" label="Printer" value={db.printer.device || '—'} onPress={() => go('Printing')} />
-              <SettingRow icon="cloud" label="Connection" value={db.session.online ? 'Online' : 'Offline'} />
-              <SettingRow icon="swap" label="Backup & data tools" value="Export, restore, health check" onPress={() => go('DataTools')} />
+              <SettingRow label="Till name" value={db.session.till} onPress={() => setSheet('device')} />
+              <SettingRow label="Printer" value={db.printer.device || '—'} onPress={() => go('Printing')} />
+              <SettingRow label="Connection" value={db.session.online ? 'Online' : 'Offline'} />
+              <SettingRow label="Backup & data tools" value="Export, restore, health check" onPress={() => go('DataTools')} />
             </SettingGroup>
 
             {/* Account / Cloud / This phone / About — the later wrappers */}
             <SettingGroup title="Account">
-              <SettingRow icon="gift" label="Plan & licence" sub={plan.name} value={plan.left} onPress={() => go('Licence')} />
+              <SettingRow label="Plan & licence" sub={plan.name} value={plan.left} onPress={() => go('Licence')} />
             </SettingGroup>
 
             <SettingGroup title="Cloud">
               <SettingRow
-                icon="cloud"
                 label="Cloud sync"
                 value={plan.name === 'Free trial' || plan.left === 'Choose a plan' || plan.left === 'Renew' ? 'Paid plans only' : !isPro() ? 'On Pro' : db.sync.on ? (db.sync.pending.length ? plural(db.sync.pending.length, 'change') + ' waiting' : 'On this phone only') : 'Off'}
                 onPress={() => go('Sync')}
@@ -268,7 +263,7 @@ export default function SettingsScreen() {
             </SettingGroup>
 
             <SettingGroup title="About">
-              <SettingRow icon="bulb" label="Version" value={BUILD} onPress={() => go('About')} />
+              <SettingRow label="Version" value={BUILD} onPress={() => go('About')} />
             </SettingGroup>
 
             {/* the version card at the foot, reference 6790 */}

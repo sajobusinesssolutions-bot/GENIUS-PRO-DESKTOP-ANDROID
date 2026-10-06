@@ -41,9 +41,9 @@ const normalise = (e) => String(e || '').trim().toLowerCase();
  */
 async function issueSession(account, sessionName = 'unknown') {
   const refresh = newRefresh();
-  await q(
+  const made = await q(
     `insert into sessions (account_id, name, refresh_hash, last_seen)
-     values ($1, $2, $3, now())`,
+     values ($1, $2, $3, now()) returning id`,
     [account.id, sessionName, hashRefresh(refresh)],
   );
   await q('update accounts set last_login_at = now(), last_seen_at = now() where id = $1', [account.id]);
@@ -51,7 +51,7 @@ async function issueSession(account, sessionName = 'unknown') {
     accountId: account.id,
     email: account.email,
     name: account.name || '',
-    access: await issueAccess(account),
+    access: await issueAccess(account, made.rows[0].id),
     refresh,
   };
 }
@@ -371,18 +371,24 @@ export default async function authRoutes(app) {
     if (!token) return fail(reply, 400, 'malformed', 'No refresh token was sent.');
 
     const { rows } = await q(
-      `select s.id as session_id, s.refresh_hash, a.id, a.email, a.name
+      `select s.id as session_id, s.refresh_hash, s.revoked_at, s.revoked_reason, a.id, a.email, a.name
          from sessions s join accounts a on a.id = s.account_id
-        where s.refresh_hash = $1 and s.revoked_at is null`,
+        where s.refresh_hash = $1`,
       [hashRefresh(token)],
     );
     const row = rows[0];
     if (!row || !refreshMatches(token, row.refresh_hash)) {
       return fail(reply, 401, 'badCredentials', 'Please sign in again.');
     }
+    if (row.revoked_at) {
+      // the phone says why it has been signed out: removed from the linked devices, or not
+      return row.revoked_reason === 'device_removed'
+        ? fail(reply, 401, 'deviceRemoved', 'This device was removed from your linked devices. Sign in to keep using it.')
+        : fail(reply, 401, 'badCredentials', 'Please sign in again.');
+    }
     await q('update sessions set last_seen = now() where id = $1', [row.session_id]);
     await q('update accounts set last_seen_at = now() where id = $1', [row.id]);
-    return { access: await issueAccess({ id: row.id, email: row.email }) };
+    return { access: await issueAccess({ id: row.id, email: row.email }, row.session_id) };
   });
 }
 
