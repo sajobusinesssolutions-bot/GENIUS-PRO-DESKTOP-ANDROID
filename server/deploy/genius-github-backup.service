@@ -1,0 +1,11 @@
+# Nightly encrypted copy of the server to a private GitHub repository.
+# See genius-github-backup.sh and RECOVERY.md, "Back up to GitHub".
+[Unit]
+Description=Back up the Genius server to GitHub
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/genius/repo/server/deploy/genius-github-backup.sh
+User=root

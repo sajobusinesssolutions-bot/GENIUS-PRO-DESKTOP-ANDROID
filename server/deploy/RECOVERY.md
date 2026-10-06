@@ -11,6 +11,75 @@ name, not by its IP**, so moving servers never needs a new version of the app
 
 ---
 
+## Back up to GitHub (the quickest way back)
+
+Every night at 03:30 UTC, `genius-github-backup.sh` pushes an **encrypted**
+copy of the whole server to the private repository
+`sajobusinesssolutions-bot/GENIUS-SERVER-BACKUP`: the database, `/etc/genius`
+(every secret and the licence key), and the web server, HTTPS certificates
+and service files. It keeps the last 7 days as a single commit, so the
+repository does not grow. Only the passphrase opens it.
+
+### Set it up (once, on the running server)
+
+1. On GitHub, create a **private** repository named `GENIUS-SERVER-BACKUP`
+   (empty — no README).
+2. On the server, make its key and print it:
+
+   ```sh
+   ssh-keygen -q -t ed25519 -N '' -f /root/.ssh/genius_backup -C genius-backup
+   cat >> /root/.ssh/config <<'EOF'
+   Host github-genius-backup
+     HostName github.com
+     User git
+     IdentityFile /root/.ssh/genius_backup
+     IdentitiesOnly yes
+   EOF
+   cat /root/.ssh/genius_backup.pub
+   ```
+
+   Add it to GENIUS-SERVER-BACKUP → Settings → Deploy keys, with
+   **"Allow write access" ticked**.
+3. Choose the passphrase and **save it in your password manager first**:
+
+   ```sh
+   umask 077; read -rsp 'Backup passphrase: ' P; echo; printf '%s' "$P" > /root/.genius-backup-pass; unset P
+   ```
+
+4. Switch it on and run it once:
+
+   ```sh
+   git -C /opt/genius/repo pull -q
+   chmod +x /opt/genius/repo/server/deploy/*.sh
+   cp /opt/genius/repo/server/deploy/genius-github-backup.{service,timer} /etc/systemd/system/
+   systemctl daemon-reload && systemctl enable --now genius-github-backup.timer
+   systemctl start genius-github-backup.service
+   journalctl -t genius-github-backup -n 5 --no-pager    # ends "backup for <day> pushed"
+   ```
+
+### Rebuild from GitHub (new or wiped server)
+
+Copy the install script from your PC to the fresh Ubuntu server (from the
+app folder; NEW_IP is the new server's address):
+
+```sh
+scp server/deploy/genius-install.sh root@NEW_IP:
+```
+
+Then on the server, as root:
+
+```sh
+bash genius-install.sh             # newest backup
+bash genius-install.sh 2026-10-05  # or a given day
+```
+
+It prints two keys to add on GitHub, asks for the passphrase, and does the
+rest: packages, database, secrets, web server and HTTPS, the API, automatic
+updates and the nightly backup. Then point the `A` record of
+`api.saljoetech.tech` to the IP it prints. About ten minutes in all.
+
+---
+
 ## Keep these safe — off the server
 
 | What | Where it lives | Why it matters |

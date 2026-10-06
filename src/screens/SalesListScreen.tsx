@@ -52,6 +52,13 @@ interface Row {
   amount: number;
   amountTone?: string;
   badge: { label: string; tone: Tone };
+  /** What it is, in colour under the name: "Cash sale", "Credit sale", "Quote", "Credit note". */
+  label: string;
+  labelColor: string;
+  /** The one fact under the rule: how it was paid, what is still owed, until when it holds. */
+  foot?: { label: string; value: string; tone?: string };
+  /** Money going back out, such as a credit note: shown with a minus. */
+  negative?: boolean;
   userId?: string;
   partyId?: string | null;
   status?: string;
@@ -142,6 +149,15 @@ export default function SalesListScreen({ navigation }: Props) {
     return { fg: colors.faint, bg: colors.sunk };
   };
 
+  const { dark } = useTheme();
+  /** Credit notes read in purple, apart from every other kind. */
+  const purple = dark ? '#B69CFF' : '#7A4FD1';
+  const METHOD_WORD: Record<string, string> = { cash: 'Cash', momo: 'Mobile money', bank: 'Bank', credit: 'Account', card: 'Card' };
+  const methodWord = (m?: string) => (m ? METHOD_WORD[m] || m.charAt(0).toUpperCase() + m.slice(1) : 'Cash');
+  /** What is still owed, coloured by how much: none paid is red, part paid amber. */
+  const owed = (due: number, paid: number) => ({ label: 'Balance', value: money(due), tone: paid > 0.01 ? colors.warn : colors.danger });
+  const shortDay = (ts: string) => new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+
   const nameOf = (id: string | null | undefined) => (id ? party(id)?.name || 'Walk-in' : 'Walk-in');
   const phoneOf = (id: string | null | undefined) => (id ? party(id)?.phone : undefined);
 
@@ -164,8 +180,13 @@ export default function SalesListScreen({ navigation }: Props) {
         due: void_ ? 0 : s.due,
         badge: void_ ? { label: 'Void', tone: 'neutral' }
           : s.due <= 0.01 ? { label: 'Paid', tone: 'good' }
-            : s.due < s.total ? { label: 'Part paid', tone: 'accent' }
+            : s.due < s.total ? { label: 'Partial', tone: 'warn' }
               : { label: 'Unpaid', tone: 'danger' },
+        label: s.method === 'credit' ? 'Credit sale' : 'Cash sale',
+        labelColor: s.method === 'credit' ? colors.accent : colors.good,
+        foot: void_ ? undefined
+          : s.due > 0.01 ? owed(s.due, s.paid)
+            : { label: 'Paid via', value: (s.methods || []).length > 1 ? 'Split payment' : methodWord(s.method === 'credit' ? s.receivedVia : s.method) },
         phone: phoneOf(s.partyId),
         userId: s.userId, partyId: s.partyId, status: void_ ? 'void' : s.due <= 0.01 ? 'paid' : s.paid > 0 ? 'partial' : 'unpaid',
         open: () => navigation.navigate('SaleDetail', { saleId: s.id }),
@@ -199,7 +220,10 @@ export default function SalesListScreen({ navigation }: Props) {
           dim: void_,
           badge: void_ ? { label: 'Void', tone: 'neutral' }
             : pu.due <= 0.01 ? { label: 'Paid', tone: 'good' }
-              : { label: pu.paid > 0 ? 'Part paid' : 'Unpaid', tone: 'warn' },
+              : pu.paid > 0 ? { label: 'Partial', tone: 'warn' } : { label: 'Unpaid', tone: 'danger' },
+          label: 'Purchase',
+          labelColor: colors.warn,
+          foot: void_ ? undefined : pu.due > 0.01 ? owed(pu.due, pu.paid) : { label: 'Paid via', value: methodWord(pu.method) },
           userId: pu.userId, partyId: pu.partyId,
           status: void_ ? 'void' : pu.due <= 0.01 ? 'paid' : pu.paid > 0 ? 'partial' : 'unpaid',
           phone: phoneOf(pu.partyId),
@@ -225,7 +249,10 @@ export default function SalesListScreen({ navigation }: Props) {
           ref: po.no,
           amount: total,
           partyId: po.partyId,
-          badge: { label: po.status === 'received' ? 'Received' : 'Open', tone: po.status === 'received' ? 'good' : 'accent' },
+          badge: { label: po.status === 'received' ? 'Received' : 'Open', tone: po.status === 'received' ? 'good' : 'neutral' },
+          label: 'Purchase order',
+          labelColor: colors.accent,
+          foot: { label: 'Items', value: String(po.lines.length) },
           open: () => navigation.navigate('PurchaseOrders'),
           edit: () => navigation.navigate('PurchaseOrders'),
         });
@@ -241,6 +268,9 @@ export default function SalesListScreen({ navigation }: Props) {
         amount: p.amount,
         amountTone: p.direction === 'in' ? colors.good : colors.danger,
         badge: { label: p.direction === 'in' ? 'Received' : 'Paid out', tone: p.direction === 'in' ? 'good' : 'danger' },
+        label: p.direction === 'in' ? 'Payment in' : 'Payment out',
+        labelColor: p.direction === 'in' ? colors.good : colors.danger,
+        foot: { label: 'Paid via', value: db.accounts?.find((a) => a.id === p.accountId)?.name || methodWord(p.method) },
         phone: phoneOf(p.partyId),
         partyId: p.partyId,
         open: () => navigation.navigate('PaymentDetail', { paymentId: p.id }),
@@ -265,7 +295,10 @@ export default function SalesListScreen({ navigation }: Props) {
         dim: e.status === 'void',
         partyId: e.partyId,
         phone: phoneOf(e.partyId),
-        badge: { label: e.status === 'void' ? 'deleted' : e.status, tone: e.status === 'converted' ? 'good' : open ? 'accent' : 'neutral' },
+        badge: { label: e.status === 'void' ? 'Deleted' : e.status === 'converted' ? 'Converted' : 'Open', tone: e.status === 'converted' ? 'good' : 'neutral' },
+        label: 'Quote',
+        labelColor: colors.accent,
+        foot: e.validUntil ? { label: 'Valid until', value: shortDay(e.validUntil) } : { label: 'Items', value: String(e.lines.length) },
         open: () => navigation.navigate('EstimateDetail', { estimateId: e.id }),
         // a quotation prints and sends like a sale, under its own name
         doc: () => saleDoc({
@@ -295,7 +328,10 @@ export default function SalesListScreen({ navigation }: Props) {
         ref: c.no,
         amount: 0,
         partyId: c.partyId,
-        badge: { label: c.status, tone: c.status === 'delivered' ? 'good' : 'warn' },
+        badge: { label: c.status === 'delivered' ? 'Delivered' : 'Out', tone: c.status === 'delivered' ? 'good' : 'warn' },
+        label: 'Delivery note',
+        labelColor: colors.warn,
+        foot: { label: 'Pieces', value: String(c.lines.reduce((s, l) => s + l.qty, 0)) },
         open: () => navigation.navigate('Challans'),
         edit: () => navigation.navigate('Challans'),
       });
@@ -310,7 +346,13 @@ export default function SalesListScreen({ navigation }: Props) {
         amount: c.total,
         amountTone: colors.danger,
         partyId: c.partyId,
-        badge: { label: 'Return', tone: 'danger' },
+        badge: { label: 'Applied', tone: 'neutral' },
+        label: 'Credit note',
+        labelColor: purple,
+        negative: true,
+        foot: c.saleId && db.sales.find((s) => s.id === c.saleId)
+          ? { label: 'Against', value: '#' + db.sales.find((s) => s.id === c.saleId)!.no }
+          : { label: 'Reason', value: c.reason || 'Goods returned' },
         open: () => navigation.navigate('CreditNotes'),
         edit: () => navigation.navigate('CreditNotes'),
       });
@@ -326,6 +368,9 @@ export default function SalesListScreen({ navigation }: Props) {
         amount: pl.total,
         partyId: pl.partyId,
         badge: { label: done === pl.schedule.length ? 'Cleared' : 'Running', tone: done === pl.schedule.length ? 'good' : 'warn' },
+        label: 'Instalment plan',
+        labelColor: colors.warn,
+        foot: { label: 'Paid', value: done + ' of ' + pl.schedule.length },
         open: () => navigation.navigate('PlanDetail', { planId: pl.id }),
         edit: () => navigation.navigate('PlanDetail', { planId: pl.id }),
       });
@@ -669,22 +714,28 @@ function MenuRow({ title, sub, onPress, danger }: { title: string; sub?: string;
  * total (and balance, when something is still owed); its number and when on
  * the right, over print, share and more.
  */
+/**
+ * One transaction: who and how much on top; what it is (in its own colour),
+ * its number and when, beside its status; then under a rule the one fact that
+ * matters for it — how it was paid, what is still owed, until when it holds —
+ * with print, share and more at the right.
+ */
 function TxnRow({ r, money, tone, onPrint, onShare, onMore }: {
   r: Row; money: (n: number) => string; tone: { fg: string; bg: string };
   onPrint?: () => void; onShare?: () => void; onMore: () => void;
 }) {
   const { colors } = useTheme();
   const d = new Date(r.ts);
-  const owing = (r.due || 0) > 0.01;
+  const when = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' · ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const icon = (name: IconName, label: string, onPress: () => void) => (
     <Pressable
       key={label}
       onPress={onPress}
       hitSlop={4}
       accessibilityLabel={label}
-      style={({ pressed }) => ({ width: 40, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : 'transparent' })}
+      style={({ pressed }) => ({ width: 38, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : 'transparent' })}
     >
-      <Icon name={name} size={20} color={colors.faint} />
+      <Icon name={name} size={19} color={colors.faint} />
     </Pressable>
   );
   return (
@@ -692,45 +743,47 @@ function TxnRow({ r, money, tone, onPrint, onShare, onMore }: {
       onPress={r.open}
       disabled={!r.open}
       style={({ pressed }) => ({
-        flexDirection: 'row', gap: 10, marginHorizontal: 16, marginBottom: 10, borderRadius: 16,
-        paddingTop: 13, paddingBottom: 10, paddingLeft: 15, paddingRight: 8,
+        marginHorizontal: 16, marginBottom: 10, borderRadius: 16,
+        paddingTop: 14, paddingBottom: 8, paddingHorizontal: 16,
         backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line, opacity: r.dim ? 0.55 : 1,
       })}
     >
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{r.title}</Text>
-        <View style={{ alignSelf: 'flex-start', marginTop: 6, paddingVertical: 3, paddingHorizontal: 10, borderRadius: 999, backgroundColor: tone.bg }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 11.5, letterSpacing: 0.4, color: tone.fg }}>
-            {(KIND_WORD[r.kind] + ' : ' + r.badge.label).toUpperCase()}
+      {/* who, and how much */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{r.title}</Text>
+        {r.amount ? (
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16.5, color: r.amountTone || colors.ink }}>
+            {(r.negative ? '-' : '') + money(r.amount)}
           </Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 22, marginTop: 10 }}>
-          {r.amount ? (
-            <View>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Total</Text>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: r.amountTone || colors.ink, marginTop: 1 }}>{money(r.amount)}</Text>
-            </View>
-          ) : null}
-          {owing ? (
-            <View>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Balance</Text>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.danger, marginTop: 1 }}>{money(r.due!)}</Text>
-            </View>
-          ) : null}
+        ) : null}
+      </View>
+
+      {/* what it is, its number and when — and its status */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }}>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
+          <Text style={{ fontFamily: fonts.uiSemi, color: r.labelColor }}>{r.label}</Text>
+          {'  ·  #' + r.ref + '  ·  ' + when}
+        </Text>
+        <View style={{ paddingVertical: 3, paddingHorizontal: 9, borderRadius: 7, backgroundColor: tone.bg }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.6, color: tone.fg }}>{r.badge.label.toUpperCase()}</Text>
         </View>
       </View>
-      <View style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
-        <View style={{ alignItems: 'flex-end', paddingRight: 7 }}>
-          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>#{r.ref}</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
-            {d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })} · {d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-          </Text>
+
+      <View style={{ height: 1, backgroundColor: colors.line, marginTop: 12, marginBottom: 8 }} />
+
+      {/* the one fact that matters, and what can be done */}
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {r.foot ? (
+            <>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{r.foot.label}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: r.foot.tone || colors.ink, marginTop: 2 }}>{r.foot.value}</Text>
+            </>
+          ) : null}
         </View>
-        <View style={{ flexDirection: 'row', marginTop: 8 }}>
-          {onPrint ? icon('print', 'Print', onPrint) : null}
-          {onShare ? icon('share', 'Share', onShare) : null}
-          {icon('dots', 'More actions', onMore)}
-        </View>
+        {onPrint ? icon('print', 'Print', onPrint) : null}
+        {onShare ? icon('share', 'Share', onShare) : null}
+        {icon('dots', 'More actions', onMore)}
       </View>
     </Pressable>
   );
