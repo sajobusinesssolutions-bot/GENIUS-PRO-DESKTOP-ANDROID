@@ -91,7 +91,7 @@ interface Ctx {
   addUser: (u: Omit<User, 'id'>) => User;
 
   // Estimates
-  createEstimate: (o: { partyId: string | null; lines: SaleLine[]; discount: number }) => Estimate;
+  createEstimate: (o: { partyId: string | null; lines: SaleLine[]; discount: number; validUntil?: string }) => Estimate;
   convertEstimate: (estimateId: string, method: PayMethod) => Sale | null;
   voidEstimate: (estimateId: string) => void;
   /** Changes an open quotation's customer, lines and discount; returns false once it is closed. */
@@ -719,7 +719,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       commit((d) => {
         d.counters.estimate += 1;
         const t = saleTotals(o.lines, o.discount, logic.pricesIncludeTax(d));
-        est = { id: uid('est'), no: 'EST-' + String(100000 + d.counters.estimate).slice(1), ts: iso(new Date()), partyId: o.partyId, lines: o.lines, discount: t.discount, total: t.total, status: 'open', convertedSaleId: null };
+        est = { id: uid('est'), no: 'EST-' + String(100000 + d.counters.estimate).slice(1), ts: iso(new Date()), partyId: o.partyId, lines: o.lines, discount: t.discount, total: t.total, status: 'open', convertedSaleId: null, ...(o.validUntil ? { validUntil: o.validUntil } : {}) };
         d.estimates.push(est);
         audit(d, 'Estimate created', est.no);
         logic.enqueue(d, 'estimate', est.id);

@@ -494,6 +494,8 @@ export interface Firm {
 export interface Estimate {
   id: string; no: string; ts: string; partyId: string | null; lines: SaleLine[];
   discount: number; total: number; status: 'open' | 'converted' | 'void';
+  /** The last day the quoted prices hold. */
+  validUntil?: string;
   convertedSaleId?: string | null;
 }
 

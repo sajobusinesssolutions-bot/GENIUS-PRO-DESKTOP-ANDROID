@@ -64,7 +64,10 @@ export default function EstimateNewScreen({ navigation, route }: Props) {
           navigation.goBack();
           return;
         }
-        const est = createEstimate(payload);
+        const days = Number(validFor) || 0;
+        const until = new Date();
+        until.setDate(until.getDate() + days);
+        const est = createEstimate({ ...payload, ...(days > 0 ? { validUntil: until.toISOString() } : {}) });
         navigation.replace('EstimateDetail', { estimateId: est.id });
       }}
     >
