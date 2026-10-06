@@ -597,9 +597,9 @@ function RowTile({ icon, danger }: { icon?: IconName; danger?: boolean }) {
   return (
     <View style={{
       width: ROW.tile, height: ROW.tile, borderRadius: 11,
-      backgroundColor: danger ? colors.dangerSoft : colors.accentSoft, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: danger ? colors.dangerSoft : colors.sunk, alignItems: 'center', justifyContent: 'center',
     }}>
-      <Icon name={icon} size={18} color={danger ? colors.danger : colors.accent} />
+      <Icon name={icon} size={18} color={danger ? colors.danger : colors.ink} />
     </View>
   );
 }

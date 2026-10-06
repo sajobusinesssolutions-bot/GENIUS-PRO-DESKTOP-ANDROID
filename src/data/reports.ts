@@ -2311,11 +2311,12 @@ RPT['ledger-summary'] = (db, from, to) => {
     });
     const current = dr - cr;
     const closing = opening + current;
-    return [accName(db, id), m(dr), m(cr), { text: money0(Math.abs(closing)) + (closing >= 0 ? ' Dr' : ' Cr'), n: closing }, { text: money0(Math.abs(opening)) + (opening >= 0 ? ' Dr' : ' Cr'), n: opening }, { text: money0(Math.abs(current)) + (current >= 0 ? ' Dr' : ' Cr'), n: current }];
+    const drcr = (v: number) => ({ text: money0(Math.abs(v)) + (v >= 0 ? ' Dr' : ' Cr'), n: v });
+    return [accName(db, id), drcr(opening), m(dr), m(cr), drcr(current), drcr(closing)];
   });
   return {
     title: 'Ledger summary',
-    cols: [{ h: 'Ledger' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Closing', r: true }, { h: 'Opening', r: true }, { h: 'Current', r: true }],
+    cols: [{ h: 'Particulars' }, { h: 'Opening', r: true }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Current', r: true }, { h: 'Closing', r: true }],
     rows,
     foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4)), m(sumCol(rows, 5))],
     rowRefs: ids.map((id) => ({ kind: 'ledger', id })),

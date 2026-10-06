@@ -20,6 +20,8 @@ import { needsNewerApp } from './appVersion';
 
 export interface RunOutcome {
   ok: boolean;
+  /** Another run held the line: not a failure, nothing to back off from. */
+  busy?: boolean;
   sent: number;
   message: string;
   seq?: number;
@@ -61,14 +63,19 @@ export function useSyncRun() {
     return r.value.access;
   }, [account?.refresh, account?.localOnly]);
 
-  const run = useCallback(async (how: 'manual' | 'auto'): Promise<RunOutcome> => {
+  const runOnce = useCallback(async (how: 'manual' | 'auto'): Promise<RunOutcome> => {
+    // The quick pull runs every few seconds, so a save very often lands while
+    // one is in flight. Giving up then ("already running") counted as a sync
+    // failure, held the sale back for the backoff and stopped this phone
+    // pulling other tills' work meanwhile. Wait for the pull to finish instead.
+    for (let i = 0; syncRunning && i < 150; i += 1) await new Promise((r) => setTimeout(r, 100));
+    if (syncRunning) return { ok: false, busy: true, sent: 0, message: 'A sync is already running.' };
     const d = dbRef.current;
     if (!d) return { ok: false, sent: 0, message: 'The books are not loaded yet.' };
     if (!licFeature('sync')) return { ok: false, sent: 0, message: 'Cloud sync is part of Pro. The developer switches it on for your account.' };
     if (!d.sync.on) return { ok: false, sent: 0, message: 'Turn sync on first.' };
     if (!account) return { ok: false, sent: 0, message: 'Sign in to your account first.' };
     if (d.session.online === false) return { ok: false, sent: 0, message: 'This phone has no internet right now.' };
-    if (syncRunning) return { ok: false, sent: 0, message: 'A sync is already running.' };
     // an out-of-date app must not write to books a newer version has opened
     if (needsNewerApp(d)) return { ok: false, sent: 0, message: 'Update the app to keep syncing.' };
 
@@ -77,12 +84,19 @@ export function useSyncRun() {
       const token = await accessToken();
       if (!token) return { ok: false, sent: 0, message: 'Your session has expired. Sign out and in again.' };
 
-      const wiring = await ensureWiring(d, token);
+      const wiring = await ensureWiring(d, token, account.deviceId);
       if (!wiring.ok) return { ok: false, sent: 0, message: wiring.error.message };
       setSync({ businessId: wiring.value.businessId, deviceId: wiring.value.deviceId });
 
+      // the server refuses an app older than the books: show the Update screen
+      const stopIfOld = (e: { failure: string; message: string }) => {
+        if (String(e.failure) !== 'updateRequired') return;
+        const need = /Pro ([d.]+)/.exec(e.message)?.[1];
+        if (need) applyRemoteOps([{ kind: 'record.upsert', payload: { coll: 'firm', doc: { minAppVersion: need } } } as any]);
+      };
+
       const r = await pushQueue(d, token, wiring.value);
-      if (!r.ok) return { ok: false, sent: 0, message: r.error.message };
+      if (!r.ok) { stopIfOld(r.error); return { ok: false, sent: 0, message: r.error.message }; }
       dropQueued([...new Set(r.value.done)]);
 
       let down = 0;
@@ -90,7 +104,7 @@ export function useSyncRun() {
       let more = true;
       while (more) {
         const pulled = await pullOps(token, wiring.value.businessId, cursor);
-        if (!pulled.ok) return { ok: false, sent: r.value.sent, message: pulled.error.message };
+        if (!pulled.ok) { stopIfOld(pulled.error); return { ok: false, sent: r.value.sent, message: pulled.error.message }; }
         if (pulled.value.ops.length) {
           down += applyRemoteOps(pulled.value.ops);
           cursor = Math.max(cursor, pulled.value.seq);
@@ -146,6 +160,32 @@ export function useSyncRun() {
       syncRunning = false;
     }
   }, [account, accessToken, setSync, dropQueued, applyRemoteOps, logAudit, licFeature]);
+
+  /**
+   * A run, with any failure written to the sync log. Failures used to vanish:
+   * the log only ever held successes, so a phone refused by the server (an
+   * unpaid plan, a business it is not a member of) looked as if it had
+   * nothing to send, and nobody could see why other tills never got its sales.
+   * A failure is logged once until something changes, not every retry.
+   */
+  const run = useCallback(async (how: 'manual' | 'auto'): Promise<RunOutcome> => {
+    const outcome = await runOnce(how);
+    if (!outcome.ok && !outcome.busy) {
+      const s = dbRef.current?.sync;
+      const last = s?.log?.[s.log.length - 1];
+      if (s && !(last && !last.ok && last.note === outcome.message)) {
+        const now = new Date().toISOString();
+        setSync({
+          log: [...(s.log || []).slice(-49), {
+            id: 'sy_' + Date.now(), ts: now, how, up: 0, down: 0,
+            by: dbRef.current?.users.find((u) => u.id === dbRef.current?.session.userId)?.name || '',
+            ok: false, note: outcome.message,
+          }],
+        });
+      }
+    }
+    return outcome;
+  }, [runOnce, setSync]);
 
   /**
    * The quick check: fetch what other phones have recorded since last time and

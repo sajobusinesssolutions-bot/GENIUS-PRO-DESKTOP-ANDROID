@@ -37,7 +37,8 @@ import { deleteAccount, refreshSession } from '../data/authApi';
 import { Field } from '../components/form';
 import { useDeveloper } from '../data/useDeveloper';
 
-export const BUILD = '1.0.0';
+import { BUILD } from '../data/defaults';
+export { BUILD };
 
 export default function MenuScreen() {
   const { colors } = useTheme();
@@ -115,10 +116,10 @@ export default function MenuScreen() {
               style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 12, paddingHorizontal: 15 }}
             >
               <View style={{
-                width: 30, height: 30, borderRadius: 10, backgroundColor: colors.accentSoft,
+                width: 30, height: 30, borderRadius: 10, backgroundColor: colors.sunk,
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <Icon name="home" size={15} color={colors.accent} />
+                <Icon name="home" size={15} color={colors.ink} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>
@@ -209,19 +210,19 @@ export default function MenuScreen() {
                       onPress={() => (g.open ? go(g.open) : go('MenuGroup', { groupId: g.id }))}
                       style={({ pressed }) => ({
                         backgroundColor: pressed ? colors.sunk : colors.surface,
-                        borderRadius: 18, paddingVertical: 14, paddingHorizontal: 14,
-                        gap: 10, flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 64,
+                        borderRadius: 18, paddingVertical: 16, paddingHorizontal: 15,
+                        gap: 12, flex: 1, minHeight: 112, justifyContent: 'space-between',
                         shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14,
                         shadowOffset: { width: 0, height: 4 }, elevation: 2,
                       })}
                     >
                       <View style={{
-                        width: 38, height: 38, borderRadius: 12, backgroundColor: colors.sunk,
+                        width: 46, height: 46, borderRadius: 14, backgroundColor: colors.sunk,
                         alignItems: 'center', justifyContent: 'center',
                       }}>
-                        <Icon name={g.i} size={19} color={colors.ink} />
+                        <Icon name={g.i} size={23} color={colors.ink} />
                       </View>
-                      <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{g.n}</Text>
+                      <Text numberOfLines={2} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{g.n}</Text>
                     </Pressable>
                   );
                 })}

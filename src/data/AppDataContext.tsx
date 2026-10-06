@@ -94,6 +94,8 @@ interface Ctx {
   createEstimate: (o: { partyId: string | null; lines: SaleLine[]; discount: number }) => Estimate;
   convertEstimate: (estimateId: string, method: PayMethod) => Sale | null;
   voidEstimate: (estimateId: string) => void;
+  /** Changes an open quotation's customer, lines and discount; returns false once it is closed. */
+  updateEstimate: (estimateId: string, o: { partyId: string | null; lines: SaleLine[]; discount: number }) => boolean;
 
   // Delivery challans
   createChallan: (o: { saleId: string | null; partyId: string | null; lines: ChallanLine[] }) => Challan;
@@ -245,6 +247,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (!d) {
         d = seed();
         d.onboarded = false;
+        await saveDB(d);
+      }
+      // a branch still carrying the made-up "Main shop" takes the business's own name
+      if (d.firm?.name && d.warehouses?.some((w) => w.name === 'Main shop')) {
+        d.warehouses = d.warehouses.map((w) => (w.name === 'Main shop' ? { ...w, name: d!.firm.name } : w));
         await saveDB(d);
       }
       // these books now need at least this version; the other phones learn it with the business details
@@ -715,6 +722,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         est = { id: uid('est'), no: 'EST-' + String(100000 + d.counters.estimate).slice(1), ts: iso(new Date()), partyId: o.partyId, lines: o.lines, discount: t.discount, total: t.total, status: 'open', convertedSaleId: null };
         d.estimates.push(est);
         audit(d, 'Estimate created', est.no);
+        logic.enqueue(d, 'estimate', est.id);
       });
       return est;
     },
@@ -726,15 +734,29 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const sale = apiRef.current!.commitSale({ lines: est.lines, partyId: est.partyId, method, discount: est.discount });
       commit((d2) => {
         const e2 = d2.estimates.find((e) => e.id === estimateId);
-        if (e2) { e2.status = 'converted'; e2.convertedSaleId = sale.id; }
+        if (e2) { e2.status = 'converted'; e2.convertedSaleId = sale.id; logic.enqueue(d2, 'estimate', e2.id); }
         audit(d2, 'Estimate converted', est.no + ' -> ' + sale.no);
       });
       return sale;
     },
     voidEstimate: (estimateId) => commit((d) => {
       const e = d.estimates.find((x) => x.id === estimateId);
-      if (e && e.status === 'open') { e.status = 'void'; audit(d, 'Estimate voided', e.no); }
+      if (e && e.status === 'open') { e.status = 'void'; audit(d, 'Estimate voided', e.no); logic.enqueue(d, 'estimate', e.id); }
     }),
+    updateEstimate: (estimateId, o) => {
+      requireCreate();
+      let ok = false;
+      commit((d) => {
+        const e = d.estimates.find((x) => x.id === estimateId);
+        if (!e || e.status !== 'open') return;
+        const t = saleTotals(o.lines, o.discount, logic.pricesIncludeTax(d));
+        e.partyId = o.partyId; e.lines = o.lines; e.discount = t.discount; e.total = t.total;
+        audit(d, 'Estimate edited', e.no);
+        logic.enqueue(d, 'estimate', e.id);
+        ok = true;
+      });
+      return ok;
+    },
 
     // --- Delivery challans ---
     createChallan: (o) => {
@@ -745,12 +767,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ch = { id: uid('chl'), no: 'DC-' + String(100000 + d.counters.challan).slice(1), ts: iso(new Date()), saleId: o.saleId, partyId: o.partyId, lines: o.lines, status: 'dispatched' };
         d.challans.push(ch);
         audit(d, 'Delivery challan created', ch.no);
+        logic.enqueue(d, 'challan', ch.id);
       });
       return ch;
     },
     markChallanDelivered: (challanId) => commit((d) => {
       const c = d.challans.find((x) => x.id === challanId);
-      if (c) { c.status = 'delivered'; audit(d, 'Challan delivered', c.no); }
+      if (c) { c.status = 'delivered'; audit(d, 'Challan delivered', c.no); logic.enqueue(d, 'challan', c.id); }
     }),
 
     // --- Credit notes / returns ---
@@ -866,6 +889,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         po = { id: uid('po'), no: 'PO-' + String(100000 + d.counters.po).slice(1), ts: iso(new Date()), partyId: o.partyId, lines: o.lines, status: 'open', receivedPurchaseId: null };
         d.purchaseOrders.push(po);
         audit(d, 'Purchase order created', po.no);
+        logic.enqueue(d, 'purchaseOrder', po.id);
       });
       return po;
     },
@@ -876,7 +900,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const purchase = apiRef.current!.createPurchase(po.partyId, po.lines.map((l) => ({ productId: l.productId, qty: l.qty, cost: l.cost })), method);
       commit((d2) => {
         const p2 = d2.purchaseOrders.find((x) => x.id === poId);
-        if (p2) { p2.status = 'received'; p2.receivedPurchaseId = purchase.id; }
+        if (p2) { p2.status = 'received'; p2.receivedPurchaseId = purchase.id; logic.enqueue(d2, 'purchaseOrder', p2.id); }
         audit(d2, 'Purchase order received', po.no + ' -> ' + purchase.no);
       });
       return purchase;
@@ -899,12 +923,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ri = { id: uid('rec'), partyId: o.partyId, lines: o.lines, discount: o.discount, frequency: o.frequency, nextDue: iso(next), lastRun: null, active: true };
         d.recurringInvoices.push(ri);
         audit(d, 'Recurring invoice scheduled', o.frequency);
+        logic.enqueue(d, 'recurring', ri.id);
       });
       return ri;
     },
     updateRecurring: (id, patch) => commit((d) => {
       const i = d.recurringInvoices.findIndex((r) => r.id === id);
-      if (i >= 0) d.recurringInvoices[i] = { ...d.recurringInvoices[i], ...patch };
+      if (i >= 0) { d.recurringInvoices[i] = { ...d.recurringInvoices[i], ...patch }; logic.enqueue(d, 'recurring', id); }
     }),
     dueRecurring: () => {
       const d = dbRef.current; if (!d) return [];
@@ -912,7 +937,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     runRecurring: (id) => {
       let sale: Sale | null = null;
-      commit((d) => { sale = logic.runRecurring(d, id); });
+      commit((d) => { sale = logic.runRecurring(d, id); if (sale) logic.enqueue(d, 'recurring', id); });
       return sale;
     },
 
@@ -1312,9 +1337,19 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             } else if (p?.coll === 'coa') {
               d.coa = d.coa || [];
               put(d.coa, p.doc);
-            } else if (p?.coll === 'firm' && p.doc?.id && p.doc.id === d.firm.id) {
-              // another phone changed the business's details
-              d.firm = { ...d.firm, ...p.doc };
+            } else if (p?.coll === 'challans' || p?.coll === 'purchaseOrders' || p?.coll === 'recurringInvoices' || p?.coll === 'instalmentPlans') {
+              // documents that carry no money or stock of their own: the latest copy wins
+              const coll = p.coll as 'challans' | 'purchaseOrders' | 'recurringInvoices' | 'instalmentPlans';
+              (d as any)[coll] = (d as any)[coll] || [];
+              put((d as any)[coll], p.doc);
+            } else if (p?.coll === 'firm' && p.doc) {
+              // another phone changed the business's details. Every op here is
+              // for this business, so they apply even if this phone's own copy
+              // got a different local id — keeping that id, which the server
+              // matches on. The version stamp never goes down.
+              const keep = d.firm.minAppVersion;
+              d.firm = { ...d.firm, ...p.doc, id: d.firm.id };
+              if (compareVersions(keep, d.firm.minAppVersion) > 0) d.firm.minAppVersion = keep;
               const i = (d.firms || []).findIndex((x) => x.id === d.firm.id);
               if (i >= 0) d.firms[i] = d.firm;
               applied++;

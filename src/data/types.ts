@@ -122,6 +122,8 @@ export interface SaleLine {
   unitFactor?: number;
   /** List price before the line discount; `price` always holds the net price charged. */
   listPrice?: number; discountPct?: number;
+  /** What was typed in Description when the line was added: colour, size, condition. */
+  note?: string;
 }
 
 export interface Sale {
@@ -150,6 +152,8 @@ export interface PurchaseLine {
   /** A new selling price set while buying. Absent leaves the price alone. */
   price?: number;
   productId: string; qty: number; cost: number;
+  /** Description typed when the line was added. */
+  note?: string;
   /** Lot this delivery arrives as, for batch-tracked items. */
   batchNo?: string; expiry?: string;
   /** When one delivery is split across several existing or new lots. */
@@ -447,6 +451,8 @@ export interface Settings {
   theme: 'auto' | 'light' | 'dark';
   // ui
   favReports?: string[];
+  /** Each report's columns as the owner set them: shown, hidden, order. */
+  reportCols?: Record<string, import('./reportColumns').ColumnChoice>;
   backupSchedule?: 'off' | 'daily' | 'weekly' | 'monthly';
   lastBackupAt?: string;
 }

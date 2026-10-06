@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TextInput, Platform, Alert } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,26 +13,22 @@ import { useToast } from '../components/Toast';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import ImeiSheet from '../components/ImeiSheet';
 import SegmentSlider from '../components/SegmentSlider';
-import { conditionLabel } from '../components/SerialEditor';
-import BatchPicker from '../components/BatchPicker';
 import CheckoutSheet, { CheckoutButton } from '../components/CheckoutSheet';
-import QtyPicker from '../components/QtyPicker';
-import ItemSearchSheet from '../components/ItemSearchSheet';
-import LineEditSheet from '../components/LineEditSheet';
-import { CustomerPickerSheet, CustomerFormSheet } from '../components/CustomerSheets';
+import ItemEntrySheet, { EntryLine, useNewItem } from '../components/ItemEntrySheet';
+import BilledItems from '../components/BilledItems';
+import { CustomerPickerSheet, CustomerFormSheet, BalanceTag } from '../components/CustomerSheets';
 import { useWho } from '../components/WhoSheet';
 import { useOwnerPin } from '../components/OwnerPin';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
-import { Product, ProductBatch, PayMethod, SaleLine } from '../data/types';
-import { liveBatches } from '../data/batches';
+import { Product, PayMethod, SaleLine } from '../data/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'NewSale'>;
 
 export default function NewSaleScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { db, money, stockOf, commitSale, editSale: editSaleTransaction, addParty, can } = useAppData();
+  const { db, money, stockOf, commitSale, editSale: editSaleTransaction, addParty, can, partyBalance } = useAppData();
   const editingSale = db?.sales.find((sale) => sale.id === route.params?.editSaleId);
   /** What the cart starts from: the sale being edited, or one being duplicated. */
   const seed = editingSale || db?.sales.find((sale) => sale.id === route.params?.copyFromId);
@@ -62,18 +58,14 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const [invoiceNo, setInvoiceNo] = useState(editingSale?.no || '');
   const [invoiceAt, setInvoiceAt] = useState(() => editingSale ? new Date(editingSale.ts) : new Date());
 
-  const [searchVisible, setSearchVisible] = useState(false);
   const [scanning, setScanning] = useState(false);
   /** The cart line whose IMEIs are being entered. */
   const [imeiFor, setImeiFor] = useState<number | null>(null);
-  const [qtyPickerVisible, setQtyPickerVisible] = useState(false);
-  const [batchPickerVisible, setBatchPickerVisible] = useState(false);
-  const [lineBatchPickerVisible, setLineBatchPickerVisible] = useState(false);
-  const [batchEditIndex, setBatchEditIndex] = useState<number | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [selectedBatch, setSelectedBatch] = useState<ProductBatch | null>(null);
-  const [pendingQty, setPendingQty] = useState(1);
-  const [editIndex, setEditIndex] = useState<number | null>(null);
+  /** The item entry: open, on which line (null for a new one), and on which item. */
+  const [entryOpen, setEntryOpen] = useState(false);
+  const [entryIndex, setEntryIndex] = useState<number | null>(null);
+  const [entryProduct, setEntryProduct] = useState<Product | null>(null);
+  const newItem = useNewItem('price');
   const [partyPickerVisible, setPartyPickerVisible] = useState(false);
   const [customerFormVisible, setCustomerFormVisible] = useState(false);
   const [metaVisible, setMetaVisible] = useState(false);
@@ -81,7 +73,6 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
 
-  const cats = useMemo(() => ['All', ...Array.from(new Set((db?.products || []).map((p) => p.category)))], [db]);
   const customers = useMemo(() => (db?.parties || []).filter((p) => p.type === 'customer' && p.active), [db]);
   const selectedParty = partyId ? customers.find((p) => p.id === partyId) : undefined;
 
@@ -95,25 +86,62 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const taxOnTop = db && !pricesIncludeTax(db) ? priced.tax : 0;
   const grandTotal = Math.max(0, priced.total) + Math.max(0, additionalCharges);
 
-  function openProduct(p: Product) {
-    setSearchVisible(false);
+  /** Opens the item entry: blank, on a scanned item, or on a line to change. */
+  function openEntry(p: Product | null, index: number | null = null) {
     setScanning(false);
-    setSelectedProduct(p);
-    setQtyPickerVisible(true);
+    setEntryProduct(p);
+    setEntryIndex(index);
+    setEntryOpen(true);
+  }
+  const openProduct = (p: Product) => openEntry(p);
+
+  // a new sale is typed in order: the customer, then the first item
+  useEffect(() => {
+    if (seed) return;
+    const t = setTimeout(() => setPartyPickerVisible(true), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function customerChosen(id: string | null) {
+    setPartyId(id);
+    if (!cart.length) setTimeout(() => openEntry(null), 350);
   }
 
-  /** After the quantity is known, a batch-tracked item goes on to pick batches. */
-  function afterQty(qty: number) {
-    const p = selectedProduct;
-    setQtyPickerVisible(false);
-    if (!p) return;
-    if (p.trackBatches && liveBatches(p).length) {
-      setPendingQty(qty);
-      setBatchPickerVisible(true);
-      return;
-    }
-    addToCart(p, qty);
-    setSelectedProduct(null);
+  /**
+   * What is left of an item for this line: the stock limit less what the
+   * other lines of this bill already take, all in the item's main unit.
+   */
+  function maxFor(p: Product, batchNo?: string) {
+    const others = cart.reduce((s, l, i) => (i !== entryIndex && l.productId === p.id && (!batchNo || l.batchNo === batchNo)
+      ? s + l.qty * (l.unitFactor || 1) : s), 0);
+    const base = batchNo
+      ? (p.batches || []).find((b) => b.no === batchNo)?.qty ?? 0
+      : db ? sellLimit(db, p, stockOf(p)) : stockOf(p);
+    return base - others;
+  }
+
+  function saveEntry(e: EntryLine, andNew: boolean) {
+    const line: SaleLine = {
+      productId: e.product.id, name: e.product.name, sku: e.product.sku, unit: e.unit,
+      qty: e.qty, price: e.price, listPrice: e.listPrice, discountPct: e.discountPct,
+      cost: e.cost, taxRate: e.product.taxRate, batchNo: e.batchNo,
+      ...(e.unitFactor !== 1 ? { unitFactor: e.unitFactor } : {}),
+      ...(e.note ? { note: e.note } : {}),
+      ...(e.serials ? { serials: e.serials, serialNo: e.serials[0]?.imei } : {}),
+    };
+    const at = entryIndex;
+    setCart((prev) => {
+      if (at !== null) return prev.map((l, i) => (i === at ? line : l));
+      // the same item at the same rate adds to its line, unless each unit has its own IMEI
+      const same = e.serials ? -1 : prev.findIndex((l) => l.productId === line.productId && l.batchNo === line.batchNo
+        && l.unit === line.unit && l.price === line.price && !l.serials && (l.note || '') === (line.note || ''));
+      if (same >= 0) return prev.map((l, i) => (i === same ? { ...l, qty: l.qty + line.qty } : l));
+      return [...prev, line];
+    });
+    setEntryIndex(null);
+    setEntryProduct(null);
+    if (!andNew) setEntryOpen(false);
   }
 
   function findByCode(code: string) {
@@ -133,36 +161,6 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   function handleScan(code: string) {
     const p = findByCode(code);
     if (p) openProduct(p);
-  }
-
-  function addToCart(p: Product, qty: number, batchNo?: string) {
-    setCart((prev) => {
-      const i = prev.findIndex((l) => l.productId === p.id && l.batchNo === batchNo);
-      if (p.trackSerials) setTimeout(() => setImeiFor(i >= 0 ? i : prev.length), 350);
-      if (i >= 0) return prev.map((l, idx) => idx === i ? { ...l, qty: l.qty + qty } : l);
-      return [...prev, {
-        productId: p.id, name: p.name, sku: p.sku, unit: p.unit,
-        qty, price: p.price, listPrice: p.price, discountPct: 0,
-        cost: p.cost, taxRate: p.taxRate, batchNo,
-      }];
-    });
-  }
-
-  /** The expiry printed under a cart line, read back off the product's batch. */
-  function batchExpiryOf(line: SaleLine) {
-    if (!line.batchNo) return '';
-    const prod = (db?.products || []).find((x) => x.id === line.productId);
-    const b = (prod?.batches || []).find((x) => x.no === line.batchNo);
-    if (!b?.expiry) return '';
-    return new Date(b.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
-  }
-
-  function stockForLine(line: SaleLine) {
-    const p = (db?.products || []).find((x) => x.id === line.productId);
-    if (!p) return line.qty;
-    if (line.batchNo) return (p.batches || []).find((b) => b.no === line.batchNo)?.qty ?? line.qty;
-    // Infinity for a service, or when the shop allows selling below zero
-    return db ? sellLimit(db, p, stockOf(p)) : stockOf(p);
   }
 
   const productOf = (line: SaleLine) => (db?.products || []).find((x) => x.id === line.productId);
@@ -284,8 +282,6 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     }
   }
 
-  const editLine = editIndex !== null ? cart[editIndex] ?? null : null;
-  const batchEditLine = batchEditIndex !== null ? cart[batchEditIndex] ?? null : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -349,6 +345,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{selectedParty.address}</Text>
               ) : null}
             </View>
+            {selectedParty ? <BalanceTag balance={partyBalance(selectedParty.id)} money={money} /> : null}
             <Icon name="chev" size={18} color={colors.faint} />
           </Pressable>
           {method === 'credit' && !partyId ? (
@@ -358,77 +355,36 @@ export default function NewSaleScreen({ navigation, route }: Props) {
           ) : null}
         </View>
 
-        {/* Items */}
-        <View style={{ backgroundColor: colors.surface, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.line }}>
-          <View style={{ paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.sunk, borderBottomWidth: 1, borderBottomColor: colors.line, flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft, letterSpacing: 0.4 }}>ITEMS</Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-              {cart.length ? cart.length + ' line' + (cart.length > 1 ? 's' : '') + ' · ' + totalQty + ' qty' : 'Empty'}
-            </Text>
+        {/* Items: add first, then a card per line, then what it all comes to */}
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Button label={cart.length ? 'Add another item' : 'Add item'} variant="pri" icon={<Icon name="plus" size={16} color={colors.accentInk} />} onPress={() => openEntry(null)} />
           </View>
+          <Pressable
+            onPress={() => setScanning(true)}
+            accessibilityLabel="Scan a barcode"
+            style={({ pressed }) => ({
+              width: 56, borderRadius: 14, borderWidth: 1.4, borderColor: colors.line,
+              alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : colors.surface,
+            })}
+          >
+            <Icon name="barcode" size={24} color={colors.ink} />
+          </Pressable>
+        </View>
 
-          {cart.map((line, idx) => {
-            const disc = line.discountPct ?? 0;
-            return (
-              <Pressable
-                key={`${line.productId}-${line.batchNo || ''}-${idx}`}
-                onPress={() => setEditIndex(idx)}
-                style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-              >
-                <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>{idx + 1}</Text>
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>{line.name}</Text>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
-                    {line.qty} {line.unit} × {money(line.price)}
-                    {disc > 0 ? ' · ' + disc + '% off' : ''}
-                  </Text>
-                  {productOf(line)?.trackSerials ? (
-                    <Pressable onPress={() => setImeiFor(idx)} hitSlop={6} style={{ marginTop: 6, gap: 2 }}>
-                      {(line.serials || []).length ? (line.serials || []).map((sr) => (
-                        <Text key={sr.imei} numberOfLines={1} style={{ fontFamily: fonts.mono, fontSize: 12.5, color: colors.accent }}>
-                          IMEI {sr.imei}{sr.imei2 ? ' / ' + sr.imei2 : ''}{sr.condition ? ' · ' + conditionLabel(sr.condition) : ''}
-                        </Text>
-                      )) : null}
-                      {(line.serials || []).length !== Math.floor(line.qty) ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                          <Icon name="camera" size={12} color={colors.warn} />
-                          <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.warn }}>
-                            {(line.serials || []).length ? 'IMEI ' + (line.serials || []).length + ' of ' + Math.floor(line.qty) + ' · tap to finish' : 'Tap to add the IMEI'}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </Pressable>
-                  ) : null}
-                  {line.batchNo ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
-                      <Icon name="box" size={12} color={colors.accent} />
-                      <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>
-                        Batch {line.batchNo}
-                        {batchExpiryOf(line) ? ' · exp ' + batchExpiryOf(line) : ''}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 2 }}>
-                  <Text style={{ fontFamily: fonts.mono, fontSize: 15, color: colors.ink }}>{money(line.qty * line.price)}</Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent }}>Tap to edit</Text>
-                </View>
-                <Pressable
-                  hitSlop={10}
-                  onPress={() => setCart((prev) => prev.filter((_, i) => i !== idx))}
-                  style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Icon name="trash" size={15} color={colors.danger} />
-                </Pressable>
-              </Pressable>
-            );
+        <BilledItems
+          lines={cart.map((l) => {
+            const short = productOf(l)?.trackSerials && (l.serials || []).length !== Math.floor(l.qty);
+            return { ...l, warning: short ? 'IMEI ' + (l.serials || []).length + ' of ' + Math.floor(l.qty) + ' · tap to finish' : undefined };
           })}
+          money={money}
+          taxTotal={db?.settings.taxEnabled === false ? undefined : priced.tax}
+          onPress={(i) => openEntry(null, i)}
+        />
 
-          {/* the totals, straight under the lines */}
-          {cart.length > 0 && (
-          <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, gap: 8 }}>
+        {cart.length > 0 && (
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, paddingVertical: 12 }}>
+          <View style={{ gap: 8 }}>
             <TotalRow label="Subtotal" value={money(subtotal)} colors={colors} />
             {savings > 0 ? <TotalRow label="Item discounts" value={'− ' + money(savings)} tone={colors.good} colors={colors} /> : null}
             {discount > 0 ? <TotalRow label="Sale discount" value={'− ' + money(discount)} tone={colors.good} colors={colors} /> : null}
@@ -440,24 +396,8 @@ export default function NewSaleScreen({ navigation, route }: Props) {
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>{money(grandTotal)}</Text>
             </View>
           </View>
-          )}
-
-          <View style={{ flexDirection: 'row', gap: 10, padding: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Button label={cart.length ? 'Add another item' : 'Add item'} variant="pri" icon={<Icon name="plus" size={16} color={colors.accentInk} />} onPress={() => setSearchVisible(true)} />
-            </View>
-            <Pressable
-              onPress={() => setScanning(true)}
-              accessibilityLabel="Scan a barcode"
-              style={({ pressed }) => ({
-                width: 56, borderRadius: 14, borderWidth: 1.4, borderColor: colors.line,
-                alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : colors.surface,
-              })}
-            >
-              <Icon name="barcode" size={24} color={colors.ink} />
-            </Pressable>
           </View>
-        </View>
+        )}
       </ScrollView>
 
       {/* Sticky action bar */}
@@ -485,16 +425,38 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         </View>
       </View>
 
-      <ItemSearchSheet
-        visible={searchVisible}
+      <ItemEntrySheet
+        visible={entryOpen}
+        title={entryIndex !== null ? 'Edit Item' : 'Add Items to Sale'}
         products={db?.products || []}
-        categories={cats}
         money={money}
         stockOf={stockOf}
-        canSell={(p) => !!db && sellLimit(db, p, stockOf(p)) > 0}
-        onPick={openProduct}
-        onScan={() => { setSearchVisible(false); setScanning(true); }}
-        onClose={() => setSearchVisible(false)}
+        priceOf={(p) => p.price}
+        start={entryIndex !== null && cart[entryIndex] ? {
+          productId: cart[entryIndex].productId, qty: cart[entryIndex].qty, unit: cart[entryIndex].unit,
+          listPrice: cart[entryIndex].listPrice ?? cart[entryIndex].price, discountPct: cart[entryIndex].discountPct,
+          note: cart[entryIndex].note, batchNo: cart[entryIndex].batchNo, serials: cart[entryIndex].serials,
+        } : null}
+        startProduct={entryProduct}
+        maxFor={maxFor}
+        trackBatches
+        trackImei
+        // The owner and managers are never limited; cashiers follow Settings.
+        // role first ("Change prices at the till", "Give discounts"), then the till settings
+        editRate={trusted || can('sales.price_edit') || db?.settings.allowPriceEdit === true}
+        maxDiscountPct={!can('sales.discount') ? 0 : trusted ? 100 : Number(db?.settings.maxDiscountPct ?? 100)}
+        canCreate={newItem.canCreate}
+        units={newItem.units}
+        onCreateProduct={newItem.create}
+        takenImeis={cart.flatMap((l, i) => (i === entryIndex ? [] : (l.serials || []).flatMap((x) => [x.imei, x.imei2 || ''].filter(Boolean))))}
+        onSave={saveEntry}
+        onRemove={() => {
+          const at = entryIndex;
+          setCart((prev) => prev.filter((_, i) => i !== at));
+          setEntryIndex(null);
+          setEntryOpen(false);
+        }}
+        onClose={() => { setEntryOpen(false); setEntryIndex(null); setEntryProduct(null); }}
       />
 
       <ImeiSheet
@@ -518,89 +480,13 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         onScan={handleScan}
       />
 
-      <BatchPicker
-        visible={batchPickerVisible}
-        productName={selectedProduct?.name || ''}
-        batches={selectedProduct?.batches || []}
-        qty={pendingQty}
-        onConfirm={(picks) => {
-          const p = selectedProduct;
-          setBatchPickerVisible(false);
-          if (p) picks.forEach((pick) => addToCart(p, pick.qty, pick.no));
-          setSelectedProduct(null);
-          setSelectedBatch(null);
-        }}
-        onCancel={() => { setBatchPickerVisible(false); setSelectedProduct(null); setSelectedBatch(null); }}
-      />
-
-      <BatchPicker
-        visible={lineBatchPickerVisible}
-        productName={batchEditLine?.name || ''}
-        batches={batchEditLine ? (db?.products.find((p) => p.id === batchEditLine.productId)?.batches || []) : []}
-        qty={batchEditLine?.qty || 1}
-        onConfirm={(picks) => {
-          const index = batchEditIndex;
-          if (index !== null && picks.length) {
-            // the line becomes one line per batch it draws from, each with its share
-            setCart((prev) => prev.flatMap((line, i) => i === index
-              ? picks.map((pick) => ({ ...line, batchNo: pick.no, qty: pick.qty }))
-              : [line]));
-          }
-          setLineBatchPickerVisible(false);
-          setBatchEditIndex(null);
-          if (index !== null) setEditIndex(index);
-        }}
-        onCancel={() => {
-          const index = batchEditIndex;
-          setLineBatchPickerVisible(false);
-          setBatchEditIndex(null);
-          if (index !== null) setEditIndex(index);
-        }}
-      />
-
-      <QtyPicker
-        visible={qtyPickerVisible}
-        start={selectedProduct?.startQtyFilled ? String(selectedProduct.defaultQty || 1) : ''}
-        productName={selectedProduct?.name || ''}
-        price={selectedProduct?.price || 0}
-        maxStock={selectedProduct && db ? sellLimit(db, selectedProduct, stockOf(selectedProduct)) : 0}
-        money={money}
-        onConfirm={afterQty}
-        onCancel={() => { setQtyPickerVisible(false); setSelectedProduct(null); setSelectedBatch(null); }}
-      />
-
-      <LineEditSheet
-        visible={editLine !== null}
-        line={editLine}
-        maxStock={editLine ? stockForLine(editLine) : 0}
-        money={money}
-        product={editLine ? db?.products.find((x) => x.id === editLine.productId) : null}
-        onChooseBatch={() => {
-          if (editIndex === null) return;
-          setBatchEditIndex(editIndex);
-          setEditIndex(null);
-          setLineBatchPickerVisible(true);
-        }}
-        // The owner and managers are never limited; cashiers follow Settings.
-        // role first ("Change prices at the till", "Give discounts"), then the till settings
-        canEditPrice={trusted || can('sales.price_edit') || db?.settings.allowPriceEdit === true}
-        maxDiscountPct={!can('sales.discount') ? 0 : trusted ? 100 : Number(db?.settings.maxDiscountPct ?? 100)}
-        onSave={(patch) => {
-          setCart((prev) => prev.map((l, i) => i === editIndex ? { ...l, ...patch } : l));
-          setEditIndex(null);
-        }}
-        onRemove={() => {
-          setCart((prev) => prev.filter((_, i) => i !== editIndex));
-          setEditIndex(null);
-        }}
-        onClose={() => setEditIndex(null)}
-      />
-
       <CustomerPickerSheet
         visible={partyPickerVisible}
         customers={customers}
         selectedId={partyId}
-        onSelect={setPartyId}
+        onSelect={customerChosen}
+        balanceOf={partyBalance}
+        money={money}
         onCreate={() => { setPartyPickerVisible(false); setCustomerFormVisible(true); }}
         onClose={() => setPartyPickerVisible(false)}
       />
@@ -610,7 +496,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         onClose={() => setCustomerFormVisible(false)}
         onSave={(p) => {
           const created = addParty(p);
-          setPartyId(created.id);
+          customerChosen(created.id);
           setCustomerFormVisible(false);
           success(created.name + ' added');
         }}

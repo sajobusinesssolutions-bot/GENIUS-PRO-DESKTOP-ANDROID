@@ -55,7 +55,7 @@ function Section({ icon, title, hint, children }: { icon: IconName; title: strin
       padding: 16, marginBottom: 14,
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Icon name={icon} size={16} color={colors.accent} />
+        <Icon name={icon} size={16} color={colors.ink} />
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 0.8, textTransform: 'uppercase', color: colors.soft }}>{title}</Text>
       </View>
       {hint ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, lineHeight: 17, color: colors.faint, marginTop: 5 }}>{hint}</Text> : null}
@@ -164,8 +164,8 @@ function NavCard({ icon, title, sub, onPress }: { icon: IconName; title: string;
         backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line, marginBottom: 10,
       })}
     >
-      <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} size={20} color={colors.accent} />
+      <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} size={20} color={colors.ink} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{title}</Text>

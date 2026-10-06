@@ -242,12 +242,13 @@ export function Avatar({ name, id, size = 34 }: { name: string; id?: string; siz
 }
 
 /** The tinted rounded square that leads a row, an account card or a menu group. */
-export function IconTile({ icon, bg, color, size = 34, round = 9, iconSize = 16 }: {
-  icon: IconName; bg: string; color: string; size?: number; round?: number; iconSize?: number;
+export function IconTile({ icon, size = 34, round = 9, iconSize = 16 }: {
+  icon: IconName; bg?: string; color?: string; size?: number; round?: number; iconSize?: number;
 }) {
+  const { colors } = useTheme();
   return (
-    <View style={{ width: size, height: size, borderRadius: round, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-      <Icon name={icon} size={iconSize} color={color} weight="duotone" />
+    <View style={{ width: size, height: size, borderRadius: round, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+      <Icon name={icon} size={iconSize} color={colors.ink} />
     </View>
   );
 }
@@ -265,7 +266,7 @@ export function Tile({ icon, iconColor, name, sub, onPress, horizontal }: {
       flexDirection: horizontal ? 'row' : 'column', alignItems: horizontal ? 'center' : 'flex-start',
       gap: horizontal ? 9 : 8, flex: 1,
     })}>
-      <Icon name={icon} size={horizontal ? 16 : 17} color={iconColor || colors.rail} />
+      <Icon name={icon} size={horizontal ? 16 : 17} color={colors.ink} />
       <View style={{ flex: horizontal ? 1 : undefined, minWidth: 0 }}>
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, lineHeight: 17 }}>{name}</Text>
         {sub ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>{sub}</Text> : null}

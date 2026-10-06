@@ -20,7 +20,8 @@ import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
 import { EmptyState, ListRow } from '../components/ui';
-import { ListPage, DocRow, StatusChips, SummaryTiles } from '../components/DocList';
+import { ListPage, StatusChips, SummaryTiles } from '../components/DocList';
+import type { Product } from '../data/types';
 import { AppBar, IconBtn } from '../components/AppBar';
 import { Sheet } from '../components/Sheet';
 import { Icon } from '../components/icons';
@@ -116,29 +117,9 @@ export default function ItemsScreen() {
         keyExtractor={(x) => x.id}
         empty={{ text: q || filter !== 'all' ? 'Nothing matches. Change the filter, or add an item or service.' : 'No items yet. Add your first with Add item.' }}
         add={canFor(role, 'inventory.create') ? { label: 'Add item', color: FAB_COLORS.addItem, onPress: () => go('ProductDetail', {}) } : undefined}
-        renderItem={({ item: x }) => {
-          const st = stockOf(x);
-          const svc = x.kind === 'service';
-          const out = !svc && st <= 0, low = !svc && st <= x.reorder;
-          // the stock, said in words and in colour: fine, running low, gone — or a service, which has none
-          const tone = svc ? 'accent' : out ? 'danger' : low ? 'warn' : 'good';
-          const tracks = [x.trackSerials ? 'IMEI' : '', x.trackBatches ? 'Batches' : '', x.secondaryUnit ? 'Also by ' + x.secondaryUnit : '']
-            .filter(Boolean).join(' · ');
-          return (
-            <DocRow
-              title={x.name}
-              pill={{ label: svc ? 'Service' : out ? 'Out' : low ? 'Low' : 'In stock', tone }}
-              amount={money(x.price) + ' / ' + x.unit}
-              refText={svc ? 'Service' : st + ' ' + x.unit + ' in stock'}
-              sideText={[svc ? '' : x.category, x.sku].filter(Boolean).join(' · ') || undefined}
-              lines={[
-                ...(!svc && x.cost ? [{ label: 'Cost', value: money(x.cost) }] : []),
-                ...(tracks ? [{ label: 'Tracks', value: tracks }] : []),
-              ]}
-              onPress={() => go('ItemDetail', { productId: x.id })}
-            />
-          );
-        }}
+        renderItem={({ item: x }) => (
+          <ItemCard product={x} stock={stockOf(x)} money={money} onPress={() => go('ItemDetail', { productId: x.id })} />
+        )}
       />
 
       <Sheet
@@ -161,6 +142,65 @@ export default function ItemsScreen() {
           <ListRow key={a.kind} card icon={a.icon} title={a.title} subtitle={a.sub} onPress={() => open('BulkChange', { kind: a.kind })} />
         ))}
       </Sheet>
+    </View>
+  );
+}
+
+/**
+ * One item: its name, and the stock in colour with what that means in words
+ * (in stock, low stock, out of stock); under a rule, what it sells for, what
+ * it costs, and how it is counted.
+ */
+function ItemCard({ product: x, stock, money, onPress }: {
+  product: Product; stock: number; money: (n: number) => string; onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const svc = x.kind === 'service';
+  const out = !svc && stock <= 0;
+  const low = !svc && !out && stock <= x.reorder;
+  const tone = svc ? colors.accent : out ? colors.danger : low ? colors.warn : colors.good;
+  const status = svc ? 'SERVICE' : out ? 'OUT OF STOCK' : low ? 'LOW STOCK' : 'IN STOCK';
+  const tracks = [x.trackSerials ? 'IMEI' : '', x.trackBatches ? 'Batches' : ''].filter(Boolean).join(' · ') || (svc ? 'Time' : 'Quantity');
+  const qty = Math.round(stock * 100) / 100;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        marginHorizontal: 16, marginBottom: 10, borderRadius: 16, paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14,
+        backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line,
+      })}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{x.name}</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          {svc ? null : (
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: tone }}>
+              {qty}
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: tone }}> {x.unit.toUpperCase()}</Text>
+            </Text>
+          )}
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.6, color: tone, marginTop: svc ? 0 : 2 }}>{status}</Text>
+        </View>
+      </View>
+
+      <View style={{ height: 1, backgroundColor: colors.line, marginTop: 14, marginBottom: 12 }} />
+
+      <View style={{ flexDirection: 'row' }}>
+        <ItemFigure label="Price" value={money(x.price)} strong />
+        <ItemFigure label="Cost" value={svc && !x.cost ? '—' : money(x.cost)} />
+        <ItemFigure label="Tracks" value={tracks} />
+      </View>
+    </Pressable>
+  );
+}
+
+function ItemFigure({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{label}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: strong ? fonts.uiBold : fonts.ui, fontSize: 14.5, color: colors.ink, marginTop: 4 }}>{value}</Text>
     </View>
   );
 }

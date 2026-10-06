@@ -2,18 +2,24 @@ import React, { useMemo, useState } from 'react';
 import { useAppData } from '../data/AppDataContext';
 import DocEntry, { toSaleLines } from '../components/DocEntry';
 import { Field } from '../components/ui';
+import { useToast } from '../components/Toast';
 import type { CartLine } from '../components/LineEditor';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EstimateNew'>;
 
-/** A quotation — priced, but nothing moves until it is converted to a sale. */
-export default function EstimateNewScreen({ navigation }: Props) {
-  const { db, money, createEstimate } = useAppData();
-  const [partyId, setPartyId] = useState<string | null>(null);
-  const [lines, setLines] = useState<CartLine[]>([]);
-  const [discount, setDiscount] = useState('');
+/** A quotation — priced, but nothing moves until it is converted to a sale. Also changes an open one. */
+export default function EstimateNewScreen({ navigation, route }: Props) {
+  const { db, money, createEstimate, updateEstimate } = useAppData();
+  const { success, error } = useToast();
+  const editing = db?.estimates.find((e) => e.id === route.params?.editEstimateId && e.status === 'open');
+  const [partyId, setPartyId] = useState<string | null>(editing?.partyId ?? null);
+  const [lines, setLines] = useState<CartLine[]>(() => (editing?.lines || []).map((l) => ({
+    productId: l.productId, name: l.name, qty: l.qty, price: l.price, unit: l.unit,
+    unitFactor: l.unitFactor, listPrice: l.listPrice, discountPct: l.discountPct, note: l.note,
+  })));
+  const [discount, setDiscount] = useState(editing?.discount ? String(editing.discount) : '');
   const [validFor, setValidFor] = useState('14');
 
   const total = lines.reduce((s, l) => s + l.qty * l.price, 0);
@@ -36,8 +42,10 @@ export default function EstimateNewScreen({ navigation }: Props) {
       lines={lines}
       onLinesChange={setLines}
       linesLabel="What is quoted"
-      saveLabel={'Create quotation · ' + money(Math.max(0, total - disc))}
-      askWho="Who prepared this quotation?"
+      entryTitle="Add Items to Estimate/Quotation"
+      autoStart={!editing}
+      saveLabel={(editing ? 'Save changes · ' : 'Create quotation · ') + money(Math.max(0, total - disc))}
+      askWho={editing ? 'Who changed this quotation?' : 'Who prepared this quotation?'}
       summary={
         <Field
           icon="clock"
@@ -49,12 +57,15 @@ export default function EstimateNewScreen({ navigation }: Props) {
         />
       }
       onSave={() => {
-        createEstimate({
-          partyId,
-          lines: toSaleLines(lines, db!.products),
-          discount: disc,
-        });
-        navigation.goBack();
+        const payload = { partyId, lines: toSaleLines(lines, db!.products), discount: disc };
+        if (editing) {
+          if (!updateEstimate(editing.id, payload)) { error('This quotation is closed and can no longer be changed.'); return; }
+          success(editing.no + ' updated');
+          navigation.goBack();
+          return;
+        }
+        const est = createEstimate(payload);
+        navigation.replace('EstimateDetail', { estimateId: est.id });
       }}
     >
       <Field

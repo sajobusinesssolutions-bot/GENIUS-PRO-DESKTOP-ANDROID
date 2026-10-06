@@ -71,10 +71,12 @@ export function AccentHead({ title, right, tone = 'good' }: { title: string; rig
 /* ---------------------------------------------------------------------- rows */
 
 /** A tinted rounded tile carrying the row's icon. */
-export function Tile({ icon, tone = 'accent', size = 42, round, iconSize }: {
+export function Tile({ icon, size = 42, round, iconSize }: {
   icon: IconName; tone?: Tone; size?: number; round?: number; iconSize?: number;
 }) {
-  const { bg, fg } = useTone(tone);
+  // icons are black on a quiet tile everywhere, so colour is left for what needs it
+  const { colors } = useTheme();
+  const bg = colors.sunk, fg = colors.ink;
   return (
     <View style={{
       width: size, height: size, borderRadius: round ?? size / 3,
@@ -348,12 +350,15 @@ export function Empty({ icon = 'box', title, hint, action }: {
 /* ----------------------------------------------------------------- actions */
 
 /** The extended floating action button anchored bottom-right. */
+/** The one bright colour: every floating button, and the few things that must stand out. */
+export const HIGHLIGHT = '#EA7A12';
+
 /** The main add buttons' own colours, so each screen's is recognisable at a glance. */
 export const FAB_COLORS = {
-  quickAdd: '#6D4AFF',
-  newSale: '#16A34A',
+  quickAdd: '#EA7A12',
+  newSale: '#EA7A12',
   addItem: '#EA7A12',
-  addContact: '#0E9AA7',
+  addContact: '#EA7A12',
 } as const;
 
 /**
@@ -399,11 +404,11 @@ export function FAB({ label, icon = 'plus', onPress, tone = 'danger', color, hid
         style={{
           flexDirection: 'row', alignItems: 'center', gap: 9,
           height: 54, paddingHorizontal: label ? 24 : 0, width: label ? undefined : 54,
-          justifyContent: 'center', borderRadius: 27, backgroundColor: color || fg, ...shadow.raised,
+          justifyContent: 'center', borderRadius: 27, backgroundColor: color || HIGHLIGHT, ...shadow.raised,
         }}
       >
-        <Icon name={icon} size={21} color={color ? '#FFFFFF' : colors.accentInk} />
-        {label ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: color ? '#FFFFFF' : colors.accentInk }}>{label}</Text> : null}
+        <Icon name={icon} size={21} color="#FFFFFF" />
+        {label ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: '#FFFFFF' }}>{label}</Text> : null}
       </Tap>
     </Animated.View>
   );

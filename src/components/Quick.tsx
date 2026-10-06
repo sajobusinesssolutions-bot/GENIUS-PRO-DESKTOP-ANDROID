@@ -18,16 +18,8 @@ import { useGo } from '../nav/navigate';
 
 export function useToneColor() {
   const { colors } = useTheme();
-  return (t: QuickTone | 'soft'): [string, string] => {
-    switch (t) {
-      case 'accent': return [colors.accent, colors.accentSoft];
-      case 'good': return [colors.good, colors.goodSoft];
-      case 'warnc': return [colors.warn, colors.warnSoft];
-      case 'rail': return [colors.rail, colors.sunk];
-      case 'danger': return [colors.danger, colors.dangerSoft];
-      default: return [colors.soft, colors.sunk];
-    }
-  };
+  // black icons on a quiet tile, whatever the group
+  return (_t: QuickTone | 'soft'): [string, string] => [colors.ink, colors.sunk];
 }
 
 function useVisibleQuick(): QuickGroup[] {
@@ -177,40 +169,64 @@ export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: ()
           )}
         </View>
       ) : (
-        // every group as a section of tiles, three to a row — all of it in view, nothing to open first
-        groups.map((g, gi) => {
-          const [fg, bg] = tone(g.tone);
-          return (
-            <View
-              key={g.g}
-              style={{
-                paddingTop: 16, paddingBottom: 6, marginHorizontal: -16, paddingHorizontal: 16,
-                borderTopWidth: gi === 0 ? 0 : 1, borderTopColor: colors.line,
-              }}
-            >
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 16, color: colors.ink, marginBottom: 12 }}>{SECTION[g.g] || g.g}</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                {g.items.map((it) => (
+        <>
+          {/* the jobs done all day, first and largest */}
+          {common.length ? (
+            <View style={{ paddingTop: 16, paddingBottom: 10 }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 16, color: colors.ink, marginBottom: 10 }}>Most used</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {common.map(({ it }) => (
                   <Pressable
                     key={it.n}
                     onPress={() => pick(it.route, it.params)}
                     style={({ pressed }) => ({
-                      width: '33.33%', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderRadius: 14,
-                      backgroundColor: pressed ? colors.sunk : 'transparent',
+                      width: '31.5%', alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 16,
+                      backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line,
                     })}
                   >
-                    <View style={{ width: 54, height: 54, borderRadius: 16, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-                      <Icon name={it.i} size={24} color={fg} />
-                    </View>
-                    <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 16, color: colors.soft, textAlign: 'center', marginTop: 8 }}>
+                    <Icon name={it.i} size={28} color={colors.ink} />
+                    <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 13, lineHeight: 17, color: colors.ink, textAlign: 'center' }}>
                       {it.n}
                     </Text>
                   </Pressable>
                 ))}
               </View>
             </View>
-          );
-        })
+          ) : null}
+
+          {/* everything else, by group, without repeating the above */}
+          {groups.map((g) => {
+            const rest = g.items.filter((it) => !COMMON.includes(it.n));
+            if (!rest.length) return null;
+            return (
+              <View
+                key={g.g}
+                style={{ paddingTop: 14, paddingBottom: 4, marginHorizontal: -16, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: colors.line }}
+              >
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint, marginBottom: 8 }}>{SECTION[g.g] || g.g}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                  {rest.map((it) => (
+                    <Pressable
+                      key={it.n}
+                      onPress={() => pick(it.route, it.params)}
+                      style={({ pressed }) => ({
+                        width: '25%', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 3, borderRadius: 12,
+                        backgroundColor: pressed ? colors.sunk : 'transparent',
+                      })}
+                    >
+                      <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon name={it.i} size={21} color={colors.ink} />
+                      </View>
+                      <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, lineHeight: 15, color: colors.soft, textAlign: 'center', marginTop: 6 }}>
+                        {it.n}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            );
+          })}
+        </>
       )}
     </Sheet>
   );

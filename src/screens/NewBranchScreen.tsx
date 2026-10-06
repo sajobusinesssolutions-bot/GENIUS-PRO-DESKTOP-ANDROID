@@ -48,10 +48,10 @@ function StepHead({ index, step }: { index: number; step: typeof STEPS[number] }
       <ProgressBar pct={((index + 1) / STEPS.length) * 100} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
         <View style={{
-          width: 38, height: 38, borderRadius: 13, backgroundColor: colors.accentSoft,
+          width: 38, height: 38, borderRadius: 13, backgroundColor: colors.sunk,
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <Icon name={step.icon} size={19} color={colors.accent} />
+          <Icon name={step.icon} size={19} color={colors.ink} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{step.n}</Text>

@@ -41,13 +41,28 @@ async function whoami(req, reply) {
     fail(reply, 401, 'badCredentials', 'Sign in again.');
     return null;
   }
+  let claims;
   try {
-    const claims = await readAccess(header.slice(7));
-    return { id: claims.sub, email: claims.email };
+    claims = await readAccess(header.slice(7));
   } catch {
     fail(reply, 401, 'badCredentials', 'That session has expired. Sign in again.');
     return null;
   }
+  // A token names its session. Once that session is ended — the device was
+  // removed from the account — every call from it stops at once, rather than
+  // when the access token runs out.
+  if (claims.sid) {
+    const s = await q('select revoked_at, revoked_reason from sessions where id = $1', [claims.sid]);
+    const row = s.rows[0];
+    if (!row || row.revoked_at) {
+      fail(reply, 401, row?.revoked_reason === 'device_removed' ? 'deviceRemoved' : 'badCredentials',
+        row?.revoked_reason === 'device_removed'
+          ? 'This device was removed from your linked devices. Sign in to keep using it.'
+          : 'That session has ended. Sign in again.');
+      return null;
+    }
+  }
+  return { id: claims.sub, email: claims.email, sid: claims.sid || null };
 }
 
 /**
@@ -106,12 +121,60 @@ async function refuseUnpaid(reply, businessId) {
   return true;
 }
 
+/** -1, 0 or 1, comparing "1.10.2" style versions part by part. */
+export function compareVersions(a, b) {
+  const pa = String(a || '0').split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = String(b || '0').split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+/**
+ * Books opened by a newer app must not be read or written by an older one —
+ * it would not understand what changed and could damage them. The phone says
+ * its version in a header; a phone app too old to say it (okhttp, no header)
+ * counts as older than any book that names a version. The Windows till does
+ * not send the header and is not okhttp, so it is not affected.
+ */
+async function refuseOldApp(req, reply, businessId) {
+  const { rows } = await q(
+    "select data->'firm'->>'minAppVersion' as need from business_snapshots where business_id = $1",
+    [businessId],
+  );
+  const need = rows[0]?.need;
+  if (!need) return false;
+  const have = req.headers['x-app-version'];
+  const oldPhone = !have && /okhttp/i.test(String(req.headers['user-agent'] || ''));
+  if (oldPhone || (have && compareVersions(have, need) < 0)) {
+    fail(reply, 426, 'updateRequired',
+      'These books were opened with Genius Pro ' + need + '. Update the app to ' + need + ' or newer to continue.');
+    return true;
+  }
+  return false;
+}
+
 export default async function syncRoutes(app) {
   /* ---------------------------------------------------------- devices */
 
+  /*
+   * Linking a device. The only way in is signing in on it: the request must
+   * carry an access token from a session, and the device is tied to that
+   * session. Asking again from the same session returns the same device, so a
+   * reinstall or a retry never takes a second seat.
+   *
+   * When every seat is taken, nothing is removed behind the owner's back any
+   * more (it used to drop the oldest device silently). The answer is
+   * `tooManyDevices` with the list, and the phone asks which one to remove.
+   */
   app.post('/v1/devices', async (req, reply) => {
     const me = await whoami(req, reply);
     if (!me) return;
+    if (!me.sid) {
+      return fail(reply, 401, 'badCredentials', 'Sign in on this device to link it to your account.');
+    }
 
     const lic = await q(
       `select seats, status from licences where account_id = $1
@@ -120,53 +183,85 @@ export default async function syncRoutes(app) {
     );
     const seats = lic.rows[0]?.seats ?? 1;
 
-    const registration = await tx(async (db) => {
-      // Lock the account's active seats while choosing the one to replace. A
-      // new phone should never create a short-lived over-seat race.
+    const out = await tx(async (db) => {
+      // one claim at a time per account, so two phones cannot both take the last seat
+      await db.query('select pg_advisory_xact_lock(hashtext($1))', ['devices:' + me.id]);
+      const mine = await db.query(
+        'select id from devices where account_id = $1 and session_id = $2 and revoked_at is null limit 1',
+        [me.id, me.sid],
+      );
+      if (mine.rows[0]) {
+        await db.query('update devices set last_seen = now() where id = $1', [mine.rows[0].id]);
+        return { deviceId: mine.rows[0].id };
+      }
       const active = await db.query(
-        `select id, name from devices
-           where account_id = $1 and revoked_at is null
-          order by created_at asc, id asc for update`,
+        `select id, name, kind, platform, last_seen, created_at from devices
+          where account_id = $1 and revoked_at is null order by created_at`,
         [me.id],
       );
-      let replacedDevice = null;
-      if (active.rows.length >= seats) {
-        replacedDevice = active.rows[0];
-        await db.query(
-          'update devices set revoked_at = now() where id = $1 and account_id = $2',
-          [replacedDevice.id, me.id],
-        );
-      }
-
+      if (active.rows.length >= seats) return { full: active.rows };
       const inserted = await db.query(
-        `insert into devices (account_id, name, kind, platform, refresh_hash, last_seen)
-         values ($1, $2, $3, $4, '', now()) returning id`,
-        [me.id, req.body?.name || 'a device', req.body?.kind || 'phone', req.body?.platform || null],
+        `insert into devices (account_id, name, kind, platform, refresh_hash, last_seen, session_id)
+         values ($1, $2, $3, $4, '', now(), $5) returning id`,
+        [me.id, req.body?.name || 'a device', req.body?.kind || 'phone', req.body?.platform || null, me.sid],
       );
-      return { deviceId: inserted.rows[0].id, used: active.rows.length || 0, replacedDevice };
+      return { deviceId: inserted.rows[0].id };
     });
-    return { ...registration, seats };
+
+    if (out.full) {
+      return reply.code(409).send({
+        error: 'tooManyDevices',
+        message: 'Your plan allows ' + seats + ' device' + (seats === 1 ? '' : 's') + ' and all are in use. Remove one to use this device.',
+        seats,
+        devices: out.full,
+      });
+    }
+    return { deviceId: out.deviceId, seats };
   });
 
   app.get('/v1/devices', async (req, reply) => {
     const me = await whoami(req, reply);
     if (!me) return;
     const { rows } = await q(
-      `select id, name, kind, platform, last_seen, created_at
+      `select id, name, kind, platform, last_seen, created_at,
+              (session_id is not null and session_id = $2::uuid) as current
          from devices where account_id = $1 and revoked_at is null
         order by created_at`,
-      [me.id],
+      [me.id, me.sid],
     );
     return { devices: rows };
   });
 
+  /** Is this device still linked? The phone asks now and then; a removed one gets `deviceRemoved` from whoami. */
+  app.get('/v1/devices/me', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    if (!me.sid) return { linked: false };
+    const { rows } = await q(
+      'select id from devices where account_id = $1 and session_id = $2 and revoked_at is null limit 1',
+      [me.id, me.sid],
+    );
+    if (rows[0]) await q('update devices set last_seen = now() where id = $1', [rows[0].id]);
+    return { linked: !!rows[0], deviceId: rows[0]?.id || null };
+  });
+
+  /** Removing a device signs it out: its session ends, and the phone is told why. */
   app.delete('/v1/devices/:id', async (req, reply) => {
     const me = await whoami(req, reply);
     if (!me) return;
-    await q(
-      'update devices set revoked_at = now() where id = $1 and account_id = $2',
+    const { rows } = await q(
+      `update devices set revoked_at = now()
+        where id = $1 and account_id = $2 and revoked_at is null
+        returning session_id`,
       [req.params.id, me.id],
     );
+    if (rows[0]?.session_id) {
+      await q(
+        `update sessions set revoked_at = now(), revoked_reason = 'device_removed'
+          where id = $1 and account_id = $2 and revoked_at is null`,
+        [rows[0].session_id, me.id],
+      );
+    }
     return { revoked: true };
   });
 
@@ -228,6 +323,7 @@ export default async function syncRoutes(app) {
     if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
     const data = req.body?.data;
     if (!data || typeof data !== 'object') return fail(reply, 400, 'malformed', 'No books were sent.');
+    if (await refuseOldApp(req, reply, biz.id)) return;
     const version = Number(req.body?.version || 0);
     const current = await q(
       'select version from business_snapshots where business_id = $1',
@@ -259,6 +355,7 @@ export default async function syncRoutes(app) {
     if (!me) return;
     const biz = await businessFor(me.id, req.params.id);
     if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    if (await refuseOldApp(req, reply, biz.id)) return;
     const { rows } = await q(
       'select data, updated_at, version from business_snapshots where business_id = $1',
       [biz.id],
@@ -356,16 +453,28 @@ export default async function syncRoutes(app) {
       return fail(reply, 403, 'server', 'This account has been blocked. Contact support.');
     }
     if (await refuseUnpaid(reply, biz.id)) return;
+    if (await refuseOldApp(req, reply, biz.id)) return;
 
     const accepted = [];
     const rejected = [];
 
     await tx(async (c) => {
+      // One push per business at a time. `seq` is handed out when a row is
+      // inserted, not when it commits, so two tills pushing together could
+      // commit 12 before 11. A phone pulling in between saw 12, moved its
+      // cursor past 11, and never fetched that sale. Under this lock seqs
+      // become visible in order, so "everything after my cursor" is complete.
+      await c.query('select pg_advisory_xact_lock(hashtext($1))', ['ops:' + biz.id]);
       for (const op of ops) {
         if (!op?.opId || !op?.kind || !op?.device) {
           rejected.push({ opId: op?.opId || null, reason: 'malformed', note: 'Missing opId, kind, or device.' });
           continue;
         }
+        // A savepoint per op: in Postgres one failed statement aborts the whole
+        // transaction, so without it a single bad op rolled back every op
+        // before it — which the phone had just been told were accepted, and
+        // dropped from its queue for good.
+        await c.query('savepoint op');
         try {
           // `on conflict do nothing` is what makes a retry free: the second
           // arrival of an operation is silently the same as the first.
@@ -380,8 +489,10 @@ export default async function syncRoutes(app) {
               op.lamport || 0, op.schema || 0, JSON.stringify(op.payload ?? {}),
             ],
           );
+          await c.query('release savepoint op');
           accepted.push(op.opId);
         } catch (e) {
+          await c.query('rollback to savepoint op');
           req.log.warn({ err: e.message, kind: op.kind }, 'op rejected');
           const reason = e.code === '23503' ? 'unknownBranch' : 'malformed';
           rejected.push({ opId: op.opId, reason, note: e.message || 'The server rejected this operation.' });
@@ -399,6 +510,7 @@ export default async function syncRoutes(app) {
     const biz = await businessFor(me.id, req.query?.business);
     if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
     if (await refuseUnpaid(reply, biz.id)) return;
+    if (await refuseOldApp(req, reply, biz.id)) return;
 
     const since = Number(req.query?.since || 0);
     const limit = Math.min(Number(req.query?.limit || 500), 1000);

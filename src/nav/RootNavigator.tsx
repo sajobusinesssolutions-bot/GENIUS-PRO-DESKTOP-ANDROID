@@ -29,7 +29,7 @@ import ItemDetailScreen from '../screens/ItemDetailScreen';
 import BatchReportScreen from '../screens/BatchReportScreen';
 import StaffReportScreen from '../screens/StaffReportScreen';
 import BatchMovementScreen from '../screens/BatchMovementScreen';
-import { BranchesScreen, BranchAnalysisScreen } from '../screens/BranchScreens';
+import { BranchesScreen, BranchAnalysisScreen, BranchDetailScreen } from '../screens/BranchScreens';
 import { PriceListScreen, NamesEditorScreen, ActivateScreen } from '../screens/BulkEditScreens';
 import PriceTagScreen from '../screens/PriceTagScreen';
 import NewBranchScreen from '../screens/NewBranchScreen';
@@ -54,6 +54,7 @@ import PurchaseDetailScreen from '../screens/PurchaseDetailScreen';
 import PaymentDetailScreen from '../screens/PaymentDetailScreen';
 import EstimatesScreen from '../screens/EstimatesScreen';
 import EstimateNewScreen from '../screens/EstimateNewScreen';
+import EstimateDetailScreen from '../screens/EstimateDetailScreen';
 import ChallansScreen, { ChallanNewScreen } from '../screens/ChallansScreen';
 import CreditNotesScreen, { CreditNoteNewScreen } from '../screens/CreditNotesScreen';
 import OffersScreen, { OfferNewScreen } from '../screens/OffersScreen';
@@ -73,6 +74,7 @@ import MoneyScreen from '../screens/MoneyScreen';
 import ReportsScreen from '../screens/ReportsScreen';
 import ReportDetailScreen from '../screens/ReportDetailScreen';
 import MenuGroupScreen from '../screens/MenuGroupScreen';
+import { menuGroup } from '../data/menuGroups';
 import { EntryNewScreen, TransferScreen } from '../screens/MoneyEntryScreens';
 import CashEntriesScreen from '../screens/CashEntriesScreen';
 import { StockAdjustScreen, StockTransferScreen } from '../screens/StockScreens';
@@ -188,7 +190,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Businesses" component={BusinessesScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false, animation: 'none', gestureEnabled: false }} />
 
-        <Stack.Screen name="MenuGroup" component={MenuGroupScreen} options={{ title: 'Menu' }} />
+        <Stack.Screen name="MenuGroup" component={MenuGroupScreen} options={({ route }: any) => ({ title: menuGroup(route.params?.groupId)?.n || '' })} />
 
         <Stack.Screen name="NewSale" component={NewSaleScreen} options={{ title: 'New sale' }} />
         <Stack.Screen name="Receipt" component={ReceiptScreen} options={{ title: 'Receipt' }} />
@@ -196,7 +198,8 @@ export default function RootNavigator() {
         <Stack.Screen name="SaleDetail" component={SaleDetailScreen} options={{ title: 'Sale' }} />
         <Stack.Screen name="EditSale" component={EditSaleScreen} options={{ title: 'Edit sale' }} />
         <Stack.Screen name="Estimates" component={EstimatesScreen} options={{ title: 'Quotations' }} />
-        <Stack.Screen name="EstimateNew" component={EstimateNewScreen} options={{ title: 'New quotation' }} />
+        <Stack.Screen name="EstimateNew" component={EstimateNewScreen} options={({ route }) => ({ title: route.params?.editEstimateId ? 'Edit quotation' : 'New quotation' })} />
+        <Stack.Screen name="EstimateDetail" component={EstimateDetailScreen} options={{ title: 'Quotation' }} />
         <Stack.Screen name="Challans" component={ChallansScreen} options={{ title: 'Delivery notes' }} />
         <Stack.Screen name="ChallanNew" component={ChallanNewScreen} options={{ title: 'New delivery note' }} />
         <Stack.Screen name="CreditNotes" component={CreditNotesScreen} options={{ title: 'Returns' }} />
@@ -238,6 +241,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Developer" component={DeveloperScreen} options={{ title: "Developer console" }} />
         <Stack.Screen name="NewBranch" component={NewBranchScreen} options={{ title: "Open a branch" }} />
         <Stack.Screen name="BranchAnalysis" component={BranchAnalysisScreen} options={{ title: 'Branch analysis' }} />
+        <Stack.Screen name="BranchDetail" component={BranchDetailScreen} options={{ title: '' }} />
         <Stack.Screen name="AccountingHub" component={AccountingHubScreen} options={{ title: 'Accounting' }} />
         <Stack.Screen name="Reconciliation" component={ReconciliationScreen} options={{ title: 'Bank reconciliation' }} />
         <Stack.Screen name="ChartOfAccounts" component={ChartOfAccountsScreen} options={{ title: 'Chart of accounts' }} />

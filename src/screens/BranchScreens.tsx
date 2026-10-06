@@ -1,31 +1,35 @@
 /**
  * The branch panel — owner only.
  *
- * One screen to open, rename, disable or remove a branch, and one to compare
- * them: money, stock and trading side by side with a grand total. Every figure
- * is derived per warehouse from the same records the rest of the app uses, so a
- * branch column and the shop total can never disagree.
+ * Branches: a summary of where sales come from, one compact row per branch,
+ * and the other businesses on the account. A row opens BranchDetail, which
+ * replaces the old Manage sheet.
+ *
+ * Branch analysis: Finance (sales, cost of goods, expenses, purchases, net
+ * profit) and Stock (cover, stock-out days, dead stock). Every figure is
+ * derived per warehouse from the same records the rest of the app uses.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
-import { useTheme, fonts, radius } from '../theme';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
 import {
-  Panel, Badge, StatGrid, SectionLabel, EmptyBlock, InfoBanner, Button, Field,
-  StickyBar, DetailRow, TopTabs, ListRow, ProgressBar, FilterChips,
+  Panel, Badge, EmptyBlock, Button, Field, StickyBar, DetailRow, TopTabs,
 } from '../components/ui';
-import { Icon, IconName } from '../components/icons';
+import { Icon, IconName, CAT_COLOR } from '../components/icons';
 import Sheet from '../components/Sheet';
 import { useGo } from '../nav/navigate';
-import { finRange, FIN_PERIODS, inRange, fmtDate } from '../data/helpers';
+import { finRange, inRange } from '../data/helpers';
+import { DateRangeButton, DateRange, last30 } from '../components/DateRangeButton';
 import type { DB, Warehouse } from '../data/types';
 import { useAuthSafe } from '../data/AuthContext';
-import { refreshSession } from '../data/authApi';
+import { refreshSession, requestPinCode, verifyCode } from '../data/authApi';
 import { filterVisibleBusinesses, listBusinesses, downloadSnapshot, RemoteBusiness } from '../data/syncClient';
 
-/** Owner-only gate, used by both screens in this module. */
-/** Whether this role may see the branches — from Users & roles, not just "is the owner". */
+/* ================= shared ================= */
+
 function useOwnerOnly() {
   const { can } = useAppData();
   return can('branches.view');
@@ -36,65 +40,165 @@ function Denied() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: 16, justifyContent: 'center' }}>
       <Panel>
-        <EmptyBlock
-          icon="lock"
-          title="Owner only"
-          hint="The branch panel changes where stock and money live, so it is kept to the owner account."
-        />
+        <EmptyBlock icon="lock" title="Owner only" hint="The branch panel changes where stock and money live, so it is kept to the owner account." />
       </Panel>
     </View>
   );
 }
 
-type AnalysisRange = { from: number; to: number };
+/** Icons are black in light mode; in dark mode black would vanish, so they take the ink colour. */
+function useIconInk() {
+  const { colors } = useTheme();
+  return colors.surface === '#FFFFFF' ? '#000000' : colors.ink;
+}
 
-function businessMetrics(book: DB, business: { id: string; name: string; active?: boolean }, range: AnalysisRange) {
-  const sales = (book.sales || []).filter((s) => s.status !== 'void' && inRange(s.ts, range.from, range.to));
+const DAY = 86400000;
+const OUT_WINDOW = 30;
+const DEAD_AFTER = 60;
+const SELLING_WINDOW = 90;
+
+const branchColor = (i: number, off?: boolean) => (off ? '#9AA3AE' : CAT_COLOR[i % CAT_COLOR.length]);
+
+/** 18,450,000 → 18.5M — for narrow cells where the full figure will not fit. */
+function short(n: number): string {
+  const a = Math.abs(n);
+  if (a >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (a >= 1e3) return Math.round(n / 1e3) + 'K';
+  return String(Math.round(n));
+}
+const signed = (p: number | null) => (p == null ? '—' : (p > 0 ? '+' : p < 0 ? '−' : '') + Math.abs(Math.round(p)) + '%');
+
+type Range = { from: number; to: number };
+
+export type BranchFigures = {
+  revenue: number; cogs: number; gross: number; exp: number; purch: number; net: number;
+  /** Net profit per 100 of sales. */
+  kept: number;
+  due: number; bills: number;
+  /** Sales change against the previous range of the same length; null when there is none. */
+  growth: number | null;
+  stockQty: number; stockCost: number; stockRetail: number; low: number;
+  /** Stock at cost at the start and at the end of the range, walked back from today through the movements. */
+  openStock: number; closeStock: number;
+  /** Stock at cost that has not sold in DEAD_AFTER days. */
+  dead: number;
+  /** Days the stock on hand would last at the last 30 days' rate of cost of goods. */
+  cover: number | null;
+  /** Of the last OUT_WINDOW days, which had at least one selling line at zero. */
+  outDays: boolean[];
+  outCount: number;
+  /** Sales likely missed on those days, from each line's average daily takings. */
+  lost: number;
+};
+
+/**
+ * One branch's figures. `mine(wh)` says whether a warehouse id belongs to the
+ * branch: one id for a local branch, every id for another business's book.
+ */
+export function figuresFor(book: DB, mine: (wh?: string) => boolean, R: Range, withPrev: boolean): BranchFigures {
+  const fallback = book.settings?.defaultWarehouse;
+  const own = (wh?: string) => mine(wh || fallback);
+  const now = Date.now();
+
+  const allSales = (book.sales || []).filter((s) => s.status !== 'void' && own(s.warehouse));
+  const sales = allSales.filter((s) => inRange(s.ts, R.from, R.to));
   const revenue = sales.reduce((n, s) => n + s.total, 0);
-  const cogs = sales.reduce((n, s) => n + s.cogs, 0);
+  const cogs = sales.reduce((n, s) => n + (s.cogs || 0), 0);
   const due = sales.reduce((n, s) => n + Math.max(0, s.due), 0);
-  const units = sales.reduce((n, s) => n + s.lines.reduce((q, l) => q + l.qty, 0), 0);
-  let stockQty = 0;
-  let stockCost = 0;
-  let stockRetail = 0;
-  let lowLines = 0;
+
+  const exp = (book.entries || [])
+    .filter((e) => e.direction === 'out' && own(e.branch) && inRange(e.ts, R.from, R.to))
+    .reduce((n, e) => n + e.amount, 0);
+  const purch = (book.purchases || [])
+    .filter((p) => p.status !== 'void' && own(p.branch) && inRange(p.ts, R.from, R.to))
+    .reduce((n, p) => n + p.total, 0);
+
+  let growth: number | null = null;
+  if (withPrev) {
+    const len = R.to - R.from;
+    const prev = allSales.filter((s) => inRange(s.ts, R.from - len - 1, R.from - 1)).reduce((n, s) => n + s.total, 0);
+    growth = prev > 0 ? (revenue / prev - 1) * 100 : null;
+  }
+
+  // what each product sold here, for dead stock and missed-sales estimates
+  const lastSold = new Map<string, number>();
+  const takings90 = new Map<string, number>();
+  allSales.forEach((s) => {
+    const t = new Date(s.ts).getTime();
+    s.lines.forEach((l) => {
+      if (t > (lastSold.get(l.productId) || 0)) lastSold.set(l.productId, t);
+      if (now - t <= SELLING_WINDOW * DAY) takings90.set(l.productId, (takings90.get(l.productId) || 0) + l.qty * l.price);
+    });
+  });
+
+  const cogs30 = allSales.filter((s) => now - new Date(s.ts).getTime() <= 30 * DAY).reduce((n, s) => n + (s.cogs || 0), 0);
+
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const windowStart = today0.getTime() - (OUT_WINDOW - 1) * DAY;
+  const dayEnd = (i: number) => windowStart + (i + 1) * DAY - 1;
+  const outDays = Array.from({ length: OUT_WINDOW }, () => false);
+  let lost = 0;
+
+  const movesByProduct = new Map<string, { ts: number; qty: number }[]>();
+  (book.movements || []).forEach((m) => {
+    if (!own(m.wh)) return;
+    const t = new Date(m.ts).getTime();
+    if (t < windowStart) return;
+    const list = movesByProduct.get(m.productId) || [];
+    list.push({ ts: t, qty: m.qty });
+    movesByProduct.set(m.productId, list);
+  });
+
+  // every movement here after the range began / after it ended, to walk today's stock back
+  const afterFrom = new Map<string, number>();
+  const afterTo = new Map<string, number>();
+  (book.movements || []).forEach((m) => {
+    if (!own(m.wh)) return;
+    const t = new Date(m.ts).getTime();
+    if (t >= R.from) afterFrom.set(m.productId, (afterFrom.get(m.productId) || 0) + m.qty);
+    if (t > R.to) afterTo.set(m.productId, (afterTo.get(m.productId) || 0) + m.qty);
+  });
+
+  let stockQty = 0, stockCost = 0, stockRetail = 0, low = 0, dead = 0, openStock = 0, closeStock = 0;
   (book.products || []).forEach((p) => {
-    const q = Object.values(p.stock || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    if ((p as any).kind === 'service') return;
+    const q = Object.entries(p.stock || {}).reduce((n, [wh, v]) => (own(wh) ? n + (Number(v) || 0) : n), 0);
     stockQty += q;
     stockCost += q * p.cost;
     stockRetail += q * p.price;
-    if (p.active && q <= p.reorder) lowLines += 1;
+    openStock += Math.max(0, q - (afterFrom.get(p.id) || 0)) * p.cost;
+    closeStock += Math.max(0, q - (afterTo.get(p.id) || 0)) * p.cost;
+    if (p.active && q <= p.reorder) low += 1;
+    const sold = lastSold.get(p.id) || 0;
+    if (q > 0 && now - sold > DEAD_AFTER * DAY) dead += q * p.cost;
+
+    // walk back from today's stock to each day's closing stock
+    const daily = (takings90.get(p.id) || 0) / SELLING_WINDOW;
+    if (!p.active || daily <= 0) return;
+    const moves = (movesByProduct.get(p.id) || []).sort((a, b) => b.ts - a.ts);
+    let qty = q, k = 0;
+    for (let i = OUT_WINDOW - 1; i >= 0; i--) {
+      while (k < moves.length && moves[k].ts > dayEnd(i)) { qty -= moves[k].qty; k++; }
+      if (qty <= 0) { outDays[i] = true; lost += daily; }
+    }
   });
-  const moves = (book.movements || []).filter((m) => inRange(m.ts, range.from, range.to));
+
   return {
-    w: { id: business.id, name: business.name, active: business.active !== false } as Warehouse,
-    revenue, cogs, gross: revenue - cogs,
-    margin: revenue ? ((revenue - cogs) / revenue) * 100 : 0,
-    due, bills: sales.length, avg: sales.length ? revenue / sales.length : 0, units,
-    stockQty, stockCost, stockRetail, lowLines,
-    movesIn: moves.filter((m) => m.qty > 0).reduce((n, m) => n + m.qty, 0),
-    movesOut: moves.filter((m) => m.qty < 0).reduce((n, m) => n - m.qty, 0),
+    revenue, cogs, gross: revenue - cogs, exp, purch, net: revenue - cogs - exp,
+    kept: revenue ? ((revenue - cogs - exp) / revenue) * 100 : 0,
+    due, bills: sales.length, growth,
+    stockQty, stockCost, stockRetail, low, dead, openStock, closeStock,
+    cover: cogs30 > 0 ? stockCost / (cogs30 / 30) : null,
+    outDays, outCount: outDays.filter(Boolean).length, lost,
   };
 }
 
-/* ================= the branch list ================= */
-
-export function BranchesScreen() {
-  const { colors } = useTheme();
-  const { db, money, stockOf, updateWarehouse, removeWarehouse } = useAppData();
+/** The other businesses on this account, and their downloaded books. */
+function useAccountBooks(load: boolean) {
+  const { db } = useAppData();
   const account = useAuthSafe()?.account;
-  const { success, error } = useToast();
-  const go = useGo();
-  const owner = useOwnerOnly();
-
-  const [editing, setEditing] = useState<Warehouse | null>(null);
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
   const [businesses, setBusinesses] = useState<RemoteBusiness[]>([]);
-
-  const branches = db?.warehouses || [];
-  const accountBranches = businesses.filter((business) => business.id !== db?.sync.businessId && (business as any).local_id !== db?.firm.id);
+  const [books, setBooks] = useState<Record<string, DB>>({});
 
   useEffect(() => {
     const refresh = account?.refresh;
@@ -107,255 +211,358 @@ export function BranchesScreen() {
     })();
   }, [account?.refresh]);
 
-  /** Per-branch figures, from the same records the reports read. */
-  const figures = useMemo(() => {
-    if (!db) return new Map<string, { stock: number; value: number; sales: number; bills: number }>();
-    const m = new Map<string, { stock: number; value: number; sales: number; bills: number }>();
-    branches.forEach((w) => m.set(w.id, { stock: 0, value: 0, sales: 0, bills: 0 }));
-    db.products.forEach((p) => {
-      branches.forEach((w) => {
-        const q = p.stock?.[w.id] || 0;
-        const e = m.get(w.id)!;
-        e.stock += q;
-        e.value += q * p.cost;
+  const others = useMemo(
+    () => filterVisibleBusinesses(businesses, db?.sync.businessId, db?.firm.id).filter((b) => b.id !== db?.sync.businessId),
+    [businesses, db?.sync.businessId, db?.firm.id],
+  );
+
+  useEffect(() => {
+    if (!load || !account?.refresh) return;
+    const missing = others.filter((b) => !books[b.id]);
+    if (!missing.length) return;
+    void (async () => {
+      const token = await refreshSession(account.refresh!);
+      if (!token.ok) return;
+      const loaded = await Promise.all(missing.map(async (b) => {
+        const snap = await downloadSnapshot(token.value.access, b.id);
+        return snap.ok ? [b.id, snap.value.data] as const : null;
+      }));
+      setBooks((prev) => {
+        const next = { ...prev };
+        loaded.forEach((x) => { if (x) next[x[0]] = x[1]; });
+        return next;
       });
-    });
-    db.sales.forEach((s) => {
-      if (s.status === 'void') return;
-      const e = m.get(s.warehouse);
-      if (!e) return;
-      e.sales += s.total;
-      e.bills += 1;
-    });
+    })();
+  }, [load, account?.refresh, others, books]);
+
+  return { others, books };
+}
+
+function Dot({ color, size = 10 }: { color: string; size?: number }) {
+  return <View style={{ width: size, height: size, borderRadius: 3, backgroundColor: color }} />;
+}
+
+function Caps({ children }: { children: React.ReactNode }) {
+  const { colors } = useTheme();
+  return (
+    <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 0.7, color: colors.faint, textTransform: 'uppercase', marginTop: 22, marginBottom: 10 }}>
+      {children}
+    </Text>
+  );
+}
+
+/* ================= the branch list ================= */
+
+export function BranchesScreen() {
+  const { colors } = useTheme();
+  const ink = useIconInk();
+  const { db, money } = useAppData();
+  const go = useGo();
+  const owner = useOwnerOnly();
+  const { others } = useAccountBooks(false);
+
+  const branches = db?.warehouses || [];
+  const R = useMemo(() => finRange('month'), []);
+
+  const figures = useMemo(() => {
+    const m = new Map<string, BranchFigures>();
+    if (!db) return m;
+    branches.forEach((w) => m.set(w.id, figuresFor(db, (wh) => wh === w.id, R, false)));
     return m;
-  }, [db, branches]);
+  }, [db, branches, R]);
 
   if (!db) return null;
   if (!owner) return <Denied />;
 
-  function confirmDelete(w: Warehouse) {
-    Alert.alert(
-      'Delete ' + w.name + '?',
-      'This cannot be undone. A branch can only be deleted while it holds no stock and has never traded.',
-      [
-        { text: 'Keep it', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            const r = removeWarehouse(w.id);
-            if (!r.ok) { error(r.why); return; }
-            setEditing(null);
-            success(w.name + ' deleted');
-          },
-        },
-      ],
-    );
-  }
-
-  const totalStock = [...figures.values()].reduce((s, f) => s + f.value, 0);
-  const totalSales = [...figures.values()].reduce((s, f) => s + f.sales, 0);
+  const totalSales = [...figures.values()].reduce((n, f) => n + f.revenue, 0);
+  const totalStock = [...figures.values()].reduce((n, f) => n + f.stockCost, 0);
   const live = branches.filter((w) => w.active !== false).length;
+  const shares = branches
+    .map((w, i) => ({ w, i, v: figures.get(w.id)?.revenue || 0 }))
+    .filter((x) => x.v > 0 && x.w.active !== false);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
-        <StatGrid
-          items={[
-            { icon: 'home', label: 'Branches', value: String(branches.length), tone: 'accent' },
-            { icon: 'check', label: 'Trading', value: String(live), tone: 'good' },
-            { icon: 'box', label: 'Stock at cost', value: money(totalStock), tone: 'warn' },
-            { icon: 'coins', label: 'Sales all time', value: money(totalSales), tone: 'good' },
-          ]}
-        />
-
-        <View style={{ height: 16 }} />
         <Panel flush>
-          <ListRow
-            icon="chart"
-            tone="accent"
-            title="Compare businesses"
-            subtitle="Money, stock and trading side by side"
-            onPress={() => go('BranchAnalysis')}
-            last
-          />
-        </Panel>
-
-        <View style={{ height: 20 }} />
-        <SectionLabel right={<Badge label={branches.length + ' total'} tone="neutral" />}>Branches</SectionLabel>
-
-        {branches.map((w) => {
-          const f = figures.get(w.id) || { stock: 0, value: 0, sales: 0, bills: 0 };
-          const off = w.active === false;
-          const here = db.session.warehouse === w.id;
-          return (
-            <Panel key={w.id} style={{ marginBottom: 12, opacity: off ? 0.6 : 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-                <View style={{
-                  width: 46, height: 46, borderRadius: 15,
-                  backgroundColor: off ? colors.sunk : here ? colors.goodSoft : colors.accentSoft,
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Icon name="home" size={21} color={off ? colors.faint : here ? colors.good : colors.accent} />
+          <View style={{ padding: 16, paddingBottom: 14, gap: 4 }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Sales across branches · 30 days</Text>
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, letterSpacing: -0.8, color: colors.ink }}>{money(totalSales)}</Text>
+            {shares.length ? (
+              <>
+                <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', gap: 2, marginTop: 10, backgroundColor: colors.sunk }}>
+                  {shares.map((s) => <View key={s.w.id} style={{ flex: s.v, backgroundColor: branchColor(s.i) }} />)}
                 </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{w.name}</Text>
-                    {here ? <Badge label="Selling here" tone="good" /> : null}
-                    {off ? <Badge label="Disabled" tone="neutral" /> : null}
-                  </View>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                    {w.address || 'No address'}{w.phone ? ' · ' + w.phone : ''}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 13 }} />
-
-              <DetailRow label="Stock on hand" value={Math.round(f.stock) + ' units'} />
-              <DetailRow label="Stock at cost" value={money(f.value)} />
-              <DetailRow label="Sales all time" value={money(f.sales)} tone={colors.good} />
-              <DetailRow label="Sales raised" value={String(f.bills)} last />
-
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-                <View style={{ flex: 1 }}>
-                  <Button
-                    size="sm"
-                    label="Manage"
-                    icon={<Icon name="cog" size={15} color={colors.ink} />}
-                    onPress={() => { setEditing(w); setName(w.name); setAddress(w.address || ''); setPhone(w.phone || ''); }}
-                  />
-                </View>
-              </View>
-            </Panel>
-          );
-        })}
-
-        {accountBranches.length ? (
-          <>
-            <View style={{ height: 8 }} />
-            <SectionLabel right={<Badge label={accountBranches.length + ' on your account'} tone="neutral" />}>Other branches on your account</SectionLabel>
-            {accountBranches.map((b) => {
-              const off = b.active === false;
-              const backedUp = b.snapshot_at ? fmtDate(b.snapshot_at) : null;
-              return (
-                <Panel key={b.id} style={{ marginBottom: 12, opacity: off ? 0.6 : 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-                    <View style={{
-                      width: 46, height: 46, borderRadius: 15,
-                      backgroundColor: off ? colors.sunk : colors.warnSoft,
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Icon name="factory" size={21} color={off ? colors.faint : colors.warn} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                        <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{b.name}</Text>
-                        {off ? <Badge label="Disabled" tone="neutral" /> : <Badge label={b.role ? b.role.charAt(0).toUpperCase() + b.role.slice(1) : 'Account'} tone="accent" />}
-                      </View>
-                      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                        {b.tin ? 'TIN ' + b.tin + ' · ' : ''}ID {b.id.slice(0, 8).toUpperCase()}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6, marginTop: 8 }}>
+                  {shares.map((s) => (
+                    <View key={s.w.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Dot color={branchColor(s.i)} size={8} />
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
+                        {s.w.name} {Math.round((s.v / totalSales) * 100)}%
                       </Text>
                     </View>
+                  ))}
+                </View>
+              </>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: 'row', borderTopWidth: 1, borderColor: colors.line }}>
+            {[
+              { l: 'Branches', v: String(branches.length), c: colors.ink },
+              { l: 'Trading', v: String(live), c: colors.good },
+              { l: 'Stock at cost', v: short(totalStock), c: colors.ink },
+            ].map((x, i) => (
+              <View key={x.l} style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 16, borderLeftWidth: i ? 1 : 0, borderColor: colors.line }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{x.l}</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 17, color: x.c, marginTop: 3 }}>{x.v}</Text>
+              </View>
+            ))}
+          </View>
+          <Pressable
+            onPress={() => go('BranchAnalysis')}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 16, borderTopWidth: 1, borderColor: colors.line, backgroundColor: colors.accentSoft }}
+          >
+            <Icon name="chart" size={17} color={ink} />
+            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>Branch analysis</Text>
+            <Icon name="chev" size={17} color={ink} />
+          </Pressable>
+        </Panel>
+
+        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+          <View style={{ flex: 1 }}><Caps>In this book</Caps></View>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>sales · 30 days</Text>
+        </View>
+        <Panel flush>
+          {branches.map((w, i) => {
+            const f = figures.get(w.id);
+            const off = w.active === false;
+            const here = db.session.warehouse === w.id;
+            return (
+              <Pressable
+                key={w.id}
+                onPress={() => go('BranchDetail', { id: w.id })}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingLeft: 16, paddingRight: 14,
+                  borderBottomWidth: i === branches.length - 1 ? 0 : 1, borderColor: colors.line, opacity: off ? 0.6 : 1,
+                }}
+              >
+                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: off ? colors.sunk : here ? colors.goodSoft : colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="home" size={20} color={ink} weight="duotone" />
+                  <View style={{ position: 'absolute', right: -2, bottom: -2, width: 11, height: 11, borderRadius: 4, backgroundColor: branchColor(i, off), borderWidth: 2, borderColor: colors.surface }} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 }}>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{w.name}</Text>
+                    {here ? <Badge label="Active" tone="good" /> : null}
+                    {off ? <Badge label="Disabled" tone="neutral" /> : null}
                   </View>
+                  {f && f.low > 0 && !off ? (
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.warn }}>{f.low} running low</Text>
+                  ) : null}
+                </View>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{off || !f ? '—' : short(f.revenue)}</Text>
+                <Icon name="chev" size={16} color={ink} />
+              </Pressable>
+            );
+          })}
+        </Panel>
 
-                  <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 13 }} />
-
-                  <DetailRow label="Kept as" value="Its own books on your account" />
-                  <DetailRow label="On your account since" value={fmtDate(b.created_at)} />
-                  <DetailRow label="Last copy in the cloud" value={backedUp || 'Not yet'} tone={backedUp ? colors.good : colors.warn} last />
-
-                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-                    <View style={{ flex: 1 }}>
-                      <Button size="sm" label="Compare" icon={<Icon name="chart" size={15} color={colors.ink} />} onPress={() => go('BranchAnalysis')} />
+        {others.length ? (
+          <>
+            <Caps>Other branches on your account</Caps>
+            <Panel flush>
+              {others.map((b, i) => {
+                const off = b.active === false;
+                return (
+                  <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingLeft: 16, paddingRight: 14, borderBottomWidth: i === others.length - 1 ? 0 : 1, borderColor: colors.line, opacity: off ? 0.6 : 1 }}>
+                    <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: off ? colors.sunk : colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="factory" size={20} color={ink} weight="duotone" />
+                      <View style={{ position: 'absolute', right: -2, bottom: -2, width: 11, height: 11, borderRadius: 4, backgroundColor: branchColor(branches.length + i, off), borderWidth: 2, borderColor: colors.surface }} />
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Button size="sm" label="Open" icon={<Icon name="swap" size={15} color={colors.ink} />} onPress={() => go('Businesses')} />
+                    <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 }}>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{b.name}</Text>
+                      {off ? <Badge label="Disabled" tone="neutral" /> : <Badge label={b.role ? b.role.charAt(0).toUpperCase() + b.role.slice(1) : 'Account'} tone="accent" />}
                     </View>
+                    <Pressable
+                      onPress={() => go('Businesses')}
+                      style={{ height: 36, paddingHorizontal: 13, borderRadius: 10, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    >
+                      <Icon name="swap" size={14} color={ink} />
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Open</Text>
+                    </Pressable>
                   </View>
-                </Panel>
-              );
-            })}
+                );
+              })}
+            </Panel>
           </>
         ) : null}
       </ScrollView>
 
       <StickyBar>
-        <Button
-          label="Open a new branch"
-          variant="pri"
-          icon={<Icon name="plus" size={17} color={colors.accentInk} />}
-          onPress={() => go('NewBranch')}
-        />
+        <Button label="Open a new branch" variant="pri" icon={<Icon name="plus" size={17} color={colors.accentInk} />} onPress={() => go('NewBranch')} />
       </StickyBar>
+    </View>
+  );
+}
 
-      {/* manage */}
+/* ================= one branch (replaces the Manage sheet) ================= */
+
+export function BranchDetailScreen() {
+  const { colors } = useTheme();
+  const ink = useIconInk();
+  const { db, money, updateWarehouse, removeWarehouse } = useAppData();
+  const { success, error } = useToast();
+  const go = useGo();
+  const nav = useNavigation<any>();
+  const owner = useOwnerOnly();
+  const id = (useRoute().params as { id?: string } | undefined)?.id;
+
+  const account = useAuthSafe()?.account;
+  const [range, setRange] = useState<DateRange>(last30);
+  // deleting a branch is for good, so the owner proves it with a code sent to their email
+  const [del, setDel] = useState<null | 'ask' | 'code'>(null);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const index = db ? db.warehouses.findIndex((w) => w.id === id) : -1;
+  const w: Warehouse | undefined = db && index >= 0 ? db.warehouses[index] : undefined;
+  const R = range;
+  const f = useMemo(() => (db && w ? figuresFor(db, (wh) => wh === w.id, R, true) : null), [db, w, R]);
+  const allSales = useMemo(
+    () => (db ? db.warehouses.reduce((n, x) => n + figuresFor(db, (wh) => wh === x.id, R, false).revenue, 0) : 0),
+    [db, R],
+  );
+
+  useEffect(() => { if (w) nav.setOptions({ title: w.name }); }, [nav, w?.name]);
+
+  if (!db) return null;
+  if (!owner) return <Denied />;
+  if (!w || !f) return null;
+
+  const off = w.active === false;
+  const here = db.session.warehouse === w.id;
+
+  async function sendCode() {
+    if (!account?.email) { error('Sign in to your account first — the code goes to its email.'); return; }
+    setBusy(true);
+    const r = await requestPinCode(account.email);
+    setBusy(false);
+    if (!r.ok) { error(r.error.message); return; }
+    setCode('');
+    setDel('code');
+  }
+
+  async function deleteWithCode() {
+    if (!account?.email) return;
+    setBusy(true);
+    const ok = await verifyCode(account.email, code.trim(), 'pin');
+    setBusy(false);
+    if (!ok.ok) { error(ok.error.message); return; }
+    const r = removeWarehouse(w!.id);
+    if (!r.ok) { setDel(null); error(r.why); return; }
+    setDel(null);
+    success(w!.name + ' deleted');
+    nav.goBack();
+  }
+
+  function toggleTrading() {
+    Alert.alert(off ? 'Enable ' + w!.name + '?' : 'Disable ' + w!.name + '?', off
+      ? 'It can sell and hold stock again.'
+      : 'It stops selling and is left out of the figures. Its records are kept, and it can be enabled again.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: off ? 'Enable' : 'Disable', style: off ? 'default' : 'destructive', onPress: () => { updateWarehouse(w!.id, { active: off }); success(off ? 'Branch enabled' : 'Branch disabled'); } },
+    ]);
+  }
+
+  const stats = [
+    { l: 'Sales', v: money(f.revenue), c: colors.ink, b: colors.goodSoft },
+    { l: 'Net profit', v: money(f.net), c: f.net >= 0 ? colors.good : colors.danger, b: colors.goodSoft },
+    { l: 'Expenses', v: money(f.exp), c: colors.ink, b: colors.warnSoft },
+    { l: 'Left unpaid', v: money(f.due), c: f.due ? colors.danger : colors.ink, b: colors.dangerSoft },
+  ];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
+        <Panel>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
+            <View style={{ width: 46, height: 46, borderRadius: 15, backgroundColor: off ? colors.sunk : here ? colors.goodSoft : colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="home" size={21} color={ink} weight="duotone" />
+            </View>
+            <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 }}>
+                <Badge label={off ? 'Disabled' : 'Active'} tone={off ? 'neutral' : 'good'} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Dot color={branchColor(index, off)} size={8} />
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
+                    {allSales && f.revenue ? Math.round((f.revenue / allSales) * 100) + '% of sales' : 'No sales'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
+                {w.address || 'No address'}{w.phone ? ' · ' + w.phone : ''}
+              </Text>
+            </View>
+          </View>
+        </Panel>
+
+        <View style={{ marginTop: 16 }}><DateRangeButton value={range} onChange={setRange} /></View>
+        <Caps>{range.label}</Caps>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          {stats.map((s) => (
+            <View key={s.l} style={{ flexBasis: '47%', flexGrow: 1 }}>
+              <Panel style={{ borderWidth: 1, borderColor: s.b, padding: 14 }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{s.l}</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: s.c, marginTop: 8 }} adjustsFontSizeToFit numberOfLines={1}>{s.v}</Text>
+              </Panel>
+            </View>
+          ))}
+        </View>
+
+        <Caps>Stock held</Caps>
+        <Panel style={{ paddingVertical: 4 }}>
+          <DetailRow label="Opening stock" value={money(f.openStock)} />
+          <DetailRow label="Closing stock" value={money(f.closeStock)} />
+          <DetailRow label="On hand now, at cost" value={money(f.stockCost)} />
+          <DetailRow label="Days of stock" value={f.cover == null ? '—' : String(Math.round(f.cover))} />
+          <DetailRow label="Out-of-stock days" value={String(f.outCount)} tone={f.outCount >= 5 ? colors.danger : undefined} />
+          <DetailRow label="Unsold 60+ days" value={money(f.dead)} />
+          <DetailRow label="Lines running low" value={String(f.low)} tone={f.low ? colors.warn : undefined} last />
+        </Panel>
+
+        <Caps>Manage</Caps>
+        <Button
+          label={off ? 'Enable this branch' : 'Disable this branch'}
+          icon={<Icon name="lock" size={16} color={colors.ink} />}
+          onPress={toggleTrading}
+        />
+        <View style={{ height: 10 }} />
+        <Button label="Delete this branch" variant="dngr" icon={<Icon name="trash" size={16} color={colors.danger} />} onPress={() => setDel('ask')} />
+      </ScrollView>
+
       <Sheet
-        visible={!!editing}
-        title={editing?.name || 'Branch'}
-        subtitle={editing?.active === false ? 'Disabled' : 'Trading'}
-        icon="cog"
-        onClose={() => setEditing(null)}
-        footer={
-          <Button
-            label="Save changes"
-            variant="pri"
-            onPress={() => {
-              if (!editing) return;
-              if (!name.trim()) { error('A branch needs a name.'); return; }
-              updateWarehouse(editing.id, { name: name.trim(), address: address.trim(), phone: phone.trim() });
-              setEditing(null);
-              success('Branch updated');
-            }}
-          />
-        }
+        visible={!!del}
+        title={'Delete ' + w.name}
+        icon="trash"
+        onClose={() => setDel(null)}
+        footer={del === 'ask'
+          ? <Button label={busy ? 'Sending…' : 'Email me a code'} variant="dngr" onPress={() => void sendCode()} />
+          : <Button label={busy ? 'Checking…' : 'Delete for good'} variant="dngr" onPress={() => void deleteWithCode()} />}
       >
-        {editing ? (
+        {del === 'ask' ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, color: colors.soft }}>
+            This cannot be undone. A branch can only be deleted while it holds no stock and has never traded.
+            {'\n\n'}To be sure it is you, a six-digit code goes to {account?.email || 'your account email'}.
+          </Text>
+        ) : (
           <>
-            <Field icon="home" label="Branch name" value={name} onChangeText={setName} />
-            <Field icon="doc" label="Address" value={address} onChangeText={setAddress} multiline />
-            <Field icon="phone" label="Phone" value={phone} onChangeText={setPhone} />
-
-            <SectionLabel>Status</SectionLabel>
-            <Panel flush>
-              <ListRow
-                icon={editing.active === false ? 'check' : 'lock'}
-                tone={editing.active === false ? 'good' : 'warn'}
-                title={editing.active === false ? 'Enable this branch' : 'Disable this branch'}
-                subtitle={editing.active === false
-                  ? 'It can be sold from again'
-                  : 'It keeps its history but cannot be sold from'}
-                onPress={() => {
-                  const next = editing.active === false;
-                  updateWarehouse(editing.id, { active: next });
-                  setEditing({ ...editing, active: next });
-                  success(next ? 'Branch enabled' : 'Branch disabled');
-                }}
-              />
-              <ListRow
-                icon="swap"
-                tone="accent"
-                title="Move stock out"
-                subtitle="Transfer what it holds to another branch"
-                onPress={() => { setEditing(null); go('StockTransfer'); }}
-                last
-              />
-            </Panel>
-
-            <View style={{ height: 8 }} />
-            <Button
-              label="Delete this branch"
-              variant="dngr"
-              icon={<Icon name="trash" size={16} color={colors.danger} />}
-              onPress={() => confirmDelete(editing)}
-            />
-            <View style={{ height: 10 }} />
-            <InfoBanner
-              tone="warn"
-              text="A branch that holds stock or has ever traded cannot be deleted — disable it instead, so its history stays intact."
-            />
+            <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, color: colors.soft, marginBottom: 6 }}>
+              Enter the code sent to {account?.email}.
+            </Text>
+            <Field label="Six-digit code" value={code} onChangeText={(v: string) => setCode(v.replace(/[^0-9]/g, '').slice(0, 6))} numeric />
+            <Button label="Send a new code" onPress={() => void sendCode()} />
           </>
-        ) : null}
+        )}
       </Sheet>
     </View>
   );
@@ -363,310 +570,356 @@ export function BranchesScreen() {
 
 /* ================= branch analysis ================= */
 
-type Lens = 'finance' | 'stock' | 'trade';
+type Lens = 'finance' | 'stock';
+type MetricType = 'money' | 'pct' | 'signed' | 'days' | 'num';
+type MetricKey = keyof Omit<BranchFigures, 'outDays'>;
+type Metric = { k: MetricKey; l: string; t: MetricType; lowerIsBetter?: boolean };
+
+const METRICS: Record<Lens, Metric[]> = {
+  finance: [
+    { k: 'net', l: 'Net profit', t: 'money' },
+    { k: 'revenue', l: 'Sales', t: 'money' },
+    { k: 'cogs', l: 'Cost of goods', t: 'money' },
+    { k: 'exp', l: 'Expenses', t: 'money', lowerIsBetter: true },
+    { k: 'purch', l: 'Purchases', t: 'money' },
+    { k: 'kept', l: 'Kept per 100', t: 'pct' },
+    { k: 'growth', l: 'Sales growth', t: 'signed' },
+  ],
+  stock: [
+    { k: 'openStock', l: 'Opening stock', t: 'money' },
+    { k: 'closeStock', l: 'Closing stock', t: 'money' },
+    { k: 'stockCost', l: 'On hand now', t: 'money' },
+    { k: 'cover', l: 'Days of stock', t: 'days', lowerIsBetter: true },
+    { k: 'outCount', l: 'Out-of-stock days', t: 'num', lowerIsBetter: true },
+    { k: 'lost', l: 'Sales missed', t: 'money', lowerIsBetter: true },
+    { k: 'dead', l: 'Unsold 60+ days', t: 'money', lowerIsBetter: true },
+    { k: 'low', l: 'Lines running low', t: 'num', lowerIsBetter: true },
+  ],
+};
+
+const OVERSTOCK_DAYS = 110;
+const UNDERSTOCK_DAYS = 30;
+
+function show(v: number | null, t: MetricType): string {
+  if (v == null) return '—';
+  if (t === 'pct') return Math.round(v) + '%';
+  if (t === 'signed') return signed(v);
+  if (t === 'days') return Math.round(v) + 'd';
+  if (t === 'money') return short(v);
+  return String(Math.round(v));
+}
+
+type Row = { id: string; name: string; color: string; off: boolean; account: boolean; f: BranchFigures };
+type Insight = { icon: IconName; tone: 'good' | 'warn' | 'danger'; text: string; value: string };
+
+function insightsFor(lens: Lens, live: Row[], periodLabel: string): Insight[] {
+  if (!live.length) return [];
+  const top = (fn: (r: Row) => number) => [...live].sort((a, b) => fn(b) - fn(a))[0];
+  const ratio = (r: Row) => (r.f.cogs ? r.f.purch / r.f.cogs : 1);
+  const out: Insight[] = [];
+  if (lens === 'finance') {
+    const withSales = live.filter((r) => r.f.revenue > 0);
+    if (!withSales.length) return [];
+    const best = [...withSales].sort((a, b) => b.f.kept - a.f.kept)[0];
+    out.push({ icon: 'up', tone: 'good', text: `${best.name} keeps ${Math.round(best.f.kept)} of every 100 sold`, value: short(best.f.net) });
+    const spender = [...withSales].sort((a, b) => b.f.exp / b.f.revenue - a.f.exp / a.f.revenue)[0];
+    if (spender.f.exp > 0) out.push({ icon: 'receipt', tone: 'danger', text: `${spender.name} spends ${Math.round((spender.f.exp / spender.f.revenue) * 100)} of every 100 on expenses`, value: short(spender.f.exp) });
+    const buyer = [...withSales].sort((a, b) => Math.abs(ratio(b) - 1) - Math.abs(ratio(a) - 1))[0];
+    if (Math.abs(ratio(buyer) - 1) > 0.15) {
+      const heavy = buyer.f.cover != null && buyer.f.cover > OVERSTOCK_DAYS;
+      out.push({ icon: 'cart', tone: 'warn', text: `${buyer.name} bought ${ratio(buyer).toFixed(1)}× what it sold${heavy ? ` while holding ${Math.round(buyer.f.cover!)} days of stock` : ''}`, value: short(buyer.f.purch) });
+    }
+    const fell = withSales.filter((r) => r.f.growth != null && r.f.growth < 0).sort((a, b) => a.f.growth! - b.f.growth!)[0];
+    if (fell) out.push({ icon: 'down', tone: 'danger', text: `${fell.name} sales fell vs the previous ${periodLabel.toLowerCase().replace('last ', '')}`, value: signed(fell.f.growth) });
+  } else {
+    const so = top((r) => r.f.outCount);
+    if (so.f.outCount > 0) out.push({ icon: 'alert', tone: 'danger', text: `${so.name} had lines out of stock on ${so.f.outCount} of the last ${OUT_WINDOW} days`, value: '~' + short(so.f.lost) });
+    const hc = top((r) => r.f.cover ?? 0);
+    if (hc.f.cover != null && hc.f.cover > OVERSTOCK_DAYS) {
+      out.push({ icon: 'box', tone: 'warn', text: `${hc.name} holds ${Math.round(hc.f.cover)} days of stock`, value: short(hc.f.stockCost) });
+      if (so.f.outCount > 0 && so.id !== hc.id) out.push({ icon: 'swap', tone: 'good', text: `Move stock from ${hc.name} to ${so.name} before reordering`, value: '' });
+    }
+    const dd = top((r) => r.f.dead);
+    if (dd.f.dead > 0) out.push({ icon: 'clock', tone: 'warn', text: `${dd.name} has stock unsold for ${DEAD_AFTER}+ days`, value: short(dd.f.dead) });
+  }
+  return out;
+}
 
 export function BranchAnalysisScreen() {
   const { colors } = useTheme();
+  const ink = useIconInk();
   const { db, money } = useAppData();
-  const account = useAuthSafe()?.account;
   const owner = useOwnerOnly();
   const [lens, setLens] = useState<Lens>('finance');
-  const [period, setPeriod] = useState('month');
-  const [accountBusinesses, setAccountBusinesses] = useState<RemoteBusiness[]>([]);
-  const [remoteBooks, setRemoteBooks] = useState<Record<string, DB>>({});
-
-  useEffect(() => {
-    const refresh = account?.refresh;
-    if (!refresh) return;
-    void (async () => {
-      const token = await refreshSession(refresh);
-      if (!token.ok) return;
-      const result = await listBusinesses(token.value.access);
-      if (result.ok) setAccountBusinesses(result.value);
-    })();
-  }, [account?.refresh]);
-
-  useEffect(() => {
-    if (!account?.refresh || !accountBusinesses.length) return;
-    const currentId = db?.sync.businessId;
-    const otherBusinesses = filterVisibleBusinesses(accountBusinesses, currentId, db?.firm.id)
-      .filter((business) => business.id !== currentId && !remoteBooks[business.id]);
-    if (!otherBusinesses.length) return;
-    void (async () => {
-      const token = await refreshSession(account.refresh!);
-      if (!token.ok) return;
-      const loaded = await Promise.all(otherBusinesses.map(async (business) => {
-        const snapshot = await downloadSnapshot(token.value.access, business.id);
-        return snapshot.ok ? [business.id, snapshot.value.data] as const : null;
-      }));
-      setRemoteBooks((previous) => {
-        const next = { ...previous };
-        loaded.forEach((item) => { if (item) next[item[0]] = item[1]; });
-        return next;
-      });
-    })();
-  }, [account?.refresh, accountBusinesses, db?.sync.businessId, db?.firm.id, remoteBooks]);
+  const [range, setRange] = useState<DateRange>(last30);
+  const [metric, setMetric] = useState<MetricKey | null>(null);
+  const { others, books } = useAccountBooks(true);
 
   const d = useMemo(() => {
     if (!db) return null;
-    const R = finRange(period);
-    const branches = db.warehouses;
-
-    const rows = branches.map((w) => {
-      const sales = db.sales.filter((s) => s.status !== 'void' && s.warehouse === w.id && inRange(s.ts, R.from, R.to));
-      const revenue = sales.reduce((n, s) => n + s.total, 0);
-      const cogs = sales.reduce((n, s) => n + s.cogs, 0);
-      const due = sales.reduce((n, s) => n + Math.max(0, s.due), 0);
-      const units = sales.reduce((n, s) => n + s.lines.reduce((q, l) => q + l.qty, 0), 0);
-
-      let stockQty = 0;
-      let stockCost = 0;
-      let stockRetail = 0;
-      let lowLines = 0;
-      db.products.forEach((p) => {
-        const q = p.stock?.[w.id] || 0;
-        stockQty += q;
-        stockCost += q * p.cost;
-        stockRetail += q * p.price;
-        if (p.active && q <= p.reorder) lowLines += 1;
+    const R = range;
+    const withPrev = true;
+    const rows: Row[] = db.warehouses.map((w, i) => ({
+      id: w.id, name: w.name, color: branchColor(i, w.active === false), off: w.active === false, account: false,
+      f: figuresFor(db, (wh) => wh === w.id, R, withPrev),
+    }));
+    others.forEach((b, i) => {
+      const book = books[b.id];
+      if (!book) return;
+      rows.push({
+        id: b.id, name: b.name, color: branchColor(db.warehouses.length + i, b.active === false), off: b.active === false, account: true,
+        f: figuresFor(book, () => true, R, withPrev),
       });
-
-      const moves = db.movements.filter((m) => m.wh === w.id && inRange(m.ts, R.from, R.to));
-
-      return {
-        w,
-        revenue,
-        cogs,
-        gross: revenue - cogs,
-        margin: revenue ? ((revenue - cogs) / revenue) * 100 : 0,
-        due,
-        bills: sales.length,
-        avg: sales.length ? revenue / sales.length : 0,
-        units,
-        stockQty,
-        stockCost,
-        stockRetail,
-        lowLines,
-        movesIn: moves.filter((m) => m.qty > 0).reduce((n, m) => n + m.qty, 0),
-        movesOut: moves.filter((m) => m.qty < 0).reduce((n, m) => n - m.qty, 0),
-      };
     });
-
-    const localBusinessId = db.sync.businessId;
-    const remoteRows = filterVisibleBusinesses(accountBusinesses, localBusinessId, db.firm.id)
-      .filter((business) => business.id !== localBusinessId)
-      .map((business) => remoteBooks[business.id] ? businessMetrics(remoteBooks[business.id], business, R) : null)
-      .filter((row): row is NonNullable<typeof row> => !!row);
-    const allRows = [...rows, ...remoteRows];
-    const sum = (k: keyof typeof allRows[number]) => allRows.reduce((n, r) => n + (Number(r[k]) || 0), 0);
-    return {
-      R,
-      rows: allRows,
-      total: {
-        revenue: sum('revenue'), cogs: sum('cogs'), gross: sum('gross'), due: sum('due'),
-        bills: sum('bills'), units: sum('units'),
-        stockQty: sum('stockQty'), stockCost: sum('stockCost'), stockRetail: sum('stockRetail'),
-        lowLines: sum('lowLines'), movesIn: sum('movesIn'), movesOut: sum('movesOut'),
-      },
+    const live = rows.filter((r) => !r.off);
+    const sum = (k: MetricKey) => rows.reduce((n, r) => n + (Number(r.f[k]) || 0), 0);
+    const t = {
+      revenue: sum('revenue'), cogs: sum('cogs'), exp: sum('exp'), purch: sum('purch'), net: sum('net'),
+      stockCost: sum('stockCost'), lost: sum('lost'), dead: sum('dead'), low: sum('low'),
+      openStock: sum('openStock'), closeStock: sum('closeStock'),
     };
-  }, [db, period, accountBusinesses, remoteBooks]);
+    const cogs30 = live.reduce((n, r) => n + (r.f.cover ? r.f.stockCost / r.f.cover : 0), 0);
+    const total: Partial<Record<MetricKey, number | null>> = {
+      ...t,
+      kept: t.revenue ? (t.net / t.revenue) * 100 : 0,
+      growth: null,
+      cover: cogs30 ? t.stockCost / cogs30 : null,
+      outCount: Math.max(0, ...live.map((r) => r.f.outCount)),
+    };
+    return { R, rows, live, total, pending: others.length - Object.keys(books).length };
+  }, [db, range, others, books]);
 
   if (!db) return null;
   if (!owner) return <Denied />;
   if (!d) return null;
 
-  const compareValue = (r: typeof d.rows[number]) => lens === 'stock' ? r.stockCost : lens === 'trade' ? r.bills : r.revenue;
-  const best = [...d.rows].sort((a, b) => compareValue(b) - compareValue(a))[0];
+  const metrics = METRICS[lens];
+  const active = metrics.find((m) => m.k === metric)?.k ?? metrics[0].k;
+  const insights = insightsFor(lens, d.live, d.R.label);
+  const toneColor = { good: [colors.goodSoft, colors.good], warn: [colors.warnSoft, colors.warn], danger: [colors.dangerSoft, colors.danger] } as const;
 
-  /** The figures shown per branch, by lens. */
-  const lines = (r: typeof d.rows[number]): Array<{ l: string; v: string; tone?: string; bold?: boolean }> => {
-    if (lens === 'stock') {
-      return [
-        { l: 'Units on hand', v: String(Math.round(r.stockQty)) },
-        { l: 'At cost', v: money(r.stockCost) },
-        { l: 'At retail', v: money(r.stockRetail) },
-        { l: 'Potential margin', v: money(r.stockRetail - r.stockCost), tone: colors.good },
-        { l: 'Lines running low', v: String(r.lowLines), tone: r.lowLines ? colors.warn : undefined, bold: true },
-      ];
+  const hero = lens === 'finance'
+    ? {
+      label: 'Net profit, all branches · ' + d.R.label,
+      value: money(d.total.net ?? 0),
+      stats: [
+        { l: 'Sales', v: short(d.total.revenue ?? 0), c: colors.ink },
+        { l: 'Expenses', v: short(d.total.exp ?? 0), c: colors.warn },
+        { l: 'Purchases', v: short(d.total.purch ?? 0), c: colors.ink },
+      ],
     }
-    if (lens === 'trade') {
-      return [
-        { l: 'Bills raised', v: String(r.bills) },
-        { l: 'Units sold', v: String(Math.round(r.units)) },
-        { l: 'Average sale', v: money(r.avg) },
-        { l: 'Stock in', v: String(Math.round(r.movesIn)), tone: colors.good },
-        { l: 'Stock out', v: String(Math.round(r.movesOut)), tone: colors.danger, bold: true },
-      ];
-    }
-    return [
-      { l: 'Revenue', v: money(r.revenue), tone: colors.good },
-      { l: 'Cost of sales', v: money(r.cogs), tone: colors.danger },
-      { l: 'Gross profit', v: money(r.gross), bold: true },
-      { l: 'Margin', v: Math.round(r.margin) + '%' },
-      { l: 'Left unpaid', v: money(r.due), tone: r.due ? colors.danger : undefined },
-    ];
-  };
+    : {
+      label: 'Closing stock at cost, all branches · ' + d.R.label,
+      value: money(d.total.closeStock ?? 0),
+      stats: [
+        { l: 'Opening stock', v: short(d.total.openStock ?? 0), c: colors.ink },
+        { l: 'Days of stock', v: d.total.cover == null ? '—' : String(Math.round(d.total.cover)), c: colors.ink },
+        { l: 'Unsold 60+ d', v: short(d.total.dead ?? 0), c: colors.warn },
+      ],
+    };
 
-  const headline = (r: typeof d.rows[number]) =>
-    lens === 'stock' ? money(r.stockCost) : lens === 'trade' ? String(r.bills) : money(r.revenue);
-
-  const grandHeadline = lens === 'stock' ? money(d.total.stockCost)
-    : lens === 'trade' ? String(d.total.bills) : money(d.total.revenue);
-
-  const shareOf = (r: typeof d.rows[number]) => {
-    const base = lens === 'stock' ? d.total.stockCost : lens === 'trade' ? d.total.bills : d.total.revenue;
-    const mine = lens === 'stock' ? r.stockCost : lens === 'trade' ? r.bills : r.revenue;
-    return base ? (mine / base) * 100 : 0;
-  };
+  const withSales = d.live.filter((r) => r.f.revenue > 0);
+  const ratio = (r: Row) => (r.f.cogs ? r.f.purch / r.f.cogs : 1);
+  const maxCover = Math.max(1, ...d.live.map((r) => r.f.cover ?? 0));
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <TopTabs
         value={lens}
-        onChange={setLens}
-        options={[
-          { v: 'finance', l: 'Finance', i: 'coins' },
-          { v: 'stock', l: 'Stock', i: 'box' },
-          { v: 'trade', l: 'Transactions', i: 'receipt' },
-        ]}
+        onChange={(v) => { setLens(v); setMetric(null); }}
+        options={[{ v: 'finance', l: 'Finance', i: 'coins' }, { v: 'stock', l: 'Stock', i: 'box' }]}
       />
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
-        <FilterChips value={period} onChange={setPeriod} options={FIN_PERIODS.map(([v, l]) => ({ v, l }))} />
+        <View style={{ marginBottom: 12 }}>
+          <DateRangeButton value={range} onChange={setRange} />
+        </View>
 
-        <View style={{ height: 16 }} />
-        {accountBusinesses.length > 1 ? (
-          <InfoBanner
-            tone="accent"
-            icon="cloud"
-            text={(accountBusinesses.length - 1) + ' other account branch' + (accountBusinesses.length - 1 === 1 ? '' : 'es') + ' are included when saved snapshots finish loading.'}
-          />
-        ) : null}
-        {accountBusinesses.length > 1 ? <View style={{ height: 12 }} /> : null}
         <Panel>
-          <View style={{ alignItems: 'center', gap: 4 }}>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-              {lens === 'stock' ? 'Stock at cost, all branches'
-                : lens === 'trade' ? 'Bills raised, all branches'
-                  : 'Revenue, all branches · ' + d.R.label}
-            </Text>
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 32, letterSpacing: -0.8, color: colors.ink }}>
-              {grandHeadline}
-            </Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
-              across {d.rows.length} business{d.rows.length === 1 ? '' : 'es'}
-            </Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{hero.label}</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, letterSpacing: -0.8, color: colors.ink, marginTop: 4 }}>{hero.value}</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderColor: colors.line }}>
+            {hero.stats.map((s) => (
+              <View key={s.l} style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{s.l}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: s.c, marginTop: 2 }}>{s.v}</Text>
+              </View>
+            ))}
           </View>
+          {d.pending > 0 ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
+              <Icon name="cloud" size={14} color={ink} />
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Loading {d.pending} more</Text>
+            </View>
+          ) : null}
         </Panel>
 
-        <View style={{ height: 16 }} />
-        <StatGrid
-          items={lens === 'stock'
-            ? [
-              { icon: 'box', label: 'Units held', value: String(Math.round(d.total.stockQty)), tone: 'accent' },
-              { icon: 'coins', label: 'At retail', value: money(d.total.stockRetail), tone: 'good' },
-              { icon: 'chart', label: 'Potential margin', value: money(d.total.stockRetail - d.total.stockCost), tone: 'good' },
-              { icon: 'alert', label: 'Lines low', value: String(d.total.lowLines), tone: d.total.lowLines ? 'warn' : 'good' },
-            ]
-            : lens === 'trade'
-              ? [
-                { icon: 'receipt', label: 'Sales', value: String(d.total.bills), tone: 'accent' },
-                { icon: 'cart', label: 'Units sold', value: String(Math.round(d.total.units)), tone: 'good' },
-                { icon: 'down', label: 'Stock in', value: String(Math.round(d.total.movesIn)), tone: 'good' },
-                { icon: 'up', label: 'Stock out', value: String(Math.round(d.total.movesOut)), tone: 'danger' },
-              ]
-              : [
-                { icon: 'coins', label: 'Revenue', value: money(d.total.revenue), tone: 'good' },
-                { icon: 'money', label: 'Cost of sales', value: money(d.total.cogs), tone: 'danger' },
-                { icon: 'chart', label: 'Gross profit', value: money(d.total.gross), tone: 'good' },
-                { icon: 'alert', label: 'Left unpaid', value: money(d.total.due), tone: d.total.due ? 'danger' : 'good' },
-              ]}
-        />
-
-        <View style={{ height: 20 }} />
-        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>share of total · ranked</Text>}>
-          Branch comparison
-        </SectionLabel>
-
-        {d.rows.map((r) => {
-          const share = shareOf(r);
-          const top = best && r.w.id === best.w.id && r.revenue > 0;
-          const accountBranch = accountBusinesses.some((business) => business.id === r.w.id);
-          return (
-            <Panel key={r.w.id} style={{ marginBottom: 12, opacity: r.w.active === false ? 0.6 : 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{
-                  width: 44, height: 44, borderRadius: 14,
-                  backgroundColor: top ? colors.goodSoft : colors.accentSoft,
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Icon name="home" size={20} color={top ? colors.good : colors.accent} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{r.w.name}</Text>
-                    {accountBranch ? <Badge label="Account branch" tone="accent" /> : null}
-                    {r.w.active === false ? <Badge label="Disabled" tone="neutral" /> : null}
+        {insights.length ? (
+          <>
+            <Caps>What stands out</Caps>
+            <Panel flush>
+              {insights.map((x, i) => (
+                <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: i === insights.length - 1 ? 0 : 1, borderColor: colors.line }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: toneColor[x.tone][0], alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name={x.icon} size={18} color={ink} />
                   </View>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                    {Math.round(share)}% of the total
-                  </Text>
+                  <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, lineHeight: 19, color: colors.ink }}>{x.text}</Text>
+                  {x.value ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: toneColor[x.tone][1] }}>{x.value}</Text> : null}
                 </View>
-                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>{headline(r)}</Text>
-              </View>
-
-              <View style={{ marginTop: 13, marginBottom: 13 }}>
-                <ProgressBar pct={share} tone={top ? colors.good : colors.accent} />
-              </View>
-
-              {lines(r).map((x, i, arr) => (
-                <DetailRow key={x.l} label={x.l} value={x.v} tone={x.tone} bold={x.bold} last={i === arr.length - 1} />
               ))}
             </Panel>
-          );
-        })}
-
-        {/* the grand total, as its own emphasised card */}
-        <Panel style={{ borderWidth: 1.5, borderColor: colors.accent }}>
-          <SectionLabel>All branches</SectionLabel>
-          {lens === 'finance' ? (
-            <>
-              <DetailRow label="Revenue" value={money(d.total.revenue)} tone={colors.good} />
-              <DetailRow label="Cost of sales" value={money(d.total.cogs)} tone={colors.danger} />
-              <DetailRow label="Gross profit" value={money(d.total.gross)} bold />
-              <DetailRow
-                label="Margin"
-                value={(d.total.revenue ? Math.round((d.total.gross / d.total.revenue) * 100) : 0) + '%'}
-              />
-              <DetailRow label="Left unpaid" value={money(d.total.due)} tone={d.total.due ? colors.danger : colors.good} last />
-            </>
-          ) : lens === 'stock' ? (
-            <>
-              <DetailRow label="Units on hand" value={String(Math.round(d.total.stockQty))} />
-              <DetailRow label="At cost" value={money(d.total.stockCost)} />
-              <DetailRow label="At retail" value={money(d.total.stockRetail)} />
-              <DetailRow label="Potential margin" value={money(d.total.stockRetail - d.total.stockCost)} bold tone={colors.good} />
-              <DetailRow label="Lines running low" value={String(d.total.lowLines)} tone={d.total.lowLines ? colors.warn : undefined} last />
-            </>
-          ) : (
-            <>
-              <DetailRow label="Sales raised" value={String(d.total.bills)} />
-              <DetailRow label="Units sold" value={String(Math.round(d.total.units))} />
-              <DetailRow label="Stock in" value={String(Math.round(d.total.movesIn))} tone={colors.good} />
-              <DetailRow label="Stock out" value={String(Math.round(d.total.movesOut))} tone={colors.danger} bold last />
-            </>
-          )}
-        </Panel>
-
-        {d.rows.length > 1 && best && best.revenue > 0 ? (
-          <View style={{ marginTop: 14 }}>
-            <InfoBanner
-              tone="neutral"
-              icon="bulb"
-              text={best.w.name + ' took ' + Math.round(shareOf(best)) + '% of revenue this period. Before reading that as performance, check whether the businesses carry comparable stock and opening hours.'}
-            />
-          </View>
+          </>
         ) : null}
+
+        {lens === 'finance' && withSales.length ? (
+          <>
+            <Caps>Of every 100 sold</Caps>
+            <Panel style={{ paddingTop: 12, paddingBottom: 4 }}>
+              <View style={{ flexDirection: 'row', gap: 14, paddingBottom: 10, borderBottomWidth: 1, borderColor: colors.line }}>
+                {[['Cost of goods', '#C9CFD8'], ['Expenses', '#E9A55A'], ['Kept', colors.good]].map(([l, c]) => (
+                  <View key={l} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Dot color={c} />
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.ink }}>{l}</Text>
+                  </View>
+                ))}
+              </View>
+              {[...withSales].sort((a, b) => b.f.kept - a.f.kept).map((r, i, arr) => {
+                const cg = Math.round((r.f.cogs / r.f.revenue) * 100);
+                const ex = Math.round((r.f.exp / r.f.revenue) * 100);
+                const kept = Math.max(0, 100 - cg - ex);
+                return (
+                  <View key={r.id} style={{ paddingVertical: 12, gap: 8, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderColor: colors.line }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Dot color={r.color} />
+                      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{r.name}</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: r.f.kept >= 15 ? colors.good : r.f.kept >= 8 ? colors.ink : colors.danger }}>{Math.round(r.f.kept)} kept</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', height: 14, borderRadius: 4, overflow: 'hidden', gap: 2 }}>
+                      <View style={{ flex: cg, backgroundColor: '#C9CFD8', justifyContent: 'center', paddingLeft: 6 }}>
+                        <Text style={{ fontFamily: fonts.uiBold, fontSize: 10.5, color: '#27313C' }}>{cg}</Text>
+                      </View>
+                      <View style={{ flex: ex, backgroundColor: '#E9A55A', alignItems: 'center', justifyContent: 'center' }}>
+                        {ex >= 6 ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 10.5, color: '#27313C' }}>{ex}</Text> : null}
+                      </View>
+                      <View style={{ flex: kept, backgroundColor: colors.good }} />
+                    </View>
+                  </View>
+                );
+              })}
+            </Panel>
+
+            <Caps>Buying vs selling</Caps>
+            <Panel style={{ paddingVertical: 4 }}>
+              {[...withSales].sort((a, b) => ratio(b) - ratio(a)).map((r, i, arr) => {
+                const q = ratio(r);
+                const dlt = Math.max(-1, Math.min(1, (q - 1) / 0.8)) * 50;
+                const [bg, fg, tag] = q > 1.15 ? [colors.warnSoft, colors.warn, 'Stocking up'] : q < 0.9 ? [colors.accentSoft, colors.accent, 'Running down'] : [colors.goodSoft, colors.good, 'Balanced'];
+                return (
+                  <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderColor: colors.line }}>
+                    <Dot color={r.color} />
+                    <View style={{ flex: 1, minWidth: 0, gap: 7 }}>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{r.name}</Text>
+                      <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.sunk }}>
+                        <View style={{ position: 'absolute', left: '50%', top: -3, bottom: -3, width: 2, backgroundColor: colors.lineHard }} />
+                        <View style={{ position: 'absolute', top: 0, bottom: 0, left: `${dlt >= 0 ? 50 : 50 + dlt}%`, width: `${Math.max(2, Math.abs(dlt))}%`, borderRadius: 3, backgroundColor: fg }} />
+                      </View>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', gap: 4, minWidth: 86 }}>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{q.toFixed(1)}×</Text>
+                      <View style={{ backgroundColor: bg, borderRadius: 999, paddingVertical: 2, paddingHorizontal: 8 }}>
+                        <Text style={{ fontFamily: fonts.uiBold, fontSize: 11.5, color: fg }}>{tag}</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </Panel>
+          </>
+        ) : null}
+
+        {lens === 'stock' && d.live.length ? (
+          <>
+            <Caps>Out of stock · last {OUT_WINDOW} days</Caps>
+            <Panel style={{ paddingVertical: 4 }}>
+              {[...d.live].sort((a, b) => b.f.outCount - a.f.outCount).map((r, i, arr) => (
+                <View key={r.id} style={{ paddingVertical: 12, gap: 8, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderColor: colors.line }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Dot color={r.color} />
+                    <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{r.name}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: r.f.outCount >= 5 ? colors.danger : colors.ink }}>
+                      {r.f.outCount} {r.f.outCount === 1 ? 'day' : 'days'}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 2 }}>
+                    {r.f.outDays.map((out, k) => (
+                      <View key={k} style={{ flex: 1, height: 14, borderRadius: 2, backgroundColor: out ? colors.danger : colors.line }} />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </Panel>
+
+            <Caps>Days of stock</Caps>
+            <Panel style={{ paddingVertical: 4 }}>
+              {[...d.live].sort((a, b) => (b.f.cover ?? 0) - (a.f.cover ?? 0)).map((r, i, arr) => {
+                const c = r.f.cover;
+                const fg = c == null ? colors.faint : c > OVERSTOCK_DAYS ? colors.warn : c < UNDERSTOCK_DAYS ? colors.danger : colors.good;
+                return (
+                  <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderColor: colors.line }}>
+                    <Dot color={r.color} />
+                    <Text style={{ width: 112, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{r.name}</Text>
+                    <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.sunk, overflow: 'hidden' }}>
+                      <View style={{ height: '100%', width: `${((c ?? 0) / maxCover) * 100}%`, borderRadius: 3, backgroundColor: fg }} />
+                    </View>
+                    <Text style={{ width: 46, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 14, color: fg }}>{c == null ? '—' : Math.round(c) + 'd'}</Text>
+                  </View>
+                );
+              })}
+            </Panel>
+          </>
+        ) : null}
+
+        <Caps>Side by side</Caps>
+        <Panel flush>
+          <View style={{ flexDirection: 'row' }}>
+            {/* fixed label column */}
+            <View style={{ width: 118, borderRightWidth: 1, borderColor: colors.line }}>
+              <View style={{ height: 52, borderBottomWidth: 1, borderColor: colors.line }} />
+              {metrics.map((m, i) => {
+                const on = m.k === active;
+                return (
+                  <Pressable key={m.k} onPress={() => setMetric(m.k)} style={{ height: 40, justifyContent: 'center', paddingLeft: 14, backgroundColor: on ? colors.accentSoft : 'transparent', borderBottomWidth: i === metrics.length - 1 ? 0 : 1, borderColor: colors.line }}>
+                    <Text style={{ fontFamily: on ? fonts.uiBold : fonts.ui, fontSize: 12.5, color: on ? colors.accent : colors.faint }}>{m.l}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {[...d.rows, null].map((r) => (
+                <View key={r ? r.id : 'total'} style={{ width: 96, backgroundColor: r ? 'transparent' : colors.sunk }}>
+                  <View style={{ height: 52, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 5, paddingTop: 10, paddingRight: 10, borderBottomWidth: 1, borderColor: colors.line }}>
+                    <View style={{ marginTop: 4 }}><Dot color={r ? r.color : colors.ink} size={7} /></View>
+                    <Text numberOfLines={2} style={{ flexShrink: 1, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 11.5, lineHeight: 15, color: colors.ink }}>{r ? r.name : 'Total'}</Text>
+                  </View>
+                  {metrics.map((m, i) => {
+                    const on = m.k === active;
+                    const vals = d.live.map((x) => Number(x.f[m.k] ?? 0));
+                    const best = Math.max(...vals);
+                    const v = r ? (r.f[m.k] as number | null) : (d.total[m.k] ?? null);
+                    const top = !!r && !r.off && v === best && v !== 0;
+                    return (
+                      <Pressable key={m.k} onPress={() => setMetric(m.k)} style={{ height: 40, justifyContent: 'center', paddingRight: 10, backgroundColor: on ? colors.accentSoft : 'transparent', borderBottomWidth: i === metrics.length - 1 ? 0 : 1, borderColor: colors.line }}>
+                        <Text style={{ textAlign: 'right', fontFamily: top || !r ? fonts.uiBold : fonts.ui, fontSize: 12.5, color: top ? (m.lowerIsBetter ? colors.danger : colors.good) : colors.ink }}>
+                          {r && r.off ? '—' : show(v, m.t)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </Panel>
       </ScrollView>
     </View>
   );

@@ -30,7 +30,7 @@ import { downloadSnapshot } from '../data/syncClient';
 import { writeBackup } from '../data/deviceBackup';
 import { validateBackup } from '../data/storage';
 
-interface Device { id: string; name: string; kind: string; platform: string; created_at: string; last_seen: string }
+interface Device { id: string; name: string; kind: string; platform: string; created_at: string; last_seen: string; current?: boolean }
 interface CloudCopy { version: number; updatedAt: string; data: any }
 
 /** Failed runs since the last one that worked. */
@@ -166,7 +166,7 @@ export default function SyncScreen() {
   }
 
   function removeDevice(d: Device) {
-    Alert.alert('Remove ' + (d.name || 'this device') + '?', 'It is signed out of the account and frees a place on the licence.', [
+    Alert.alert('Remove ' + (d.name || 'this device') + '?', 'It is signed out straight away and has to sign in again to be used. This frees a place on your plan.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive',
@@ -243,6 +243,12 @@ export default function SyncScreen() {
                 ? plural(pending + deferred, 'change') + ' waiting — sent automatically when the phone is online.'
                 : 'Queue is healthy. No pending, deferred or failed items.'}
           </Text>
+          {/* every till that should see each other's sales must show the same ID here */}
+          <Text selectable style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 19, color: colors.faint, marginTop: 8 }}>
+            {s.businessId
+              ? 'Cloud business: ' + (db.firm?.name || 'this shop') + ' · ID ' + s.businessId.slice(0, 8).toUpperCase()
+              : 'Not connected to a cloud business yet.'}
+          </Text>
         </ToolCard>
       ) : null}
 
@@ -263,14 +269,14 @@ export default function SyncScreen() {
             Linked devices
           </SectionCap>
           {(devices || []).map((d) => {
-            const me = d.id === s.deviceId;
+            const me = d.current ?? d.id === s.deviceId;
             return (
               <View key={d.id} style={{
                 flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 18, marginBottom: 10,
                 backgroundColor: colors.surface, borderWidth: 1.2, borderColor: me ? colors.good : colors.line,
               }}>
-                <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon name="phone" size={20} color={colors.good} />
+                <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="phone" size={20} color={colors.ink} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

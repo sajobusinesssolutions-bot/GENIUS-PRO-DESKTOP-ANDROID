@@ -17,6 +17,7 @@
 import type { DB } from './types';
 import { Op, buildOp, OpKind, WIRE_SCHEMA } from './syncProtocol';
 import { SERVER_URL, serverConfigured, Result, authError, AuthError } from './authApi';
+import { APP_VERSION } from './appVersion';
 import { activeBranchId } from './branch';
 import * as Crypto from 'expo-crypto';
 
@@ -50,6 +51,8 @@ async function call<T>(path: string, access: string, body?: unknown, method = 'P
       headers: {
         'content-type': 'application/json',
         authorization: 'Bearer ' + access,
+        // the server refuses books opened by a newer version than this
+        'x-app-version': APP_VERSION,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
@@ -97,11 +100,10 @@ export interface Wiring {
  * Idempotent from the caller's side: the ids are kept on the book once found,
  * so this is a no-op on every run after the first.
  */
-export async function ensureWiring(d: DB, access: string): Promise<Result<Wiring>> {
-  const existing = d.sync?.businessId && d.sync?.deviceId
-    ? { businessId: d.sync.businessId, deviceId: d.sync.deviceId }
-    : null;
-  if (existing) return { ok: true, value: existing };
+export async function ensureWiring(d: DB, access: string, linkedDeviceId?: string): Promise<Result<Wiring>> {
+  // the device signing in linked (DeviceGate) is the one this phone syncs as
+  const deviceId = linkedDeviceId || d.sync?.deviceId;
+  if (d.sync?.businessId && deviceId) return { ok: true, value: { businessId: d.sync.businessId, deviceId } };
 
   const biz = await call<{ businesses: Array<{ id: string; local_id: string }> }>(
     '/v1/businesses', access, undefined, 'GET',
@@ -123,6 +125,9 @@ export async function ensureWiring(d: DB, access: string): Promise<Result<Wiring
     businessId = made.value.id;
   }
 
+  if (deviceId) return { ok: true, value: { businessId, deviceId } };
+  // No linked device yet: claim the one tied to this sign-in. The server
+  // returns the same device to the same session, so this never takes a second seat.
   const dev = await call<{ deviceId: string }>('/v1/devices', access, {
     name: d.session.till || 'This phone',
     kind: 'phone',
@@ -223,11 +228,16 @@ const KIND_OF: Record<string, OpKind> = {
   estimate: 'record.upsert',
   ledger: 'record.upsert',
   firm: 'record.upsert',
+  challan: 'record.upsert',
+  purchaseOrder: 'record.upsert',
+  recurring: 'record.upsert',
+  plan: 'record.upsert',
 };
 
 /** Which collection a record.upsert lands in, by queue kind. */
 const COLL_OF: Record<string, string> = {
   product: 'products', party: 'parties', estimate: 'estimates', ledger: 'coa', firm: 'firm',
+  challan: 'challans', purchaseOrder: 'purchaseOrders', recurring: 'recurringInvoices', plan: 'instalmentPlans',
 };
 
 /** Finds the record a queue entry points at. */
@@ -246,6 +256,10 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
     case 'party': return d.parties.find((x) => x.id === ref);
     case 'estimate': return (d.estimates || []).find((x) => x.id === ref);
     case 'ledger': return (d.coa || []).find((x) => x.id === ref);
+    case 'challan': return (d.challans || []).find((x) => x.id === ref);
+    case 'purchaseOrder': return (d.purchaseOrders || []).find((x) => x.id === ref);
+    case 'recurring': return (d.recurringInvoices || []).find((x) => x.id === ref);
+    case 'plan': return (d.instalmentPlans || []).find((x) => x.id === ref);
     // the business's own details: name, phones, address, logo, signature…
     case 'firm': return d.firm?.id === ref ? d.firm : undefined;
     default: return undefined;

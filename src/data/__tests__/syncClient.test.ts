@@ -136,6 +136,24 @@ describe('opsFrom', () => {
     expect((ops[0].payload as any).doc).toMatchObject({ name: 'SALJOE TECH', logo: 'data:image/png;base64,AA' });
   });
 
+  it('sends delivery notes, purchase orders, recurring sales and instalment plans too', () => {
+    const d = book({
+      challans: [{ id: 'c1', no: 'DC-1' }],
+      purchaseOrders: [{ id: 'po1', no: 'PO-1' }],
+      recurringInvoices: [{ id: 'r1' }],
+      instalmentPlans: [{ id: 'pl1', no: 'PLN-1' }],
+      queue: [
+        { id: 'q1', ts: '', kind: 'challan', ref: 'c1' },
+        { id: 'q2', ts: '', kind: 'purchaseOrder', ref: 'po1' },
+        { id: 'q3', ts: '', kind: 'recurring', ref: 'r1' },
+        { id: 'q4', ts: '', kind: 'plan', ref: 'pl1' },
+      ],
+    });
+    const { ops, skipped } = opsFrom(d, wiring);
+    expect(skipped).toEqual([]);
+    expect(ops.map((o) => (o.payload as any).coll)).toEqual(['challans', 'purchaseOrders', 'recurringInvoices', 'instalmentPlans']);
+  });
+
   it('finds a sale by its id and sends the whole record', () => {
     const d = book({ queue: [{ id: 'q1', ts: '', kind: 'sale', ref: 's1' }] });
     const { ops, skipped } = opsFrom(d, wiring);

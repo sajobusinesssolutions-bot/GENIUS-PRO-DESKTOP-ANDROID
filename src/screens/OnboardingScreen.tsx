@@ -46,7 +46,7 @@ export default function OnboardingScreen({ navigation }: Props) {
   const [businessType, setBusinessType] = useState('retail');
   const [name, setName] = useState(db?.firm.name || '');
   const [phone, setPhone] = useState(db?.firm.phone || '');
-  const [branchName, setBranchName] = useState(db?.warehouses[0]?.name || 'Main shop');
+  const [branchName, setBranchName] = useState(db?.warehouses[0]?.name && db.warehouses[0].name !== 'Main shop' ? db.warehouses[0].name : '');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   // off unless the owner turns them on: most small shops are not VAT-registered
@@ -54,14 +54,14 @@ export default function OnboardingScreen({ navigation }: Props) {
   const [efrisOn, setEfrisOn] = useState(false);
 
   const canNext = step === 1 ? name.trim().length > 0
-    : step === 2 ? branchName.trim().length > 0
+    : step === 2 ? (branchName.trim() || name.trim()).length > 0
       : step === 4 ? pin.length === 4 && pin === pinConfirm : true;
   const head = STEP_HEAD[step];
 
   function next() {
     if (step === 1) updateFirm({ name, phone, businessType });
-    if (step === 2 && db?.warehouses[0] && branchName.trim()) {
-      updateWarehouse(db.warehouses[0].id, { name: branchName.trim() });
+    if (step === 2 && db?.warehouses[0] && (branchName.trim() || name.trim())) {
+      updateWarehouse(db.warehouses[0].id, { name: branchName.trim() || name.trim() });
     }
     if (step === 3) setSetting({ taxEnabled: taxOn, efris: taxOn && efrisOn });
     if (step === 4 && pin.length === 4 && me()) updateUser(me()!.id, { pin });
@@ -137,7 +137,7 @@ export default function OnboardingScreen({ navigation }: Props) {
         {step === 2 && (
           <>
             <SectionLabel>First branch</SectionLabel>
-            <Field icon="home" label="Branch name" value={branchName} onChangeText={setBranchName} placeholder="What the branch is called" />
+            <Field icon="home" label="Branch name" value={branchName} onChangeText={setBranchName} placeholder={name.trim() || 'What the branch is called'} />
             <InfoBanner
               tone="accent"
               text="Name your first branch or till location. You can add more later under Business & Branches."

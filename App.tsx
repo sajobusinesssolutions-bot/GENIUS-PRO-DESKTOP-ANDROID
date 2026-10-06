@@ -1,12 +1,13 @@
 import 'react-native-gesture-handler';
 import React from 'react';
-import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
+import { useFonts } from 'expo-font';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppDataProvider } from './src/data/AppDataContext';
 import { AuthProvider } from './src/data/AuthContext';
 import LicenceKeeper from './src/data/LicenceKeeper';
 import SyncKeeper from './src/data/SyncKeeper';
+import DeviceGate from './src/components/DeviceGate';
 import StorageKeeper from './src/data/StorageKeeper';
 import BackupKeeper from './src/data/BackupKeeper';
 import { installRefusalHandler } from './src/data/refusal';
@@ -25,7 +26,12 @@ import VersionGate from './src/components/VersionGate';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
-    Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold,
+    // Google Sans with its extreme glyph heights trimmed (scripts/trim-font-metrics.js),
+    // so Android does not pad every line to 2.25 em
+    Sans_400: require('./assets/fonts/GoogleSans_400Regular.ttf'),
+    Sans_500: require('./assets/fonts/GoogleSans_500Medium.ttf'),
+    Sans_600: require('./assets/fonts/GoogleSans_600SemiBold.ttf'),
+    Sans_700: require('./assets/fonts/GoogleSans_700Bold.ttf'),
   });
 
   if (!fontsLoaded) {
@@ -43,6 +49,7 @@ export default function App() {
           <ToastProvider>
             <LicenceKeeper />
             <SyncKeeper />
+            <DeviceGate />
             <StorageKeeper />
             <BackupKeeper />
             <CrashContext />

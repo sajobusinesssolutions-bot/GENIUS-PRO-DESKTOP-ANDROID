@@ -31,8 +31,13 @@ async function signingKey() {
 
 /* ---------------------------------------------------------------- access */
 
-export async function issueAccess(account) {
-  return new SignJWT({ email: account.email })
+/**
+ * `sid` names the session the token came from. Every device is tied to one
+ * session, so a removed device's calls are refused at once, not only when its
+ * fifteen minutes run out.
+ */
+export async function issueAccess(account, sid) {
+  return new SignJWT(sid ? { email: account.email, sid } : { email: account.email })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(account.id)
     .setIssuedAt()
