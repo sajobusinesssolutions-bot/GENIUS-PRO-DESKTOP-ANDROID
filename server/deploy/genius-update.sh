@@ -66,9 +66,12 @@ migrate() {
     done_already=$(sudo -u postgres psql -d genius -tAc "select 1 from schema_files where name = '$name'")
     if [ "$done_already" != "1" ]; then
       log "applying $name"
+      # The file goes in on stdin. The postgres user cannot read
+      # /opt/genius/api (it belongs to genius, mode 750), so `-f "$f"` failed
+      # with "Permission denied" and no migration ever ran.
       sudo -u postgres psql -d genius -v ON_ERROR_STOP=1 -q \
-        -c "set role genius" -f "$f" \
-        -c "insert into schema_files (name) values ('$name')"
+        -c "set role genius" -f - \
+        -c "insert into schema_files (name) values ('$name')" < "$f" || return 1
     fi
   done
 }
