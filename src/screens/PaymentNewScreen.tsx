@@ -10,6 +10,9 @@ import {
 import { Icon, IconName } from '../components/icons';
 import { useWho } from '../components/WhoSheet';
 import PaymentAllocationSheet from '../components/PaymentAllocationSheet';
+import { Pressable } from '../components/Press';
+import { AmountCard, RowGroup, PickRow, NoteBox, AccountTiles, SumCard } from '../components/MoneyForm';
+import { CustomerPickerSheet, CustomerFormSheet } from '../components/CustomerSheets';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
@@ -23,7 +26,7 @@ function accIcon(type: string): IconName {
 
 export default function PaymentNewScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, recordPayment, partyBalance } = useAppData();
+  const { db, money, recordPayment, partyBalance, addParty } = useAppData();
   const { success } = useToast();
   const who = useWho('Who took this payment?');
 
@@ -33,6 +36,8 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [showAllocation, setShowAllocation] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const parties = useMemo(
     () => (db?.parties || []).filter((p) => (direction === 'in' ? p.type === 'customer' : p.type === 'supplier')),
@@ -76,114 +81,105 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
 
   if (!db) return null;
 
+  const inbound = direction === 'in';
+  const tone = inbound ? colors.good : colors.danger;
+  const chosen = partyId ? (db.parties || []).find((p) => p.id === partyId) : undefined;
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 150 }} keyboardShouldPersistTaps="handled">
-        <SegPill
-          value={direction}
-          tone={direction === 'in' ? 'good' : 'danger'}
-          onChange={(v) => { setDirection(v); setPartyId(null); }}
-          options={[
-            { v: 'in' as const, l: 'Money in', i: 'down' },
-            { v: 'out' as const, l: 'Money out', i: 'up' },
-          ]}
-        />
-
-        <View style={{ height: 20 }} />
-        <SectionLabel>{direction === 'in' ? 'From which customer' : 'To which supplier'}</SectionLabel>
-        <SelectField
-          icon={direction === 'in' ? 'user' : 'factory'}
-          label={direction === 'in' ? 'Customer' : 'Supplier'}
-          value={partyId || ''}
-          options={parties.map((p) => {
-            const due = pendingOf(p.id);
-            return { v: p.id, l: p.name + (due > 0.01 ? ' · ' + money(due) + (direction === 'in' ? ' owed' : ' pending') : '') };
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 170, gap: 12 }} keyboardShouldPersistTaps="handled">
+        {/* money in or money out */}
+        <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 12, padding: 3 }}>
+          {([['in', 'Money in', 'down', colors.good], ['out', 'Money out', 'up', colors.danger]] as const).map(([v, l, i, t]) => {
+            const on = direction === v;
+            return (
+              <Pressable
+                key={v}
+                onPress={() => { setDirection(v); setPartyId(null); }}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: on ? colors.surface : 'transparent' }}
+              >
+                <Icon name={i} size={14} color={on ? t : colors.soft} />
+                <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 14, color: on ? t : colors.soft }}>{l}</Text>
+              </Pressable>
+            );
           })}
-          onChange={setPartyId}
-          placeholder={'Choose a ' + (direction === 'in' ? 'customer' : 'supplier')}
-        />
+        </View>
 
-        {partyId ? (
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', marginTop: -4, marginBottom: 16, padding: 12, borderRadius: 14,
-            backgroundColor: pending > 0.01 ? colors.dangerSoft : colors.goodSoft,
-          }}>
-            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.soft }}>
-              {pending > 0.01 ? (direction === 'in' ? 'They owe you' : 'Pending to pay them') : pending < -0.01 ? (direction === 'in' ? 'They are in credit' : 'You have paid ahead') : 'Nothing pending'}
-            </Text>
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 17, color: pending > 0.01 ? colors.danger : colors.good }}>{money(Math.abs(pending))}</Text>
-          </View>
-        ) : null}
-
-        <SectionLabel>{direction === 'in' ? 'Paid into' : 'Paid from'}</SectionLabel>
-        <OptionTiles
-          value={accountId}
-          onChange={setAccountId}
-          tone={direction === 'in' ? 'good' : 'danger'}
-          options={(db.accounts || []).map((a) => ({
-            v: a.id, l: a.name.split('—')[0].trim(), i: accIcon(a.type),
-          }))}
-        />
-
-        <View style={{ height: 20 }} />
-        <SectionLabel>How much</SectionLabel>
-        <Field icon="coins" label="Amount" value={amount} onChangeText={setAmount} numeric decimal placeholder="0" />
+        <AmountCard label={inbound ? 'Amount received' : 'Amount paid'} value={amount} onChange={setAmount} tone={tone} sign={inbound ? '+' : '−'} />
 
         {partyId && pending > 0.01 ? (
-          <View style={{ flexDirection: 'row', gap: 9, marginBottom: 14 }}>
-            {[
-              { l: 'Half', v: Math.round(pending / 2) },
-              { l: direction === 'in' ? 'All owed' : 'All pending', v: Math.round(pending) },
-            ].map((qk) => (
-              <View key={qk.l} style={{ flex: 1 }}>
-                <Button size="sm" label={qk.l + ' · ' + money(qk.v)} onPress={() => setAmount(String(qk.v))} />
-              </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: -4 }}>
+            {[{ l: 'Half', v: Math.round(pending / 2) }, { l: inbound ? 'All owed' : 'All pending', v: Math.round(pending) }].map((qk) => (
+              <Pressable key={qk.l} onPress={() => setAmount(String(qk.v))} style={{ flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center' }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{qk.l} · {money(qk.v)}</Text>
+              </Pressable>
             ))}
           </View>
         ) : null}
 
-        <Field icon="doc" label="Note" value={note} onChangeText={setNote} placeholder="What it was for" />
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft, marginBottom: -4, paddingHorizontal: 4 }}>{inbound ? 'From which customer' : 'To which supplier'}</Text>
+        <RowGroup>
+          <PickRow
+            icon={inbound ? 'user' : 'factory'}
+            value={chosen?.name}
+            placeholder={'Choose a ' + (inbound ? 'customer' : 'supplier')}
+            onPress={() => setPicking(true)}
+          />
+          {chosen ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, backgroundColor: pending > 0.01 ? colors.dangerSoft : colors.goodSoft }}>
+              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>
+                {pending > 0.01 ? (inbound ? 'They owe you' : 'You owe them') : pending < -0.01 ? (inbound ? 'They are in credit' : 'You have paid ahead') : 'Nothing pending'}
+              </Text>
+              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: pending > 0.01 ? colors.danger : colors.good }}>{money(Math.abs(pending))}</Text>
+            </View>
+          ) : null}
+        </RowGroup>
 
-        {partyId ? (
-          <Panel>
-            <DetailRow
-              label={direction === 'in' ? (pending >= 0 ? 'They owe now' : 'In credit now') : (pending >= 0 ? 'You owe them now' : 'Paid ahead now')}
-              value={money(Math.abs(pending))}
-              tone={pending > 0 ? colors.danger : colors.good}
-            />
-            <DetailRow label={direction === 'in' ? 'Receiving' : 'Paying'} value={money(amt)} tone={colors.accent} />
-            <DetailRow
-              label={left > 0.01 ? (direction === 'in' ? 'They will still owe' : 'You will still owe') : left < -0.01 ? (direction === 'in' ? 'They will be in credit' : 'You will have paid ahead') : 'Settled'}
-              value={money(Math.abs(left))}
-              bold
-              tone={left > 0.01 ? colors.danger : colors.good}
-              last
-            />
-          </Panel>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft, marginBottom: -4, paddingHorizontal: 4 }}>{inbound ? 'Paid into' : 'Paid from'}</Text>
+        <AccountTiles accounts={db.accounts || []} value={accountId} onChange={setAccountId} tone={tone} />
+
+        <NoteBox value={note} onChange={setNote} />
+
+        {chosen && amt ? (
+          <SumCard rows={[
+            { l: inbound ? 'They owe now' : 'You owe now', v: money(Math.abs(pending)) },
+            { l: inbound ? 'Receiving' : 'Paying', v: money(amt), tone },
+            { l: left > 0.01 ? 'Still owing after' : left < -0.01 ? 'In credit after' : 'Settled', v: money(Math.abs(left)), bold: true, tone: left > 0.01 ? colors.danger : colors.good },
+          ]} />
         ) : null}
 
-        {openBills.length > 0 && direction === 'in' ? (
-          <View style={{ marginTop: 14 }}>
-            <InfoBanner
-              tone="accent"
-              text={openBills.length + ' unpaid bill' + (openBills.length === 1 ? '' : 's')
-                + ' — you will choose which the money settles.'}
-            />
-          </View>
+        {openBills.length > 0 && inbound ? (
+          <InfoBanner tone="accent" text={openBills.length + ' unpaid bill' + (openBills.length === 1 ? '' : 's') + ' — you will choose which the money settles.'} />
         ) : null}
       </ScrollView>
 
       {who.sheet}
 
+      <CustomerPickerSheet
+        kind={inbound ? 'customer' : 'supplier'}
+        visible={picking}
+        customers={parties}
+        selectedId={partyId}
+        balanceOf={partyBalance}
+        money={money}
+        onSelect={(id) => { if (id) setPartyId(id); }}
+        onCreate={() => { setPicking(false); setCreating(true); }}
+        onClose={() => setPicking(false)}
+      />
+      <CustomerFormSheet
+        kind={inbound ? 'customer' : 'supplier'}
+        visible={creating}
+        onClose={() => setCreating(false)}
+        onSave={(p) => { const made = addParty(p); setPartyId(made.id); setCreating(false); }}
+      />
+
       <StickyBar>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-            {direction === 'in' ? 'Receiving' : 'Paying out'}
-          </Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(amt)}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>{inbound ? 'Receiving' : 'Paying out'}</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: tone }}>{money(amt)}</Text>
         </View>
         <Button
-          label={direction === 'in' ? 'Record receipt' : 'Record payment'}
+          label={inbound ? 'Record receipt' : 'Record payment'}
           variant="pri"
           disabled={!partyId || !amt}
           icon={<Icon name="check" size={17} color={colors.accentInk} />}

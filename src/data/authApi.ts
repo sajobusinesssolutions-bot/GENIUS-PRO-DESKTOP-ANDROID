@@ -257,6 +257,11 @@ export function fetchLicence(access: string) {
 }
 
 /** Deletes the signed-in account and everything kept for it on the server. `confirm` is its email, typed. */
-export function deleteAccount(access: string, confirm: string) {
-  return request<{ ok: boolean }>('/v1/account/delete', { confirm }, access);
+/** Emails the code that deleting the account needs. */
+export function requestDeleteCode(email: string) {
+  return request<{ sent: true }>('/v1/auth/otp/request', { email, purpose: 'delete' });
+}
+
+export function deleteAccount(access: string, confirm: string, code: string) {
+  return request<{ ok: boolean }>('/v1/account/delete', { confirm, code }, access);
 }

@@ -49,6 +49,7 @@ const PURPOSE_WORDS = {
   signup: 'confirm your email address',
   reset: 'reset your password',
   pin: 'reset your owner PIN',
+  delete: 'permanently delete your Genius account and everything on it',
 };
 
 export async function sendCode(email, code, purpose) {

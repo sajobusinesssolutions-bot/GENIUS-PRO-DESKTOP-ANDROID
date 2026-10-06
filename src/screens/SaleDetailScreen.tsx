@@ -4,6 +4,7 @@ import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
 import { useOwnerPin } from '../components/OwnerPin';
+import { Pressable } from '../components/Press';
 import {
   Panel, Badge, DetailRow, ActionGrid, StickyBar, InfoBanner, SectionLabel, StatGrid,
 } from '../components/ui';
@@ -28,6 +29,16 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   // asked before an edit or delete when Settings require a PIN for it
   const ownerPin = useOwnerPin();
   const sale = db?.sales.find((s) => s.id === route.params.saleId);
+  // History sits in the header as a clock, as on the design
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable hitSlop={10} accessibilityLabel="History" onPress={() => navigation.navigate('Versions', { coll: 'sales', recordId: route.params.saleId })} style={{ padding: 8 }}>
+          <Icon name="clock" size={20} color={colors.soft} />
+        </Pressable>
+      ),
+    });
+  }, [navigation, route.params.saleId, colors.soft]);
   if (!sale) return null;
 
   const live = sale.status !== 'void';
@@ -73,137 +84,123 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
 
   const customer = sale.partyId ? party(sale.partyId)?.name || 'Walk-in' : 'Walk-in';
 
+  const paidPct = sale.total > 0 ? Math.min(1, sale.paid / sale.total) : 1;
+  const when = new Date(sale.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  const statusTone = !live ? colors.danger : sale.due > 0.01 ? colors.warn : colors.good;
+  const statusBg = !live ? colors.dangerSoft : sale.due > 0.01 ? colors.warnSoft : colors.goodSoft;
+  const statusText = !live ? 'Void' : sale.due > 0.01 ? (sale.paid > 0 ? 'Part paid' : 'Unpaid') : 'Complete';
+  const card = { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line } as const;
+  const head = (title: string, right?: string) => (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 22, marginBottom: 8, paddingHorizontal: 4 }}>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>{title}</Text>
+      {right ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>{right}</Text> : null}
+    </View>
+  );
+  const row = (label: string, value: string, o: { bold?: boolean; tone?: string } = {}) => (
+    <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7 }}>
+      <Text style={{ fontFamily: o.bold ? fonts.uiBold : fonts.ui, fontSize: o.bold ? 15 : 14, color: o.bold ? colors.ink : colors.soft }}>{label}</Text>
+      <Text style={{ fontFamily: o.bold ? fonts.uiBold : fonts.uiSemi, fontSize: o.bold ? 15 : 14, color: o.tone || colors.ink }}>{value}</Text>
+    </View>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 190 }}>
-        {/* the bill head */}
-        <Panel>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{
-              width: 48, height: 48, borderRadius: 15,
-              backgroundColor: live ? colors.goodSoft : colors.dangerSoft,
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Icon name="receipt" size={23} color={live ? colors.good : colors.danger} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 130 }}>
+        {/* the bill at a glance: number, status, total, who and when, how much is paid */}
+        <View style={{ ...card, padding: 18 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ fontFamily: fonts.mono, fontSize: 13.5, letterSpacing: 0.5, color: colors.soft }}>{sale.no}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: statusBg }}>
+              <Icon name={live ? 'check' : 'x'} size={12} color={statusTone} />
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: statusTone }}>{statusText}</Text>
             </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{sale.no}</Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                {customer} · {new Date(sale.ts).toLocaleString()}
-              </Text>
-            </View>
-            <Badge label={live ? 'Complete' : 'Void'} tone={live ? 'good' : 'danger'} />
           </View>
-        </Panel>
-
-        {sale.editedFrom ? (
-          <View style={{ marginTop: 12 }}>
-            <InfoBanner tone="warn" text="This bill was corrected — the original posting was reversed." />
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 32, color: colors.ink, marginTop: 14, letterSpacing: -0.5 }}>{money(sale.total)}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 4 }}>{customer} · {when}</Text>
+          <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.sunk, marginTop: 16, overflow: 'hidden' }}>
+            <View style={{ width: `${paidPct * 100}%`, height: 6, backgroundColor: colors.good }} />
           </View>
-        ) : null}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.good }}>Paid {money(sale.paid)}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: sale.due > 0.01 ? colors.danger : colors.faint }}>Balance {money(sale.due)}</Text>
+          </View>
+        </View>
 
-        <View style={{ height: 16 }} />
-        <StatGrid
-          items={[
-            { icon: 'coins', label: 'Total', value: money(sale.total), tone: 'accent' },
-            { icon: sale.due > 0 ? 'alert' : 'check', label: sale.due > 0 ? 'Balance due' : 'Settled', value: money(sale.due), tone: sale.due > 0 ? 'danger' : 'good' },
-          ]}
-        />
+        {sale.editedFrom ? <View style={{ marginTop: 12 }}><InfoBanner tone="warn" text="This bill was corrected — the original posting was reversed." /></View> : null}
 
-        <View style={{ height: 20 }} />
-        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{sale.lines.length} line{sale.lines.length === 1 ? '' : 's'}</Text>}>
-          Items
-        </SectionLabel>
-        <Panel>
+        {head('Items', sale.lines.length + ' line' + (sale.lines.length === 1 ? '' : 's'))}
+        <View style={card}>
           {sale.lines.map((l, i) => (
-            <View
-              key={`${l.productId}-${l.batchNo || ''}-${i}`}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11,
-                borderBottomWidth: i === sale.lines.length - 1 ? 0 : 1, borderBottomColor: colors.line,
-              }}
-            >
-              <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>{i + 1}</Text>
+            <View key={`${l.productId}-${i}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderBottomWidth: i === sale.lines.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="box" size={18} color={colors.faint} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
-                  {l.qty} {l.unit} × {money(l.price)}
-                  {l.batchNo ? ' · ' + l.batchNo : ''}
+                <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
+                  {l.qty} {(l.unit || '').toUpperCase()} × {money(l.price)}{l.batchNo ? ' · ' + l.batchNo : ''}
                 </Text>
+                {l.note ? <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{l.note}</Text> : null}
               </View>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money(l.qty * l.price)}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(l.qty * l.price)}</Text>
             </View>
           ))}
-        </Panel>
+        </View>
 
-        <View style={{ height: 20 }} />
-        <SectionLabel>Summary</SectionLabel>
-        <Panel>
-          <DetailRow label="Subtotal" value={money(sale.gross)} />
-          <DetailRow label="Discount" value={money(sale.discount)} tone={sale.discount ? colors.good : undefined} />
-          {/* no tax line when the shop does not charge tax, unless this sale carried some */}
-          {db?.settings.taxEnabled === false && !sale.tax ? null : <DetailRow label="Tax" value={money(sale.tax)} />}
-          {sale.additionalCharges ? <DetailRow label="Additional charges" value={money(sale.additionalCharges)} /> : null}
-          <DetailRow label="Total" value={money(sale.total)} bold />
-          <DetailRow label="Paid" value={money(sale.paid)} tone={colors.good} />
-          <DetailRow
-            label="Balance due"
-            value={money(sale.due)}
-            bold
-            tone={sale.due > 0 ? colors.danger : colors.good}
-            last={!sale.note && !sale.ref}
-          />
-          {sale.note ? <DetailRow label="Note" value={sale.note} last={!sale.ref} /> : null}
-          {sale.ref ? <DetailRow label="Reference" value={sale.ref} last /> : null}
-        </Panel>
+        {head('Summary')}
+        <View style={{ ...card, paddingHorizontal: 16, paddingVertical: 8 }}>
+          {row('Subtotal', money(sale.gross))}
+          {row('Discount', money(sale.discount))}
+          {db?.settings.taxEnabled === false && !sale.tax ? null : row('Tax', money(sale.tax))}
+          {sale.additionalCharges ? row('Additional charges', money(sale.additionalCharges)) : null}
+          <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 6 }} />
+          {row('Total', money(sale.total), { bold: true })}
+          {row('Paid', money(sale.paid), { tone: colors.good })}
+          {row('Balance due', money(sale.due), { tone: sale.due > 0.01 ? colors.danger : colors.good })}
+          {sale.note ? row('Note', sale.note) : null}
+        </View>
 
-        {/* every later payment against this invoice, by its own id */}
         {(sale.receipts || []).length ? (
           <>
-            <View style={{ height: 20 }} />
-            <SectionLabel>Payments against this invoice</SectionLabel>
-            <Panel flush>
+            {head('Payments against this invoice')}
+            <View style={card}>
               {(sale.receipts || []).map((r, i, arr) => (
-                <Text
-                  key={r.paymentId + i}
-                  onPress={() => navigation.navigate('PaymentDetail', { paymentId: r.paymentId } as any)}
-                  style={{
-                    fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accent, paddingVertical: 13, paddingHorizontal: 15,
-                    borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line,
-                  }}
-                >
-                  {new Date(r.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}  ·  {money(r.amount)}  ·  RCT-{r.paymentId.slice(-6).toUpperCase()}
+                <Text key={r.paymentId + i} onPress={() => navigation.navigate('PaymentDetail', { paymentId: r.paymentId } as any)}
+                  style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent, padding: 14, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+                  {new Date(r.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} · {money(r.amount)}
                 </Text>
               ))}
-            </Panel>
+            </View>
           </>
         ) : null}
 
-        {!live && sale.voidReason ? (
-          <View style={{ marginTop: 14 }}>
-            <InfoBanner tone="danger" text={'Reversed — ' + sale.voidReason} />
-          </View>
+        {!live && sale.voidReason ? <View style={{ marginTop: 14 }}><InfoBanner tone="danger" text={'Reversed — ' + sale.voidReason} /></View> : null}
+        {live && !gate.ok ? <View style={{ marginTop: 14 }}><InfoBanner tone="warn" text={gate.why} /></View> : null}
+        {live ? (
+          <Text onPress={onDelete} style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 14, color: colors.danger, marginTop: 22, padding: 8 }}>Delete sale</Text>
         ) : null}
       </ScrollView>
 
+      {/* Receipt beside Edit sale, as on the design */}
       <StickyBar>
-        {live && !gate.ok ? (
-          <View style={{ marginBottom: 10 }}>
-            <InfoBanner tone="warn" text={gate.why} />
-          </View>
-        ) : null}
-        <ActionGrid
-          actions={[
-            { label: 'Receipt', icon: 'print', tone: 'accent', onPress: () => navigation.navigate('Receipt', { saleId: sale.id }) },
-            { label: 'History', icon: 'clock', tone: 'accent', onPress: () => navigation.navigate('Versions', { coll: 'sales', recordId: sale.id }) },
-            ...(live ? [
-              { label: 'Edit', icon: 'pencil' as const, tone: 'accent' as const, filled: true, onPress: onEdit },
-              { label: 'Delete', icon: 'trash' as const, tone: 'danger' as const, filled: true, onPress: onDelete },
-            ] : []),
-          ]}
-        />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable
+            onPress={() => navigation.navigate('Receipt', { saleId: sale.id })}
+            style={{ flex: 1, height: 50, borderRadius: 14, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <Icon name="print" size={17} color={colors.ink} />
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Receipt</Text>
+          </Pressable>
+          {live ? (
+            <Pressable
+              onPress={onEdit}
+              style={{ flex: 1, height: 50, borderRadius: 14, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            >
+              <Icon name="pencil" size={16} color={colors.accentInk} />
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accentInk }}>Edit sale</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </StickyBar>
       {ownerPin.sheet}
     </View>

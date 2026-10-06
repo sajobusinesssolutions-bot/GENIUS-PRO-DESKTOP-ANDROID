@@ -44,6 +44,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   const p = db?.products.find((x) => x.id === id);
 
   const [filter, setFilter] = useState<'all' | 'in' | 'out'>('all');
+  const [showAll, setShowAll] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [counted, setCounted] = useState('');
   const [note, setNote] = useState('');
@@ -54,10 +55,11 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
     navigation.setOptions({
       title: p?.name || 'Item',
       headerRight: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <IconBtn name="swap" size={20} color={colors.warn} onPress={() => openAdjust()} />
-          <IconBtn name="pencil" size={20} color={colors.accent} onPress={() => navigation.navigate('ProductDetail', { productId: id })} />
-        </View>
+        <IconBtn name="dots" size={22} color={colors.soft} onPress={() => Alert.alert(p?.name || 'Item', undefined, [
+          { text: 'Edit item', onPress: () => navigation.navigate('ProductDetail', { productId: id }) },
+          { text: 'Adjust stock', onPress: () => openAdjust() },
+          { text: 'Cancel', style: 'cancel' },
+        ])} />
       ),
     });
   }, [navigation, p?.name, id, colors]);
@@ -129,161 +131,167 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   const adjustBase = adjustOpen ? baseFor(adjustBatch) : stock;
   const delta = Number.isFinite(countedNum) ? countedNum - adjustBase : 0;
 
+  const stockTone = stock <= 0 ? colors.danger : low ? colors.warn : colors.good;
+  const card = { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' as const };
+  const head = (title: string, right?: string) => (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 22, marginBottom: 8, paddingHorizontal: 4 }}>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>{title}</Text>
+      {right ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>{right}</Text> : null}
+    </View>
+  );
+  const cell = (label: string, value: string, tone?: string, big?: boolean, right?: boolean, bottom?: boolean) => (
+    <View style={{
+      flex: 1, padding: 14,
+      borderLeftWidth: right ? 1 : 0, borderLeftColor: colors.line,
+      borderTopWidth: bottom ? 1 : 0, borderTopColor: colors.line,
+    }}>
+      {big ? null : <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 3 }}>{label}</Text>}
+      <Text numberOfLines={1} style={{ fontFamily: big ? fonts.uiExtra : fonts.uiBold, fontSize: big ? 22 : 15.5, color: tone || colors.ink }}>{value}</Text>
+      {big ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{label}</Text> : null}
+    </View>
+  );
+  const biggest = Math.max(1, ...batches.map((b) => b.qty));
+  const shown = showAll ? moves : moves.slice(0, 5);
+  const allCount = (db.movements || []).filter((m) => m.productId === id).length;
+  const inCount = (db.movements || []).filter((m) => m.productId === id && m.qty > 0).length;
+  const outCount = allCount - inCount;
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 160 }}>
-        {/* head */}
-        <Panel>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-            <View style={{
-              width: 56, height: 56, borderRadius: 18,
-              backgroundColor: stock <= 0 ? colors.dangerSoft : low ? colors.warnSoft : colors.goodSoft,
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Text style={{ fontSize: 26 }}>{p.emoji || '📦'}</Text>
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={2} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: -0.3 }}>{p.name}</Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>
-                {p.sku}{p.category ? ' · ' + p.category : ''}
-              </Text>
-            </View>
-          </View>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 130 }}>
+        {/* the item */}
+        <View style={{ ...card, padding: 16 }}>
+          <Text numberOfLines={2} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: -0.3 }}>{p.name}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>
+            {[p.sku, p.category, p.trackBatches ? 'Batch tracked' : '', p.trackSerials ? 'IMEI tracked' : '', !p.active ? 'Not for sale' : ''].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
 
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-            <Badge
-              label={stock <= 0 ? 'Out of stock' : low ? 'Low stock' : stock + ' ' + p.unit + ' on hand'}
-              tone={stock <= 0 ? 'danger' : low ? 'warn' : 'good'}
-            />
-            {p.trackBatches ? <Badge label="Batch tracked" tone="accent" /> : null}
-            {!p.active ? <Badge label="Not for sale" tone="neutral" /> : null}
+        {/* stock and its value, then the two prices */}
+        <View style={{ ...card, marginTop: 12 }}>
+          <View style={{ flexDirection: 'row' }}>
+            {cell(stock <= 0 ? 'Out of stock' : low ? 'Low stock' : 'In stock', Math.round(stock * 100) / 100 + ' ' + p.unit.toUpperCase(), stockTone, true)}
+            {cell('Stock value at cost', money(stock * p.cost), undefined, true, true)}
           </View>
-        </Panel>
-
-        <View style={{ height: 16 }} />
-        <StatGrid
-          items={[
-            { icon: 'coins', label: 'Sell price', value: money(p.price), tone: 'good' },
-            { icon: 'money', label: 'Cost price', value: money(p.cost), tone: 'accent' },
-            { icon: 'box', label: 'On hand', value: stock + ' ' + p.unit, tone: stock <= 0 ? 'danger' : low ? 'warn' : 'good' },
-            { icon: 'chart', label: 'Stock value', value: money(stock * p.cost), tone: 'warn' },
-          ]}
-        />
+          <View style={{ flexDirection: 'row' }}>
+            {cell('Sell price', money(p.price), undefined, false, false, true)}
+            {cell('Cost price', money(p.cost), undefined, false, true, true)}
+          </View>
+        </View>
 
         {mismatch ? (
-          <View style={{ marginTop: 16 }}>
-            <InfoBanner
-              tone="warn"
-              text={'Batch quantities add up to ' + batchTotal(p) + ' but the warehouse says ' + stock + '. Adjust the stock or correct a batch.'}
-            />
+          <View style={{ marginTop: 12 }}>
+            <InfoBanner tone="warn" text={'Batch quantities add up to ' + batchTotal(p) + ' but the warehouse says ' + stock + '. Adjust the stock or correct a batch.'} />
           </View>
         ) : null}
 
-        {/* batches */}
+        {/* batches, each with how much of the largest it holds */}
         {p.trackBatches ? (
           <>
-            <View style={{ height: 20 }} />
-            <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{batches.length} live</Text>}>
-              Batches
-            </SectionLabel>
-            <Panel flush>
+            {head('Batches', batches.length + ' live')}
+            <View style={card}>
               {batches.length ? batches.map((b, i) => {
                 const st = expiryState(b);
                 const d = daysToExpiry(b);
+                const bar = st === 'expired' || st === 'critical' ? colors.danger : st === 'soon' ? colors.warn : colors.good;
                 return (
-                  <View
-                    key={b.no}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 12,
-                      paddingHorizontal: 15, paddingVertical: 13,
-                      borderLeftWidth: 4,
-                      borderLeftColor: st === 'expired' || st === 'critical' ? colors.danger : st === 'soon' ? colors.warn : colors.good,
-                      borderBottomWidth: i === batches.length - 1 ? 0 : 1, borderBottomColor: colors.line,
-                    }}
-                  >
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Batch {b.no}</Text>
-                      <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                        {b.expiry
-                          ? new Date(b.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-                            + (d !== null ? (d < 0 ? ' · expired' : ' · ' + d + 'd left') : '')
-                          : 'No expiry set'}
+                  <View key={b.no} style={{ padding: 14, borderBottomWidth: i === batches.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{b.no}</Text>
+                        <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
+                          {b.expiry
+                            ? 'Expires ' + new Date(b.expiry).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                              + (d !== null ? (d < 0 ? ' · expired' : ' · ' + d + 'd left') : '')
+                            : 'No expiry set'}
+                        </Text>
+                      </View>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
+                        {b.qty} <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{p.unit.toUpperCase()}</Text>
                       </Text>
                     </View>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{b.qty}</Text>
+                    <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.sunk, marginTop: 8, width: '55%', overflow: 'hidden' }}>
+                      <View style={{ width: `${Math.max(4, (b.qty / biggest) * 100)}%`, height: 4, backgroundColor: bar }} />
+                    </View>
                   </View>
                 );
               }) : (
                 <EmptyBlock icon="box" title="No batch in stock" hint="Batches arrive when you receive a purchase." />
               )}
-            </Panel>
+            </View>
           </>
         ) : null}
 
-        {/* stock transactions */}
-        <View style={{ height: 20 }} />
-        <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{moves.length} entries</Text>}>
-          Stock transactions
-        </SectionLabel>
-        <View style={{ marginBottom: 12 }}>
-          <FilterChips
-            value={filter}
-            onChange={setFilter}
-            options={[
-              { v: 'all', l: 'All' },
-              { v: 'in', l: 'In · ' + totals.in },
-              { v: 'out', l: 'Out · ' + totals.out },
-            ]}
-          />
+        {/* every movement, newest first */}
+        {head('Stock transactions', allCount + ' entries')}
+        <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 12, padding: 3, marginBottom: 10 }}>
+          {([['all', 'All', allCount], ['in', 'In', inCount], ['out', 'Out', outCount]] as const).map(([v, l, n]) => {
+            const on = filter === v;
+            return (
+              <Pressable
+                key={v}
+                onPress={() => { setFilter(v); setShowAll(false); }}
+                style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center', backgroundColor: on ? colors.surface : 'transparent', borderWidth: on ? 1 : 0, borderColor: colors.line }}
+              >
+                <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13.5, color: on ? colors.ink : colors.soft }}>
+                  {l} <Text style={{ fontFamily: fonts.ui, color: colors.faint }}>{n}</Text>
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
-        <Panel flush>
-          {moves.length ? moves.slice(0, 80).map((m, i) => {
+        <View style={card}>
+          {shown.length ? shown.map((m, i) => {
             const tone = moveTone(m.type, m.qty);
             const fg = tone === 'good' ? colors.good : tone === 'warn' ? colors.warn : colors.danger;
             const bg = tone === 'good' ? colors.goodSoft : tone === 'warn' ? colors.warnSoft : colors.dangerSoft;
             return (
-              <View
-                key={m.id}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 12,
-                  paddingHorizontal: 15, paddingVertical: 13, minHeight: 64,
-                  borderBottomWidth: i === Math.min(moves.length, 80) - 1 ? 0 : 1, borderBottomColor: colors.line,
-                }}
-              >
-                <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon name={MOVE_ICON[m.type] || 'swap'} size={19} color={fg} />
+              <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderBottomWidth: i === shown.length - 1 && !(moves.length > 5) ? 0 : 1, borderBottomColor: colors.line }}>
+                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name={MOVE_ICON[m.type] || 'swap'} size={17} color={fg} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
-                    {m.type.charAt(0).toUpperCase() + m.type.slice(1)}{m.ref ? ' · ' + m.ref : ''}
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>
+                    {m.type.charAt(0).toUpperCase() + m.type.slice(1)}{m.ref ? <Text style={{ fontFamily: fonts.mono, color: colors.soft }}>{'  ' + m.ref}</Text> : null}
                   </Text>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                    {new Date(m.ts).toLocaleString()}{m.batchNo ? ' · batch ' + m.batchNo : ''}
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
+                    {new Date(m.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                    {m.batchNo ? ' · batch ' + m.batchNo : ''}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>
-                  {m.qty > 0 ? '+' : '−'}{Math.abs(m.qty)}
-                </Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>{m.qty > 0 ? '+' : '−'}{Math.abs(m.qty)}</Text>
               </View>
             );
           }) : (
             <EmptyBlock icon="clock" title="No movement yet" hint="Sales, purchases and adjustments will show here." />
           )}
-        </Panel>
-        {moves.length > 80 ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', marginTop: 10 }}>
-            Showing the 80 most recent of {moves.length}.
-          </Text>
-        ) : null}
+          {moves.length > 5 ? (
+            <Pressable onPress={() => setShowAll((s) => !s)} style={{ paddingVertical: 13, alignItems: 'center' }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent }}>
+                {showAll ? 'Show fewer' : 'View all ' + moves.length + ' entries'}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       </ScrollView>
 
       <StickyBar>
-        <ActionGrid
-          actions={[
-            { label: 'Adjust stock', icon: 'swap', tone: 'warn', onPress: openAdjust },
-            { label: 'Edit item', icon: 'pencil', tone: 'accent', filled: true, onPress: () => navigation.navigate('ProductDetail', { productId: id }) },
-          ]}
-        />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable
+            onPress={openAdjust}
+            style={{ flex: 1, height: 50, borderRadius: 14, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <Icon name="swap" size={17} color={colors.ink} />
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Adjust stock</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => navigation.navigate('ProductDetail', { productId: id })}
+            style={{ flex: 1, height: 50, borderRadius: 14, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          >
+            <Icon name="pencil" size={16} color={colors.accentInk} />
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accentInk }}>Edit item</Text>
+          </Pressable>
+        </View>
       </StickyBar>
 
       {who.sheet}
