@@ -125,9 +125,15 @@ tar -C "$(dirname "$SECRETS_DIR")" -xzpf "$WORK/secrets.tar.gz"
 # the API reads the licence key as the genius user, so they must not change
 
 say "7/9  Database"
-set -a
-for f in "$SECRETS_DIR"/*.env; do [ -e "$f" ] && . "$f"; done
-set +a
+# DATABASE_URL, read the way systemd reads its EnvironmentFile: KEY=value
+# lines, optionally quoted. The .env files are not shell scripts — a value
+# such as `Genius <no-reply@…>` is fine for systemd and a syntax error to bash,
+# so they are never sourced.
+env_value() {
+  grep -h -E "^[[:space:]]*(export[[:space:]]+)?$1=" "$SECRETS_DIR"/*.env 2>/dev/null | tail -n 1 \
+    | sed -E "s/^[[:space:]]*(export[[:space:]]+)?$1=//; s/\r$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
+}
+DATABASE_URL=$(env_value DATABASE_URL || true)
 re='^postgres(ql)?://([^:]+):([^@]*)@[^/]+/([^?]+)'
 [[ "${DATABASE_URL:-}" =~ $re ]] || die "could not read DATABASE_URL from $SECRETS_DIR"
 DB_USER=${BASH_REMATCH[2]}; DB_PASS=${BASH_REMATCH[3]}; DB_NAME=${BASH_REMATCH[4]}
