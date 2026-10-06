@@ -41,9 +41,15 @@ for c in git gpg pg_dump pg_restore tar split sha256sum; do command -v "$c" >/de
 [ -s "$PASSFILE" ] || die "no passphrase at $PASSFILE — see RECOVERY.md"
 
 # the same database the API uses
-set -a
-for f in "$SECRETS_DIR"/*.env; do [ -e "$f" ] && . "$f"; done
-set +a
+# DATABASE_URL, read the way systemd reads its EnvironmentFile: KEY=value
+# lines, optionally quoted. The .env files are not shell scripts — a value
+# such as `Genius <no-reply@…>` is fine for systemd and a syntax error to bash,
+# so they are never sourced.
+env_value() {
+  grep -h -E "^[[:space:]]*(export[[:space:]]+)?$1=" "$SECRETS_DIR"/*.env 2>/dev/null | tail -n 1 \
+    | sed -E "s/^[[:space:]]*(export[[:space:]]+)?$1=//; s/\r$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
+}
+DATABASE_URL=$(env_value DATABASE_URL || true)
 [ -n "${DATABASE_URL:-}" ] || die "DATABASE_URL is not in $SECRETS_DIR/*.env"
 
 DAY=$(date -u +%Y-%m-%d)
