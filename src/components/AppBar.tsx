@@ -4,7 +4,7 @@
  * (lines 46-50, 88).
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image } from 'react-native';
+import { View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { useTheme, fonts } from '../theme';
@@ -92,17 +92,6 @@ export function AppBar({ title, onBack, right, statusStrip = false, brand }: App
         flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60,
       }}>
         {onBack ? <IconBtn name="back" size={23} onPress={onBack} /> : null}
-        {brand ? (
-          firm?.logo ? (
-            <Image source={{ uri: firm.logo }} style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.sunk }} />
-          ) : (
-            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.accentInk }}>
-                {(name || '?').split(' ').map((w) => w[0] || '').slice(0, 2).join('').toUpperCase()}
-              </Text>
-            </View>
-          )
-        ) : null}
         <Text
           numberOfLines={1}
           style={{ flex: 1, minWidth: 0, fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: -0.4 }}

@@ -33,7 +33,7 @@ import { Icon } from '../components/icons';
 import { useGo, useGoReset } from '../nav/navigate';
 import { useToneColor } from '../components/Quick';
 import { useAuth } from '../data/AuthContext';
-import { deleteAccount, refreshSession } from '../data/authApi';
+import { deleteAccount, refreshSession, requestDeleteCode } from '../data/authApi';
 import { Field } from '../components/form';
 import { useDeveloper } from '../data/useDeveloper';
 
@@ -44,7 +44,7 @@ export default function MenuScreen() {
   const { colors } = useTheme();
   const go = useGo();
   const goReset = useGoReset();
-  const { db, me, dueRecurring, activeShift } = useAppData();
+  const { db, me, dueRecurring, activeShift, setSetting } = useAppData();
   const { account, signOut } = useAuth();
   // asked of the server, so a phone cannot talk itself into the console
   const { developer } = useDeveloper();
@@ -75,211 +75,156 @@ export default function MenuScreen() {
   const branch = db.warehouses.find((w) => w.id === db.session.warehouse);
   const manyFirms = (db.firms || []).length > 1;
 
+  const theme = (db.settings.theme as 'light' | 'dark' | 'auto') || 'auto';
+  const tiles = groups.filter((g) => g.id !== 'help');
+  const card = { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line } as const;
+  const initial = (user?.name || '?').trim().charAt(0).toUpperCase();
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <AppBar brand title="Menu" />
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 20 }}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* who, and which branch — one card instead of a card and a panel */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-          <Card style={{ borderRadius: 18, overflow: 'hidden' }}>
-            <Pressable
-              onPress={() => go('PinLock')}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 15 }}
-            >
-              <Avatar name={user?.name || '?'} id={user?.id} size={46} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
-                  {user?.name || '—'}
-                </Text>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                  {(role || '').charAt(0).toUpperCase() + (role || '').slice(1)} · {db.firm.name}
-                </Text>
-              </View>
-              <Badge tone="accent" label="Switch" />
-            </Pressable>
+      {/* the same header as Activity and the other tabs; Lock hands the phone on */}
+      <AppBar
+        brand
+        title="Menu"
+        right={(
+          <Pressable
+            onPress={() => go('PinLock')}
+            accessibilityLabel="Lock the till"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, height: 34, borderRadius: 999, backgroundColor: colors.ink }}
+          >
+            <Icon name="lock" size={14} color={colors.surface} />
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.surface }}>Lock</Text>
+          </Pressable>
+        )}
+      />
 
-            <View style={{ height: 1, backgroundColor: colors.line }} />
-
-            {/*
-              Only the owner can open the branch panel, so only the owner is
-              offered it. Everyone else sees which branch they are working in —
-              which changes what every other screen says, and is worth knowing —
-              as a plain line rather than a button onto a locked door.
-            */}
-            <Pressable
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 24, gap: 12 }} keyboardShouldPersistTaps="handled">
+        {/* who is at the till, and the branch they are working in */}
+        <Pressable onPress={() => go('PinLock')} style={{ ...card, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
+          <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.danger, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: '#FFFFFF' }}>{initial}</Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{user?.name || '—'}</Text>
+            <Text
+              numberOfLines={1}
               onPress={isOwner ? () => go('Branches') : undefined}
-              disabled={!isOwner}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 12, paddingHorizontal: 15 }}
+              style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}
             >
-              <View style={{
-                width: 30, height: 30, borderRadius: 10, backgroundColor: colors.sunk,
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Icon name="home" size={15} color={colors.ink} />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>
-                  {branch?.name || 'No branch chosen'}
-                </Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
-                  {isOwner ? 'Working branch · own stock and own books' : 'The branch you are working in'}
-                </Text>
-              </View>
-              <Badge tone={online ? 'good' : 'warn'} label={online ? 'Online' : db.queue.length + ' queued'} />
-              {isOwner ? <Icon name="chev" size={14} color={colors.faint} /> : null}
-            </Pressable>
-          </Card>
-        </View>
+              {(branch?.name || 'No branch') + ' · ' + (isOwner ? 'own stock and own books' : (role || '').charAt(0).toUpperCase() + (role || '').slice(1))}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, height: 34, borderRadius: 10, backgroundColor: colors.accentSoft }}>
+            <Icon name="swap" size={14} color={colors.accent} />
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>Switch</Text>
+          </View>
+        </Pressable>
 
-        {/* search across every row in every group */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-          <Search value={q} onChange={setQ} placeholder="Search the menu" />
-        </View>
+        <Search value={q} onChange={setQ} placeholder="Search the menu" />
 
         {q.trim() ? (
-          <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-            {hits.length ? (
-              <Panel flush>
-                {hits.map((h, i) => (
-                  <ListRow
-                    key={h.group.id + h.item.route + h.item.n}
-                    icon={h.item.i}
-                    title={h.item.n}
-                    subtitle={h.group.n}
-                    onPress={() => { setQ(''); go(h.item.route, h.item.params); }}
-                    last={i === hits.length - 1}
-                  />
-                ))}
-              </Panel>
-            ) : (
-              <Panel>
-                <EmptyState
-                  icon="dots"
-                  title={'Nothing matches "' + q.trim() + '"'}
-                  subtitle="Try the name of the thing itself — an item, a report, a setting."
+          hits.length ? (
+            <Panel flush>
+              {hits.map((h, i) => (
+                <ListRow
+                  key={h.group.id + h.item.route + h.item.n}
+                  icon={h.item.i}
+                  title={h.item.n}
+                  subtitle={h.group.n}
+                  onPress={() => { setQ(''); go(h.item.route, h.item.params); }}
+                  last={i === hits.length - 1}
                 />
-              </Panel>
-            )}
-          </View>
+              ))}
+            </Panel>
+          ) : (
+            <Panel>
+              <EmptyState icon="dots" title={'Nothing matches "' + q.trim() + '"'} subtitle="Try the name of the thing itself — an item, a report, a setting." />
+            </Panel>
+          )
         ) : (
           <>
-            {developer ? (
-              <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-                <Panel flush>
-                  <ListRow
-                    icon="shield"
-                    tone="accent"
-                    title="Developer console"
-                    subtitle="Owners, licences, server health and backups"
-                    onPress={() => go('Developer')}
-                    last
-                  />
-                </Panel>
-              </View>
-            ) : null}
+            {/* three across: a tinted icon over its name */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {tiles.map((g) => (
+                <Pressable
+                  key={g.id}
+                  onPress={() => (g.open ? go(g.open) : go('MenuGroup', { groupId: g.id }))}
+                  style={({ pressed }) => ({
+                    ...card, width: '31.4%', aspectRatio: 1.08, alignItems: 'center', justifyContent: 'center', gap: 10,
+                    backgroundColor: pressed ? colors.sunk : colors.surface,
+                  })}
+                >
+                  <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name={g.i} size={21} color={colors.accent} />
+                  </View>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{g.n}</Text>
+                </Pressable>
+              ))}
+            </View>
 
-            {/* more than one book: moving between them signs you out first */}
             {manyFirms ? (
-              <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-                <Panel flush>
-                  <ListRow
-                    icon="swap"
-                    tone="warn"
-                    title="Work in another business"
-                    subtitle="Signs you out first — each book opens with its own PIN"
-                    onPress={() => go('Firms')}
-                    last
-                  />
-                </Panel>
-              </View>
+              <Panel flush>
+                <ListRow icon="swap" tone="warn" title="Work in another business" subtitle="Signs you out first — each book opens with its own PIN" onPress={() => go('Firms')} last />
+              </Panel>
             ) : null}
 
-            <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
-              <SectionLabel>Everything</SectionLabel>
-              <Grid cols={2} gap={12}>
-                {groups.map((g) => {
-                  const [fg, bg] = tone(g.tone as any);
-                  const shown = g.items.filter((it) => canFor(role, it.perm) && itemShown(it, db)).length;
-                  return (
-                    <Pressable
-                      key={g.id}
-                      onPress={() => (g.open ? go(g.open) : go('MenuGroup', { groupId: g.id }))}
-                      style={({ pressed }) => ({
-                        backgroundColor: pressed ? colors.sunk : colors.surface,
-                        borderRadius: 18, paddingVertical: 16, paddingHorizontal: 15,
-                        gap: 12, flex: 1, minHeight: 112, justifyContent: 'space-between',
-                        shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14,
-                        shadowOffset: { width: 0, height: 4 }, elevation: 2,
-                      })}
-                    >
-                      <View style={{
-                        width: 46, height: 46, borderRadius: 14, backgroundColor: colors.sunk,
-                        alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <Icon name={g.i} size={23} color={colors.ink} />
-                      </View>
-                      <Text numberOfLines={2} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{g.n}</Text>
-                    </Pressable>
-                  );
-                })}
-              </Grid>
-            </View>
-
-            {/* how the app looks — moved here from Settings, where it was buried */}
-            <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
-              <ThemePicker />
-            </View>
-
-            {/* one quiet footer line, rather than a panel repeating the Business card */}
-            <View style={{ paddingHorizontal: 16, paddingTop: 20 }}>
-              {/*
-                Two different ways out, and they were conflated.
-
-                "Lock the till" is for handing the phone to the next person on
-                the counter — it asks for a PIN and the shop stays signed in.
-                "Sign out" leaves the account itself, and the next thing anyone
-                sees is the sign-in page. Logging out and being asked only for a
-                PIN is not logging out.
-              */}
-              <Button
-                label="Lock the till"
-                icon={<Icon name="lock" size={17} color={colors.ink} />}
-                onPress={() => go('PinLock')}
-              />
-              <Text style={{
-                fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint,
-                textAlign: 'center', marginTop: 14,
-              }}>
-                {account?.email ? account.email + ' · ' : ''}Genius POS {BUILD} · till {db.session.till}
-              </Text>
-              {/*
-                Sign out sat ten points under "Lock the till", and staff pressing
-                the wrong one signed the whole shop out — then the owner had to
-                come and sign in again. So only the owner sees it, and it sits
-                apart, below everything, as a quiet link rather than a big red
-                button next to the one staff press every day.
-              */}
-              {isOwner ? (
-                <View style={{ marginTop: 44, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.line, alignItems: 'center' }}>
-                  <Pressable
-                    accessibilityRole="button"
-                    hitSlop={8}
-                    onPress={() => setSigningOut(true)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12 }}
-                  >
-                    <Icon name="arrow" size={14} color={colors.danger} />
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger }}>Sign out</Text>
-                  </Pressable>
-                  {account && !account.localOnly ? (
-                    <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setDeleting(true)} style={{ paddingVertical: 8, paddingHorizontal: 12 }}>
-                      <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Delete account</Text>
-                    </Pressable>
-                  ) : null}
+            {developer ? (
+              <Pressable
+                onPress={() => go('Developer')}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, backgroundColor: '#1C1F27' }}
+              >
+                <View style={{ width: 40, height: 40, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.10)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="shield" size={19} color="#FFFFFF" />
                 </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: '#FFFFFF' }}>Developer console</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>Owners, licences, server health and backups</Text>
+                </View>
+                <Icon name="chev" size={16} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+            ) : null}
+
+            {/* how it looks, where to get help, and the way out */}
+            <View style={card}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, paddingLeft: 16, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Appearance</Text>
+                <View style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 10, padding: 3 }}>
+                  {([['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['auto', 'Auto', 'contrast']] as const).map(([v, l, i]) => {
+                    const on = theme === v;
+                    return (
+                      <Pressable
+                        key={v}
+                        onPress={() => setSetting({ theme: v })}
+                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 7, borderRadius: 8, backgroundColor: on ? colors.surface : 'transparent' }}
+                      >
+                        <Icon name={i} size={13} color={on ? colors.accent : colors.faint} />
+                        <Text style={{ fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>{l}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+              <Pressable onPress={() => go('Help')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: isOwner ? 1 : 0, borderBottomColor: colors.line }}>
+                <Icon name="support" size={18} color={colors.soft} />
+                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>Help & Support</Text>
+                <Icon name="chev" size={15} color={colors.faint} />
+              </Pressable>
+              {/* only the owner signs the shop out; staff lock the till instead */}
+              {isOwner ? (
+                <Pressable onPress={() => setSigningOut(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 }}>
+                  <Icon name="arrow" size={18} color={colors.danger} />
+                  <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.danger }}>Sign out</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            {/* the quiet footer */}
+            <View style={{ paddingHorizontal: 4, gap: 6, marginTop: 4 }}>
+              <FootRow label="Signed in as" value={account?.email || '—'} />
+              <FootRow label="Till" value={db.session.till + (online ? " · online" : " · offline, " + db.queue.length + " waiting")} />
+              <FootRow label="Version" value={'Genius POS ' + BUILD} />
+              {isOwner && account && !account.localOnly ? (
+                <Text onPress={() => setDeleting(true)} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, textAlign: 'center', marginTop: 18, padding: 6 }}>Delete account</Text>
               ) : null}
             </View>
           </>
@@ -289,11 +234,11 @@ export default function MenuScreen() {
         visible={deleting}
         email={account?.email || ''}
         onClose={() => setDeleting(false)}
-        onDelete={async (typed) => {
+        onDelete={async (typed, code) => {
           if (!account?.refresh) return 'Sign in again first.';
           const session = await refreshSession(account.refresh);
           if (!session.ok) return 'Sign in again first.';
-          const r = await deleteAccount(session.value.access, typed);
+          const r = await deleteAccount(session.value.access, typed, code);
           if (!r.ok) return r.error.message || 'The account could not be deleted.';
           await signOut();
           setDeleting(false);
@@ -362,40 +307,77 @@ function SignOutSheet({ visible, email, till, onClose, onLock, onSignOut }: {
  * Deleting the account: what goes, said plainly, and the email typed to make
  * sure. Google Play requires an app with sign-up to offer this.
  */
+/**
+ * Deleting the account: type its email, then the six-digit code emailed to
+ * it. A phone left signed in is not enough on its own to wipe an account.
+ */
 function DeleteAccountSheet({ visible, email, onClose, onDelete }: {
   visible: boolean; email: string; onClose: () => void;
   /** Resolves to an error to show, or null when done. */
-  onDelete: (typed: string) => Promise<string | null>;
+  onDelete: (typed: string, code: string) => Promise<string | null>;
 }) {
   const { colors } = useTheme();
   const [typed, setTyped] = React.useState('');
+  const [code, setCode] = React.useState('');
+  const [sent, setSent] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
-  React.useEffect(() => { if (visible) { setTyped(''); setErr(''); setBusy(false); } }, [visible]);
+  React.useEffect(() => { if (visible) { setTyped(''); setCode(''); setSent(false); setErr(''); setBusy(false); } }, [visible]);
   const matches = typed.trim().toLowerCase() === email.trim().toLowerCase() && !!email;
+
+  async function sendCode() {
+    setBusy(true); setErr('');
+    const r = await requestDeleteCode(email);
+    setBusy(false);
+    if (!r.ok) { setErr(r.error.message); return; }
+    setSent(true);
+  }
+
   return (
     <Sheet visible={visible} onClose={onClose} title="Delete account?">
       <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, color: colors.soft, marginBottom: 14 }}>
         This permanently deletes {email || 'this account'}, its businesses and cloud copies, licences and sign-ins from our server.
         It cannot be undone. Books on this phone stay until you remove the app.
       </Text>
-      <Field label="Type your email to confirm" value={typed} onChangeText={setTyped} autoCapitalize="none" autoCorrect={false} keyboard="email-address" />
+      <Field label="Type your email to confirm" value={typed} onChangeText={setTyped} autoCapitalize="none" autoCorrect={false} keyboard="email-address" readOnly={sent} />
+      {sent ? (
+        <>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, marginBottom: 8 }}>
+            We emailed a 6-digit code to {email}. <Text onPress={busy ? undefined : sendCode} style={{ color: colors.accent }}>Send it again</Text>
+          </Text>
+          <Field label="Code from the email" value={code} onChangeText={(v) => setCode(v.replace(/[^0-9]/g, '').slice(0, 6))} numeric maxLength={6} autoFocus />
+        </>
+      ) : null}
       {err ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.danger, marginBottom: 10 }}>{err}</Text> : null}
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}><Button label="Cancel" onPress={onClose} disabled={busy} /></View>
         <View style={{ flex: 1 }}>
-          <Button
-            variant="dngr"
-            label={busy ? 'Deleting…' : 'Delete'}
-            loading={busy}
-            disabled={!matches}
-            onPress={async () => {
-              setBusy(true); setErr('');
-              try { const e = await onDelete(typed.trim()); if (e) setErr(e); } finally { setBusy(false); }
-            }}
-          />
+          {sent ? (
+            <Button
+              variant="dngr"
+              label={busy ? 'Deleting…' : 'Delete'}
+              loading={busy}
+              disabled={code.length !== 6}
+              onPress={async () => {
+                setBusy(true); setErr('');
+                try { const e = await onDelete(typed.trim(), code); if (e) setErr(e); } finally { setBusy(false); }
+              }}
+            />
+          ) : (
+            <Button variant="pri" label="Send code" loading={busy} disabled={!matches} onPress={sendCode} />
+          )}
         </View>
       </View>
     </Sheet>
+  );
+}
+
+function FootRow({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{label}</Text>
+      <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft }}>{value}</Text>
+    </View>
   );
 }

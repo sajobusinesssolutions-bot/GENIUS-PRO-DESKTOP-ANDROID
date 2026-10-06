@@ -109,7 +109,7 @@ async function spendCode(email, purpose, code) {
 
 /** Which kind of code is being asked for; anything unknown is a sign-up code. */
 function purposeOf(p) {
-  return p === 'reset' || p === 'pin' ? p : 'signup';
+  return p === 'reset' || p === 'pin' || p === 'delete' ? p : 'signup';
 }
 
 export default async function authRoutes(app) {
@@ -346,6 +346,15 @@ export default async function authRoutes(app) {
     const typed = String(req.body?.confirm || '').trim().toLowerCase();
     if (!typed || typed !== me.email.toLowerCase()) {
       return fail(reply, 400, 'malformed', 'Type the email address of this account to confirm.');
+    }
+    // and the code emailed to that address: a phone left signed in is not
+    // enough on its own to wipe an account
+    const why = await spendCode(me.email, 'delete', String(req.body?.code || ''));
+    if (why) {
+      return fail(reply, why === 'rateLimited' ? 429 : 400, why,
+        why === 'codeExpired' ? 'That code has expired. Ask for a new one.'
+          : why === 'rateLimited' ? 'Too many attempts. Ask for a new code.'
+            : 'That code is not right. Check the six digits in the email.');
     }
     try {
       await tx(async (c) => {

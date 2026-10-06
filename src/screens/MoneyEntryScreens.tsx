@@ -19,6 +19,7 @@ import { Foot } from '../components/AppBar';
 import { useWho } from '../components/WhoSheet';
 import SegmentSlider from '../components/SegmentSlider';
 import LedgerPicker from '../components/LedgerPicker';
+import { AmountCard, RowGroup, PickRow, NoteBox, PickSheet, SumCard, AccountTiles } from '../components/MoneyForm';
 
 const num = (v: string) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
 
@@ -50,6 +51,7 @@ export function EntryNewScreen({ route, navigation }: any) {
   const [accountId, setAccountId] = useState(db?.accounts[0]?.id || '');
   const [note, setNote] = useState('');
   const [offsetSaleId, setOffsetSaleId] = useState<string | null>(null);
+  const [picking, setPicking] = useState<'account' | 'bill' | null>(null);
 
   useEffect(() => {
     navigation.setOptions({ title: fixed === 'out' ? 'Add expense' : fixed === 'in' ? 'Money in' : 'Adjust Money' });
@@ -83,18 +85,19 @@ export function EntryNewScreen({ route, navigation }: any) {
 
   const openBills = (db.sales || [])
     .filter((x) => x.status !== 'void' && x.due > 0.01)
-    .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
-    .slice(0, 40);
+    .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   const offsetBill = offsetSaleId ? db.sales.find((x) => x.id === offsetSaleId) : undefined;
+  const nameOf = (id: string | null) => (id ? party(id)?.name || 'Walk-in' : 'Walk-in');
+  const balance = acc ? accountBalance(acc.id) : 0;
+  const after = balance + (out ? -n : n);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 130 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 130, gap: 12 }} keyboardShouldPersistTaps="handled">
         {!fixed ? (
           <SegmentSlider
             value={direction}
             onChange={flip}
-            style={{ marginBottom: 10 }}
             options={[
               { v: 'out', l: 'Add expense', i: 'up' },
               { v: 'in', l: 'Money in', i: 'down' },
@@ -102,97 +105,89 @@ export function EntryNewScreen({ route, navigation }: any) {
           />
         ) : null}
 
-        {/* what happened: the everyday case, or the same money with a party behind it */}
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-          {[
-            { k: 'here', l: out ? 'An expense' : 'Other income', s: out ? 'Rent, fuel, wages…' : 'Commission, refunds…', i: out ? 'receipt' : 'coins' },
-            { k: 'party', l: out ? 'Pay a supplier' : 'Customer payment', s: out ? 'Settle what you owe' : 'Money a customer owed', i: 'user' },
-          ].map((o) => {
-            const on = o.k === 'here';
-            return (
-              <Pressable
-                key={o.k}
-                onPress={() => { if (!on) navigation.replace('PaymentNew', { direction: out ? 'out' : 'in' }); }}
-                style={{
-                  flex: 1, padding: 12, borderRadius: 14, gap: 6,
-                  borderWidth: 1.4, borderColor: on ? colors.accent : colors.line,
-                  backgroundColor: on ? colors.accentSoft : colors.surface,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <Icon name={o.i as any} size={16} color={on ? colors.accent : colors.soft} />
-                  <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accent : colors.ink }}>{o.l}</Text>
-                  {!on ? <Icon name="chev" size={13} color={colors.faint} /> : null}
-                </View>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{o.s}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Field big label="Amount" value={amount} onChangeText={setAmount} numeric decimal style={{ marginBottom: 10 }} />
-
-        <LedgerPicker
-          label={out ? 'Expense ledger' : 'Income ledger'}
-          value={ledgerId}
-          onChange={setLedgerId}
-          types={out ? ['expense'] : ['income']}
-          icon={out ? 'receipt' : 'coins'}
-          canCreate
-          style={{ marginBottom: 10 }}
+        <AmountCard
+          label="Amount"
+          value={amount}
+          onChange={setAmount}
+          hint={out
+            ? <>Rent, fuel, wages and other running costs. <Text onPress={() => navigation.replace('PaymentNew', { direction: 'out' })} style={{ color: colors.accent }}>Paying a supplier?</Text></>
+            : <>Commission, refunds and other income. <Text onPress={() => navigation.replace('PaymentNew', { direction: 'in' })} style={{ color: colors.accent }}>A customer paying?</Text></>}
         />
 
-        <SelectField
-          icon={out ? 'up' : 'down'}
-          label={out ? 'Paid from' : 'Paid into'}
-          value={accountId}
-          options={db.accounts.map((a) => ({ v: a.id, l: a.name + ' · ' + money(accountBalance(a.id)) }))}
-          onChange={setAccountId}
-          style={{ marginBottom: 10 }}
-        />
-
-        {out && openBills.length ? (
-          <SelectField
-            icon="receipt"
-            label="Charge it against a sale (optional)"
-            value={offsetSaleId || ''}
-            options={[
-              { v: '', l: 'No — pay it from the account' },
-              ...openBills.map((b) => ({
-                v: b.id,
-                l: b.no + ' · ' + (b.partyId ? (party(b.partyId)?.name || 'Walk-in') : 'Walk-in') + ' · ' + money(b.due) + ' owing',
-              })),
-            ]}
-            onChange={(v) => setOffsetSaleId(v || null)}
-            style={{ marginBottom: 10 }}
+        <RowGroup>
+          <LedgerPicker
+            label={out ? 'Expense ledger' : 'Income ledger'}
+            value={ledgerId}
+            onChange={setLedgerId}
+            types={out ? ['expense'] : ['income']}
+            icon={out ? 'receipt' : 'coins'}
+            canCreate
+            trigger={(open, chosen) => (
+              <PickRow icon={out ? 'receipt' : 'coins'} label={out ? 'Expense ledger' : 'Income ledger'} value={chosen ? chosen.name + ' · ' + chosen.code : undefined} placeholder="Choose a ledger" onPress={open} />
+            )}
           />
-        ) : null}
+          <PickRow
+            icon="cash"
+            label={out ? 'Paid from' : 'Paid into'}
+            value={acc ? acc.name + ' · ' + money(balance) : undefined}
+            placeholder="Choose an account"
+            onPress={() => setPicking('account')}
+          />
+          {out && openBills.length ? (
+            <PickRow
+              icon="receipt"
+              label="Charge it against a sale (optional)"
+              value={offsetBill ? offsetBill.no + ' · ' + nameOf(offsetBill.partyId) : 'No, pay it from the account'}
+              onPress={() => setPicking('bill')}
+            />
+          ) : null}
+        </RowGroup>
 
-        <Field icon="doc" label="Note (optional)" value={note} onChangeText={setNote} placeholder="Who, what, which month" style={{ marginBottom: 12 }} />
+        <NoteBox value={note} onChange={setNote} />
 
         {offsetBill ? (
-          <Effect rows={[
+          <SumCard rows={[
             { l: offsetBill.no + ' owes', v: money(offsetBill.due) },
             { l: 'Charged against it', v: money(Math.min(offsetBill.due, n)), tone: colors.good },
             { l: 'Still owing after', v: money(Math.max(0, offsetBill.due - n)), bold: true, tone: offsetBill.due - n > 0 ? colors.danger : colors.good },
           ]} />
         ) : acc ? (
-          <Effect rows={[
-            { l: acc.name + ' now', v: money(accountBalance(acc.id)) },
-            {
-              l: 'After this', v: money(accountBalance(acc.id) + (out ? -n : n)), bold: true,
-              tone: out && accountBalance(acc.id) - n < 0 ? colors.danger : colors.ink,
-            },
+          <SumCard rows={[
+            { l: acc.name + ' now', v: money(balance) },
+            { l: out ? 'This expense' : 'This money in', v: money(n), tone: out ? colors.danger : colors.good },
+            { l: 'After this', v: money(after), bold: true, tone: after < 0 ? colors.danger : colors.ink },
           ]} />
         ) : null}
         {ledger ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 10 }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, paddingHorizontal: 4 }}>
             Posts to {ledger.name} in the books and shows in the profit and loss.
           </Text>
         ) : null}
       </ScrollView>
 
       {who.sheet}
+
+      <PickSheet
+        visible={picking === 'account'}
+        title={out ? 'Paid from' : 'Paid into'}
+        searchHint="Search accounts"
+        items={db.accounts.map((a) => ({ id: a.id, title: a.name, right: money(accountBalance(a.id)) }))}
+        selected={accountId}
+        onPick={setAccountId}
+        onClose={() => setPicking(null)}
+      />
+      <PickSheet
+        visible={picking === 'bill'}
+        title="Charge it against a sale"
+        searchHint="Search by number or customer"
+        items={[
+          { id: '', title: 'No, pay it from the account' },
+          ...openBills.map((b) => ({ id: b.id, title: b.no + ' · ' + nameOf(b.partyId), sub: new Date(b.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), right: money(b.due) + ' owing', rightTone: colors.danger })),
+        ]}
+        selected={offsetSaleId || ''}
+        onPick={(id) => setOffsetSaleId(id || null)}
+        onClose={() => setPicking(null)}
+      />
 
       <StickyBar>
         <Button

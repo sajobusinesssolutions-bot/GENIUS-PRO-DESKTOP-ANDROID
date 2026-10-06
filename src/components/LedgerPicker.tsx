@@ -26,7 +26,7 @@ function nextCode(all: Ledger[], type: LedgerType): string {
 }
 
 export default function LedgerPicker({
-  label, value, onChange, types, icon = 'doc', placeholder = 'Choose a ledger', canCreate, style, compact,
+  label, value, onChange, types, icon = 'doc', placeholder = 'Choose a ledger', canCreate, style, compact, trigger,
 }: {
   label: string;
   value: string;
@@ -38,6 +38,8 @@ export default function LedgerPicker({
   /** Offer "create" for a name that matches nothing. */
   canCreate?: boolean;
   style?: ViewStyle;
+  /** Draws the row that opens the list, in place of the standard field. */
+  trigger?: (open: () => void, chosen?: Ledger) => React.ReactNode;
   /** A slimmer box, for rows in a list. */
   compact?: boolean;
 }) {
@@ -78,6 +80,7 @@ export default function LedgerPicker({
 
   return (
     <>
+      {trigger ? trigger(() => setOpen(true), chosen) : (
       <FieldShell
         label={label}
         icon={icon}
@@ -92,6 +95,7 @@ export default function LedgerPicker({
           <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 1 }}>{chosen.code} · {TYPE_LABEL[chosen.type]}</Text>
         ) : null}
       </FieldShell>
+      )}
 
       <Sheet
         visible={open}
