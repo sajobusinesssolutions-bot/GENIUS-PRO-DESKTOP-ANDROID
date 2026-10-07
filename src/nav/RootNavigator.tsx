@@ -1,6 +1,6 @@
 import React from 'react';
 import { requestSync } from '../data/SyncKeeper';
-import { Platform, InteractionManager } from 'react-native';
+import { Platform } from 'react-native';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import AppLock from './AppLock';
@@ -166,7 +166,8 @@ export default function RootNavigator() {
         const route = navRef.current?.getCurrentRoute()?.name;
         if (!route) return;
         const started = Date.now();
-        InteractionManager.runAfterInteractions(() => {
+        const idle: (cb: () => void) => void = (globalThis as any).requestIdleCallback || ((cb: () => void) => setTimeout(cb, 0));
+        idle(() => {
           noteScreenTiming(route, Date.now() - started, {
             products: db?.products.length, sales: db?.sales.length, journal: db?.journal.length,
           });

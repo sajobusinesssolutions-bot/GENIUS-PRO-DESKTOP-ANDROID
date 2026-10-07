@@ -48,7 +48,7 @@ interface MenuDraft { id?: string; name: string; sections: string[] }
 let tmp = 0;
 const tmpId = () => 'mo_' + Date.now().toString(36) + (tmp++).toString(36);
 
-export default function MenuEditorScreen() {
+export default function MenuEditorScreen({ navigation }: any) {
   const { colors } = useTheme();
   const {
     db, money, addProduct, updateProduct, produceDish, saveModifierGroup, removeModifierGroup,
@@ -461,6 +461,9 @@ export default function MenuEditorScreen() {
                 on={!!db.settings.kitchenDisplay}
                 onChange={(v) => { try { setSetting({ kitchenDisplay: v }); } catch (e) { explain(e); } }}
               />
+              <View style={{ marginTop: 10 }}>
+                <Button size="sm" label="Open the kitchen display" icon={<Icon name="food" size={15} color={colors.ink} />} onPress={() => navigation.navigate('KitchenDisplay')} />
+              </View>
             </View>
 
             <TablePlanEditor />

@@ -405,10 +405,17 @@ export default function OrderScreen({ navigation, route }: Props) {
         title="Order"
         onBack={route.name === 'Order' ? () => navigation.goBack() : undefined}
         right={(
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {can('restaurant.kitchen') ? (
+            <Pressable onPress={() => navigation.navigate('KitchenDisplay')} hitSlop={8} accessibilityLabel="Open the kitchen display" style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.sunk }}>
+              <Icon name="food" size={16} color={colors.ink} />
+            </Pressable>
+          ) : null}
           <Pressable onPress={() => setOpenList(true)} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.ink }}>
             <Icon name="receipt" size={15} color={colors.bg} />
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.bg }}>Open tickets {open.length}</Text>
           </Pressable>
+          </View>
         )}
       />
       {/* whose order this is */}
