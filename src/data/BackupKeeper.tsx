@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useAppData } from './AppDataContext';
-import { backupDue, writeBackup } from './deviceBackup';
+import { backupDue, loadChosenFolder, writeBackup } from './deviceBackup';
 
 const CHECK_MS = 30 * 60 * 1000;
 
@@ -30,6 +30,8 @@ export default function BackupKeeper() {
         // a backup that fails is retried on the next check; it must never stop the till
       }
     };
+    // the Downloads folder picked earlier, so scheduled backups land there too
+    void loadChosenFolder();
     const first = setTimeout(check, 5000);
     const every = setInterval(check, CHECK_MS);
     return () => { clearTimeout(first); clearInterval(every); };

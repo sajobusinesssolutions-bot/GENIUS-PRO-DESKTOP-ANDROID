@@ -48,9 +48,9 @@ describe('Day close', () => {
 
   it('closing is offered only for staff who have a shift open', () => {
     render(<ShiftScreen route={{ params: { close: true } }} />);
-    expect(screen.getByText('Close 1 shift')).toBeTruthy();
+    expect(screen.getByText('Close 1 shift and the day')).toBeTruthy();
     fireEvent.press(screen.getAllByText('Brian')[0]);
-    expect(screen.queryByText('Close 1 shift')).toBeNull();
+    expect(screen.queryByText('Close 1 shift and the day')).toBeNull();
     expect(screen.getByText(/nothing to close/)).toBeTruthy();
   });
 });

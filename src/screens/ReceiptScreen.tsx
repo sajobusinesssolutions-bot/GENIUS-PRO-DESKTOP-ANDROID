@@ -5,8 +5,9 @@ import { useAppData } from '../data/AppDataContext';
 import { Button, Panel, ActionGrid, StickyBar, SectionLabel } from '../components/ui';
 import { Icon } from '../components/icons';
 import { DocActions, useDocBuilder } from '../components/DocActions';
-import { printDoc } from '../data/docPrint';
-import { printOptsFor, docKindOf } from '../data/printSetup';
+import { printDoc, printKitchenTicket } from '../data/docPrint';
+import { isRestaurant, kitchenOf, words } from '../data/restaurant';
+import { printOptsFor, docKindOf, purposeOf, printsOf } from '../data/printSetup';
 import { useToast } from '../components/Toast';
 import { reportError } from '../data/crashReporter';
 import { PrinterError } from '../data/rawPrinter';
@@ -26,10 +27,16 @@ export default function ReceiptScreen({ route, navigation }: Props) {
   const { error: toastError } = useToast();
   const printed = useRef(false);
   useEffect(() => {
-    if (printed.current || !sale || !db?.printer?.autoPrint) return;
+    if (printed.current || !sale || !db) return;
     printed.current = true;
     const d = saleDoc(sale);
-    printDoc(d, money, printOptsFor(db, d.docKind || docKindOf(d.kind))).catch((e) => {
+    // printers set up for kitchen orders get the ticket with every sale
+    if (!isRestaurant(db)) db.printers.filter((p) => printsOf(p).includes('order')).forEach((p) => {
+      printKitchenTicket(d, p, kitchenOf(db)).catch((e) => toastError('The kitchen order did not print on ' + p.name + ': ' + (e?.message || 'the printer did not answer')));
+    });
+    if (!db.printer?.autoPrint) return;
+    // a cash sale goes to the cash-sale printer, a credit sale to the invoice printer
+    printDoc(d, money, printOptsFor(db, d.docKind || docKindOf(d.kind), undefined, purposeOf(d))).catch((e) => {
       // said, not swallowed: a receipt that silently did not print is a customer left waiting
       toastError('The receipt did not print: ' + (e?.message || 'the printer did not answer') + ' Tap Print to try again.');
       if (!(e instanceof PrinterError)) void reportError(e, { extra: { where: 'autoPrint' } });
@@ -146,7 +153,7 @@ export default function ReceiptScreen({ route, navigation }: Props) {
         <ActionGrid
           actions={[
             { label: 'Bill details', icon: 'doc', tone: 'accent', onPress: () => navigation.replace('SaleDetail', { saleId: sale.id }) },
-            { label: 'New sale', icon: 'plus', tone: 'accent', onPress: () => navigation.replace('NewSale') },
+            { label: words(db).newSale, icon: 'plus', tone: 'accent', onPress: () => navigation.replace(isRestaurant(db) ? 'Order' : 'NewSale') },
             { label: 'Done', icon: 'check', tone: 'good', filled: true, onPress: () => navigation.navigate('Main') },
           ]}
         />

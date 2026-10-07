@@ -12,7 +12,9 @@ import { Icon, IconName } from './icons';
 import Sheet from './Sheet';
 import { ListRow } from './kit';
 import { printDoc, shareDoc, docText, DocMeta } from '../data/docPrint';
-import { printOptsFor, docKindOf, defaultPrinter, paperOf, shareOptsFor } from '../data/printSetup';
+import { printOptsFor, docKindOf, defaultPrinter, paperOf, shareOptsFor, purposeOf, printsOf } from '../data/printSetup';
+import { printKitchenTicket } from '../data/docPrint';
+import { kitchenOf, orderTypeWord } from '../data/restaurant';
 import { reportError } from '../data/crashReporter';
 import SendSheet from './SendSheet';
 import { docMessage } from '../data/messages';
@@ -55,6 +57,8 @@ export function useDocBuilder() {
         return {
           name: l.name, qty: l.qty, price: l.price, unit: l.unit,
           batchNo: l.batchNo, expiry: b?.expiry,
+          ...(l.modifiers?.length && db?.printer?.showModifiers !== false ? { mods: l.modifiers.map((m) => m.name) } : {}),
+          ...(l.note ? { note: l.note } : {}),
           serials: l.serials || (l.serialNo ? [{ imei: l.serialNo }] : undefined),
         };
       }),
@@ -69,6 +73,8 @@ export function useDocBuilder() {
       note: sale.note,
       terms: sale.terms,
       servedBy: user(sale.userId)?.name,
+      ...((sale.ticketName || sale.orderType) && db?.printer?.showTable !== false
+        ? { table: [sale.ticketName, orderTypeWord(sale.orderType)].filter(Boolean).join(' · ') } : {}),
     };
   }
 
@@ -186,7 +192,7 @@ export function DocActions({ doc, more, compact, phone, email }: {
     setBusy(what);
     try {
       const d = doc();
-      const opts = printOptsFor(db, d.docKind || docKindOf(d.kind), printer);
+      const opts = printOptsFor(db, d.docKind || docKindOf(d.kind), printer, purposeOf(d));
       if (what === 'print') await printDoc(d, money, opts);
       else {
         // a shared copy is A4 unless it is a receipt for a roll
@@ -256,6 +262,22 @@ export function DocActions({ doc, more, compact, phone, email }: {
           subtitle={dflt ? 'Now goes to ' + dflt.name + ' · ' + paperOf(dflt) : 'Choose the printer and paper'}
           onPress={() => { setMoreOpen(false); setChoosing(true); }}
         />
+        {printers.some((p) => printsOf(p).includes('order')) && ['invoice', 'receipt'].includes(doc().docKind || docKindOf(doc().kind)) ? (
+          <ListRow
+            card
+            icon="print"
+            tone="warn"
+            title="Print kitchen order"
+            subtitle="Items and notes, no prices"
+            onPress={() => {
+              setMoreOpen(false);
+              const d = doc();
+              printers.filter((p) => printsOf(p).includes('order')).forEach((p) => {
+                printKitchenTicket(d, p, kitchenOf(db)).then(() => success('Kitchen order sent to ' + p.name)).catch((e) => error(e?.message || 'The kitchen order did not print.'));
+              });
+            }}
+          />
+        ) : null}
         {(more || []).map((a) => (
           <ListRow
             key={a.label}

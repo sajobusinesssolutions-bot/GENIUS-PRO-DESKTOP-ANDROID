@@ -10,19 +10,27 @@ import React, { useState, useMemo } from 'react';
 import { View, FlatList, Pressable, Text } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
-import { ListPage, DocRow, StatusChips, SummaryTiles } from '../components/DocList';
+import { ListPage, DocRow, StatusChips, SummaryTiles, SortBar } from '../components/DocList';
 import { Icon } from '../components/icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { vocab } from '../data/editions';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, any>;
 type PType = 'all' | 'customer' | 'supplier';
+type PSort = 'balance' | 'az' | 'za' | 'owesMost' | 'oweMost';
+const PARTY_SORTS: { v: PSort; l: string }[] = [
+  { v: 'balance', l: 'Biggest balance first' }, { v: 'az', l: 'Name A–Z' }, { v: 'za', l: 'Name Z–A' },
+  { v: 'owesMost', l: 'Owes you most' }, { v: 'oweMost', l: 'You owe most' },
+];
 
 export default function PartiesScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { db, money, partyBalance } = useAppData();
+  const V = vocab(db);
   const [q, setQ] = useState('');
   const [type, setType] = useState<PType>('all');
+  const [sort, setSort] = useState<PSort>('balance');
 
   const all = db?.parties || [];
 
@@ -53,7 +61,7 @@ export default function PartiesScreen({ navigation }: Props) {
       top={(
         <>
           <StatusChips value={type} onChange={setType} options={[
-            { v: 'all', l: 'All ' + all.length }, { v: 'customer', l: 'Customers ' + customers }, { v: 'supplier', l: 'Suppliers ' + suppliers },
+            { v: 'all', l: 'All ' + all.length }, { v: 'customer', l: V.customers + ' ' + customers }, { v: 'supplier', l: V.suppliers + ' ' + suppliers },
           ]} />
           <SummaryTiles tiles={[
             { label: 'You are owed', value: money(totals.receivable), tone: colors.good },
@@ -73,7 +81,7 @@ export default function PartiesScreen({ navigation }: Props) {
         return (
           <DocRow
             title={p.name}
-            pill={{ label: cust ? 'Customer' : 'Supplier', tone: cust ? 'accent' : 'warn' }}
+            pill={{ label: cust ? V.customer : V.supplier, tone: cust ? 'accent' : 'warn' }}
             amount={owes || credit ? money(Math.abs(bal)) : 'Settled'}
             amountTone={owes ? (cust ? colors.good : colors.danger) : credit ? colors.accent : colors.faint}
             refText={owes ? (cust ? 'Owes you' : 'You owe') : credit ? 'In credit' : 'Nothing owing'}

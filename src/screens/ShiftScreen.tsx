@@ -28,7 +28,8 @@ import { Icon } from '../components/icons';
 import { Sheet } from '../components/Sheet';
 import { Foot } from '../components/AppBar';
 import { fmtDate, money0 } from '../data/helpers';
-import { shiftVariance } from '../data/logic';
+import { shiftVariance, shiftSales } from '../data/logic';
+import { isRestaurant, menuSections } from '../data/restaurant';
 import { activeBranchId } from '../data/branch';
 import type { Shift } from '../data/types';
 
@@ -38,7 +39,7 @@ type Tab = 'mine' | 'day' | 'history';
 export default function ShiftScreen({ route }: any) {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, money, cur, me, user, activeShift, openShift, closeShift, shiftTotals, lastClosedShift, can } = useAppData();
+  const { db, money, cur, me, user, activeShift, openShift, closeShift, shiftTotals, lastClosedShift, can, closeDay, reopenDay, voidTicket } = useAppData();
 
   const seeAll = db?.session.role === 'owner' || db?.session.role === 'manager' || can('shifts.view_all');
   const [tab, setTab] = useState<Tab>(route?.params?.close && seeAll ? 'day' : 'mine');
@@ -51,6 +52,8 @@ export default function ShiftScreen({ route }: any) {
 
   // closing: one or several shifts, each with its own count
   const [closing, setClosing] = useState<Shift[] | null>(null);
+  /** The close came from Day close: the day is frozen once the drawers are closed. */
+  const [closingDay, setClosingDay] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
 
@@ -74,8 +77,9 @@ export default function ShiftScreen({ route }: any) {
     return {
       cash: t.cash + z.cash, momo: t.momo + z.momo, bank: t.bank + z.bank, credit: t.credit + z.credit,
       expected: t.expected + z.expected, total: t.total + z.total, count: t.count + z.count,
+      recvAll: t.recvAll + (z.recvAll || 0), recvCount: t.recvCount + (z.recvCount || 0),
     };
-  }, { cash: 0, momo: 0, bank: 0, credit: 0, expected: 0, total: 0, count: 0 });
+  }, { cash: 0, momo: 0, bank: 0, credit: 0, expected: 0, total: 0, count: 0, recvAll: 0, recvCount: 0 });
 
   function startClose(list: Shift[]) {
     if (!list.length) return;
@@ -84,6 +88,46 @@ export default function ShiftScreen({ route }: any) {
     setCounts(c);
     setNote('');
     setClosing(list);
+  }
+
+  /**
+   * Day close. Open tickets are tables still eating or orders never charged: the
+   * day cannot be frozen with them hanging, so they are listed first and can be
+   * cancelled, or charged on the order screen before coming back.
+   */
+  function startDayClose() {
+    const open = (db?.tickets || []).filter((t) => t.status === 'open');
+    const go2 = () => {
+      setClosingDay(true);
+      if (chosen.length) startClose(chosen);
+      else finishDay();
+    };
+    if (isRestaurant(db) && open.length) {
+      const amt = (t: typeof open[number]) => t.lines.reduce((n, l) => n + l.qty * l.price, 0);
+      Alert.alert(
+        open.length === 1 ? '1 ticket is still open' : open.length + ' tickets are still open',
+        open.map((t) => '• ' + t.name + ' — ' + money(amt(t))).join('\n')
+          + '\n\nCharge them on the order screen, or cancel them to close the day.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Charge them', onPress: () => go('Order' as any) },
+          {
+            text: 'Cancel them and close', style: 'destructive', onPress: () => {
+              open.forEach((t) => voidTicket(t.id));
+              go2();
+            },
+          },
+        ],
+      );
+      return;
+    }
+    go2();
+  }
+
+  function finishDay() {
+    closeDay();
+    setClosingDay(false);
+    Alert.alert('Day closed', 'Today\'s transactions are frozen. Only the owner can reopen the day to change them.');
   }
 
   function confirmClose() {
@@ -95,6 +139,7 @@ export default function ShiftScreen({ route }: any) {
       closing.forEach((s) => closeShift(s.id, num(counts[s.id] || '0'), note));
       setClosing(null);
       setPicked(null);
+      if (closingDay) finishDay();
     };
     if (!off.length) { doIt(); return; }
     Alert.alert(
@@ -120,6 +165,16 @@ export default function ShiftScreen({ route }: any) {
           <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: c, marginTop: 3 }} numberOfLines={1} adjustsFontSizeToFit>{money0(v)}</Text>
         </View>
       ))}
+    </View>
+  );
+
+  const received = (z: { recvAll?: number; recvCount?: number }) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.line }}>
+      <Icon name="down" size={15} color={colors.good} />
+      <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>
+        Money received{z.recvCount ? ' · ' + z.recvCount + ' payment' + (z.recvCount === 1 ? '' : 's') : ''}
+      </Text>
+      <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.good }}>{money0(z.recvAll || 0)}</Text>
     </View>
   );
 
@@ -157,6 +212,7 @@ export default function ShiftScreen({ route }: any) {
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 16 }}>Drawer should hold</Text>
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, color: colors.ink, letterSpacing: -0.6 }}>{money(z.expected)}</Text>
           {money4(z)}
+          {received(z)}
         </View>
 
         <View style={{ height: 14 }} />
@@ -180,6 +236,44 @@ export default function ShiftScreen({ route }: any) {
     );
   };
 
+  const byMenu = (list: Shift[]) => {
+    if (!isRestaurant(db) || !list.length) return null;
+    const sections = menuSections(db);
+    const menus = db.menus || [];
+    const groups: { name: string; has: (cat: string) => boolean }[] = menus.length
+      ? menus.map((mn) => ({ name: mn.name, has: (c: string) => mn.sections.includes(c) }))
+      : sections.map((sc) => ({ name: sc.name, has: (c: string) => c === sc.name }));
+    const totals = new Map<string, { qty: number; amount: number }>();
+    const add = (k: string, q: number, a: number) => { const t = totals.get(k) || { qty: 0, amount: 0 }; t.qty += q; t.amount += a; totals.set(k, t); };
+    list.forEach((sh) => shiftSales(db, sh).forEach((sale) => sale.lines.forEach((l) => {
+      const cat = db.products.find((x) => x.id === l.productId)?.category || 'Other';
+      const g = groups.find((x) => x.has(cat));
+      add(g ? g.name : 'Not on a menu', l.qty, l.qty * l.price);
+    })));
+    const rows = [...totals.entries()].sort((a, b) => b[1].amount - a[1].amount);
+    if (!rows.length) return null;
+    const all = rows.reduce((n, [, t]) => n + t.amount, 0);
+    return (
+      <>
+        <View style={{ height: 16 }} />
+        <SectionLabel>{menus.length ? 'By menu' : 'By section'}</SectionLabel>
+        <Panel flush>
+          {rows.map(([k, t], i) => (
+            <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderBottomWidth: i === rows.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }} numberOfLines={1}>{k}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>
+                  {t.qty} item{t.qty === 1 ? '' : 's'} · {all ? Math.round(t.amount / all * 100) : 0}%
+                </Text>
+              </View>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money0(t.amount)}</Text>
+            </View>
+          ))}
+        </Panel>
+      </>
+    );
+  };
+
   const day = () => {
     if (!staff.length) {
       return <Panel><EmptyBlock icon="user" title="No staff yet" hint="Add people under Staff & roles." /></Panel>;
@@ -194,8 +288,25 @@ export default function ShiftScreen({ route }: any) {
       .reduce((t, x) => ({ n: t.n + 1, total: t.total + x.total }), { n: 0, total: 0 });
     const onShift = staff.filter((u) => openShifts.some((x) => x.userId === u.id)).length;
 
+    const closedAt = db.settings.closedThrough;
     return (
       <>
+        {closedAt ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: colors.sunk, marginBottom: 14 }}>
+            <Icon name="lock" size={17} color={colors.ink} />
+            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>
+              Closed through {fmtDate(closedAt)}. Everything before it is frozen.
+            </Text>
+            {db.session.role === 'owner' ? (
+              <Pressable hitSlop={8} onPress={() => Alert.alert('Reopen the day?', 'Transactions up to ' + fmtDate(closedAt) + ' can be edited and deleted again.', [
+                { text: 'Keep closed', style: 'cancel' },
+                { text: 'Reopen', onPress: () => reopenDay() },
+              ])}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Reopen</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         <SectionLabel right={<Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{onShift} of {staff.length} on shift</Text>}>
           Who to close
         </SectionLabel>
@@ -240,7 +351,10 @@ export default function ShiftScreen({ route }: any) {
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 12 }}>Drawers should hold</Text>
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: colors.ink, letterSpacing: -0.6 }}>{money(all.expected)}</Text>
           {money4(all)}
+          {received(all)}
         </View>
+
+        {byMenu(chosen)}
 
         <View style={{ height: 16 }} />
         <SectionLabel>Each member of staff</SectionLabel>
@@ -266,7 +380,7 @@ export default function ShiftScreen({ route }: any) {
                     ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money0(z.expected)}</Text>
                     : <Badge label="Closed" tone="neutral" />}
                 </View>
-                {mineOpen.length ? money4(z) : (
+                {mineOpen.length ? <>{money4(z)}{z.recvAll ? received(z) : null}</> : (
                   <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 8 }}>
                     Sold {money(today.total)} today. No drawer to count.
                   </Text>
@@ -328,8 +442,13 @@ export default function ShiftScreen({ route }: any) {
     ? (shift
       ? <Button variant="pri" label="Close my shift" icon={<Icon name="lock" size={16} color={colors.accentInk} />} onPress={() => startClose([shift])} />
       : <Button variant="pri" label="Open my shift" icon={<Icon name="till" size={16} color={colors.accentInk} />} onPress={() => setOpenSheet(true)} />)
-    : tab === 'day' && chosen.length
-      ? <Button variant="pri" label={chosen.length === 1 ? 'Close 1 shift' : 'Close ' + chosen.length + ' shifts'} icon={<Icon name="lock" size={16} color={colors.accentInk} />} onPress={() => startClose(chosen)} />
+    : tab === 'day'
+      ? <Button
+        variant="pri"
+        label={chosen.length ? 'Close ' + (chosen.length === 1 ? '1 shift' : chosen.length + ' shifts') + ' and the day' : 'Close the day'}
+        icon={<Icon name="lock" size={16} color={colors.accentInk} />}
+        onPress={startDayClose}
+      />
       : null;
 
   return (
@@ -371,8 +490,8 @@ export default function ShiftScreen({ route }: any) {
         title={closing && closing.length > 1 ? 'Close ' + closing.length + ' shifts' : 'Close the shift'}
         icon="lock"
         full={!!closing && closing.length > 1}
-        onClose={() => setClosing(null)}
-        footer={<Button variant="pri" label="Close and post" onPress={confirmClose} />}
+        onClose={() => { setClosing(null); setClosingDay(false); }}
+        footer={<Button variant="pri" label={closingDay ? 'Close and freeze the day' : 'Close and post'} onPress={confirmClose} />}
       >
         {(closing || []).map((s) => {
           const z = shiftTotals(s);
@@ -382,6 +501,7 @@ export default function ShiftScreen({ route }: any) {
             <View key={s.id} style={{ marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: colors.sunk }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{user(s.userId)?.name || 'Staff'}</Text>
               {money4(z)}
+              {received(z)}
               <View style={{ height: 12 }} />
               <Field
                 icon="cash"

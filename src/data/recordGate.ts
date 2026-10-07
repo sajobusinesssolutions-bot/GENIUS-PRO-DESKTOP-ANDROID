@@ -109,13 +109,20 @@ export function planRefusal(d: DB, now = new Date()): Refusal | null {
   // A plan whose end date has passed while its last answer still said "fine".
   // Every other lapsed state already has its own words below.
   const said = licState(d, now);
-  if (plan === 'lapsed' && (said === 'active' || said === 'trial')) {
+  if (plan === 'lapsed') {
+    // the server's own words where it gave them (blocked, revoked…), else plainly that it ran out
+    const w = said !== 'active' && said !== 'trial' && LICENCE_WHY[said] ? LICENCE_WHY[said] : null;
     return {
-      code: 'licence', title: 'Your plan has run out',
-      why: 'Nothing new can be added until it is renewed, and cloud sync is paused. '
+      code: 'licence', title: w ? w.title : 'Your plan has run out',
+      why: (w ? w.why + ' ' : 'Nothing new can be added, changed or deleted until it is renewed, and cloud sync is paused. ')
         + 'Everything already in the books can still be read, printed, exported and backed up.',
       route: 'Licence', action: 'Renew',
     };
+  }
+  // the server marked the licence expired, blocked or revoked: that stops new work too
+  if (said === 'expired' || said === 'blocked' || said === 'revoked') {
+    const w = LICENCE_WHY[said];
+    return { code: 'licence', title: w.title, why: w.why, route: 'Licence', action: 'Open licence' };
   }
   return null;
 }

@@ -211,6 +211,10 @@ export interface LicenceClaims {
   /** When the subscription ends — null for a lifetime licence. */
   until?: string | null;
   plan: string;
+  /** Retail, Restaurant or Pharmacy. Absent on a token from before editions. */
+  edition?: string;
+  /** How many businesses the account may run. */
+  maxBusinesses?: number;
   term: string;
   /** How many devices this account may register. */
   seats: number;

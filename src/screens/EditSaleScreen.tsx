@@ -126,6 +126,10 @@ export default function EditSaleScreen({ route, navigation }: Props) {
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>
+                {l.modifiers?.length ? (
+                  <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft, marginTop: 2 }}>+ {l.modifiers.map((m) => m.name).join(', ')}</Text>
+                ) : null}
+                {l.note ? <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.warn, marginTop: 2 }}>* {l.note}</Text> : null}
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                   {money(l.price)} each{l.batchNo ? ' · batch ' + l.batchNo : ''}
                 </Text>

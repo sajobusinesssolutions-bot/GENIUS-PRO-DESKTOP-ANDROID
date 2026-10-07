@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { AppState } from 'react-native';
 import {
-  DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, Entry, JournalLine, PayMethod, Product, Party,
+  DB, Sale, SaleLine, ModifierGroup, Ticket, MenuGroup, OrderType, Menu, PriceList, Purchase, PurchaseLine, Payment, Entry, JournalLine, PayMethod, Product, Party,
   Estimate, Challan, ChallanLine, CreditNote, CreditNoteLine, Offer, StockTake, PurchaseOrder, POLine,
   ProductionRun, RecurringInvoice, AuditLogEntry, Firm, User,
   InstalmentPlan, Printer, PrintServer, PrintTemplate, PrinterSettings, DocKind,
   Subscription, Licence, SyncCfg, UpdateCfg, Revision, RoleDef, NumberingKey, Shift, BankStatementLine,
 } from './types';
-import { setCostHidden } from './perms';
+import { setCostHidden, applyEditionRoles } from './perms';
 import { ensureRoles, setRoleRegistry, canWith, builtinRoles, allPermKeys, permCount } from './perms';
 import { seed, emptyBook } from './seed';
 import { loadDB, saveDB, clearDB, scheduleSave, flushSave, migrate } from './storage';
@@ -27,6 +27,8 @@ import { hashPin, verifyPin } from './pinHash';
 import { fetchLicence, normaliseLicenceResponse } from './authApi';
 import type { StoredOp } from './syncProtocol';
 import NetInfo from '@react-native-community/netinfo';
+import { businessAllowance, businessLimitWords } from './editions';
+import { lastAccountLicence } from './syncClient';
 import { importStatementLines, matchStatementLine, summarizeReconciliation, completeReconciliation, StatementInput, ReconciliationSummary } from './reconciliation';
 
 interface Ctx {
@@ -52,7 +54,7 @@ interface Ctx {
   adoptBook: (data: DB, o: { businessId: string; ownerEmail: string; snapshotVersion?: number }) => void;
   /** Replaces the local book with a validated backup selected on this phone. */
   restoreBackup: (data: DB) => void;
-  commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string }) => Sale;
+  commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: OrderType; priceListId?: string }) => Sale;
   voidSale: (saleId: string, reason?: string) => void;
   createPurchase: (partyId: string, lines: PurchaseLine[], method: PayMethod, userId?: string, no?: string, when?: string) => Purchase;
   recordPayment: (o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; allocations?: Array<{ saleId: string; amount: number }>; userId?: string }) => Payment;
@@ -94,6 +96,8 @@ interface Ctx {
   createEstimate: (o: { partyId: string | null; lines: SaleLine[]; discount: number; validUntil?: string }) => Estimate;
   convertEstimate: (estimateId: string, method: PayMethod) => Sale | null;
   voidEstimate: (estimateId: string) => void;
+  /** After a sale made from a quotation is saved: the quotation is closed and points at it. */
+  markEstimateConverted: (estimateId: string, saleId: string) => void;
   /** Changes an open quotation's customer, lines and discount; returns false once it is closed. */
   updateEstimate: (estimateId: string, o: { partyId: string | null; lines: SaleLine[]; discount: number }) => boolean;
 
@@ -186,6 +190,38 @@ interface Ctx {
   deletePurchase: (purchaseId: string, reason?: string) => boolean;
   editPayment: (payId: string, patch: { amount: number; accountId?: string; note?: string }) => Payment | null;
   deletePayment: (payId: string, reason?: string) => boolean;
+  // Restaurant
+  /** Adds or changes a modifier group (Size, Extras…). */
+  saveModifierGroup: (g: Omit<ModifierGroup, 'id'> & { id?: string }) => ModifierGroup;
+  /** Removes a modifier group, and takes it off every item that offered it. */
+  removeModifierGroup: (id: string) => void;
+  /** Saves an open ticket: a new one, or more ordered on one already open. */
+  saveTicket: (t: { id?: string; name: string; lines: SaleLine[]; sent: number[]; orderType?: OrderType; guests?: number; note?: string }) => Ticket;
+  /** Adds or changes a section of the menu. */
+  saveMenuGroup: (g: Omit<MenuGroup, 'id' | 'sort'> & { id?: string; sort?: number }) => MenuGroup;
+  /** Removes a section; its dishes move to Other. */
+  removeMenuGroup: (id: string) => void;
+  /** Moves a section up (-1) or down (1) the menu. */
+  moveMenuGroup: (id: string, by: -1 | 1) => void;
+  /** Adds or changes a price list: a new one, a rename, its prices or items. */
+  savePriceList: (l: Omit<PriceList, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => PriceList;
+  /** Adds or changes a menu (a set of sections). */
+  saveMenu: (m: { id?: string; name: string; sections: string[] }) => Menu;
+  removeMenu: (id: string) => void;
+  /** The ticket was paid: it closes and points at its sale. */
+  closeTicket: (id: string, saleId: string) => void;
+  /** An open ticket cancelled before it was paid. */
+  voidTicket: (id: string) => void;
+
+  /** Freezes everything up to now: day close. */
+  closeDay: () => void;
+  /** The owner undoes the last day close. */
+  reopenDay: () => void;
+
+  /** Puts a deleted sale, purchase or payment back, undoing its reversal. */
+  restoreDeleted: (kind: 'sale' | 'purchase' | 'payment', id: string) => void;
+  /** Takes it out of Deleted transactions for good. */
+  purgeDeleted: (kind: 'sale' | 'purchase' | 'payment', id: string) => void;
 
   // Offline queue
   toggleOnline: () => void;
@@ -232,6 +268,19 @@ interface Ctx {
 }
 
 const AppDataCtx = createContext<Ctx | null>(null);
+
+/** Actions that change the shop's records: refused once the plan has run out. */
+const GATED_ACTIONS = [
+  'updateProduct', 'updateParty', 'markEstimateConverted', 'voidEstimate', 'markChallanDelivered', 'updateOffer', 'removeOffer',
+  'startStockTake', 'setStockTakeCount', 'setStockTakeBatchCount', 'receivePurchaseOrder', 'scheduleRecurring', 'updateRecurring',
+  'runRecurring', 'openShift', 'addUnit', 'removeUnit', 'addCategory', 'removeCategory', 'saveModifierGroup', 'removeModifierGroup',
+  'saveTicket', 'saveMenuGroup', 'removeMenuGroup', 'moveMenuGroup', 'saveMenu', 'removeMenu', 'voidTicket', 'purgeDeleted',
+  'addLedger', 'updateLedger', 'payInstalment', 'applyBulkPlan', 'addWarehouse', 'removeWarehouse', 'startFinancialYear',
+  'matchBankStatementLine', 'completeBankReconciliation', 'addFirm', 'savePriceList',
+];
+
+/** Settings any signed-in person's phone may write for itself, without Settings permission. */
+const PERSONAL_SETTINGS = new Set(['lastBackupAt', 'theme', 'reportCols']);
 
 const stockOfImpl = logic.stockOfImpl;
 const saleTotals = logic.saleTotals;
@@ -363,6 +412,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (r) throw new Refusal(r.title, r.why);
   }, []);
 
+  /** Passes when the role has any one of these. */
+  const requireAnyPerm = useCallback((keys: string[]) => {
+    const d = dbRef.current;
+    if (!d) return;
+    if (!keys.some((k) => canWith(d.roles, d.session.role, k))) throw new Refusal('Not allowed for your role', refusalFor(keys[0]));
+  }, []);
+
+  /** Nothing in a closed day changes. */
+  const requireOpenDay = useCallback((ts: string | undefined) => {
+    const d = dbRef.current;
+    if (d) logic.guardOpenDay(d, ts);
+  }, []);
+  const tsOf = (coll: 'sales' | 'purchases' | 'payments', id: string) => (dbRef.current?.[coll] as Array<{ id: string; ts: string }> | undefined)?.find((x) => x.id === id)?.ts;
+
   const requirePerm = useCallback((key: string) => {
     const d = dbRef.current;
     if (!d) return;
@@ -491,16 +554,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     commitSale: (o) => {
       requireRecordable();
+      if (o.ts) requireOpenDay(o.ts);
       const d0 = dbRef.current;
       // Settings → "A shift must be open to sell"
       if (d0 && d0.settings.requireShift && !d0.shifts.some((sh) => !sh.closedAt)) {
-        throw new Error('No shift is open. Open one from the cash register before selling, or switch off "A shift must be open to sell" in Settings.');
+        throw new Refusal('No shift is open. Open one from the cash register before selling, or switch off "A shift must be open to sell" in Settings.');
       }
       let sale!: Sale;
       commit((d) => { sale = logic.commitSale(d, o); });
       return sale;
     },
-    voidSale: (saleId, reason) => { requireRecordable(); requirePerm('sales.void'); commit((d) => logic.voidSale(d, saleId, reason)); },
+    voidSale: (saleId, reason) => { requireRecordable(); requirePerm('sales.void'); requireOpenDay(tsOf('sales', saleId)); commit((d) => logic.voidSale(d, saleId, reason)); },
     createPurchase: (partyId, lines, method, userId, no, when) => {
       requireRecordable();
       requirePerm('purchases.receive');
@@ -516,7 +580,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     importFromVyapar: (tables, firmId) => {
       requireRecordable();
-      if (db?.session.role !== 'owner') throw new Error("Only the owner can import another app's books.");
+      if (db?.session.role !== 'owner') throw new Refusal("Only the owner can import another app's books.");
       let report!: import('./vyapar').ImportReport;
       // one change, so it is saved and synced as a whole
       commit((d) => {
@@ -530,6 +594,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     recordEntry: (o) => {
       requireRecordable(); requirePerm('expenses.create');
+      if (o.direction === 'out' && !o.offsetSaleId && dbRef.current) logic.guardCash(dbRef.current, [{ acc: o.accountId, amount: o.amount }]);
       let e!: Entry;
       commit((d) => {
         const when = new Date();
@@ -603,10 +668,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       commit((d) => { np = { ...p, id: uid('prd') }; d.products.push(np); logic.enqueue(d, 'product', np.id); });
       return np;
     },
-    updateParty: (id, patch) => commit((d) => {
+    updateParty: (id, patch) => { requirePerm('customers.edit'); commit((d) => {
       const i = d.parties.findIndex((p) => p.id === id);
       if (i >= 0) { d.parties[i] = { ...d.parties[i], ...patch }; logic.enqueue(d, 'party', id); }
-    }),
+    }); },
     addParty: (p) => {
       requireCreate();
       requirePerm(p.type === 'supplier' ? 'purchases.create' : 'customers.create');
@@ -652,8 +717,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return result;
     },
     setOnboarded: (v) => commit((d) => { d.onboarded = v; }),
-    setSetting: (patch) => commit((d) => { d.settings = { ...d.settings, ...patch }; }),
-    setLoyalty: (patch) => commit((d) => { d.loyaltyRules = { ...d.loyaltyRules, ...patch }; }),
+    setSetting: (patch) => {
+      // the app's own bookkeeping (when the last backup ran, the look of the app) is not a setting someone changes
+      if (Object.keys(patch).some((k) => !PERSONAL_SETTINGS.has(k))) requirePerm('settings.manage');
+      commit((d) => { d.settings = { ...d.settings, ...patch }; });
+    },
+    setLoyalty: (patch) => { requirePerm('customers.manage'); commit((d) => { d.loyaltyRules = { ...d.loyaltyRules, ...patch }; }); },
     setWarehouse: (warehouseId) => {
       const w = dbRef.current?.warehouses.find((x) => x.id === warehouseId);
       if (w && w.active === false) throw new Refusal(w.name + ' is disabled', 'A disabled branch cannot be opened by anyone until it is enabled again under Branches.');
@@ -678,16 +747,27 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       d.businessAccess = d.businessAccess.filter((g) => !(g.userId === userId && g.businessId === businessId));
       audit(d, 'Business access revoked', 'User ' + (d.users.find((u) => u.id === userId)?.name || userId) + ' removed from ' + businessId);
     }),
-    updateFirm: (patch) => commit((d) => {
+    updateFirm: (patch) => { requirePerm('settings.manage'); commit((d) => {
       d.firm = { ...d.firm, ...patch };
       logic.enqueue(d, 'firm', d.firm.id);
       if (d.sync) d.sync.snapshotDue = true;
-      // choosing what kind of business it is fills the chart with the ledgers it will need
-      if (patch.businessType) addStarterLedgers(d, patch.businessType);
+      // choosing what kind of business it is fills the chart with the ledgers it will need,
+      // and sets up its Cashier and Sales roles for that trade
+      if (patch.businessType) {
+        addStarterLedgers(d, patch.businessType);
+        const t = patch.businessType;
+        applyEditionRoles(ensureRoles(d), t === 'restaurant' ? 'restaurant' : t === 'pharmacy' ? 'pharmacy' : 'retail');
+        ['cashier', 'sales'].forEach((id) => logic.enqueue(d, 'role', id));
+        setRoleRegistry(d.roles);
+      }
       const i = d.firms.findIndex((f) => f.id === d.firm.id);
       if (i >= 0) d.firms[i] = d.firm;
-    }),
-    updateUser: (id, patch) => commit((d) => {
+    }); },
+    updateUser: (id, patch) => {
+      // anyone may change their own PIN or name; everything else is staff management
+      const self = dbRef.current?.session.userId === id && Object.keys(patch).every((k) => k === 'pin' || k === 'name');
+      if (!self) requirePerm('profiles.manage');
+      commit((d) => {
       const i = d.users.findIndex((u) => u.id === id);
       if (i < 0) return;
       // a caller always hands over the PIN someone just typed, never a hash
@@ -704,17 +784,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       }
       d.users[i] = { ...d.users[i], ...patch };
       if (d.session.userId === id && patch.role) d.session.role = d.users[i].role;
+      logic.enqueue(d, 'user', id);
       audit(d, 'User/role updated', d.users[i].name);
-    }),
+    }); },
     addUser: (u) => {
+      requirePerm('profiles.manage');
       let nu!: User;
-      commit((d) => { nu = { ...u, id: uid('usr'), pin: hashPin(u.pin) }; d.users.push(nu); audit(d, 'User added', nu.name + ' (' + nu.role + ')'); });
+      commit((d) => { nu = { ...u, id: uid('usr'), pin: hashPin(u.pin) }; d.users.push(nu); logic.enqueue(d, 'user', nu.id); audit(d, 'User added', nu.name + ' (' + nu.role + ')'); });
       return nu;
     },
 
     // --- Estimates ---
     createEstimate: (o) => {
       requireCreate();
+      requirePerm('quotes.create');
       let est!: Estimate;
       commit((d) => {
         d.counters.estimate += 1;
@@ -728,9 +811,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     convertEstimate: (estimateId, method) => {
       requireCreate();
+      requirePerm('quotes.convert');
       const d = dbRef.current!;
       const est = d.estimates.find((e) => e.id === estimateId);
       if (!est || est.status !== 'open') return null;
+      // the quote may be old: stock, costs and items have moved since it was written
+      const blockers = logic.saleBlockers(d, est.lines);
+      if (blockers.length) throw new Refusal(est.no + ' cannot become a sale yet', blockers.join('\n'));
       const sale = apiRef.current!.commitSale({ lines: est.lines, partyId: est.partyId, method, discount: est.discount });
       commit((d2) => {
         const e2 = d2.estimates.find((e) => e.id === estimateId);
@@ -739,12 +826,21 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
       return sale;
     },
-    voidEstimate: (estimateId) => commit((d) => {
+    markEstimateConverted: (estimateId, saleId) => commit((d) => {
+      const e = d.estimates.find((x) => x.id === estimateId);
+      const sale = d.sales.find((x) => x.id === saleId);
+      if (!e || e.status !== 'open') return;
+      e.status = 'converted'; e.convertedSaleId = saleId;
+      logic.enqueue(d, 'estimate', e.id);
+      audit(d, 'Estimate converted', e.no + ' -> ' + (sale?.no || saleId));
+    }),
+    voidEstimate: (estimateId) => { requirePerm('quotes.delete'); commit((d) => {
       const e = d.estimates.find((x) => x.id === estimateId);
       if (e && e.status === 'open') { e.status = 'void'; audit(d, 'Estimate voided', e.no); logic.enqueue(d, 'estimate', e.id); }
-    }),
+    }); },
     updateEstimate: (estimateId, o) => {
       requireCreate();
+      requirePerm('quotes.create');
       let ok = false;
       commit((d) => {
         const e = d.estimates.find((x) => x.id === estimateId);
@@ -761,6 +857,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     // --- Delivery challans ---
     createChallan: (o) => {
       requireCreate();
+      requirePerm('challans.create');
       let ch!: Challan;
       commit((d) => {
         d.counters.challan += 1;
@@ -771,10 +868,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
       return ch;
     },
-    markChallanDelivered: (challanId) => commit((d) => {
+    markChallanDelivered: (challanId) => { requirePerm('challans.deliver'); commit((d) => {
       const c = d.challans.find((x) => x.id === challanId);
       if (c) { c.status = 'delivered'; audit(d, 'Challan delivered', c.no); logic.enqueue(d, 'challan', c.id); }
-    }),
+    }); },
 
     // --- Credit notes / returns ---
     createCreditNote: (o) => {
@@ -968,6 +1065,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       return canWith(ensureRoles(d), d.session.role, key);
     },
     saveRole: (r) => {
+      requirePerm('profiles.manage');
       let out: RoleDef | null = null;
       commit((d) => {
         const rs = ensureRoles(d);
@@ -978,18 +1076,21 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           // the owner always keeps everything — reference A.permTick, 7725
           if (ex.id !== 'owner') ex.perms = { ...r.perms };
           out = ex;
+          logic.enqueue(d, 'role', ex.id);
           audit(d, 'Role updated', ex.name + ' — ' + permCount(ex) + '/' + allPermKeys().length);
         } else {
           const base = r.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 20);
           const id = 'role_' + base + '_' + uid('r').slice(-4);
           out = { id, name: r.name, description: r.description, perms: { ...r.perms }, builtin: false };
           d.roles.push(out);
+          logic.enqueue(d, 'role', out.id);
           audit(d, 'Role created', r.name);
         }
       });
       return out;
     },
     duplicateRole: (id) => {
+      requirePerm('profiles.manage');
       let out: RoleDef | null = null;
       commit((d) => {
         const rs = ensureRoles(d);
@@ -1001,11 +1102,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 20);
         out = { id: 'role_' + base + '_' + uid('r').slice(-4), name, description: src.description, perms: { ...src.perms }, builtin: false };
         d.roles.push(out);
+        logic.enqueue(d, 'role', out.id);
         audit(d, 'Role duplicated', src.name + ' -> ' + name);
       });
       return out;
     },
     removeRole: (id) => {
+      requirePerm('profiles.manage');
       let ok = false;
       commit((d) => {
         const rs = ensureRoles(d);
@@ -1041,6 +1144,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     // --- Multi-firm ---
     addFirm: (f) => {
       requireCreate();
+      const room = businessAllowance(lastAccountLicence(), dbRef.current);
+      if (room.left <= 0) throw new Refusal('Business limit reached', businessLimitWords(room));
       let nf!: Firm;
       commit((d) => { nf = { ...f, id: uid('frm'), active: true }; d.firms.push(nf); audit(d, 'Firm added', nf.name); });
       return nf;
@@ -1062,32 +1167,184 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     canEditPurchase: (id) => { const d = dbRef.current; return d ? logic.canEditPurchase(d, id) : { ok: false, why: '' }; },
     canEditPayment: (id) => { const d = dbRef.current; return d ? logic.canEditPayment(d, id) : { ok: false, why: '' }; },
     editSale: (saleId, o, reason) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('sales.edit'); requireOpenDay(tsOf('sales', saleId));
       let out: Sale | null = null;
       commit((d) => { out = logic.editSale(d, saleId, o, reason); });
       return out;
     },
     deleteSale: (saleId, reason) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('sales.delete'); requireOpenDay(tsOf('sales', saleId));
       if (dbRef.current?.session.online === false) requirePerm('sales.delete_offline');
       let ok = false;
       commit((d) => { ok = logic.deleteSale(d, saleId, reason); });
       return ok;
     },
     editPurchase: (purchaseId, o, reason) => {
-      requireRecordable();
+      requireRecordable(); requirePerm('purchases.edit'); requireOpenDay(tsOf('purchases', purchaseId));
       let out: Purchase | null = null;
       commit((d) => { out = logic.editPurchase(d, purchaseId, o, reason); });
       return out;
     },
-    deletePurchase: (purchaseId, reason) => { requireRecordable(); let ok = false; commit((d) => { ok = logic.deletePurchase(d, purchaseId, reason); }); return ok; },
-    editPayment: (payId, patch) => {
+    saveModifierGroup: (g) => {
+      requirePerm('inventory.edit');
+      let out!: ModifierGroup;
+      commit((d) => {
+        d.modifierGroups = d.modifierGroups || [];
+        const clean = { name: g.name.trim(), required: !!g.required, multi: !!g.multi, options: g.options.filter((o) => o.name.trim()).map((o) => ({ ...o, name: o.name.trim(), price: Math.max(0, Number(o.price) || 0) })) };
+        const i = g.id ? d.modifierGroups.findIndex((x) => x.id === g.id) : -1;
+        out = i >= 0 ? { ...d.modifierGroups[i], ...clean } : { id: uid('mod'), ...clean };
+        if (i >= 0) d.modifierGroups[i] = out; else d.modifierGroups.push(out);
+        logic.enqueue(d, 'modifierGroup', out.id);
+      });
+      return out;
+    },
+    removeModifierGroup: (id) => {
+      requirePerm('inventory.edit');
+      commit((d) => {
+        d.modifierGroups = (d.modifierGroups || []).filter((g) => g.id !== id);
+        d.products.forEach((p) => {
+          if (p.modifierGroups?.includes(id)) { p.modifierGroups = p.modifierGroups.filter((x) => x !== id); logic.enqueue(d, 'product', p.id); }
+        });
+      });
+    },
+    saveTicket: (t) => {
+      requirePerm('sales.create');
+      let out!: Ticket;
+      commit((d) => {
+        d.tickets = d.tickets || [];
+        const now = iso(new Date());
+        const i = t.id ? d.tickets.findIndex((x) => x.id === t.id) : -1;
+        if (i >= 0) {
+          out = { ...d.tickets[i], name: t.name, lines: t.lines, sent: t.sent, updatedAt: now, orderType: t.orderType, guests: t.guests, note: t.note || undefined };
+          d.tickets[i] = out;
+        } else {
+          const n = d.tickets.length + 1;
+          out = {
+            id: uid('tkt'), no: 'T' + String(n).padStart(3, '0'), name: t.name || 'Ticket ' + n, ts: now, updatedAt: now,
+            lines: t.lines, sent: t.sent, status: 'open', userId: d.session.userId, branch: activeBranchId(d),
+            ...(t.orderType ? { orderType: t.orderType } : {}), ...(t.guests ? { guests: t.guests } : {}), ...(t.note ? { note: t.note } : {}),
+          };
+          d.tickets.push(out);
+        }
+        logic.enqueue(d, 'ticket', out.id);
+      });
+      return out;
+    },
+    saveMenuGroup: (g) => {
+      requirePerm('inventory.edit');
+      let out!: MenuGroup;
+      commit((d) => {
+        d.menuGroups = d.menuGroups || [];
+        const i = g.id ? d.menuGroups.findIndex((x) => x.id === g.id) : -1;
+        const name = g.name.trim();
+        if (i >= 0) {
+          const before = d.menuGroups[i].name;
+          out = { ...d.menuGroups[i], name, color: g.color, station: g.station || undefined };
+          d.menuGroups[i] = out;
+          // a renamed section keeps its dishes
+          if (before !== name) d.products.forEach((p) => { if (p.category === before) { p.category = name; logic.enqueue(d, 'product', p.id); } });
+        } else {
+          out = { id: uid('mgp'), name, color: g.color, station: g.station || undefined, sort: d.menuGroups.length };
+          d.menuGroups.push(out);
+        }
+        if (!d.categories.includes(name)) d.categories.push(name);
+        logic.enqueue(d, 'menuGroup', out.id);
+      });
+      return out;
+    },
+    removeMenuGroup: (id) => {
+      requirePerm('inventory.edit');
+      commit((d) => {
+        const g = (d.menuGroups || []).find((x) => x.id === id);
+        if (!g) return;
+        d.products.forEach((p) => { if (p.category === g.name) { p.category = 'Other'; logic.enqueue(d, 'product', p.id); } });
+        d.menuGroups = (d.menuGroups || []).filter((x) => x.id !== id);
+        d.menuGroups.forEach((x, i) => { x.sort = i; });
+      });
+    },
+    moveMenuGroup: (id, by) => {
+      requirePerm('inventory.edit');
+      commit((d) => {
+        const list = [...(d.menuGroups || [])].sort((a, b) => a.sort - b.sort);
+        const i = list.findIndex((x) => x.id === id);
+        const j = i + by;
+        if (i < 0 || j < 0 || j >= list.length) return;
+        [list[i], list[j]] = [list[j], list[i]];
+        list.forEach((x, k) => { x.sort = k; logic.enqueue(d, 'menuGroup', x.id); });
+        d.menuGroups = list;
+      });
+    },
+    savePriceList: (l) => {
+      requirePerm('inventory.bulk_edit');
+      let out!: PriceList;
+      commit((d) => {
+        d.priceLists = d.priceLists || [];
+        const now = iso(new Date());
+        const i = l.id ? d.priceLists.findIndex((x) => x.id === l.id) : -1;
+        out = i >= 0 ? { ...d.priceLists[i], ...l, id: d.priceLists[i].id, updatedAt: now } as PriceList
+          : { ...l, id: uid('prl'), createdAt: now, updatedAt: now } as PriceList;
+        if (i >= 0) d.priceLists[i] = out; else d.priceLists.unshift(out);
+        logic.enqueue(d, 'priceList', out.id);
+      });
+      return out;
+    },
+    saveMenu: (m) => {
+      requirePerm('inventory.edit');
+      let out!: Menu;
+      commit((d) => {
+        d.menus = d.menus || [];
+        const i = m.id ? d.menus.findIndex((x) => x.id === m.id) : -1;
+        out = { id: i >= 0 ? d.menus[i].id : uid('mnu'), name: m.name.trim(), sections: m.sections };
+        if (i >= 0) d.menus[i] = out; else d.menus.push(out);
+        logic.enqueue(d, 'menu', out.id);
+      });
+      return out;
+    },
+    removeMenu: (id) => {
+      requirePerm('inventory.edit');
+      commit((d) => {
+        d.menus = (d.menus || []).filter((x) => x.id !== id);
+        // nobody stays tied to a menu that is gone
+        d.users.forEach((u) => { if (u.menuId === id) { delete u.menuId; logic.enqueue(d, 'user', u.id); } });
+      });
+    },
+    closeTicket: (id, saleId) => commit((d) => {
+      const x = (d.tickets || []).find((k) => k.id === id);
+      if (x) { x.status = 'closed'; x.saleId = saleId; x.updatedAt = iso(new Date()); logic.enqueue(d, 'ticket', id); }
+    }),
+    voidTicket: (id) => { requirePerm('restaurant.cancel'); commit((d) => {
+      const x = (d.tickets || []).find((k) => k.id === id);
+      if (x && x.status === 'open') { x.status = 'void'; x.updatedAt = iso(new Date()); audit(d, 'Ticket cancelled', x.no + ' ' + x.name); logic.enqueue(d, 'ticket', id); }
+    }); },
+    closeDay: () => commit((d) => {
+      d.settings.closedThrough = iso(new Date());
+      audit(d, 'Day closed', 'Transactions up to now are frozen');
+    }),
+    reopenDay: () => {
+      if (dbRef.current?.session.role !== 'owner') throw new Refusal('Only the owner can reopen a closed day');
+      commit((d) => {
+        const was = d.settings.closedThrough;
+        d.settings.closedThrough = undefined;
+        audit(d, 'Day reopened', was ? 'Was closed through ' + was : '');
+      });
+    },
+    restoreDeleted: (kind, id) => {
       requireRecordable();
+      commit((d) => {
+        if (kind === 'sale') logic.restoreSale(d, id);
+        else if (kind === 'purchase') logic.restorePurchase(d, id);
+        else logic.restorePayment(d, id);
+      });
+    },
+    purgeDeleted: (kind, id) => commit((d) => logic.purgeDeleted(d, kind, id)),
+    deletePurchase: (purchaseId, reason) => { requireRecordable(); requirePerm('purchases.delete'); requireOpenDay(tsOf('purchases', purchaseId)); let ok = false; commit((d) => { ok = logic.deletePurchase(d, purchaseId, reason); }); return ok; },
+    editPayment: (payId, patch) => {
+      requireRecordable(); requireOpenDay(tsOf('payments', payId));
       let out: Payment | null = null;
       commit((d) => { out = logic.editPayment(d, payId, patch); });
       return out;
     },
-    deletePayment: (payId, reason) => { requireRecordable(); let ok = false; commit((d) => { ok = logic.deletePayment(d, payId, reason); }); return ok; },
+    deletePayment: (payId, reason) => { requireRecordable(); requirePerm('finance.delete'); requireOpenDay(tsOf('payments', payId)); let ok = false; commit((d) => { ok = logic.deletePayment(d, payId, reason); }); return ok; },
 
     // --- Audit log ---
     openBranch: (plan) => {
@@ -1133,23 +1390,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
       return out;
     },
-    addLedger: (l) => commit((d) => {
+    addLedger: (l) => { requireAnyPerm(['finance.manage_accounts', 'expenses.create']); commit((d) => {
       d.coa = d.coa || [];
       const id = 'led_' + uid('x').slice(-6);
       d.coa.push({ id, code: l.code, name: l.name, type: l.type, note: l.note, builtin: false, active: true });
       logic.enqueue(d, 'ledger', id);
       d.coa.sort((a, b) => a.code.localeCompare(b.code));
       audit(d, 'Ledger added', l.code + ' ' + l.name);
-    }),
-    updateLedger: (id, patch) => commit((d) => {
+    }); },
+    updateLedger: (id, patch) => { requirePerm('finance.manage_accounts'); commit((d) => {
       const l = (d.coa || []).find((x) => x.id === id);
       if (!l) return;
       Object.assign(l, patch);
       logic.enqueue(d, 'ledger', id);
       audit(d, 'Ledger changed', l.code + ' ' + l.name + (patch.active === false ? ' — deactivated' : ''));
-    }),
+    }); },
     postJournal: (o) => {
       requireRecordable(); requirePerm('finance.manage_accounts');
+      if (dbRef.current) logic.guardCash(dbRef.current, o.lines.map((l) => ({ acc: l.acc, amount: (l.cr || 0) - (l.dr || 0) })));
       let ok = false;
       commit((d) => {
         const dr = o.lines.reduce((s, l) => s + (l.dr || 0), 0);
@@ -1197,8 +1455,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
 
     // --- Printing ---
-    setPrinter: (patch) => commit((d) => { d.printer = { ...d.printer, ...patch }; }),
+    setPrinter: (patch) => { requirePerm('settings.printing'); commit((d) => { d.printer = { ...d.printer, ...patch }; }); },
     addPrinter: (p) => {
+      requirePerm('settings.printing');
       let np!: Printer;
       commit((d) => {
         np = { ...p, id: uid('prn') };
@@ -1209,24 +1468,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
       return np;
     },
-    updatePrinter: (id, patch) => commit((d) => {
+    updatePrinter: (id, patch) => { requirePerm('settings.printing'); commit((d) => {
       const i = d.printers.findIndex((p) => p.id === id);
       if (i < 0) return;
       if (patch.dflt) d.printers.forEach((x) => { x.dflt = false; });
       d.printers[i] = { ...d.printers[i], ...patch };
       if (!d.printers.some((x) => x.dflt)) d.printers[0].dflt = true;
-    }),
-    removePrinter: (id) => commit((d) => {
+    }); },
+    removePrinter: (id) => { requirePerm('settings.printing'); commit((d) => {
       if (d.printers.length <= 1) return;   // a till always keeps one printer
       d.printers = d.printers.filter((p) => p.id !== id);
       if (!d.printers.some((x) => x.dflt)) d.printers[0].dflt = true;
-    }),
-    makeDefaultPrinter: (id) => commit((d) => {
+    }); },
+    makeDefaultPrinter: (id) => { requirePerm('settings.printing'); commit((d) => {
       d.printers.forEach((p) => { p.dflt = p.id === id; });
       const def = d.printers.find((p) => p.dflt);
       // every Print button uses the default — reference the rcPrint wrapper at 19688
       if (def) d.printer = { ...d.printer, device: def.name, width: def.width };
-    }),
+    }); },
     defaultPrinter: () => {
       const d = dbRef.current; if (!d) return undefined;
       return d.printers.find((p) => p.dflt) || d.printers[0];
@@ -1294,7 +1553,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setSync: (patch) => {
       const d = dbRef.current;
       if (d && patch.on !== undefined && patch.on !== d.sync.on && d.session.role !== 'owner') {
-        throw new Error('Only the owner can turn cloud sync on or off.');
+        throw new Refusal('Only the owner can turn cloud sync on or off.');
       }
       commit((db2) => {
         const wasOn = db2.sync.on;
@@ -1342,6 +1601,15 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               const coll = p.coll as 'challans' | 'purchaseOrders' | 'recurringInvoices' | 'instalmentPlans';
               (d as any)[coll] = (d as any)[coll] || [];
               put((d as any)[coll], p.doc);
+            } else if ((p?.coll === 'tickets' || p?.coll === 'modifierGroups' || p?.coll === 'menuGroups' || p?.coll === 'menus' || p?.coll === 'priceLists') && p.doc) {
+              const coll = p.coll as 'tickets' | 'modifierGroups' | 'menuGroups' | 'menus' | 'priceLists';
+              (d as any)[coll] = (d as any)[coll] || [];
+              put((d as any)[coll], p.doc);
+            } else if (p?.coll === 'users' && p.doc) {
+              put(d.users, p.doc);
+            } else if (p?.coll === 'roles' && p.doc) {
+              ensureRoles(d);
+              put(d.roles, p.doc);
             } else if (p?.coll === 'firm' && p.doc) {
               // another phone changed the business's details. Every op here is
               // for this business, so they apply even if this phone's own copy
@@ -1389,6 +1657,19 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setNumbering: (mode) => commit((d) => { d.numberSafe = { mode }; }),
     revisionsFor: (id) => { const d = dbRef.current; return d ? logic.revisionsFor(d, id) : []; },
   }), [db, ready, commit]);
+  // Before, about forty actions changed the books without asking the licence
+  // at all — editing an item, a customer, a menu, a stock take, an offer — so
+  // an expired plan still let people change and delete. Every action that
+  // changes the shop's records is wrapped here, in one place, so a new one
+  // cannot be forgotten. Licence, sync, sign-in and settings actions are not:
+  // they are how a shop gets going again.
+  GATED_ACTIONS.forEach((k) => {
+    const fn = (api as any)[k];
+    if (typeof fn !== 'function' || (fn as any).gated) return;
+    const wrapped = (...a: unknown[]) => { requireCreate(); return fn(...a); };
+    (wrapped as any).gated = true;
+    (api as any)[k] = wrapped;
+  });
   apiRef.current = api;
 
   return <AppDataCtx.Provider value={api}>{children}</AppDataCtx.Provider>;

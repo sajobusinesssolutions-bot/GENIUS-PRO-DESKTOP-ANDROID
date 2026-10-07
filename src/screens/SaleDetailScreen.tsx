@@ -10,6 +10,7 @@ import {
 } from '../components/ui';
 import { Icon } from '../components/icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { orderTypeWord } from '../data/restaurant';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SaleDetail'>;
@@ -140,11 +141,20 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
                   {l.qty} {(l.unit || '').toUpperCase()} × {money(l.price)}{l.batchNo ? ' · ' + l.batchNo : ''}
                 </Text>
-                {l.note ? <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{l.note}</Text> : null}
+                {l.modifiers?.length ? <Text numberOfLines={3} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft, marginTop: 2 }}>+ {l.modifiers.map((m) => m.name).join(', ')}</Text> : null}
+                {l.note ? <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.warn, marginTop: 2 }}>* {l.note}</Text> : null}
               </View>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(l.qty * l.price)}</Text>
             </View>
           ))}
+          {/* the order as a whole: its table and how it was eaten (its note is in the summary) */}
+          {sale.ticketName || sale.orderType ? (
+            <View style={{ padding: 14, borderTopWidth: 1, borderTopColor: colors.line, gap: 4 }}>
+              {sale.ticketName || sale.orderType ? (
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{[sale.ticketName, orderTypeWord(sale.orderType)].filter(Boolean).join(' · ')}</Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         {head('Summary')}

@@ -3,7 +3,7 @@
  * receipts and statements. Report exporting lives in ./exporters; this covers
  * the single-document case, where the layout is a receipt rather than a table.
  */
-import { escposDoc, imeiTexts, shows, qtyText } from './escpos';
+import { escposDoc, escposKitchen, imeiTexts, shows, qtyText } from './escpos';
 import { printBluetooth, testNetwork } from './rawPrinter';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -13,7 +13,7 @@ import { code128Html } from './code128';
 import { a4Layout, esc, numberToWords } from './invoiceLayouts';
 
 export { numberToWords };
-import type { Paper, PrintTemplate, DocKind, Printer, SoldSerial } from './types';
+import type { Paper, PrintTemplate, DocKind, Printer, SoldSerial, KitchenSettings } from './types';
 
 /**
  * Renders a PDF and returns a URI in this app's own cache that sharing can read.
@@ -54,6 +54,10 @@ export interface DocLine {
   name: string;
   qty: number;
   price: number;
+  /** Restaurant choices ordered with the item: "Large", "No onions". */
+  mods?: string[];
+  /** A note on the line, for the kitchen: "well done". */
+  note?: string;
   unit?: string;
   /** The phones sold on this line: IMEI 1, IMEI 2 and condition. */
   serials?: SoldSerial[];
@@ -64,6 +68,10 @@ export interface DocLine {
 export interface DocMeta {
   /** "Tax Invoice", "Receipt", "Quotation" … */
   kind: string;
+  /** Restaurant: the table or ticket the order was taken on. */
+  table?: string;
+  /** Restaurant: eaten in, taken away or delivered — printed large on the kitchen ticket. */
+  orderType?: 'dine' | 'takeaway' | 'delivery';
   /** Which print template applies (Settings, Printing). */
   docKind?: DocKind;
   no: string;
@@ -234,7 +242,9 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   const d: DocMeta = tpl?.title?.trim() ? { ...input, kind: tpl.title.trim() } : input;
   const sh = shows(tpl);
   const rollStyle = paper === 'A4' ? 'classic' : sh.style;
-  const imeiHtml = (l: DocLine) => (sh.imei ? imeiTexts(l.serials).map((t) => `<div class="sub imei">${esc(t)}</div>`).join('') : '');
+  // under each item: its IMEIs, and in a restaurant the choices it was ordered with
+  const imeiHtml = (l: DocLine) => (sh.imei ? imeiTexts(l.serials).map((t) => `<div class="sub imei">${esc(t)}</div>`).join('') : '')
+    + (l.mods && l.mods.length ? `<div class="sub">+ ${esc(l.mods.join(', '))}</div>` : '');
   const showLogo = tpl ? tpl.showLogo : true;
   const showTax = tpl ? tpl.showTax : true;
   const showServed = tpl ? tpl.showServed : true;
@@ -417,6 +427,50 @@ export async function printDoc(d: DocMeta, money: (n: number) => string, opts: P
     html: docHtml(full, money, { ...opts, paper }),
     ...pageSize(paper, d.lines.length * Math.max(1, Math.min(5, opts.tpl?.copies || 1))),
     ...(opts.printerUrl ? { printerUrl: opts.printerUrl } : null),
+  });
+}
+
+/**
+ * How the order is eaten, as a banner the kitchen cannot miss — each kind its
+ * own look, so a takeaway is never plated and a delivery never left waiting:
+ *   DINE IN   — a plain box
+ *   TAKEAWAY  — white on black
+ *   DELIVERY  — white on black, underlined, with a double border
+ */
+export function orderBannerHtml(t?: string): string {
+  if (t === 'takeaway') return '<div style="margin:8px 0;padding:10px;background:#000;color:#fff;text-align:center;font-size:30px;font-weight:900;letter-spacing:3px">*** TAKEAWAY ***</div>';
+  if (t === 'delivery') return '<div style="margin:8px 0;padding:10px;background:#000;color:#fff;text-align:center;font-size:30px;font-weight:900;letter-spacing:3px;text-decoration:underline;outline:4px double #000;outline-offset:3px">!! DELIVERY !!</div>';
+  if (t === 'dine') return '<div style="margin:8px 0;padding:8px;border:3px solid #000;text-align:center;font-size:26px;font-weight:800;letter-spacing:2px">DINE IN</div>';
+  return '';
+}
+
+/**
+ * Sends a kitchen order ticket — items and notes, no prices — to a printer
+ * set up for orders. A Bluetooth or network printer gets it straight away;
+ * any other goes through the print dialog as a short roll page.
+ */
+export async function printKitchenTicket(d: DocMeta, p: Printer, k?: KitchenSettings): Promise<void> {
+  const paper: Paper = p.kind === 'pdf' ? '80mm' : (p.width === 'A4' ? '80mm' : p.width) || '80mm';
+  if (isDirectPrinter(p)) {
+    const bytes = escposKitchen(d, paper, k);
+    if (p.kind === 'bluetooth') await printBluetooth(p.address, bytes);
+    else await testNetwork(p.address, p.port || 9100, bytes, 8000);
+    return;
+  }
+  const big = k?.bigText === false ? 15 : 20;
+  const rows = d.lines.map((l) => '<tr><td style="font-size:' + big + 'px;font-weight:700;padding:4px 0">' + esc(String(l.qty)) + ' x ' + esc(l.name) + '</td></tr>'
+    + (l.mods || []).map((m) => '<tr><td style="padding-left:16px">+ ' + esc(m) + '</td></tr>').join('')
+    + (l.note && k?.showNotes !== false ? '<tr><td style="padding-left:16px">* ' + esc(l.note) + '</td></tr>' : '')).join('');
+  await Print.printAsync({
+    html: '<html><body style="font-family:sans-serif;margin:8px"><h2 style="text-align:center;margin:0">' + esc(k?.title || 'KITCHEN ORDER') + '</h2>'
+      + orderBannerHtml(d.orderType)
+      + (d.table && k?.showTable !== false ? '<h3 style="text-align:center;margin:4px 0">' + esc(d.table) + '</h3>' : '')
+      + '<p>Order ' + esc(d.no) + (k?.showTime !== false ? '<br/>' + esc(new Date(d.ts).toLocaleString('en-GB')) : '')
+      + (d.servedBy && k?.showServer !== false ? '<br/>Server: ' + esc(d.servedBy) : '') + '</p><table style="width:100%">' + rows + '</table>'
+      + (d.note && k?.showNotes !== false ? '<p>Note: ' + esc(d.note) + '</p>' : '')
+      + (k?.footer ? '<p style="text-align:center">' + esc(k.footer) + '</p>' : '') + '</body></html>',
+    ...pageSize(paper, d.lines.length),
+    ...((p as Printer).url ? { printerUrl: (p as Printer).url } : null),
   });
 }
 

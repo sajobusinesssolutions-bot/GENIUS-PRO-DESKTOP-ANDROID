@@ -22,17 +22,15 @@ import { useGo } from '../nav/navigate';
 import { keepPhoto, dropPhoto } from '../data/photos';
 import { SvgXml } from 'react-native-svg';
 import SignaturePad, { svgFromUri } from '../components/SignaturePad';
+import { licensedEdition } from '../data/editions';
+import { lastAccountLicence } from '../data/syncClient';
 import { canFor } from '../data/perms';
 
+// the three editions; an older business saved as hardware, salon… still reads as Retail
 const TYPES = [
   { v: 'retail', l: 'Retail shop' },
-  { v: 'hardware', l: 'Hardware' },
-  { v: 'restaurant', l: 'Restaurant / bar' },
-  { v: 'pharmacy', l: 'Pharmacy' },
-  { v: 'salon', l: 'Salon / services' },
-  { v: 'wholesale', l: 'Wholesale' },
-  { v: 'electronics', l: 'Electronics' },
-  { v: 'other', l: 'Other' },
+  { v: 'restaurant', l: 'Restaurant / bar / café' },
+  { v: 'pharmacy', l: 'Pharmacy / drug shop' },
 ];
 
 /* ---------------------------------------------------------------- */
@@ -250,7 +248,8 @@ export default function BusinessScreen() {
           <Field icon="factory" label="Business name" value={name} onChangeText={setName} readOnly={!mayEdit} placeholder="The name on your receipts" />
           <SelectField
             icon="tag" label="What kind of business" value={type}
-            options={TYPES} onChange={setType}
+            options={TYPES.filter((t) => t.v === licensedEdition(lastAccountLicence(), db?.licence?.licence) || t.v === type)}
+            onChange={setType}
           />
           <Field icon="doc" label="What it does" value={description} onChangeText={setDescription} readOnly={!mayEdit} placeholder="One line under the name, if you want one" />
           <Field icon="receipt" label="TIN" value={tin} onChangeText={setTin} readOnly={!mayEdit} placeholder="Tax number, if you have one" />

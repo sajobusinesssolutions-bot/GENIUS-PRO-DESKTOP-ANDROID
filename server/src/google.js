@@ -16,9 +16,12 @@ import { decodeJwt } from 'jose';
 import { q } from './db.js';
 import { issueSession, normalise } from './auth.js';
 import { allowedRedirect } from './redirect.js';
+import { whoami } from './sync.js';
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_FOLDER = 'Genius Pro Backups';
 
 /** state → where to send the browser back to. Short-lived and in memory. */
 const pending = new Map();
@@ -97,6 +100,23 @@ export default async function googleRoutes(app) {
       }
       const tokens = await res.json();
 
+      // Linking Google Drive for backups, not signing in: keep the refresh
+      // token against the account that asked, and go back to the app.
+      if (held.kind === 'drive') {
+        if (!tokens.refresh_token) return bounce({ drive: 'error', error: 'no_refresh_token' });
+        let googleEmail = null;
+        try { googleEmail = normalise(decodeJwt(tokens.id_token).email); } catch { /* the email is only shown */ }
+        await q(
+          `insert into drive_links (account_id, refresh_token, google_email, folder_id, linked_at)
+           values ($1, $2, $3, null, now())
+           on conflict (account_id) do update
+             set refresh_token = excluded.refresh_token, google_email = excluded.google_email,
+                 folder_id = null, linked_at = now()`,
+          [held.accountId, tokens.refresh_token, googleEmail],
+        );
+        return bounce({ drive: 'linked' });
+      }
+
       // The id token came straight from Google's token endpoint over TLS in
       // response to our own request, so it is trusted without a second fetch of
       // the JWKS. Anything arriving by another route would need verifying.
@@ -136,6 +156,126 @@ export default async function googleRoutes(app) {
     } catch (e) {
       req.log.error({ err: e.message }, 'google callback failed');
       return bounce({ error: 'server' });
+    }
+  });
+
+  /* --- Google Drive backups ------------------------------------------- */
+
+  /** A fresh access token for an account's linked Drive, or null when it is not linked. */
+  async function driveToken(accountId) {
+    const { rows } = await q('select refresh_token, folder_id from drive_links where account_id = $1', [accountId]);
+    if (!rows[0]) return null;
+    const res = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId, client_secret: clientSecret,
+        refresh_token: rows[0].refresh_token, grant_type: 'refresh_token',
+      }),
+    });
+    if (!res.ok) {
+      // revoked from the Google account's side: forget it, so the app asks again
+      if (res.status === 400 || res.status === 401) await q('delete from drive_links where account_id = $1', [accountId]);
+      return null;
+    }
+    const t = await res.json();
+    return { access: t.access_token, folderId: rows[0].folder_id };
+  }
+
+  /** The app's backup folder in Drive, made the first time. */
+  async function driveFolder(accountId, access, known) {
+    const auth = { authorization: 'Bearer ' + access };
+    if (known) {
+      const check = await fetch('https://www.googleapis.com/drive/v3/files/' + known + '?fields=id,trashed', { headers: auth });
+      if (check.ok && !(await check.json()).trashed) return known;
+    }
+    const made = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: DRIVE_FOLDER, mimeType: 'application/vnd.google-apps.folder' }),
+    });
+    if (!made.ok) throw new Error('folder ' + made.status);
+    const id = (await made.json()).id;
+    await q('update drive_links set folder_id = $2 where account_id = $1', [accountId, id]);
+    return id;
+  }
+
+  /** The app asks for a link to Google's consent page, signed in as the account. */
+  app.post('/v1/drive/link', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    sweep();
+    const back = String(req.body?.redirect || process.env.APP_RETURN_URL);
+    if (!allowedRedirect(back)) return reply.code(400).send({ error: 'malformed', message: 'Bad redirect.' });
+    const acct = await q('select email from accounts where id = $1', [me.id]);
+    const state = randomBytes(16).toString('base64url');
+    pending.set(state, { back, kind: 'drive', accountId: me.id, expires: Date.now() + 10 * 60_000 });
+    const url = new URL(AUTH_URL);
+    url.searchParams.set('client_id', clientId);
+    url.searchParams.set('redirect_uri', redirectUri);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', 'openid email ' + DRIVE_SCOPE);
+    url.searchParams.set('access_type', 'offline');
+    // a refresh token comes back only when consent is asked for again
+    url.searchParams.set('prompt', 'consent');
+    url.searchParams.set('include_granted_scopes', 'true');
+    // the Google account the person registered with is offered first
+    if (acct.rows[0]?.email) url.searchParams.set('login_hint', acct.rows[0].email);
+    url.searchParams.set('state', state);
+    url.searchParams.set('display', 'touch');
+    return { url: url.toString() };
+  });
+
+  app.get('/v1/drive/status', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const { rows } = await q('select google_email, linked_at, last_backup_at from drive_links where account_id = $1', [me.id]);
+    return rows[0]
+      ? { linked: true, email: rows[0].google_email, linkedAt: rows[0].linked_at, lastBackupAt: rows[0].last_backup_at }
+      : { linked: false };
+  });
+
+  app.delete('/v1/drive/link', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    await q('delete from drive_links where account_id = $1', [me.id]);
+    return { linked: false };
+  });
+
+  /** An encrypted backup from the app, put into the account's Drive folder. */
+  app.post('/v1/drive/backup', { bodyLimit: 64 * 1024 * 1024 }, async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const name = String(req.body?.name || '').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120);
+    const data = String(req.body?.data || '');
+    if (!name || !data) return reply.code(400).send({ error: 'malformed', message: 'No backup was sent.' });
+    const tok = await driveToken(me.id);
+    if (!tok) return reply.code(409).send({ error: 'driveNotLinked', message: 'Connect Google Drive first.' });
+    try {
+      const folder = await driveFolder(me.id, tok.access, tok.folderId);
+      const boundary = 'gp' + randomBytes(8).toString('hex');
+      const meta = JSON.stringify({ name, parents: [folder], mimeType: 'application/octet-stream' });
+      const body = Buffer.concat([
+        Buffer.from('--' + boundary + '\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n'
+          + '--' + boundary + '\r\ncontent-type: application/octet-stream\r\n\r\n'),
+        Buffer.from(data, 'base64'),
+        Buffer.from('\r\n--' + boundary + '--'),
+      ]);
+      const up = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size', {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + tok.access, 'content-type': 'multipart/related; boundary=' + boundary },
+        body,
+      });
+      if (!up.ok) {
+        req.log.error({ status: up.status }, 'drive upload failed');
+        return reply.code(502).send({ error: 'server', message: 'Google Drive did not take the backup. Try again.' });
+      }
+      const file = await up.json();
+      await q('update drive_links set last_backup_at = now() where account_id = $1', [me.id]);
+      return { id: file.id, name: file.name, size: Number(file.size || 0), folder: DRIVE_FOLDER };
+    } catch (e) {
+      req.log.error({ err: e.message }, 'drive backup failed');
+      return reply.code(502).send({ error: 'server', message: 'Google Drive could not be reached. Try again.' });
     }
   });
 

@@ -2,11 +2,12 @@
 // Kept separate (no React/AsyncStorage imports) so they can be unit-tested
 // directly against a plain DB object without rendering a component tree.
 import {
-  DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, JournalLine, PayMethod, Product,
+  DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, JournalLine, JournalEntry, PayMethod, Product,
   StockTake, ProductionRun, RecurringInvoice, InstalmentPlan, InstalmentDue, Revision,
   LicStatus, Subscription, Shift,
 } from './types';
 import { uid, iso } from './uid';
+import { Refusal } from './refusal';
 import { reconcileBatches } from './batches';
 import { activeBranchId, branchPrefix } from './branch';
 import { ensureCoa } from './coa';
@@ -172,6 +173,66 @@ export function stockQty(l: { qty: number; unitFactor?: number }): number {
   return l.qty * (l.unitFactor && l.unitFactor > 0 ? l.unitFactor : 1);
 }
 
+/**
+ * What stops these lines being sold as they are: an item that is gone, too few
+ * on the shelf, or a price under cost where Settings block it. Checked before a
+ * quotation becomes a sale, so the person reads the reasons instead of the sale
+ * failing half way. Empty when the lines can be sold.
+ */
+export function saleBlockers(d: DB, lines: SaleLine[]): string[] {
+  const out: string[] = [];
+  const wh = d.session.warehouse || 'w1';
+  const needed = new Map<string, number>();
+  lines.forEach((l) => needed.set(l.productId, (needed.get(l.productId) || 0) + stockQty(l)));
+  needed.forEach((required, productId) => {
+    const prod = d.products.find((p) => p.id === productId);
+    const name = lines.find((l) => l.productId === productId)?.name || 'An item';
+    if (!prod) { out.push(name + ' no longer exists.'); return; }
+    if (!isStocked(prod) || mayGoBelowZero(d)) return;
+    const available = prod.stock[wh] || 0;
+    if (available < required) out.push(prod.name + ': ' + available + ' ' + prod.unit + ' on hand, ' + required + ' needed.');
+  });
+  const trusted = d.session.role === 'owner' || d.session.role === 'manager';
+  if (d.settings.belowCost === 'block' && !trusted) {
+    lines.forEach((l) => {
+      const prod = d.products.find((p) => p.id === l.productId);
+      const cost = (prod ? prod.cost * (l.unitFactor || 1) : 0) || l.cost;
+      if (cost > 0 && l.price < cost) out.push(l.name + ' is priced below its cost.');
+    });
+  }
+  return out;
+}
+
+/** What a cash drawer holds now, from the journal. */
+export function cashOnHand(d: DB, accountId: string): number {
+  let b = 0;
+  (d.journal || []).forEach((e) => e.lines.forEach((l) => {
+    if (l.acc === accountId) b += (l.dr || 0) - (l.cr || 0);
+  }));
+  return b;
+}
+
+/**
+ * Settings → Cash control. Refuses money going out of a cash drawer that does
+ * not hold it, before anything is written. Banks and mobile money are left to
+ * their own overdraft rules; only drawers of type "cash" are counted.
+ */
+export function guardCash(d: DB, takes: Array<{ acc: string; amount: number }>) {
+  if (!d.settings.blockNegativeCash) return;
+  const need = new Map<string, number>();
+  takes.forEach((t) => { if (t.amount > 0) need.set(t.acc, (need.get(t.acc) || 0) + t.amount); });
+  need.forEach((amount, acc) => {
+    const account = (d.accounts || []).find((a) => a.id === acc);
+    if (!account || account.type !== 'cash') return;
+    const have = cashOnHand(d, acc);
+    if (have - amount < -0.005) {
+      throw new Refusal('Not enough cash in ' + account.name,
+        'It holds ' + Math.round(have).toLocaleString('en-US') + ' and this needs ' + Math.round(amount).toLocaleString('en-US')
+        + '. Cash control in Settings stops cash going below zero.');
+    }
+  });
+}
+
 export function enqueue(d: DB, kind: string, ref: string) {
   if (d.session.online && !d.sync?.on) return;
   if (!d.queue) d.queue = [];
@@ -179,9 +240,9 @@ export function enqueue(d: DB, kind: string, ref: string) {
   d.queue.push({ id: uid('q'), ts: iso(new Date()), kind, ref });
 }
 
-export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
+export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: import('./types').OrderType; priceListId?: string }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
   if (!canWith(ensureRoles(d), d.session.role, 'sales.create')) {
-    throw new Error('Permission denied: sales.create');
+    throw new Refusal('Permission denied: sales.create');
   }
   // With tax switched off for the shop, nothing is charged or reported.
   const taxable = d.settings.taxEnabled === false
@@ -192,17 +253,17 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
   const finalTotal = t.total + charges;
   const redeemed = o.redeem || 0;
   const useSplitTender = o.methods && o.methods.length > 1;
-  if (o.method === 'credit' && !o.partyId) throw new Error('A customer is required for credit sales');
+  if (o.method === 'credit' && !o.partyId) throw new Refusal('A customer is required for credit sales');
   if (useSplitTender) {
     const splitTotal = o.methods!.reduce((s, m) => s + m.amount, 0);
     if (o.methods!.some((m) => m.method === 'credit' || m.amount < 0 || !Number.isFinite(m.amount)) || Math.abs(splitTotal - finalTotal) > 0.01) {
-      throw new Error('Split payments must equal the sale total');
+      throw new Refusal('Split payments must equal the sale total');
     }
   }
   if (o.method === 'credit' && o.partyId) {
     const customer = d.parties.find((p) => p.id === o.partyId);
     if (customer && customer.creditLimit > 0 && partyBalance(d, o.partyId) + finalTotal > customer.creditLimit) {
-      throw new Error('Credit limit exceeded for this customer');
+      throw new Refusal('Credit limit exceeded for this customer');
     }
   }
   const wh = d.session.warehouse || 'w1';
@@ -220,7 +281,7 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     if (prod.kind === 'service' || prod.trackInventory === false) return;
     const available = prod.stock[wh] || 0;
     if (!mayGoBelowZero(d) && available < required) {
-      throw new Error(
+      throw new Refusal(
         'Not enough ' + prod.name + ' — ' + available + ' ' + prod.unit + ' on hand, ' + required + ' needed',
       );
     }
@@ -247,6 +308,9 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     partyId: o.partyId, userId: o.userId || d.session.userId, till: d.session.till, warehouse: wh,
     lines: taxable, discount: t.discount, redeemed, gross: t.gross, tax: t.tax, total: finalTotal, cogs: t.cost,
     additionalCharges: charges, terms: o.terms, note: o.description,
+    ...(o.ticketName ? { ticketName: o.ticketName } : {}),
+    ...(o.orderType ? { orderType: o.orderType } : {}),
+    ...(o.priceListId ? { priceListId: o.priceListId } : {}),
     method: o.method,
     ...(o.method === 'credit' && finalPaidNow > 0 ? { receivedVia: o.receivedVia || 'cash' } : {}),
     ...(o.method === 'momo' || (o.method === 'credit' && o.receivedVia === 'momo') ? {
@@ -335,10 +399,16 @@ export function voidSale(d: DB, saleId: string, reason?: string, when = new Date
 
 export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], method: PayMethod, when = new Date(), userId?: string, no?: string): Purchase {
   if (!canWith(ensureRoles(d), d.session.role, 'purchases.create')) {
-    throw new Error('Permission denied: purchases.create');
+    throw new Refusal('Permission denied: purchases.create');
   }
   const party = d.parties.find((p) => p.id === partyId);
-  if (!party || party.type !== 'supplier') throw new Error('A supplier is required for purchases');
+  if (!party || party.type !== 'supplier') throw new Refusal('A supplier is required for purchases');
+  if (method !== 'credit') {
+    guardCash(d, [{
+      acc: method === 'bank' ? 'acc_bank' : method === 'momo' ? 'acc_momo' : 'acc_cash',
+      amount: lines.reduce((s, l) => s + l.qty * l.cost, 0),
+    }]);
+  }
 
   d.counters.purchase += 1;
   const total = lines.reduce((s, l) => s + l.qty * l.cost, 0);
@@ -390,8 +460,9 @@ export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], me
 
 export function recordPayment(d: DB, o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; userId?: string; allocations?: Array<{ saleId: string; amount: number }> }, when = new Date()): Payment {
   const party = d.parties.find((p) => p.id === o.partyId);
-  if (!party) throw new Error('A party is required for payments');
-  if (o.direction === 'in' && party.type !== 'customer') throw new Error('A customer is required for customer payments');
+  if (!party) throw new Refusal('A party is required for payments');
+  if (o.direction === 'in' && party.type !== 'customer') throw new Refusal('A customer is required for customer payments');
+  if (o.direction === 'out') guardCash(d, [{ acc: o.accountId, amount: o.amount }]);
 
   const acc = d.accounts.find((a) => a.id === o.accountId);
   const pay: Payment = { id: uid('pay'), ts: iso(when), partyId: o.partyId, amount: o.amount, direction: o.direction, accountId: o.accountId, note: o.note || '', method: acc?.type || 'cash', userId: o.userId || d.session.userId, branch: activeBranchId(d) };
@@ -457,7 +528,7 @@ export interface FinancialYearStart {
  * closing ledger net is represented by one balanced opening journal entry.
  */
 export function startFinancialYear(d: DB, when = new Date()): FinancialYearStart {
-  if (d.queue.length) throw new Error('Send the waiting sync changes before starting a new financial year.');
+  if (d.queue.length) throw new Refusal('Send the waiting sync changes before starting a new financial year.');
   const start = iso(when);
   const previousStart = d.financialYear?.start;
   const balances = new Map<string, number>();
@@ -1122,6 +1193,8 @@ export function verCmp(a: string, b: string): number {
    ============================================================ */
 
 export interface ShiftTotals {
+  /** money received against debts on this shift, by any account, and how many payments */
+  recvAll?: number; recvCount?: number;
   /** bills rung up on this shift */
   count: number;
   /** what was sold, all methods */
@@ -1145,6 +1218,36 @@ function cashAccountIds(d: DB): string[] {
 }
 
 /** Everything that touched the drawer between a shift's open and its close (or now). */
+/** The bills rung up on a shift. */
+export function shiftSales(d: DB, shift: Shift): Sale[] {
+  const from = new Date(shift.openedAt).getTime();
+  const to = shift.closedAt ? new Date(shift.closedAt).getTime() : Date.now();
+  const prevClose = d.shifts.reduce((n, s) => {
+    if (s.id === shift.id || !s.closedAt || s.till !== shift.till) return n;
+    const c = new Date(s.closedAt).getTime();
+    return c <= from && c > n ? c : n;
+  }, -1);
+  return d.sales.filter((s) => {
+    if (s.status === 'void' || s.userId !== shift.userId || s.till !== shift.till) return false;
+    const t = new Date(s.ts).getTime();
+    if (t > to) return false;
+    return prevClose >= from ? t > prevClose : t >= from;
+  });
+}
+
+/** Whether a record dated `ts` falls in a day that has been closed. */
+export function inClosedDay(d: DB, ts: string | undefined): boolean {
+  const c = d.settings.closedThrough;
+  return !!c && !!ts && new Date(ts).getTime() <= new Date(c).getTime();
+}
+
+/** Refuses to change anything in a closed day. */
+export function guardOpenDay(d: DB, ts: string | undefined) {
+  if (!inClosedDay(d, ts)) return;
+  const when = new Date(d.settings.closedThrough!).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  throw new Refusal('That day is closed', 'Everything up to ' + when + ' was frozen at day close. Ask the owner to reopen the day to change it.');
+}
+
 export function shiftTotals(d: DB, shift: Shift): ShiftTotals {
   const from = new Date(shift.openedAt).getTime();
   const to = shift.closedAt ? new Date(shift.closedAt).getTime() : Date.now();
@@ -1178,6 +1281,9 @@ export function shiftTotals(d: DB, shift: Shift): ShiftTotals {
   const recv = d.payments
     .filter((p) => p.direction === 'in' && p.userId === shift.userId && cashAccs.indexOf(p.accountId) > -1 && within(p.ts))
     .reduce((n, p) => n + p.amount, 0);
+  // every payment taken against a debt on this shift, by any account
+  const received = d.payments.filter((p) => p.direction === 'in' && p.userId === shift.userId && within(p.ts));
+  const recvAll = received.reduce((n, p) => n + p.amount, 0);
 
   const paidOutPayments = d.payments
     .filter((p) => p.direction === 'out' && p.userId === shift.userId && cashAccs.indexOf(p.accountId) > -1 && within(p.ts))
@@ -1199,6 +1305,7 @@ export function shiftTotals(d: DB, shift: Shift): ShiftTotals {
     cash: drawerCash, momo, bank, credit,
     recv: recv + cashIn, paidOut,
     expected: Math.round(expected),
+    recvAll, recvCount: received.length,
   };
 }
 
@@ -1289,6 +1396,8 @@ export function editWindowOK(d: DB, ts: string, now = new Date()): { ok: boolean
 
 /** Anything already void, or outside the window, cannot be touched again. */
 export function canEditSale(d: DB, saleId: string, now = new Date()): { ok: boolean; why: string } {
+  if (inClosedDay(d, d.sales.find((x) => x.id === saleId)?.ts)) return { ok: false, why: 'That day is closed. Ask the owner to reopen it.' };
+  if (!canWith(ensureRoles(d), d.session.role, 'sales.edit')) return { ok: false, why: 'Your role cannot change a raised sale.' };
   const s = d.sales.find((x) => x.id === saleId);
   if (!s) return { ok: false, why: 'That sale is gone.' };
   if (s.status === 'void') return { ok: false, why: 'That sale is already void.' };
@@ -1296,6 +1405,8 @@ export function canEditSale(d: DB, saleId: string, now = new Date()): { ok: bool
 }
 
 export function canEditPurchase(d: DB, purchaseId: string, now = new Date()): { ok: boolean; why: string } {
+  if (inClosedDay(d, d.purchases.find((x) => x.id === purchaseId)?.ts)) return { ok: false, why: 'That day is closed. Ask the owner to reopen it.' };
+  if (!canWith(ensureRoles(d), d.session.role, 'purchases.edit')) return { ok: false, why: 'Your role cannot change a purchase.' };
   const x = d.purchases.find((p) => p.id === purchaseId);
   if (!x) return { ok: false, why: 'That purchase is gone.' };
   if (x.status === 'void') return { ok: false, why: 'That purchase is already reversed.' };
@@ -1303,6 +1414,8 @@ export function canEditPurchase(d: DB, purchaseId: string, now = new Date()): { 
 }
 
 export function canEditPayment(d: DB, payId: string, now = new Date()): { ok: boolean; why: string } {
+  if (inClosedDay(d, d.payments.find((x) => x.id === payId)?.ts)) return { ok: false, why: 'That day is closed. Ask the owner to reopen it.' };
+  if (!canWith(ensureRoles(d), d.session.role, 'finance.edit')) return { ok: false, why: 'Your role cannot change a payment.' };
   const p = d.payments.find((x) => x.id === payId);
   if (!p) return { ok: false, why: 'That payment is gone.' };
   return editWindowOK(d, p.ts, now);
@@ -1325,7 +1438,7 @@ export function editSale(
   when = new Date(),
 ): Sale | null {
   if (!canWith(ensureRoles(d), d.session.role, 'sales.edit')) {
-    throw new Error('Permission denied: sales.edit');
+    throw new Refusal('Permission denied: sales.edit');
   }
   const s = d.sales.find((x) => x.id === saleId);
   if (!s || s.status === 'void') return null;
@@ -1360,11 +1473,13 @@ export function editSale(
 /** Reference A.deleteSale, line 17654 — a delete is a reversal, never a splice. */
 export function deleteSale(d: DB, saleId: string, reason = 'Deleted', when = new Date()): boolean {
   if (!canWith(ensureRoles(d), d.session.role, 'sales.delete')) {
-    throw new Error('Permission denied: sales.delete');
+    throw new Refusal('Permission denied: sales.delete');
   }
   const s = d.sales.find((x) => x.id === saleId);
   if (!s || s.status === 'void') return false;
   voidSale(d, s.id, reason, when);
+  s.deletedAt = iso(when); s.deletedBy = d.session.userId;
+  enqueue(d, 'sale', s.id);
   audit(d, 'Sale deleted', s.no + ' — reversed and logged');
   return true;
 }
@@ -1393,7 +1508,7 @@ export function editPurchase(
   when = new Date(),
 ): Purchase | null {
   if (!canWith(ensureRoles(d), d.session.role, 'purchases.edit')) {
-    throw new Error('Permission denied: purchases.edit');
+    throw new Refusal('Permission denied: purchases.edit');
   }
   const x = d.purchases.find((p) => p.id === purchaseId);
   if (!x || x.status === 'void') return null;
@@ -1414,11 +1529,13 @@ export function editPurchase(
 
 export function deletePurchase(d: DB, purchaseId: string, reason = 'Deleted', when = new Date()): boolean {
   if (!canWith(ensureRoles(d), d.session.role, 'purchases.delete')) {
-    throw new Error('Permission denied: purchases.delete');
+    throw new Refusal('Permission denied: purchases.delete');
   }
   const x = d.purchases.find((p) => p.id === purchaseId);
   if (!x || x.status === 'void') return false;
   voidPurchase(d, x.id, reason, when);
+  x.deletedAt = iso(when); x.deletedBy = d.session.userId;
+  enqueue(d, 'purchase', x.id);
   audit(d, 'Purchase deleted', x.no + ' — reversed and logged');
   return true;
 }
@@ -1459,7 +1576,7 @@ export function editPayment(
   when = new Date(),
 ): Payment | null {
   if (!canWith(ensureRoles(d), d.session.role, 'finance.edit')) {
-    throw new Error('Permission denied: finance.edit');
+    throw new Refusal('Permission denied: finance.edit');
   }
   const pay = d.payments.find((x) => x.id === payId);
   if (!pay || !(patch.amount > 0)) return null;
@@ -1490,7 +1607,7 @@ export function editPayment(
 /** Reference A.deletePayment, line 17745 — the balance goes back up. */
 export function deletePayment(d: DB, payId: string, reason = 'Deleted', when = new Date()): boolean {
   if (!canWith(ensureRoles(d), d.session.role, 'finance.delete')) {
-    throw new Error('Permission denied: finance.delete');
+    throw new Refusal('Permission denied: finance.delete');
   }
   const pay = d.payments.find((x) => x.id === payId);
   if (!pay) return false;
@@ -1500,8 +1617,96 @@ export function deletePayment(d: DB, payId: string, reason = 'Deleted', when = n
   journal(d, when, 'Reverse ' + (pay.direction === 'in' ? 'receipt' : 'payment') + ' — deleted', 'DEL', rev);
   unapplyPayment(d, pay);
   d.payments = d.payments.filter((x) => x.id !== pay.id);
+  // kept in the bin, so it can be put back
+  d.deletedPayments = [...(d.deletedPayments || []), { ...pay, deletedAt: iso(when), deletedBy: d.session.userId, deleteReason: reason }];
   audit(d, 'Payment deleted', Math.round(pay.amount) + (reason ? ' — ' + reason : ''));
   return true;
+}
+
+/* ============================================================
+   DELETED TRANSACTIONS — the bin
+
+   A delete never erased anything: it posted a reversal. Restoring posts the
+   reversal's mirror image — the very lines the delete wrote, sides swapped —
+   and moves the stock back, so the books end exactly as they were before
+   the delete, with both steps on the record.
+   ============================================================ */
+
+/** Every journal entry a delete wrote for a document. */
+function voidEntries(d: DB, ref: string, at?: string): JournalEntry[] {
+  return (d.journal || []).filter((e) => e.ref === ref && (e.memo.startsWith('Void ') || e.memo.startsWith('Reverse cost '))
+    && (!at || e.ts === at));
+}
+
+function mirror(lines: JournalLine[]): JournalLine[] {
+  return lines.map((l) => ({ acc: l.acc, ...(l.dr ? { cr: l.dr } : {}), ...(l.cr ? { dr: l.cr } : {}) }));
+}
+
+export function restoreSale(d: DB, saleId: string, when = new Date()): Sale {
+  if (!canWith(ensureRoles(d), d.session.role, 'settings.deleted')) throw new Refusal('Permission denied: settings.deleted');
+  const s = d.sales.find((x) => x.id === saleId);
+  if (!s || !s.deletedAt || s.status !== 'void') throw new Refusal('That sale is not in Deleted transactions.');
+  guardOpenDay(d, s.ts);
+  const keepWh = d.session.warehouse;
+  d.session.warehouse = s.warehouse || keepWh;
+  const blockers = saleBlockers(d, s.lines);
+  d.session.warehouse = keepWh;
+  if (blockers.length) throw new Refusal(s.no + ' cannot be restored yet', blockers.join('\n'));
+  // the money the sale took must still be there to give back, where cash control asks
+  voidEntries(d, s.no, s.voidedAt).forEach((e) => journal(d, when, 'Restore ' + s.no, s.no, mirror(e.lines)));
+  s.lines.forEach((l) => move(d, l.productId, s.warehouse, -stockQty(l), 'restore', s.no, when, l.batchNo));
+  s.status = 'complete';
+  delete s.voidedAt; delete s.voidReason; delete s.deletedAt; delete s.deletedBy;
+  enqueue(d, 'sale', s.id);
+  audit(d, 'Sale restored', s.no);
+  touch(d, s, 'Restored', 'sales');
+  return s;
+}
+
+export function restorePurchase(d: DB, purchaseId: string, when = new Date()): Purchase {
+  if (!canWith(ensureRoles(d), d.session.role, 'settings.deleted')) throw new Refusal('Permission denied: settings.deleted');
+  const x = d.purchases.find((p) => p.id === purchaseId);
+  if (!x || !x.deletedAt || x.status !== 'void') throw new Refusal('That purchase is not in Deleted transactions.');
+  const entries = voidEntries(d, x.no, x.voidedAt);
+  // putting a paid purchase back takes its money out of the drawer again
+  guardCash(d, entries.flatMap((e) => e.lines).filter((l) => l.dr).map((l) => ({ acc: l.acc, amount: l.dr || 0 })));
+  entries.forEach((e) => journal(d, when, 'Restore ' + x.no, x.no, mirror(e.lines)));
+  const wh = x.branch || d.session.warehouse || 'w1';
+  x.lines.forEach((l) => move(d, l.productId, wh, l.qty, 'restore', x.no, when));
+  x.status = 'complete';
+  delete x.voidedAt; delete x.voidReason; delete x.deletedAt; delete x.deletedBy;
+  enqueue(d, 'purchase', x.id);
+  audit(d, 'Purchase restored', x.no);
+  touch(d, x, 'Restored', 'purchases');
+  return x;
+}
+
+export function restorePayment(d: DB, payId: string, when = new Date()): Payment {
+  if (!canWith(ensureRoles(d), d.session.role, 'settings.deleted')) throw new Refusal('Permission denied: settings.deleted');
+  const held = (d.deletedPayments || []).find((p) => p.id === payId && !p.purgedAt);
+  if (!held) throw new Refusal('That payment is not in Deleted transactions.');
+  if (held.direction === 'out') guardCash(d, [{ acc: held.accountId, amount: held.amount }]);
+  const { deletedAt: _a, deletedBy: _b, deleteReason: _c, purgedAt: _d, ...pay } = held;
+  const lines: JournalLine[] = pay.direction === 'in'
+    ? [{ acc: pay.accountId, dr: pay.amount }, { acc: 'n_ar', cr: pay.amount }]
+    : [{ acc: 'n_ap', dr: pay.amount }, { acc: pay.accountId, cr: pay.amount }];
+  journal(d, when, 'Restore ' + (pay.direction === 'in' ? 'receipt' : 'payment'), 'RST', lines);
+  d.payments.push(pay as Payment);
+  applyPayment(d, pay as Payment);
+  d.deletedPayments = (d.deletedPayments || []).filter((p) => p.id !== payId);
+  enqueue(d, 'payment', pay.id);
+  audit(d, 'Payment restored', Math.round(pay.amount) + '');
+  return pay as Payment;
+}
+
+/** Takes something out of Deleted transactions for good. Its reversal stays in the books. */
+export function purgeDeleted(d: DB, kind: 'sale' | 'purchase' | 'payment', id: string, when = new Date()): void {
+  if (!canWith(ensureRoles(d), d.session.role, 'settings.deleted')) throw new Refusal('Permission denied: settings.deleted');
+  const at = iso(when);
+  if (kind === 'sale') { const s = d.sales.find((x) => x.id === id); if (s) { s.purgedAt = at; enqueue(d, 'sale', id); } }
+  if (kind === 'purchase') { const x = d.purchases.find((p) => p.id === id); if (x) { x.purgedAt = at; enqueue(d, 'purchase', id); } }
+  if (kind === 'payment') { const p = (d.deletedPayments || []).find((x) => x.id === id); if (p) p.purgedAt = at; }
+  audit(d, 'Deleted transaction removed for good', kind + ' ' + id);
 }
 
 
@@ -1545,9 +1750,9 @@ export interface BranchOpened {
 
 export function openBranch(d: DB, plan: BranchPlan, when = new Date()): BranchOpened {
   const name = (plan.name || '').trim();
-  if (!name) throw new Error('A branch needs a name.');
+  if (!name) throw new Refusal('A branch needs a name.');
   if (d.warehouses.some((w) => w.name.trim().toLowerCase() === name.toLowerCase())) {
-    throw new Error('There is already a branch called ' + name + '.');
+    throw new Refusal('There is already a branch called ' + name + '.');
   }
 
   const id = 'wh_' + uid('x').slice(-6);

@@ -33,6 +33,8 @@ import type { DB, RecurringInvoice, Shift } from './types';
 import { plural } from './helpers';
 import { licState as licStateOf, isPro as isProOf, subState, planSummary as planSummaryOf } from './logic';
 import { LIC_WORDS, PLANS, BUILD, SCHEMA_VERSION } from './defaults';
+import { isRestaurant, RESTAURANT_HIDDEN } from './restaurant';
+import { editionOf, Edition } from './editions';
 import { REPORTS } from './reports';
 
 /** How many reports the catalogue offers — reference REPORTS, line 3359. */
@@ -55,10 +57,26 @@ export type MenuItem = {
   alt?: string;
   /** Shown only when this holds — e.g. tax screens only while tax is charged. */
   show?: (db: DB) => boolean;
+  /** Its name in each edition, where it differs: Items is Drugs in a pharmacy. */
+  names?: Partial<Record<Edition, string>>;
 };
+
+/** Rows each edition does without. A restaurant's list is RESTAURANT_HIDDEN. */
+const HIDDEN_FOR: Record<Edition, Set<string>> = {
+  retail: new Set(['MenuEditor', 'Order']),
+  restaurant: RESTAURANT_HIDDEN,
+  // a pharmacy has no menu, no tables, no warranties and makes nothing up
+  pharmacy: new Set(['MenuEditor', 'Order', 'Warranties', 'Production']),
+};
+
+/** A row's name in this business's edition. */
+export function rowName(it: { n: string; names?: Partial<Record<Edition, string>> }, db: Pick<DB, 'firm'> | null | undefined): string {
+  return it.names?.[editionOf(db)] || it.n;
+}
 
 /** Whether a menu row belongs on screen for these books. */
 export function itemShown(it: MenuItem, db: DB | null | undefined): boolean {
+  if (HIDDEN_FOR[editionOf(db)].has(it.route)) return false;
   return !it.show || (!!db && it.show(db));
 }
 
@@ -76,15 +94,18 @@ export type MenuGroupDef = {
    * was "All reports", one tap for nothing.
    */
   open?: string;
+  /** Its name in each edition, where it differs. */
+  names?: Partial<Record<Edition, string>>;
 };
 
 const liveSales = (d: DB) => d.sales.filter((s) => s.status !== 'void');
 
 export const MENU_GROUPS: MenuGroupDef[] = [
   {
-    id: 'sell', n: 'Sales', i: 'till', tone: 'accent', perm: 'sales',
+    id: 'sell', n: 'Sales', names: { restaurant: 'Orders', pharmacy: 'Sales & dispensing' }, i: 'till', tone: 'accent', perm: 'sales',
     b: (c) => plural(liveSales(c.db).length, 'sale'),
     items: [
+      { route: 'Order', i: 'food', n: 'Take an order', b: (c) => plural((c.db.tickets || []).filter((t) => t.status === 'open').length, 'open ticket'), show: (d) => isRestaurant(d), alt: 'restaurant table ticket kitchen order' },
       { route: 'Sales', i: 'doc', n: 'Activity', b: (c) => plural(liveSales(c.db).length, 'sale'), alt: 'sales invoices receipts transactions parties' },
       { route: 'Estimates', i: 'doc', n: 'Quotations', b: (c) => (c.db.estimates || []).filter((e) => e.status === 'open').length + ' open', alt: 'quotes estimates proforma' },
       { route: 'Challans', i: 'box', n: 'Delivery notes', b: (c) => (c.db.challans || []).filter((x) => !x.saleId).length + ' still out', alt: 'challan dispatch' },
@@ -101,22 +122,23 @@ export const MENU_GROUPS: MenuGroupDef[] = [
   {
     // Buying used to be a group of its own holding two rows. Stock arrives by
     // being bought, so the whole life of an item sits in one place.
-    id: 'stock', n: 'Inventory', i: 'box', tone: 'good', perm: 'items',
-    b: (c) => plural(c.db.products.filter((p) => p.active).length, 'item'),
+    id: 'stock', n: 'Inventory', names: { restaurant: 'Menu & stock', pharmacy: 'Drugs & stock' }, i: 'box', tone: 'good', perm: 'items',
+    b: (c) => plural(c.db.products.filter((p) => p.active).length, editionOf(c.db) === 'pharmacy' ? 'drug' : editionOf(c.db) === 'restaurant' ? 'dish' : 'item', editionOf(c.db) === 'restaurant' ? 'dishes' : undefined),
     items: [
-      { route: 'ItemsTab', i: 'box', n: 'Items', b: (c) => plural(c.db.products.filter((p) => p.active).length, 'product or service', 'products & services'), alt: 'products services catalogue' },
+      { route: 'MenuEditor', i: 'food', n: 'Menu & modifiers', b: (c) => plural((c.db.modifierGroups || []).length, 'modifier group'), alt: 'restaurant dishes menu modifiers extras size choices' },
+      { route: 'ItemsTab', i: 'box', n: 'Items', names: { pharmacy: 'Drugs' }, b: (c) => plural(c.db.products.filter((p) => p.active).length, editionOf(c.db) === 'pharmacy' ? 'drug' : 'product or service', editionOf(c.db) === 'pharmacy' ? 'drugs' : 'products & services'), alt: 'products services catalogue' },
       // one direct way to buy: goods into stock and money out, in a single step
-      { route: 'PurchaseNew', i: 'plus', n: 'New purchase', b: () => 'Record goods bought from a supplier', perm: 'purchases', alt: 'buy receive stock in supplier bill' },
+      { route: 'PurchaseNew', i: 'plus', n: 'New purchase', names: { pharmacy: 'Receive drugs' }, b: () => 'Record goods bought from a supplier', perm: 'purchases', alt: 'buy receive stock in supplier bill' },
       { route: 'Purchases', i: 'box', n: 'Purchases', b: (c) => plural(c.db.purchases.length, 'supplier bill'), perm: 'purchases', alt: 'supplier bills bought' },
       { route: 'StockTakes', i: 'check', n: 'Stock take', b: (c) => ((c.db.stockTakes || []).some((s) => s.status === 'open') ? 'A count is open' : 'All posted'), alt: 'count stocktake variance' },
-      { route: 'Batches', i: 'calendar', n: 'Batches & expiry', b: () => 'Lots, expiry dates and what is left', alt: 'lot expiry shelf life' },
+      { route: 'Batches', i: 'calendar', n: 'Batches & expiry', names: { pharmacy: 'Batches & expiry dates' }, b: () => 'Lots, expiry dates and what is left', alt: 'lot expiry shelf life' },
       { route: 'Production', i: 'factory', n: 'Production', b: (c) => plural(c.db.products.filter((p) => p.bom && p.bom.length).length, 'recipe'), alt: 'manufacture assemble bom' },
       { route: 'Warranties', i: 'shield', n: 'Warranty', b: (c) => plural(c.db.claims.filter((x) => x.status === 'open').length, 'open claim'), alt: 'guarantee claims' },
-      { route: 'UnitsCategories', i: 'tag', n: 'Units & categories', b: (c) => plural(c.db.units.length, 'unit') + ' · ' + plural(c.db.categories.length, 'category', 'categories'), alt: 'measures groups' },
+      { route: 'UnitsCategories', i: 'tag', n: 'Units & categories', names: { pharmacy: 'Dosage forms & drug classes', restaurant: 'Units & sections' }, b: (c) => plural(c.db.units.length, 'unit') + ' · ' + plural(c.db.categories.length, 'category', 'categories'), alt: 'measures groups' },
     ],
   },
   {
-    id: 'people', n: 'Parties', i: 'user', tone: 'rail', perm: 'parties',
+    id: 'people', n: 'Parties', names: { restaurant: 'Customers & suppliers', pharmacy: 'Customers & distributors' }, i: 'user', tone: 'rail', perm: 'parties',
     b: (c) => plural(c.db.parties.filter((p) => p.active).length, 'party', 'parties'),
     items: [
       { route: 'Parties', i: 'user', n: 'Customers & suppliers', b: (c) => plural(c.db.parties.filter((p) => p.active).length, 'on file', 'on file'), alt: 'contacts debtors creditors' },
@@ -159,6 +181,14 @@ export const MENU_GROUPS: MenuGroupDef[] = [
         b: (c) => {
           const n = c.db.auditLog.filter((a) => (Date.now() - new Date(a.ts).getTime()) / 864e5 <= 30).length;
           return n ? plural(n, 'change') + ' this month' : 'Nothing changed';
+        },
+      },
+      {
+        route: 'DeletedTransactions', i: 'trash', n: 'Deleted transactions', perm: 'settings', alt: 'recycle bin restore undelete removed',
+        b: (c) => {
+          const n = c.db.sales.filter((s) => s.deletedAt && !s.purgedAt).length + c.db.purchases.filter((x) => x.deletedAt && !x.purgedAt).length
+            + (c.db.deletedPayments || []).filter((p) => !p.purgedAt).length;
+          return n ? plural(n, 'item') + ' to restore' : 'Nothing deleted';
         },
       },
       { route: 'UsersRoles', i: 'user', n: 'Staff & roles', b: (c) => plural(c.db.users.filter((u) => u.active).length, 'person', 'people'), perm: 'users', alt: 'users permissions pins' },
@@ -219,7 +249,7 @@ export function searchMenu(q: string): MenuHit[] {
   const hits: MenuHit[] = [];
   MENU_GROUPS.forEach((group) => {
     group.items.forEach((item) => {
-      const hay = (item.n + ' ' + group.n + ' ' + (item.alt || '')).toLowerCase();
+      const hay = (item.n + ' ' + Object.values(item.names || {}).join(' ') + ' ' + group.n + ' ' + Object.values(group.names || {}).join(' ') + ' ' + (item.alt || '')).toLowerCase();
       if (hay.includes(needle)) hits.push({ group, item });
     });
   });

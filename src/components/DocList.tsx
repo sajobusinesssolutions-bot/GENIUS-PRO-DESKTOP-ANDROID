@@ -183,6 +183,51 @@ export function StatusChips<T extends string>({ value, options, onChange }: {
   );
 }
 
+/* ------------------------------------------------------------ sort bar */
+
+/** "Sort: Name A–Z" under the filters; tap to choose another order from a sheet. */
+export function SortBar<T extends string>({ value, options, onChange }: {
+  value: T; options: { v: T; l: string }[]; onChange: (v: T) => void;
+}) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.v === value) || options[0];
+  return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={'Sort by ' + current.l}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginHorizontal: 16, marginBottom: 10, paddingVertical: 4 }}
+      >
+        <Icon name="filter" size={15} color={colors.faint} />
+        <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.faint }}>Sort:</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>{current.l}</Text>
+        <Icon name="down" size={14} color={colors.accent} />
+      </Pressable>
+      <Sheet visible={open} title="Sort by" icon="filter" onClose={() => setOpen(false)}>
+        {options.map((o) => {
+          const on = o.v === value;
+          return (
+            <Pressable
+              key={o.v}
+              onPress={() => { onChange(o.v); setOpen(false); }}
+              style={({ pressed }) => ({
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 14,
+                borderRadius: 12, marginBottom: 6, backgroundColor: on ? colors.accentSoft : pressed ? colors.sunk : colors.surface,
+                borderWidth: 1, borderColor: on ? colors.accent : colors.line,
+              })}
+            >
+              <Text style={{ fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 15, color: on ? colors.accent : colors.ink }}>{o.l}</Text>
+              {on ? <Icon name="check" size={17} color={colors.accent} /> : null}
+            </Pressable>
+          );
+        })}
+      </Sheet>
+    </>
+  );
+}
+
 /* ------------------------------------------------------------ period bar */
 
 export interface ListPeriod { key: string; from: number; to: number; label: string }

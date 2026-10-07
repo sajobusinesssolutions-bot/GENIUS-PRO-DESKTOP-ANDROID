@@ -17,7 +17,7 @@ import { PLAY_BUILD } from '../data/store';
 import { canFor } from '../data/perms';
 import { mayCreate } from '../data/logic';
 import { isPremiumReport, groupOf, reportPermission } from '../data/reports';
-import { startOfDay, endOfDay, daysAgo, fmtDay } from '../data/helpers';
+import { PeriodBar, listPeriod, ListPeriod } from '../components/DocList';
 import {
   runReport, reportById, sortRows, cellText, cellTone, stockMovementDrill, inventoryMetricDrill,
   ledgerDrill, partyDrill, voucherDrill, voucherTypeDrill, DETAIL_VIEW,
@@ -41,37 +41,6 @@ const CHOSEN = new Map<string, { keep: boolean[]; showGenerated: boolean; showTo
 const ASK: Record<ExportKind, string> = {
   pdf: 'What to display on PDF?', preview: 'What to show?', excel: 'What to put in Excel?', whatsapp: 'What to send?',
 };
-
-/* --- date range ---------------------------------------------------- */
-
-type RangeKey = 'today' | '7' | '30' | 'all' | 'custom';
-
-interface Span { from: number; to: number; label: string }
-
-function spanFor(key: RangeKey, custom: { from: number; to: number } | null): Span {
-  if (key === 'custom' && custom) {
-    return { from: custom.from, to: custom.to, label: fmtDay(custom.from) + ' – ' + fmtDay(custom.to) };
-  }
-  const to = endOfDay();
-  if (key === 'today') return { from: startOfDay(), to, label: 'Today' };
-  if (key === '7') return { from: startOfDay(daysAgo(6)), to, label: 'Last 7 days' };
-  if (key === 'all') return { from: 0, to, label: 'All time' };
-  return { from: startOfDay(daysAgo(29)), to, label: 'Last 30 days' };
-}
-
-function parseDay(s: string): number | null {
-  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s.trim());
-  if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  if (isNaN(d.getTime())) return null;
-  return d.getTime();
-}
-
-function isoDay(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => (n < 10 ? '0' + n : String(n));
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
 
 /* --- table --------------------------------------------------------- */
 
@@ -135,8 +104,7 @@ export default function ReportDetailScreen() {
   const def = reportById(id);
   const group = groupOf(id);
 
-  const [rangeKey, setRangeKey] = useState<RangeKey>('30');
-  const [custom, setCustom] = useState<{ from: number; to: number } | null>(null);
+  const [period, setPeriod] = useState<ListPeriod>(() => listPeriod('month'));
   const [rowFilter, setRowFilter] = useState<'all' | 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month'>('all');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<{ i: number; dir: SortDir } | null>(null);
@@ -150,12 +118,9 @@ export default function ReportDetailScreen() {
   const { width } = useWindowDimensions();
   const [layout, setLayout] = useState<'cards' | 'table'>(width < 520 ? 'cards' : 'table');
   const [exportOpen, setExportOpen] = useState(false);
-  const [rangeOpen, setRangeOpen] = useState(false);
   /** Which one-button dropdown is open: the report's view, its dates, or its rows. */
-  const [pick, setPick] = useState<'view' | 'range' | 'rows' | null>(null);
+  const [pick, setPick] = useState<'view' | 'rows' | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [fromText, setFromText] = useState(isoDay(startOfDay(daysAgo(29))));
-  const [toText, setToText] = useState(isoDay(Date.now()));
   const [ask, setAsk] = useState<ExportKind | null>(null);
   const [keep, setKeep] = useState<boolean[]>([]);
   const [showGenerated, setShowGenerated] = useState(true);
@@ -170,7 +135,7 @@ export default function ReportDetailScreen() {
   const allowed = canFor(role, 'reports') && (!extra || canFor(role, extra));
   const canExport = canFor(role, 'exports.download');
 
-  const span = useMemo(() => spanFor(rangeKey, custom), [rangeKey, custom]);
+  const span = useMemo(() => ({ from: period.from, to: period.to, label: period.label }), [period]);
 
   const raw = useMemo<ReportResult | null>(() => {
     if (!db || !allowed) return null;
@@ -405,31 +370,6 @@ export default function ReportDetailScreen() {
     }
   };
 
-  const applyCustom = () => {
-    const f = parseDay(fromText);
-    const t = parseDay(toText);
-    if (f == null || t == null) {
-      Alert.alert('Dates', 'Use the form YYYY-MM-DD, for example 2026-01-31.');
-      return;
-    }
-    if (f > t) { Alert.alert('Dates', 'The first date must come before the second.'); return; }
-    setCustom({ from: startOfDay(f), to: endOfDay(t) });
-    setRangeKey('custom');
-    setRangeOpen(false);
-  };
-
-  const applyRange = (nextFrom: string, nextTo: string) => {
-    const f = parseDay(nextFrom);
-    const t = parseDay(nextTo);
-    if (f == null || t == null) return;
-    if (f > t) {
-      Alert.alert('Dates', 'The first date must come before the second.');
-      return;
-    }
-    setCustom({ from: startOfDay(f), to: endOfDay(t) });
-    setRangeKey('custom');
-  };
-
   if (!db) return null;
 
   /* Switching between the views of one report — shown on the report and on its locked page alike. */
@@ -502,14 +442,14 @@ export default function ReportDetailScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <PeriodBar value={period} onChange={setPeriod} />
       <ScrollView contentContainerStyle={{ paddingBottom: 18 }}>
-        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 0, paddingBottom: 4 }}>
           {/* the name is the title; export is the icon beside it. Here only the choices */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {group && group.views.length > 1 ? (
               <DropBtn icon="doc" label={currentView?.label || 'View'} onPress={() => setPick('view')} />
             ) : null}
-            <DropBtn icon="calendar" label={span.label} onPress={() => setPick('range')} />
             {DETAIL_VIEW[id] && !top ? (
               <Pressable
                 onPress={() => { setDetailed((v) => !v); setSort(null); }}
@@ -673,18 +613,14 @@ export default function ReportDetailScreen() {
       {/* the dropdowns' choices */}
       <Sheet
         visible={!!pick}
-        title={pick === 'view' ? 'Show' : pick === 'range' ? 'Date range' : 'Rows'}
-        icon={pick === 'range' ? 'calendar' : pick === 'rows' ? 'filter' : 'doc'}
+        title={pick === 'view' ? 'Show' : 'Rows'}
+        icon={pick === 'rows' ? 'filter' : 'doc'}
         onClose={() => setPick(null)}
       >
         {(pick === 'view' ? (group?.views || []).map((v) => ({ v: v.id, l: v.label }))
-          : pick === 'range' ? [
-            { v: 'today', l: 'Today' }, { v: '7', l: 'Last 7 days' }, { v: '30', l: 'Last 30 days' },
-            { v: 'all', l: 'All time' }, { v: 'custom', l: 'Custom dates…' },
-          ]
-            : rowFilterOptions
+          : rowFilterOptions
         ).map((o) => {
-          const on = pick === 'view' ? o.v === id : pick === 'range' ? o.v === rangeKey : o.v === rowFilter;
+          const on = pick === 'view' ? o.v === id : o.v === rowFilter;
           return (
             <Pressable
               key={o.v}
@@ -692,7 +628,6 @@ export default function ReportDetailScreen() {
                 const which = pick;
                 setPick(null);
                 if (which === 'view') { if (o.v !== id) { setSort(null); setSearch(''); nav.setParams({ id: o.v }); } }
-                else if (which === 'range') { if (o.v === 'custom') setTimeout(() => setRangeOpen(true), 250); else setRangeKey(o.v as RangeKey); }
                 else setRowFilter(o.v as typeof rowFilter);
               }}
               style={{ flexDirection: 'row', alignItems: 'center', minHeight: 50, borderBottomWidth: 1, borderBottomColor: colors.line }}
@@ -702,16 +637,6 @@ export default function ReportDetailScreen() {
             </Pressable>
           );
         })}
-      </Sheet>
-
-      {/* custom range */}
-      <Sheet visible={rangeOpen} title="Custom range" icon="calendar" onClose={() => setRangeOpen(false)}
-        footer={<Button label="Apply range" variant="pri" onPress={applyCustom} />}>
-        <Field label="From" icon="calendar" value={fromText} onChangeText={setFromText} placeholder="YYYY-MM-DD" />
-        <Field label="To" icon="calendar" value={toText} onChangeText={setToText} placeholder="YYYY-MM-DD" />
-        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>
-          Both days are included. For example 2026-01-01 to 2026-01-31 covers the whole of January.
-        </Text>
       </Sheet>
 
       {/* export */}

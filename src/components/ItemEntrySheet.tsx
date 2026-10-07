@@ -25,6 +25,7 @@ import { unitsFor } from './LineEditSheet';
 import { plain } from './BilledItems';
 import { liveBatches } from '../data/batches';
 import { useAppData } from '../data/AppDataContext';
+import { vocab } from '../data/editions';
 import type { Product, SoldSerial } from '../data/types';
 
 /** What the screen hands back for one line. */
@@ -83,7 +84,7 @@ export default function ItemEntrySheet({
   visible, title, products, money, stockOf, priceOf, rateLabel = 'Rate (Price/Unit)',
   start, startProduct, onSave, onRemove, onClose,
   maxFor, canCreate, onCreateProduct, units = ['Pcs'],
-  trackBatches = false, trackImei = false, discount = true, editRate = true, maxDiscountPct = 100,
+  trackBatches = false, trackImei = false, discount = true, editRate = true, maxDiscountPct = 100, belowCost = 'allow',
   askSellPrice = false, takenImeis = [],
 }: {
   visible: boolean;
@@ -115,6 +116,8 @@ export default function ItemEntrySheet({
   discount?: boolean;
   editRate?: boolean;
   maxDiscountPct?: number;
+  /** Settings → "Below cost" for this person: warn under the rate, or refuse the line. */
+  belowCost?: 'allow' | 'warn' | 'block';
   /** A purchase also asks what a new item sells for. */
   askSellPrice?: boolean;
   /** IMEIs already on other lines of this bill. */
@@ -122,6 +125,8 @@ export default function ItemEntrySheet({
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  // Drug, Dish or Item, with an example name to match
+  const V = vocab(useAppData().db);
 
   const [name, setName] = useState('');
   const [product, setProduct] = useState<Product | null>(null);
@@ -241,6 +246,8 @@ export default function ItemEntrySheet({
   const over = Number.isFinite(limit) && qtyNum * factor > limit + 1e-9;
   const batches = product && trackBatches && product.trackBatches ? liveBatches(product) : [];
   const wantsImei = !!(product && trackImei && product.trackSerials);
+  const unitCost = product ? (unitsFor(product).find((u) => u.unit === unit)?.cost ?? product.cost) : 0;
+  const underCost = belowCost !== 'allow' && !!product && unitCost > 0 && qtyNum > 0 && net < unitCost - 1e-9;
   const imeiShort = wantsImei && serials.filter((s) => s.imei).length !== Math.floor(qtyNum);
 
   function pickUnit(u: string) {
@@ -275,6 +282,7 @@ export default function ItemEntrySheet({
     }
     if (qtyNum <= 0) { setErr('Enter the quantity.'); return; }
     if (over) { setErr('Only ' + plain(limit / factor) + ' ' + (chosenUnit?.unit || '') + ' available.'); return; }
+    if (underCost && belowCost === 'block') { setErr('Below cost (' + money(unitCost) + '). Settings do not allow selling under cost.'); return; }
     if (p && wantsImei && imeiShort) { setSaveAfterImei(andNew); setImeiOpen(true); Keyboard.dismiss(); return; }
 
     if (!p) {
@@ -322,8 +330,8 @@ export default function ItemEntrySheet({
           {/* the name stays put; the list or the rest of the form sits under it */}
           <View style={{ backgroundColor: colors.surface, paddingHorizontal: 16, paddingTop: 18 }}>
             <Field
-              label="Item Name"
-              placeholder="e.g. 10 Channel NVR"
+              label={V.item + ' name'}
+              placeholder={V.example}
               inputRef={nameRef}
               value={name}
               onChangeText={onNameChange}
@@ -355,7 +363,7 @@ export default function ItemEntrySheet({
               }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 8 }}>
                   <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
-                    Saved items <Text style={{ fontFamily: fonts.ui, color: colors.faint }}>{matches.length ? '· ' + matches.length + (matches.length > 5 ? ' · scroll' : '') : '· none match'}</Text>
+                    Saved {V.items.toLowerCase()} <Text style={{ fontFamily: fonts.ui, color: colors.faint }}>{matches.length ? '· ' + matches.length + (matches.length > 5 ? ' · scroll' : '') : '· none match'}</Text>
                   </Text>
                   {canCreate && onCreateProduct ? (
                     <Pressable onPress={() => releaseName(startNew)} hitSlop={8} accessibilityLabel="Add new item">
@@ -404,7 +412,7 @@ export default function ItemEntrySheet({
                   {!matches.length ? (
                     <Pressable onPress={canCreate && onCreateProduct ? () => releaseName(startNew) : undefined} style={{ padding: 20, alignItems: 'center' }}>
                       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: canCreate ? colors.accent : colors.faint, textAlign: 'center' }}>
-                        {canCreate && onCreateProduct ? 'Add “' + name.trim() + '” as a new item' : 'Nothing matches “' + name.trim() + '”'}
+                        {canCreate && onCreateProduct ? 'Add “' + name.trim() + '” as a new ' + V.item.toLowerCase() : 'Nothing matches “' + name.trim() + '”'}
                       </Text>
                     </Pressable>
                   ) : null}
@@ -427,7 +435,7 @@ export default function ItemEntrySheet({
                 {creating ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -6, marginBottom: 12 }}>
                     <Icon name="plus" size={13} color={colors.accent} />
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>New item — saved to your items with this line</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>New {V.item.toLowerCase()} — saved to your {V.items.toLowerCase()} with this line</Text>
                   </View>
                 ) : product && product.kind !== 'service' ? (
                   <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: -6, marginBottom: 12 }}>
@@ -510,6 +518,7 @@ export default function ItemEntrySheet({
                   numeric
                   decimal
                   returnKeyType="done"
+                  error={underCost ? 'Below cost of ' + money(unitCost) + (belowCost === 'block' ? ' — not allowed' : ' — needs approval at checkout') : undefined}
                 />
 
                 {creating && askSellPrice ? (

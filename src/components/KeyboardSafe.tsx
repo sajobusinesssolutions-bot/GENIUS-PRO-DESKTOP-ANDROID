@@ -19,11 +19,48 @@
  *    screen, and absolute children follow the box, not its padding — so they
  *    rise with it and stay reachable.
  *
- *  · A scroll view that shrinks keeps its focused field in view on Android, so
- *    the field being typed in is lifted clear without any form knowing.
+ *  · Android's scroll view does NOT bring its focused field back into view when
+ *    it shrinks (only when focus moves), so a Description box low on a form
+ *    stayed under the keyboard. Once the screen has shrunk, revealFocused()
+ *    finds the field being typed in, the scroll view holding it, and scrolls
+ *    just far enough to show it. Field calls it too when focus moves between
+ *    boxes while the keyboard is already open.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, View, ViewStyle, KeyboardEvent } from 'react-native';
+import { Keyboard, Platform, View, ViewStyle, KeyboardEvent, TextInput, UIManager, findNodeHandle } from 'react-native';
+
+/** Where the top of the keyboard is in the window, while it is open. */
+let keyboardTop: number | null = null;
+/** Room left between the field and the keyboard. */
+const MARGIN = 28;
+
+/**
+ * Scrolls the field being typed in clear of the keyboard, if it is under it.
+ * Quietly does nothing when there is no keyboard, no field, or no scroll view.
+ */
+export function revealFocused(delay = 80) {
+  if (Platform.OS === 'web') return;
+  setTimeout(() => {
+    const top = keyboardTop;
+    const input: any = (TextInput as any)?.State?.currentlyFocusedInput?.();
+    if (top == null || !input?.measureInWindow) return;
+    input.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+      const over = y + h + MARGIN - top;
+      if (over <= 0) return;
+      try {
+        // the nearest scroll view above the field
+        let el = input.parentElement;
+        while (el && !/ScrollView$/.test(String(el.tagName || '')) ) el = el.parentElement;
+        if (!el || /Horizontal/.test(String(el.tagName))) return;
+        // the public way to send a scroll view a command: its view tag and the command name
+        const tag = findNodeHandle(el);
+        if (tag != null) UIManager.dispatchViewManagerCommand(tag, 'scrollTo', [0, Math.max(0, (el.scrollTop || 0) + over), true]);
+      } catch {
+        // older renderers have no element tree to walk; the field stays where it is
+      }
+    });
+  }, delay);
+}
 
 export default function KeyboardSafe({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
   const outer = useRef<View>(null);
@@ -36,12 +73,15 @@ export default function KeyboardSafe({ children, style }: { children: React.Reac
 
     const onShow = (e: KeyboardEvent) => {
       const top = e.endCoordinates.screenY;
+      keyboardTop = top;
       outer.current?.measureInWindow((_x, y, _w, h) => {
         // how far the keyboard reaches up into this screen, if at all
         setLift(Math.max(0, Math.round(y + h - top)));
+        // after the screen has shrunk, bring the field being typed in into view
+        revealFocused(120);
       });
     };
-    const onHide = () => setLift(0);
+    const onHide = () => { keyboardTop = null; setLift(0); };
 
     const a = Keyboard.addListener(showEv, onShow);
     const b = Keyboard.addListener(hideEv, onHide);

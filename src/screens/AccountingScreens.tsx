@@ -527,6 +527,7 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
                 value={ledger}
                 onChange={setLedger}
                 canCreate
+                showBalance
                 style={{ marginBottom: 6 }}
               />
               <View style={{ alignItems: 'center', marginVertical: -4, zIndex: 1 }}>
@@ -544,6 +545,7 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
                 onChange={setContra}
                 icon="bank"
                 canCreate
+                showBalance
                 style={{ marginBottom: 0 }}
               />
             </View>
@@ -577,7 +579,7 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
               <View key={i} style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 10, marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <LedgerPicker compact label={'Line ' + (i + 1)} value={l.acc} onChange={(v) => patch(i, { acc: v })} canCreate style={{ marginBottom: 0 }} />
+                    <LedgerPicker compact label={'Line ' + (i + 1)} value={l.acc} onChange={(v) => patch(i, { acc: v })} canCreate showBalance style={{ marginBottom: 0 }} />
                   </View>
                   {lines.length > 2 ? (
                     <Pressable onPress={() => setLines(lines.filter((_, x) => x !== i))} hitSlop={8} style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center', marginTop: 6 }}>

@@ -31,7 +31,7 @@ function open(onSave = jest.fn()) {
     />,
   );
   act(() => { jest.runAllTimers(); });
-  const name = screen.getByPlaceholderText('e.g. 10 Channel NVR');
+  const name = screen.getByPlaceholderText('e.g. Sugar 1 kg');
   fireEvent(name, 'focus');
   fireEvent.changeText(name, 'nvr');
   return onSave;

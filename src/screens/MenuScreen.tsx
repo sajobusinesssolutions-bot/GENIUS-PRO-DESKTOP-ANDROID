@@ -22,7 +22,7 @@ import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
-import { MENU_GROUPS, searchMenu, MenuCtx, itemShown } from '../data/menuGroups';
+import { MENU_GROUPS, searchMenu, MenuCtx, itemShown, rowName } from '../data/menuGroups';
 import {
   Card, Grid, Avatar, Button, Panel, Badge, ListRow, SectionLabel, Search, EmptyState,
 } from '../components/ui';
@@ -129,8 +129,8 @@ export default function MenuScreen() {
                 <ListRow
                   key={h.group.id + h.item.route + h.item.n}
                   icon={h.item.i}
-                  title={h.item.n}
-                  subtitle={h.group.n}
+                  title={rowName(h.item, db)}
+                  subtitle={rowName(h.group, db)}
                   onPress={() => { setQ(''); go(h.item.route, h.item.params); }}
                   last={i === hits.length - 1}
                 />
@@ -157,7 +157,7 @@ export default function MenuScreen() {
                   <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                     <Icon name={g.i} size={21} color={colors.accent} />
                   </View>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{g.n}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{rowName(g, db)}</Text>
                 </Pressable>
               ))}
             </View>

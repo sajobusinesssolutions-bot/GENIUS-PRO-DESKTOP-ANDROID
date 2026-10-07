@@ -65,6 +65,11 @@ import RecurringScreen, { RecurringNewScreen } from '../screens/RecurringScreen'
 import ShiftScreen from '../screens/ShiftScreen';
 import FirmsScreen from '../screens/FirmsScreen';
 import AuditLogScreen from '../screens/AuditLogScreen';
+import DeletedTransactionsScreen from '../screens/DeletedTransactionsScreen';
+import OrderScreen from '../screens/OrderScreen';
+import PriceListsScreen from '../screens/PriceListsScreen';
+import MenuEditorScreen from '../screens/MenuEditorScreen';
+import PrintingKitchenScreen from '../screens/PrintingKitchenScreen';
 
 // Destinations the live menu groups and quick actions point at
 import SalesListScreen from '../screens/SalesListScreen';
@@ -233,7 +238,8 @@ export default function RootNavigator() {
         <Stack.Screen name="Batches" component={BatchReportScreen} options={{ title: 'Batches & expiry' }} />
         <Stack.Screen name="StaffReport" component={StaffReportScreen} options={{ title: 'Staff performance' }} />
         <Stack.Screen name="BatchMovement" component={BatchMovementScreen} options={{ title: 'Batch movement' }} />
-        <Stack.Screen name="PriceList" component={PriceListScreen} options={{ title: 'Price list' }} />
+        <Stack.Screen name="PriceLists" component={PriceListsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="PriceList" component={PriceListScreen} options={{ title: 'Bulk price editor' }} />
         <Stack.Screen name="NamesEditor" component={NamesEditorScreen} options={{ title: 'Names & descriptions' }} />
         <Stack.Screen name="ActivateItems" component={ActivateScreen} options={{ title: 'On sale / off sale' }} />
         <Stack.Screen name="PriceTags" component={PriceTagScreen} options={{ title: 'Price tags' }} />
@@ -283,6 +289,10 @@ export default function RootNavigator() {
         <Stack.Screen name="Business" component={BusinessScreen} options={{ title: 'Business & branches' }} />
         <Stack.Screen name="Firms" component={FirmsScreen} options={{ title: 'Businesses' }} />
         <Stack.Screen name="AuditLog" component={AuditLogScreen} options={{ title: 'Audit log' }} />
+        <Stack.Screen name="Order" component={OrderScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="PrintingKitchen" component={PrintingKitchenScreen} options={{ title: 'Kitchen & restaurant receipts' }} />
+        <Stack.Screen name="MenuEditor" component={MenuEditorScreen} options={{ title: 'Menu & modifiers' }} />
+        <Stack.Screen name="DeletedTransactions" component={DeletedTransactionsScreen} options={{ title: 'Deleted transactions' }} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Notifications' }} />
         <Stack.Screen name="Plans" component={LicenceScreen} options={{ title: 'Plan & licence' }} />
         <Stack.Screen name="About" component={AboutScreen} options={{ title: 'About' }} />

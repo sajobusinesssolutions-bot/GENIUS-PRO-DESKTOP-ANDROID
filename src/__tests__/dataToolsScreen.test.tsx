@@ -22,6 +22,12 @@ jest.mock('../data/deviceBackup', () => ({
   readBackup: (...a: any[]) => mockFns.readBackup(...a),
   deleteBackup: (...a: any[]) => mockFns.deleteBackup(...a),
   backupFolderPath: () => '/data/user/0/app/files/backups',
+  chosenFolderText: () => null,
+  chooseBackupFolder: async () => null,
+  forgetBackupFolder: async () => undefined,
+  loadChosenFolder: async () => null,
+  backupBase64: async () => '',
+  OUTSIDE_FOLDER: 'Genius Pro Backups',
 }));
 jest.mock('expo-document-picker', () => ({ getDocumentAsync: jest.fn() }));
 jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn(async () => true), shareAsync: jest.fn(async () => undefined) }));

@@ -96,6 +96,12 @@ export default function BilledItems({ lines, money, onPress, title = 'Billed Ite
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(l.qty * l.price)}</Text>
             </View>
 
+            {(l as any).modifiers?.length ? (
+              <Text numberOfLines={3} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft }}>
+                + {(l as any).modifiers.map((m: { name: string }) => m.name).join(', ')}
+              </Text>
+            ) : null}
+
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>Item Subtotal</Text>
               <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>
@@ -131,7 +137,7 @@ export default function BilledItems({ lines, money, onPress, title = 'Billed Ite
             ) : null}
 
             {l.note ? (
-              <Text numberOfLines={3} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{l.note}</Text>
+              <Text numberOfLines={3} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.warn }}>* {l.note}</Text>
             ) : null}
           </Pressable>
         );

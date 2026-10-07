@@ -19,8 +19,11 @@ import BilledItems from '../components/BilledItems';
 import { CustomerPickerSheet, CustomerFormSheet, BalanceTag } from '../components/CustomerSheets';
 import { useWho } from '../components/WhoSheet';
 import { useOwnerPin } from '../components/OwnerPin';
+import { isRestaurant } from '../data/restaurant';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
+import PriceListPicker from '../components/PriceListPicker';
+import { priceFor, repriceLines } from '../data/priceLists';
 import { Product, PayMethod, SaleLine } from '../data/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'NewSale'>;
@@ -28,24 +31,30 @@ type Props = NativeStackScreenProps<RootStackParamList, 'NewSale'>;
 export default function NewSaleScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { db, money, stockOf, commitSale, editSale: editSaleTransaction, addParty, can, partyBalance } = useAppData();
+  const { db, money, stockOf, commitSale, editSale: editSaleTransaction, addParty, can, partyBalance, markEstimateConverted } = useAppData();
+  /** A quotation being turned into a sale: its lines fill the bill, to change before saving. */
+  const fromQuote = db?.estimates.find((e) => e.id === route.params?.fromEstimateId && e.status === 'open');
   const editingSale = db?.sales.find((sale) => sale.id === route.params?.editSaleId);
   /** What the cart starts from: the sale being edited, or one being duplicated. */
   const seed = editingSale || db?.sales.find((sale) => sale.id === route.params?.copyFromId);
   /** Owner and manager are trusted with prices and discounts; everyone else follows Settings. */
-  const trusted = db?.session.role === 'owner' || db?.session.role === 'manager';
+  const trusted = db?.session.role === 'owner';
   const { success, error } = useToast();
   const who = useWho('Who served this sale?');
+  useEffect(() => {
+    if (isRestaurant(db) && !route.params?.editSaleId && !route.params?.fromEstimateId && !route.params?.copyFromId) navigation.replace('Order');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const ownerPin = useOwnerPin();
 
-  const [cart, setCart] = useState<SaleLine[]>(() => seed ? seed.lines.map((line) => ({ ...line })) : []);
+  const [cart, setCart] = useState<SaleLine[]>(() => (seed || fromQuote) ? (seed || fromQuote)!.lines.map((line) => ({ ...line })) : []);
   // Settings → "Default payment"
   const [method, setMethod] = useState<PayMethod>(seed?.method || (db?.settings.defaultMethod as PayMethod) || 'cash');
   const [methods, setMethods] = useState<Array<{ method: PayMethod; amount: number }> | undefined>(editingSale?.methods);
-  const [partyId, setPartyId] = useState<string | null>(seed?.partyId || null);
-  const [discount, setDiscount] = useState(seed?.discount || 0);
+  const [partyId, setPartyId] = useState<string | null>(seed?.partyId || fromQuote?.partyId || null);
+  const [discount, setDiscount] = useState(seed?.discount || fromQuote?.discount || 0);
   const [additionalCharges, setAdditionalCharges] = useState(seed?.additionalCharges || 0);
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(editingSale?.note || '');
   const [terms, setTerms] = useState('');
   const [loading, setLoading] = useState(false);
   /** What the customer actually hands over on a credit sale. */
@@ -72,6 +81,17 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const [metaField, setMetaField] = useState<'no' | 'date' | 'time'>('no');
   const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
+  /** The price list the bill is priced from; null for each item's own price. */
+  const [priceListId, setPriceListId] = useState<string | null>(editingSale?.priceListId || null);
+  const priceList = (db?.priceLists || []).find((l) => l.id === priceListId) || null;
+  function choosePriceList(id: string | null) {
+    setPriceListId(id);
+    const l = (db?.priceLists || []).find((x) => x.id === id) || null;
+    // what is already on the bill is priced again from the new list
+    setCart((prev) => repriceLines(prev, l, db?.products || []));
+  }
+  /** The prescription for the Rx-only drugs on this bill has been seen. */
+  const [rxSeen, setRxSeen] = useState(false);
 
   const customers = useMemo(() => (db?.parties || []).filter((p) => p.type === 'customer' && p.active), [db]);
   const selectedParty = partyId ? customers.find((p) => p.id === partyId) : undefined;
@@ -97,7 +117,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
 
   // a new sale is typed in order: the customer, then the first item
   useEffect(() => {
-    if (seed) return;
+    if (seed || fromQuote) return;
     const t = setTimeout(() => setPartyPickerVisible(true), 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,7 +152,8 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     };
     const at = entryIndex;
     setCart((prev) => {
-      if (at !== null) return prev.map((l, i) => (i === at ? line : l));
+      // a dish's choices are not edited here: they stay with it while it is the same dish
+      if (at !== null) return prev.map((l, i) => (i === at ? (l.productId === line.productId && l.modifiers ? { ...line, modifiers: l.modifiers } : line) : l));
       // the same item at the same rate adds to its line, unless each unit has its own IMEI
       const same = e.serials ? -1 : prev.findIndex((l) => l.productId === line.productId && l.batchNo === line.batchNo
         && l.unit === line.unit && l.price === line.price && !l.serials && (l.note || '') === (line.note || ''));
@@ -176,6 +197,20 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       return;
     }
     const st = db?.settings;
+
+    // a prescription-only drug: the counter confirms it has seen the prescription
+    const rx = cart.filter((l) => productOf(l)?.rxOnly);
+    if (rx.length && !rxSeen) {
+      Alert.alert(
+        'Prescription needed',
+        rx.map((l) => '• ' + l.name).join('\n') + '\n\n' + (rx.length === 1 ? 'This drug is' : 'These drugs are') + ' prescription only. Check the customer\'s prescription before selling.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'I have seen it', onPress: () => { setRxSeen(true); setTimeout(checkout, 50); } },
+        ],
+      );
+      return;
+    }
 
     // Settings → "Biggest discount a cashier may give", on the bill as a whole
     if (!trusted && st && subtotal > 0 && discount > subtotal * (Number(st.maxDiscountPct) || 0) / 100) {
@@ -254,9 +289,12 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         momoNetwork: (method === 'momo' || (method === 'credit' && receivedVia === 'momo')) ? momoNetwork : undefined,
         momoRef: (method === 'momo' || (method === 'credit' && receivedVia === 'momo')) ? momoRef : undefined,
         userId,
+        priceListId: priceListId || undefined,
       });
-      success(sale.no + ' saved by ' + userName);
+      if (fromQuote) markEstimateConverted(fromQuote.id, sale.id);
+      success((fromQuote ? fromQuote.no + ' became ' : '') + sale.no + ' · saved by ' + userName);
       setCart([]);
+      setRxSeen(false);
       setMethod((db?.settings.defaultMethod as PayMethod) || 'cash');
       setMethods(undefined);
       setDiscount(0);
@@ -290,6 +328,10 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         contentContainerStyle={{ padding: 14, paddingBottom: 190 + insets.bottom, gap: 12 }}
         showsVerticalScrollIndicator={false}
       >
+        {fromQuote ? (
+          <InfoBanner tone="accent" icon="doc" text={'From quotation ' + fromQuote.no + '. Change anything you need, then save — the quotation closes only once this sale is saved.'} />
+        ) : null}
+        <PriceListPicker value={priceListId} onChange={choosePriceList} style={{ marginBottom: 0 }} />
         {/* date and time in one box; the number below, blank for the next in sequence */}
         <View>
           <FieldShell
@@ -431,7 +473,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         products={db?.products || []}
         money={money}
         stockOf={stockOf}
-        priceOf={(p) => p.price}
+        priceOf={(p) => priceFor(priceList, p)}
         start={entryIndex !== null && cart[entryIndex] ? {
           productId: cart[entryIndex].productId, qty: cart[entryIndex].qty, unit: cart[entryIndex].unit,
           listPrice: cart[entryIndex].listPrice ?? cart[entryIndex].price, discountPct: cart[entryIndex].discountPct,
@@ -445,6 +487,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         // role first ("Change prices at the till", "Give discounts"), then the till settings
         editRate={trusted || can('sales.price_edit') || db?.settings.allowPriceEdit === true}
         maxDiscountPct={!can('sales.discount') ? 0 : trusted ? 100 : Number(db?.settings.maxDiscountPct ?? 100)}
+        belowCost={trusted ? 'allow' : (db?.settings.belowCost || 'warn')}
         canCreate={newItem.canCreate}
         units={newItem.units}
         onCreateProduct={newItem.create}

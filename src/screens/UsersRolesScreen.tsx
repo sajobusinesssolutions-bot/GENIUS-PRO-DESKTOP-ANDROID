@@ -35,6 +35,7 @@ import {
   listBusinessMembers, revokeBusinessAccess as revokeRemoteBusinessAccess,
 } from '../data/syncClient';
 import { refreshSession, serverConfigured } from '../data/authApi';
+import { editionOf } from '../data/editions';
 
 type Draft = { id: string | null; name: string; description: string; builtin: boolean; perms: Record<string, boolean> };
 
@@ -384,6 +385,7 @@ function RoleEditor({ draft, onChange, onCancel, onSave, onDelete }: {
   onDelete: () => void;
 }) {
   const { colors } = useTheme();
+  const { db } = useAppData();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const total = allPermKeys().length;
   const on = allPermKeys().filter((k) => draft.perms[k]).length;
@@ -458,7 +460,7 @@ function RoleEditor({ draft, onChange, onCancel, onSave, onDelete }: {
           </View>
         ) : null}
 
-        {PERM_MATRIX.map((g) => {
+        {PERM_MATRIX.filter((g) => !g.editions || g.editions.includes(editionOf(db))).map((g) => {
           const gon = g.acts.filter((a) => draft.perms[g.k + '.' + a[0]]).length;
           const shut = !!collapsed[g.k];
           return (

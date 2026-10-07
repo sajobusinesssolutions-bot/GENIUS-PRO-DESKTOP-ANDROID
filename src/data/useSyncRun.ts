@@ -86,7 +86,10 @@ export function useSyncRun() {
 
       const wiring = await ensureWiring(d, token, account.deviceId);
       if (!wiring.ok) return { ok: false, sent: 0, message: wiring.error.message };
-      setSync({ businessId: wiring.value.businessId, deviceId: wiring.value.deviceId });
+      // written only when it changes: every write re-renders the whole app and re-saves the books
+      if (d.sync.businessId !== wiring.value.businessId || d.sync.deviceId !== wiring.value.deviceId) {
+        setSync({ businessId: wiring.value.businessId, deviceId: wiring.value.deviceId });
+      }
 
       // the server refuses an app older than the books: show the Update screen
       const stopIfOld = (e: { failure: string; message: string }) => {
@@ -115,9 +118,16 @@ export function useSyncRun() {
       // the copy goes after the push, from the books as they are now — when asked
       // for, or when the last one is old; the changes themselves already went up
       const snapDue = how === 'manual' || !!(dbRef.current || d).sync.snapshotDue || Date.now() - lastSnapshotAt > SNAPSHOT_EVERY_MS;
-      const snap = snapDue
-        ? await uploadSnapshot(dbRef.current || d, token, wiring.value)
-        : { ok: true as const, value: { bytes: 0, version: (dbRef.current || d).sync.snapshotVersion || 0 } };
+      const keptVersion = (dbRef.current || d).sync.snapshotVersion || 0;
+      let snap = snapDue
+        ? await uploadSnapshot(dbRef.current || d, token, wiring.value, cursor)
+        : { ok: true as const, value: { bytes: 0, version: keptVersion } };
+      // Another phone sent a newer copy. This phone's changes already went up
+      // and everyone else's came down, so the sync itself worked: the copy is
+      // simply skipped this time, not reported as a failure.
+      if (!snap.ok && String(snap.error.failure) === 'staleSnapshot') {
+        snap = { ok: true as const, value: { bytes: 0, version: keptVersion } };
+      }
       if (!snap.ok) {
         return { ok: false, sent: r.value.sent, seq: r.value.seq, message: snap.error.message };
       }
@@ -128,6 +138,17 @@ export function useSyncRun() {
       if (dbRef.current) dbRef.current.sync = { ...dbRef.current.sync, snapshotVersion: snap.value.version };
       const note = (r.value.sent ? plural(r.value.sent, 'change') + ' sent up' : 'Nothing was waiting')
         + (snap.ok ? '' : ' · the copy of the books did not go up');
+      // The background run every 15 seconds usually finds nothing to do. Writing
+      // a log line and re-saving the whole book each time made the entire app
+      // re-render and stall several times a minute; an idle run now only notes
+      // the time, without a commit.
+      const idle = how === 'auto' && !r.value.sent && !down && !snapDue
+        && Math.max(r.value.seq, cursor) === (s.cursor || 0) && snap.value.version === (s.snapshotVersion || 0)
+        && !(s.pending || []).length;
+      if (idle) {
+        if (dbRef.current) dbRef.current.sync = { ...dbRef.current.sync, lastAt: now };
+        return { ok: true, sent: 0, seq: r.value.seq, message: 'Everything is up to date' };
+      }
       setSync({
         ...(snapDue ? { snapshotDue: false } : {}),
         lastPush: now,

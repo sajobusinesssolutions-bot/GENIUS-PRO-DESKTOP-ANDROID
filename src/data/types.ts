@@ -45,8 +45,80 @@ export type ProductKind = 'product' | 'service';
 /** Reference SERVICE_RATE, used by the service tab at 16897. */
 export type ServiceRate = 'fixed' | 'hour' | 'day' | 'unit';
 
+/** A named set of selling prices: Wholesale, Cafés, a promotion. See priceLists.ts. */
+export interface PriceList {
+  id: string; name: string; currency: string; status: 'Active' | 'Draft';
+  /** The default margin on cost, in percent. */
+  adj: number;
+  /** Prices typed for single items, by item id. */
+  prices: Record<string, number>;
+  /** The items on it; absent means every active item. */
+  productIds?: string[];
+  createdAt: string; updatedAt: string;
+}
+
+/** One choice inside a modifier group: "Large", "Extra cheese". */
+export interface ModifierOption { id: string; name: string; price: number }
+/** Choices offered when an item is ordered: Size, Extras, Cooking… */
+export interface ModifierGroup {
+  id: string; name: string; options: ModifierOption[];
+  /** One must be picked before the item goes on the ticket. */
+  required: boolean;
+  /** More than one may be picked. */
+  multi: boolean;
+}
+/** A choice as it was ordered, kept on the line so the price and the kitchen ticket never change. */
+export interface SaleModifier { group: string; name: string; price: number }
+
+/** A section of the menu — Starters, Mains, Drinks — with its own place, colour and station. */
+export interface MenuGroup {
+  id: string; name: string; color: string; sort: number;
+  /** Where its dishes are made, unless a dish says otherwise. */
+  station?: string;
+}
+
+export type OrderType = 'dine' | 'takeaway' | 'delivery';
+
+/** A menu: a set of sections sold together — the Food menu, the Bar menu, Breakfast. */
+export interface Menu { id: string; name: string; sections: string[] }
+
+/** An order being built up at a table, saved and sent to the kitchen before it is paid. */
+export interface Ticket {
+  id: string; no: string; name: string; ts: string; updatedAt: string;
+  lines: SaleLine[];
+  /** How many of each line the kitchen has already been sent, by line index. */
+  sent: number[];
+  status: 'open' | 'closed' | 'void';
+  userId: string; branch?: string;
+  saleId?: string;
+  orderType?: OrderType;
+  guests?: number;
+  /** A note for the whole order: "allergic to nuts", "bring together". */
+  note?: string;
+}
+
 export interface Product {
   id: string; sku: string; name: string; unit: string; category: string;
+  /** Modifier groups offered when this item is ordered, by id. */
+  modifierGroups?: string[];
+  /** Restaurant: where it is made — "Kitchen", "Bar"… Its ticket goes to that station's printer. */
+  station?: string;
+  /** Pharmacy: the generic (INN) name — Paracetamol for Panadol. */
+  genericName?: string;
+  /** Pharmacy: 500 mg, 250 mg/5 ml… */
+  strength?: string;
+  /** Pharmacy: tablet, syrup, injection… */
+  dosageForm?: string;
+  /** Pharmacy: who makes it. */
+  manufacturer?: string;
+  /** Pharmacy: may only be sold against a prescription. */
+  rxOnly?: boolean;
+  /** Restaurant: run out for now ("86'd"); shown greyed and cannot be ordered. */
+  soldOut?: boolean;
+  /** Restaurant: Vegetarian, Spicy, Halal, New… */
+  tags?: string[];
+  /** Restaurant: minutes to prepare. */
+  prepMins?: number;
   cost: number; price: number; taxRate: number;
   stock: Record<string, number>; reorder: number; warrantyMonths: number;
   bom?: { productId: string; qty: number }[] | null;
@@ -94,7 +166,11 @@ export interface Party {
 // `pin` is a salted hash (see pinHash.ts), or '' when none has been chosen
 // yet — never the raw digits someone typed. Set it through addUser/updateUser,
 // which hash it on the way in; never compare it with `===`, use verifyPin().
-export interface User { id: string; name: string; role: Role; pin: string; active: boolean; }
+export interface User {
+  id: string; name: string; role: Role; pin: string; active: boolean;
+  /** Restaurant: the one menu this person sells from (a bartender: the Bar menu). Absent means any. */
+  menuId?: string;
+}
 
 export interface Account {
   id: string; name: string; type: 'cash' | 'bank' | 'wallet'; opening: number;
@@ -124,9 +200,17 @@ export interface SaleLine {
   listPrice?: number; discountPct?: number;
   /** What was typed in Description when the line was added: colour, size, condition. */
   note?: string;
+  /** Restaurant choices: size, extras… Their prices are already in `price`. */
+  modifiers?: SaleModifier[];
 }
 
 export interface Sale {
+  /** Restaurant: the table or name of the ticket it was ordered on. */
+  ticketName?: string;
+  /** The price list the sale was priced from. */
+  priceListId?: string;
+  /** Restaurant: eaten in, taken away or delivered. */
+  orderType?: OrderType;
   /** Payments received against this invoice after it was raised, each by id. */
   receipts?: BillReceipt[];
   id: string; no: string; ts: string; partyId: string | null; userId: string;
@@ -143,6 +227,10 @@ export interface Sale {
   /** Split tender: multiple payment methods in one sale. If present, overrides method. */
   methods?: PaymentAllocation[];
   status: 'complete' | 'void'; voidedAt?: string; voidReason?: string;
+  /** Deleted (not just voided): hidden from activity, kept in Deleted transactions to restore. */
+  deletedAt?: string; deletedBy?: string;
+  /** Removed from Deleted transactions for good. The reversal stays in the books. */
+  purgedAt?: string;
   synced: boolean; fiscal: string; fdn: string | null;
   /** Set when a bill is corrected by void-and-repost — reference editSaleSave, line 17635. */
   ref?: string; note?: string; editedFrom?: string; editedAt?: string;
@@ -169,6 +257,10 @@ export interface Purchase {
   /** The branch the goods came into and whose money paid for them. */
   branch?: string;
   status: 'complete' | 'void'; voidedAt?: string; voidReason?: string;
+  /** Deleted (not just voided): hidden from activity, kept in Deleted transactions to restore. */
+  deletedAt?: string; deletedBy?: string;
+  /** Removed from Deleted transactions for good. The reversal stays in the books. */
+  purgedAt?: string;
   ref?: string; note?: string; editedFrom?: string; editedAt?: string;
 }
 
@@ -224,6 +316,8 @@ export interface Entry {
 }
 
 export interface JournalLine { acc: string; dr?: number; cr?: number; }
+export type DeletedPayment = Payment & { deletedAt: string; deletedBy?: string; deleteReason?: string; purgedAt?: string };
+
 export interface JournalEntry {
   id: string; ts: string; memo: string; ref: string; lines: JournalLine[]; balanced: boolean;
   /**
@@ -272,9 +366,16 @@ export interface InstalmentPlan {
 export type PrinterKind = 'bluetooth' | 'usb' | 'wifi' | 'server' | 'pdf';
 export type Paper = '58mm' | '80mm' | 'A4';
 
+/** What a printer is used for: credit invoices, cash sales, or kitchen order tickets. */
+export type PrintPurpose = 'invoice' | 'cash' | 'order';
+
 export interface Printer {
   id: string; name: string; kind: PrinterKind; width: Paper;
   address: string; port: number; dflt: boolean; online: boolean; note: string;
+  /** What it prints. Absent (an older printer) means invoices and cash sales. */
+  prints?: PrintPurpose[];
+  /** Restaurant: the stations whose orders it prints ("Kitchen", "Bar"). Absent means every station. */
+  stations?: string[];
   /** iOS: the AirPrint address chosen for this printer, so it prints without asking. */
   url?: string;
 }
@@ -322,6 +423,20 @@ export interface PrinterSettings {
   receiptMode?: 'thermal' | 'a4';
   autoPrint: boolean; openDrawer: boolean; showLogo: boolean;
   header: string; footer: string;
+  /** How the kitchen ticket prints. */
+  kitchen?: KitchenSettings;
+  /** Restaurant receipts: show each item's choices, and the table or ticket name. */
+  showModifiers?: boolean; showTable?: boolean;
+}
+
+export interface KitchenSettings {
+  /** The heading: "KITCHEN ORDER", "BAR", "ORDER". */
+  title: string;
+  /** Items in double-size print. */
+  bigText: boolean;
+  showTable: boolean; showServer: boolean; showTime: boolean; showNotes: boolean;
+  copies: number;
+  footer: string;
 }
 
 export type DocKind = 'receipt' | 'invoice' | 'estimate' | 'challan' | 'recurring' | 'instal' | 'ret' | 'purchase';
@@ -341,6 +456,10 @@ export type LicStatus =
   | 'revoked' | 'unknown' | 'invalid' | 'unbound' | 'toomany';
 export interface LicenceRecord {
   no: string; plan: string; planName: string; term: string;
+  /** Retail, Restaurant or Pharmacy: the edition the plan was bought for. */
+  edition?: string;
+  /** How many businesses the account may run. */
+  maxBusinesses?: number;
   expiresAt: string; daysLeft: number | null; devices: number;
   limits: { devices: number }; features: string[];
   owner?: { name: string };
@@ -431,6 +550,19 @@ export interface Settings {
   maxDiscountPct: number; quickItems: number;
   requireShift: boolean; askCustomer: boolean; allowPriceEdit: boolean;
   blockNegativeStock: boolean; belowCost: BelowCost;
+  /** Restaurant: a service charge added to dine-in bills, in percent. */
+  serviceChargePct?: number;
+  /** Restaurant: where dishes are prepared; each can have its own printer. */
+  stations?: string[];
+  /** Restaurant: what a new ticket starts as. */
+  defaultOrderType?: OrderType;
+  /**
+   * Day close freezes the books up to the moment it ran: nothing dated on or
+   * before it can be edited, deleted or backdated until the owner reopens it.
+   */
+  closedThrough?: string;
+  /** Cash control: refuse anything that would take a cash drawer below zero. */
+  blockNegativeCash?: boolean;
   // stock
   defaultWarehouse: string; costing: Costing;
   lowStockAlerts: boolean; allowNegativeStock: boolean; trackBatches: boolean;
@@ -582,6 +714,16 @@ export interface DB {
   /** Reference DB.units / DB.categories, offered by the item editor at 9249. */
   units: string[];
   categories: string[];
+  /** Restaurant: the choices offered on menu items. */
+  modifierGroups?: ModifierGroup[];
+  /** Restaurant: the menu's sections, in order. */
+  menuGroups?: MenuGroup[];
+  /** Restaurant: the menus, each a set of sections. */
+  menus?: Menu[];
+  /** Named sets of selling prices. */
+  priceLists?: PriceList[];
+  /** Restaurant: orders saved at tables, waiting to be paid. */
+  tickets?: Ticket[];
   loyaltyRules: LoyaltyRules;
   warehouses: Warehouse[];
   products: Product[];
@@ -591,6 +733,8 @@ export interface DB {
   sales: Sale[];
   purchases: Purchase[];
   payments: Payment[];
+  /** Payments that were deleted, kept so they can be restored. */
+  deletedPayments?: DeletedPayment[];
   bankStatementLines?: BankStatementLine[];
   bankReconciliations?: BankReconciliation[];
   entries: Entry[];

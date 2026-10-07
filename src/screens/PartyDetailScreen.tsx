@@ -23,6 +23,10 @@ interface Row {
   kind: Exclude<Kind, 'all'>;
   ts: string;
   title: string;
+  /** "Credit sale", "Payment in"… — what the transaction is. */
+  type: string;
+  tone: 'accent' | 'good' | 'warn' | 'danger' | 'neutral';
+  void?: boolean;
   sub: string;
   amount: number;
   /** Positive increases what they owe you. */
@@ -64,10 +68,12 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
     const out: Row[] = [];
 
     db.sales.forEach((s) => {
-      if (s.partyId !== pt.id) return;
+      if (s.partyId !== pt.id || s.deletedAt) return;
       out.push({
         id: s.id, kind: 'sale', ts: s.ts,
         title: s.no,
+        type: s.method === 'credit' ? 'Credit sale' : 'Cash sale', tone: s.method === 'credit' ? 'accent' : 'good',
+        void: s.status === 'void',
         sub: s.lines.length + ' item' + (s.lines.length === 1 ? '' : 's') + ' · ' + s.method
           + (s.status === 'void' ? ' · voided' : ''),
         amount: s.total,
@@ -79,10 +85,12 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
     });
 
     db.purchases.forEach((x) => {
-      if (x.partyId !== pt.id) return;
+      if (x.partyId !== pt.id || x.deletedAt) return;
       out.push({
         id: x.id, kind: 'purchase', ts: x.ts,
-        title: x.no,
+        title: x.ref || x.no,
+        type: x.method === 'credit' ? 'Credit purchase' : 'Purchase', tone: 'warn',
+        void: x.status === 'void',
         sub: x.lines.length + ' line' + (x.lines.length === 1 ? '' : 's') + ' · ' + x.method,
         amount: x.total,
         signed: -x.due,
@@ -97,6 +105,7 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
       out.push({
         id: p.id, kind: 'payment', ts: p.ts,
         title: p.direction === 'in' ? 'Receipt' : 'Payment',
+        type: p.direction === 'in' ? 'Payment in' : 'Payment out', tone: p.direction === 'in' ? 'good' : 'danger',
         sub: p.note || (p.direction === 'in' ? 'Money received' : 'Money paid out'),
         amount: p.amount,
         signed: p.direction === 'in' ? -p.amount : p.amount,
@@ -160,27 +169,44 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
         ListEmptyComponent={
           <EmptyBlock icon="doc" title="Nothing recorded yet" hint="Sales and payments will appear here." />
         }
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={item.open}
-            style={({ pressed }) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13,
-              borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: pressed ? colors.sunk : 'transparent',
-            })}
-          >
-            <Icon name={KIND_ICON[item.kind]} size={19} color={colors.soft} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{item.title}</Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{date(item.ts)}</Text>
+        renderItem={({ item }) => {
+          const tint = item.tone === 'good' ? { fg: colors.good, bg: colors.goodSoft }
+            : item.tone === 'warn' ? { fg: colors.warn, bg: colors.warnSoft }
+              : item.tone === 'danger' ? { fg: colors.danger, bg: colors.dangerSoft }
+                : { fg: colors.accent, bg: colors.accentSoft };
+          return (
+            <View style={{
+              marginHorizontal: 16, marginBottom: 10, borderRadius: 16, backgroundColor: colors.surface,
+              borderWidth: 1, borderColor: colors.line, opacity: item.void ? 0.6 : 1,
+            }}>
+              <Pressable onPress={item.open} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 10 }}>
+                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: tint.bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name={KIND_ICON[item.kind]} size={18} color={tint.fg} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: tint.fg }}>{item.type}{item.void ? ' · void' : ''}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{item.title} · {date(item.ts)}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16, color: colors.ink, textDecorationLine: item.void ? 'line-through' : 'none' }}>{money(item.amount)}</Text>
+                  {item.due && item.due > 0.01 && !item.void ? (
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.danger, marginTop: 2 }}>{money(item.due)} due</Text>
+                  ) : item.kind !== 'payment' && !item.void ? (
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.good, marginTop: 2 }}>Paid</Text>
+                  ) : null}
+                </View>
+              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', borderTopWidth: 1, borderTopColor: colors.line, paddingHorizontal: 12, paddingVertical: 8 }}>
+                <DocActions
+                  compact
+                  doc={item.doc}
+                  phone={pt.phone}
+                  more={[{ label: 'Open', sub: 'See the full ' + item.type.toLowerCase(), icon: 'doc', onPress: item.open }]}
+                />
+              </View>
             </View>
-            <View style={{ alignItems: 'flex-end', gap: 2 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(item.amount)}</Text>
-              {item.due && item.due > 0 ? (
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger }}>{money(item.due)} due</Text>
-              ) : null}
-            </View>
-          </Pressable>
-        )}
+          );
+        }}
       />
 
       <StickyBar>

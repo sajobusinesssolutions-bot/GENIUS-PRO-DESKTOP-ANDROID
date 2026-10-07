@@ -15,8 +15,8 @@ it('every report is reachable: on its own, or as a view of exactly one group', (
 });
 
 it('the list is much shorter, with the consumption reports and statements on their own', () => {
-  expect(REPORTS.length).toBe(78);
-  expect(reportEntries().length).toBe(45);
+  expect(REPORTS.length).toBe(90);
+  expect(reportEntries().length).toBe(57);
 });
 
 it('a group opens on its first view and knows all of them', () => {

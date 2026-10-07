@@ -38,6 +38,8 @@ import { QuickSheet } from '../components/Quick';
 import { useDueReminders, ReminderRow, RemindSheet } from '../components/Reminders';
 import { FAB, useHideOnScroll, FAB_COLORS } from '../components/ui';
 import { access, accessDaysLeft } from '../data/logic';
+import { isRestaurant, words } from '../data/restaurant';
+import { editionOf } from '../data/editions';
 import {
   periodRange, plural, startOfDay, endOfDay, daysAgo, inRange, ageOfDays, fmtDate,
 } from '../data/helpers';
@@ -413,12 +415,22 @@ export default function DashboardScreen() {
 
         {/* 2 — what to do next */}
         <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 11 }}>
-          {([
+          {(editionOf(db) === 'restaurant' ? [
+            { l: 'New order', i: 'food', r: 'Order', p: undefined, ok: can('sales.create') },
+            { l: 'Menu', i: 'menu', r: 'MenuEditor', p: undefined, ok: can('inventory.edit') },
+            { l: 'Expense', i: 'up', r: 'EntryNew', p: { direction: 'out' }, ok: can('expenses.create') },
+            { l: 'Day close', i: 'lock', r: 'Shift', p: { close: true }, ok: can('shifts.close') },
+          ] : editionOf(db) === 'pharmacy' ? [
             { l: 'New sale', i: 'till', r: 'NewSale', p: undefined, ok: can('sales.create') },
+            { l: 'Receive', i: 'cart', r: 'PurchaseNew', p: undefined, ok: can('purchases.create') },
+            { l: 'Add drug', i: 'plus', r: 'ProductDetail', p: undefined, ok: can('inventory.create') },
+            { l: 'Payment', i: 'down', r: 'PaymentNew', p: { direction: 'in' }, ok: can('finance.create') },
+          ] : [
+            { l: words(db).newSale, i: 'till', r: 'NewSale', p: undefined, ok: can('sales.create') },
             { l: 'Purchase', i: 'cart', r: 'PurchaseNew', p: undefined, ok: can('purchases.create') },
             { l: 'Expense', i: 'up', r: 'EntryNew', p: { direction: 'out' }, ok: can('expenses.create') },
             { l: 'Payment', i: 'down', r: 'PaymentNew', p: { direction: 'in' }, ok: can('finance.create') },
-          ] as { l: string; i: IconName; r: string; p?: Record<string, unknown>; ok: boolean }[]).filter((a) => a.ok).map((a) => (
+          ] as unknown as { l: string; i: IconName; r: string; p?: Record<string, unknown>; ok: boolean }[]).filter((a) => a.ok).map((a) => (
             <Pressable
               key={a.l}
               onPress={() => go(a.r, a.p)}
@@ -431,6 +443,39 @@ export default function DashboardScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/* the one thing each trade must not miss: open tables, drugs about to expire */}
+        {(() => {
+          const ed = editionOf(db);
+          if (ed === 'restaurant') {
+            const open = (db.tickets || []).filter((t) => t.status === 'open');
+            if (!open.length) return null;
+            const v = open.reduce((n, t) => n + t.lines.reduce((a, l) => a + l.qty * l.price, 0), 0);
+            return (
+              <Pressable onPress={() => go('Order')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, backgroundColor: colors.warnSoft }}>
+                <Icon name="receipt" size={18} color={colors.warn} />
+                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.warn }}>{open.length} open ticket{open.length === 1 ? '' : 's'} · {money(v)} not yet paid</Text>
+                <Icon name="chev" size={15} color={colors.warn} />
+              </Pressable>
+            );
+          }
+          if (ed === 'pharmacy') {
+            const soon = Date.now() + 90 * 864e5;
+            const lots = db.products.flatMap((p) => (p.batches || []).filter((b) => b.qty > 0 && b.expiry && new Date(b.expiry).getTime() <= soon));
+            if (!lots.length) return null;
+            const gone = lots.filter((b) => new Date(b.expiry!).getTime() < Date.now()).length;
+            return (
+              <Pressable onPress={() => go('Batches')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, backgroundColor: gone ? colors.dangerSoft : colors.warnSoft }}>
+                <Icon name="alert" size={18} color={gone ? colors.danger : colors.warn} />
+                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: gone ? colors.danger : colors.warn }}>
+                  {gone ? gone + ' batch' + (gone === 1 ? '' : 'es') + ' expired · ' : ''}{lots.length - gone} expiring within 90 days
+                </Text>
+                <Icon name="chev" size={15} color={gone ? colors.danger : colors.warn} />
+              </Pressable>
+            );
+          }
+          return null;
+        })()}
 
         {/* 3 — where is the money */}
         {see('dashboard.view_total_amount') ? (<>

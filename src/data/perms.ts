@@ -11,27 +11,48 @@
 import type { RoleDef, DB } from './types';
 import type { IconName } from '../components/icons';
 
-export interface PermGroup { k: string; n: string; i: IconName; acts: [string, string][] }
+export interface PermGroup {
+  k: string; n: string; i: IconName; acts: [string, string][];
+  /** Shown only for these kinds of business. Absent means every kind. */
+  editions?: Array<'retail' | 'restaurant' | 'pharmacy'>;
+}
 
 /** Reference PERM_MATRIX, line 7543. */
 export const PERM_MATRIX: PermGroup[] = [
   { k: 'sales', n: 'Sales', i: 'doc', acts: [
     ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'], ['refund', 'Refund'],
     ['void', 'Void a sale'], ['discount', 'Give discounts'], ['price_edit', 'Change prices at the till'],
-    ['view_all', "See other staff's sales"],
+    ['view_all', "See other staff's sales"], ['view_totals', 'See total sales'], ['view_balances', 'See balance due'],
+    ['offers', 'Set up offers'], ['recurring', 'Recurring bills'],
     ['edit_offline', 'Edit offline'], ['delete_offline', 'Delete offline'], ['toggle_offline', 'Toggle offline'],
+  ] },
+  // a restaurant's own switches: who may charge, cancel, see every table, sell any menu
+  { k: 'restaurant', n: 'Restaurant', i: 'food', editions: ['restaurant'], acts: [
+    ['charge', 'Charge and close tickets'], ['cancel', 'Cancel tickets'],
+    ['all_tickets', "See and change other waiters' tickets"], ['switch_menu', 'Sell from any menu'],
+    ['print_bill', 'Print the bill'], ['menu', 'Edit the menu and modifiers'],
+  ] },
+  { k: 'quotes', n: 'Quotations', i: 'doc', acts: [
+    ['view', 'View'], ['create', 'Create and edit'], ['convert', 'Convert to a sale'], ['delete', 'Delete'],
+  ] },
+  { k: 'challans', n: 'Delivery notes', i: 'doc', acts: [
+    ['view', 'View'], ['create', 'Create'], ['deliver', 'Mark delivered'],
   ] },
   { k: 'inventory', n: 'Inventory', i: 'box', acts: [
     ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'],
     ['stock_adjustment', 'Stock adjustment'], ['transfer', 'Move stock between branches'],
     ['stock_take', 'Count stock'], ['view_cost_price', 'View cost price'],
     ['view_profit', 'View profit'], ['view_selling_price', 'View selling price'],
+    ['batches', 'Batches and expiry'], ['production', 'Production'], ['bulk_edit', 'Bulk changes and price list'],
+    ['price_tags', 'Print price tags'],
   ] },
   { k: 'purchases', n: 'Purchases', i: 'box', acts: [
     ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'], ['receive', 'Receive stock'],
+    ['orders', 'Purchase orders'],
   ] },
   { k: 'finance', n: 'Finance', i: 'card', acts: [
-    ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['manage_accounts', 'Manage accounts'],
+    ['view', 'View'], ['create', 'Create'], ['edit', 'Edit'], ['delete', 'Delete'], ['transfer', 'Move money between accounts'],
+    ['reconcile', 'Reconcile the bank'], ['instalments', 'Instalment plans'], ['manage_accounts', 'Manage accounts'],
   ] },
   // Customers are never deleted (a party with history is kept, so its ledger
   // stays whole), expenses are corrected by a new entry rather than edited, and
@@ -49,7 +70,10 @@ export const PERM_MATRIX: PermGroup[] = [
   { k: 'branches', n: 'Branches', i: 'home', acts: [['view', 'View'], ['manage', 'Open and manage']] },
   { k: 'exports', n: 'Exports (PDF & CSV)', i: 'print', acts: [['download', 'Download']] },
   { k: 'profiles', n: 'Profiles', i: 'user', acts: [['view', 'View'], ['manage', 'Manage']] },
-  { k: 'settings', n: 'Settings', i: 'cog', acts: [['view', 'View'], ['manage', 'Manage']] },
+  { k: 'settings', n: 'Settings', i: 'cog', acts: [
+    ['view', 'View'], ['manage', 'Manage'], ['printing', 'Printers and layouts'], ['backup', 'Backup, restore and import'],
+    ['sync', 'Cloud sync'], ['audit', 'Audit log'], ['deleted', 'Deleted transactions and restore'],
+  ] },
   { k: 'dashboard', n: 'Home', i: 'home', acts: [
     ['view', 'View'], ['view_total_sales', 'View total sales'], ['view_gross_profit', 'View gross profit'],
     ['view_total_expenses', 'View total expenses'], ['view_inventory_value', 'View inventory value'],
@@ -104,7 +128,8 @@ export type PermSet = Record<string, boolean>;
 
 function setOf(list: string[] | true): PermSet {
   const o: PermSet = {};
-  allPermKeys().forEach((k) => { o[k] = list === true || list.indexOf(k) > -1; });
+  const on = list === true ? null : new Set(list);
+  allPermKeys().forEach((k) => { o[k] = on === null || on.has(k); });
   return o;
 }
 
@@ -122,8 +147,105 @@ export function builtinRoles(): RoleDef[] {
     { id: 'owner', name: 'Owner', description: 'Full control of everything in this business.', perms: setOf(true), builtin: true },
     { id: 'manager', name: 'Manager', description: 'Runs the shop day to day, but cannot change staff or settings.', perms: setOf(manager), builtin: true },
     { id: 'cashier', name: 'Cashier', description: 'Sells at the till and looks up stock. No cost prices, no money.', perms: setOf(cashier), builtin: true },
+    { id: 'sales', name: ROLE_WORDS.retail.sales[0], description: ROLE_WORDS.retail.sales[1], perms: setOf(EDITION_ROLES.retail.sales), builtin: true },
   ];
 }
+
+/* ------------------------------------------------------------------
+   The Cashier and Sales roles of each kind of business.
+   Chosen when the business type is set, so a restaurant's cashier can
+   charge tickets and its waiter cannot, a pharmacy's sees batches, and
+   so on. The owner always has everything.
+   ------------------------------------------------------------------ */
+type Ed = 'retail' | 'restaurant' | 'pharmacy';
+const BASE_CASHIER = [
+  'sales.view', 'sales.create', 'sales.discount', 'shifts.open', 'shifts.close',
+  'inventory.view', 'inventory.view_selling_price', 'customers.view', 'customers.create', 'customers.edit',
+  'dashboard.view', 'dashboard.view_total_sales', 'dashboard.view_total_amount',
+];
+export const EDITION_ROLES: Record<Ed, { cashier: string[]; sales: string[] }> = {
+  retail: {
+    cashier: BASE_CASHIER,
+    sales: [
+      'sales.view', 'sales.create', 'sales.discount', 'quotes.view', 'quotes.create', 'quotes.convert',
+      'challans.view', 'challans.create', 'inventory.view', 'inventory.view_selling_price',
+      'customers.view', 'customers.create', 'customers.edit', 'dashboard.view', 'dashboard.view_total_sales',
+    ],
+  },
+  restaurant: {
+    // the cashier takes the money: charges and closes tickets, sees every table, opens and closes the till
+    cashier: [
+      'sales.view', 'sales.create', 'sales.discount', 'sales.refund', 'sales.view_all', 'shifts.open', 'shifts.close',
+      'restaurant.charge', 'restaurant.all_tickets', 'restaurant.print_bill', 'restaurant.switch_menu',
+      'inventory.view', 'inventory.view_selling_price', 'customers.view', 'customers.create',
+      'dashboard.view', 'dashboard.view_total_sales', 'dashboard.view_total_amount',
+    ],
+    // the waiter takes orders and prints the bill, but does not take payment or cancel
+    sales: [
+      'sales.view', 'sales.create', 'restaurant.print_bill',
+      'inventory.view', 'inventory.view_selling_price', 'customers.view', 'customers.create', 'dashboard.view',
+    ],
+  },
+  pharmacy: {
+    cashier: [...BASE_CASHIER, 'sales.refund', 'inventory.batches'],
+    // the counter assistant serves customers and checks batches and expiry
+    sales: [
+      'sales.view', 'sales.create', 'sales.discount', 'quotes.view', 'quotes.create',
+      'inventory.view', 'inventory.view_selling_price', 'inventory.batches',
+      'customers.view', 'customers.create', 'customers.edit', 'dashboard.view',
+    ],
+  },
+};
+export const ROLE_WORDS: Record<Ed, { cashier: [string, string]; sales: [string, string] }> = {
+  retail: {
+    cashier: ['Cashier', 'Sells at the till and looks up stock. No cost prices, no money.'],
+    sales: ['Sales', 'Sells, writes quotations and delivery notes, and looks after customers. No till, no money.'],
+  },
+  restaurant: {
+    cashier: ['Cashier', 'Charges and closes tickets, sees every table, opens and closes the till.'],
+    sales: ['Waiter (sales)', 'Takes orders and sends them to the kitchen, prints the bill. Does not take payment or cancel.'],
+  },
+  pharmacy: {
+    cashier: ['Cashier', 'Sells at the counter, takes returns, sees batches. No cost prices, no money.'],
+    sales: ['Sales (counter)', 'Serves customers, checks batches and expiry, writes quotations. No till, no money.'],
+  },
+};
+
+/**
+ * Sets the Cashier and Sales roles for a kind of business: their names,
+ * what they do, and their switches. Adds the Sales role if the books predate it.
+ */
+export function applyEditionRoles(roles: RoleDef[], edition: Ed): RoleDef[] {
+  (['cashier', 'sales'] as const).forEach((id) => {
+    const [name, description] = ROLE_WORDS[edition][id];
+    const perms = setOf(EDITION_ROLES[edition][id]);
+    const r = roles.find((x) => x.id === id);
+    if (r) { r.name = name; r.description = description; r.perms = perms; }
+    else roles.push({ id, name, description, perms, builtin: true });
+  });
+  return roles;
+}
+
+/**
+ * Switches added after a role was set up start from the switch that used to
+ * cover them, so a role keeps exactly the access it had: a role that could
+ * create sales can still write quotations, one that could not, still cannot.
+ */
+const INHERITS: Record<string, string> = {
+  'sales.offers': 'sales.edit', 'sales.recurring': 'sales.create',
+  'sales.view_totals': 'dashboard.view_total_sales', 'sales.view_balances': 'sales.view_all',
+  'quotes.view': 'sales.view', 'quotes.create': 'sales.create', 'quotes.convert': 'sales.create', 'quotes.delete': 'sales.create',
+  'challans.view': 'sales.view', 'challans.create': 'sales.create', 'challans.deliver': 'sales.create',
+  'inventory.batches': 'inventory.view', 'inventory.production': 'inventory.create', 'inventory.bulk_edit': 'inventory.edit',
+  'inventory.price_tags': 'inventory.view_selling_price',
+  'purchases.orders': 'purchases.create',
+  'finance.delete': 'finance.edit', 'finance.transfer': 'finance.create', 'finance.reconcile': 'finance.view',
+  'finance.instalments': 'finance.create',
+  'settings.printing': 'settings.manage', 'settings.backup': 'settings.manage', 'settings.sync': 'settings.view',
+  'settings.audit': 'settings.view', 'settings.deleted': 'settings.manage',
+  'restaurant.charge': 'sales.create', 'restaurant.cancel': 'sales.void', 'restaurant.all_tickets': 'sales.view_all',
+  'restaurant.switch_menu': 'sales.create', 'restaurant.print_bill': 'sales.create', 'restaurant.menu': 'inventory.edit',
+};
 
 /**
  * Reference ensureRoles(), line 7611 — fills in any key added since the book was
@@ -144,11 +266,16 @@ export function ensureRoles(d: { roles?: unknown }): RoleDef[] {
     anyD.roles = fresh;
   }
   const roles = anyD.roles as RoleDef[];
+  let builtins: RoleDef[] | null = null;
   roles.forEach((r) => {
     if (!r.perms) r.perms = {};
-    const builtin = builtinRoles().find((b) => b.id === r.id);
+    let builtin: RoleDef | undefined;
+    let looked = false;
     allPermKeys().forEach((k) => {
-      if (r.perms[k] === undefined) r.perms[k] = builtin ? !!builtin.perms[k] : false;
+      if (r.perms[k] !== undefined) return;
+      if (!looked) { builtins = builtins || builtinRoles(); builtin = builtins.find((b) => b.id === r.id); looked = true; }
+      const from = INHERITS[k];
+      r.perms[k] = from && r.perms[from] !== undefined ? !!r.perms[from] : builtin ? !!builtin.perms[k] : false;
     });
     // Once: take editing and deleting raised bills away from the built-in
     // cashier, which had them. An owner who wants a cashier to edit can say so.
@@ -158,9 +285,15 @@ export function ensureRoles(d: { roles?: unknown }): RoleDef[] {
       (r as any).permsReviewed = true;
     }
   });
+  // books from before the Sales role get one, for their own kind of business
+  if (!roles.some((r) => r.id === 'sales')) {
+    const t = (d as { firm?: { businessType?: string } }).firm?.businessType;
+    const e: Ed = t === 'restaurant' ? 'restaurant' : t === 'pharmacy' ? 'pharmacy' : 'retail';
+    roles.push({ id: 'sales', name: ROLE_WORDS[e].sales[0], description: ROLE_WORDS[e].sales[1], perms: setOf(EDITION_ROLES[e].sales), builtin: true });
+  }
   // the owner can never be stripped — reference `if(r.id==='owner') return true` in can()
   const owner = roles.find((r) => r.id === 'owner');
-  if (owner) allPermKeys().forEach((k) => { owner.perms[k] = true; });
+  if (owner) allPermKeys().forEach((k) => { if (owner.perms[k] !== true) owner.perms[k] = true; });
   return roles;
 }
 

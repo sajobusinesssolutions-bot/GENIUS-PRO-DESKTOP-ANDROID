@@ -23,7 +23,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'EstimateDetail'>;
 
 export default function EstimateDetailScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party, partyBalance, convertEstimate, voidEstimate, can } = useAppData();
+  const { db, money, party, partyBalance, voidEstimate, can } = useAppData();
   const { success, error } = useToast();
   const { saleDoc } = useDocBuilder();
   const est = db?.estimates.find((e) => e.id === route.params.estimateId);
@@ -53,17 +53,7 @@ export default function EstimateDetailScreen({ route, navigation }: Props) {
   }
 
   function convert() {
-    Alert.alert('Turn ' + est!.no + ' into a sale?', 'A sale for ' + money(est!.total) + ' is recorded and the stock goes out.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Convert', onPress: () => {
-          const s = convertEstimate(est!.id, (db!.settings.defaultMethod as PayMethod) || 'cash');
-          if (!s) { error('This quotation could not be converted.'); return; }
-          success(est!.no + ' converted to ' + s.no);
-          navigation.replace('SaleDetail', { saleId: s.id });
-        },
-      },
-    ]);
+    navigation.navigate('NewSale', { fromEstimateId: est!.id });
   }
 
   function remove() {
@@ -144,7 +134,7 @@ export default function EstimateDetailScreen({ route, navigation }: Props) {
             ...(open ? [
               { label: 'Edit', icon: 'pencil' as const, tone: 'accent' as const, onPress: () => navigation.navigate('EstimateNew', { editEstimateId: est.id }) },
               { label: 'Delete', icon: 'trash' as const, tone: 'danger' as const, filled: true, onPress: remove },
-              ...(can('sales.create') ? [{ label: 'Convert to sale', icon: 'receipt' as const, tone: 'good' as const, filled: true, onPress: convert }] : []),
+              ...(can('quotes.convert') && can('sales.create') ? [{ label: 'Convert to sale', icon: 'receipt' as const, tone: 'good' as const, filled: true, onPress: convert }] : []),
             ] : []),
             ...(sale ? [{ label: 'Open sale ' + sale.no, icon: 'receipt' as const, tone: 'good' as const, filled: true, onPress: () => navigation.navigate('SaleDetail', { saleId: sale.id }) }] : []),
           ]}

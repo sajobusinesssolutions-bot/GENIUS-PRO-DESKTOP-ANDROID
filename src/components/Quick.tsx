@@ -10,7 +10,8 @@ import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
-import { QUICK, QuickGroup, QuickTone } from '../data/quick';
+import { QuickGroup, QuickTone, quickFor, COMMON_FOR } from '../data/quick';
+import { editionOf } from '../data/editions';
 import { Grid, Tile, Cap, Chip, Search, ListRow, EmptyBlock } from './ui';
 import { Icon } from './icons';
 import { Sheet } from './Sheet';
@@ -25,7 +26,7 @@ export function useToneColor() {
 function useVisibleQuick(): QuickGroup[] {
   const { db } = useAppData();
   const role = db?.session.role;
-  return QUICK.filter((g) => canFor(role, g.perm)).map((g) => ({
+  return quickFor(editionOf(db)).filter((g) => canFor(role, g.perm)).map((g) => ({
     ...g,
     items: g.items.filter((it) => canFor(role, it.perm)),
   }));
@@ -137,10 +138,11 @@ export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: ()
    * What a shop does all day. Shown first so the common case is one tap, not
    * one tap after a scroll past everything it is not.
    */
-  const COMMON = ['New sale', 'Money received', 'Record expense', 'Add product', 'New purchase', 'Add customer'];
+  const { db } = useAppData();
+  const COMMON = COMMON_FOR[editionOf(db)];
   const common = useMemo(
     () => COMMON.map((n) => all.find((x) => x.it.n === n)).filter(Boolean) as typeof all,
-    [all],
+    [all, COMMON],
   );
 
   return (

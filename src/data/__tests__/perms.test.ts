@@ -107,7 +107,7 @@ describe('ensureRoles', () => {
 
   it('builds the built-ins when there is nothing to upgrade', () => {
     const d: any = {};
-    expect(ensureRoles(d).map((r) => r.id)).toEqual(['owner', 'manager', 'cashier']);
+    expect(ensureRoles(d).map((r) => r.id)).toEqual(['owner', 'manager', 'cashier', 'sales']);
   });
 });
 
@@ -124,7 +124,7 @@ describe('a custom role', () => {
     expect(canWith(rs, 'role_clerk', 'exports.download')).toBe(true);
     expect(canWith(rs, 'role_clerk', 'sales.create')).toBe(false);
     expect(canWith(rs, 'role_clerk', 'settings')).toBe(false);
-    expect(permCount(rs[3])).toBe(2);
+    expect(permCount(rs.find((r) => r.id === 'role_clerk')!)).toBe(2);
   });
 });
 
@@ -169,5 +169,27 @@ describe('not locking yourself out', () => {
   it('counts only the active people on a role', () => {
     expect(usersOnRole(users, 'owner')).toBe(1);
     expect(usersOnRole(users.concat([{ id: 'u4', name: 'Dee', role: 'owner', active: false }]), 'owner')).toBe(1);
+  });
+});
+
+describe('roles for each kind of business', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { applyEditionRoles, builtinRoles: built } = require('../perms');
+  it('gives a restaurant a cashier who charges and a waiter who does not', () => {
+    const rs = applyEditionRoles(built(), 'restaurant');
+    expect(canWith(rs, 'cashier', 'restaurant.charge')).toBe(true);
+    expect(canWith(rs, 'sales', 'restaurant.charge')).toBe(false);
+    expect(canWith(rs, 'sales', 'restaurant.cancel')).toBe(false);
+    expect(canWith(rs, 'sales', 'sales.create')).toBe(true);
+    expect(rs.find((r: any) => r.id === 'sales').name).toBe('Waiter (sales)');
+  });
+  it('gives a pharmacy counter batches, and the owner always everything', () => {
+    const rs = applyEditionRoles(built(), 'pharmacy');
+    expect(canWith(rs, 'sales', 'inventory.batches')).toBe(true);
+    expect(canWith(rs, 'owner', 'restaurant.charge')).toBe(true);
+  });
+  it('adds a Sales role to books from before it', () => {
+    const d: any = { roles: built().filter((r: any) => r.id !== 'sales'), firm: { businessType: 'pharmacy' } };
+    expect((ensureRoles(d).find((r: any) => r.id === 'sales') as any).name).toBe('Sales (counter)');
   });
 });

@@ -13,6 +13,7 @@
  */
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2';
+import { EDITIONS, Edition } from './editions';
 import { LicenceClaims, licenceVerdict, LicenceVerdict } from './syncProtocol';
 
 // @noble/ed25519 needs a SHA-512 supplied; React Native has no WebCrypto to
@@ -162,7 +163,9 @@ export function licenceFromToken(
     licence: {
       no: claims.jti,
       plan: claims.plan,
-      planName: claims.plan === 'pro' ? 'Pro' : claims.plan === 'trial' ? 'Free trial' : 'Starter',
+      edition: claims.edition || 'retail',
+      maxBusinesses: claims.maxBusinesses,
+      planName: (claims.plan === 'trial' ? 'Free trial' : (EDITIONS[(claims.edition || 'retail') as Edition] || EDITIONS.retail).plans[claims.plan === 'pro' || claims.plan === 'lifetime' ? 'pro' : 'starter'].name),
       term: claims.term,
       expiresAt: lifetime ? '' : expires.toISOString(),
       daysLeft,
