@@ -224,6 +224,11 @@ export async function driveStatus(access: string): Promise<Result<DriveStatus>> 
   return call<DriveStatus>('/v1/drive/status', access, undefined, 'GET');
 }
 
+/** Emails the owner's day summary from the server, so it arrives without opening a mail app. */
+export async function emailSummary(access: string, to: string, subject: string, text: string): Promise<Result<{ sent: boolean }>> {
+  return call<{ sent: boolean }>('/v1/summary/email', access, { to, subject, text });
+}
+
 /** The Google page where the person allows backups to their Drive. */
 export async function driveLinkUrl(access: string, redirect: string): Promise<Result<{ url: string }>> {
   return call<{ url: string }>('/v1/drive/link', access, { redirect });

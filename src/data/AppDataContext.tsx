@@ -294,7 +294,7 @@ const GATED_ACTIONS = [
 ];
 
 /** Settings any signed-in person's phone may write for itself, without Settings permission. */
-const PERSONAL_SETTINGS = new Set(['lastBackupAt', 'theme', 'reportCols']);
+const PERSONAL_SETTINGS = new Set(['lastBackupAt', 'theme', 'reportCols', 'ownerSummarySentOn']);
 
 const stockOfImpl = logic.stockOfImpl;
 const saleTotals = logic.saleTotals;

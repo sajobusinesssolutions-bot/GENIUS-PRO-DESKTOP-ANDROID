@@ -121,6 +121,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   Order: 'sales.create',
   MenuEditor: 'restaurant.menu',
   KitchenDisplay: 'restaurant.kitchen',
+  OwnerSummary: 'settings.manage',
   Approvals: 'profiles.manage',
   PrintingKitchen: 'settings.printing',
   Plans: 'settings.view',

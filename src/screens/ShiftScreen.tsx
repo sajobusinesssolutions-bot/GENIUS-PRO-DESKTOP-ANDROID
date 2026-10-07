@@ -33,6 +33,8 @@ import { isRestaurant, menuSections } from '../data/restaurant';
 import { activeBranchId } from '../data/branch';
 import SendSheet from '../components/SendSheet';
 import { daySummary } from '../data/daySummary';
+import { emailToday, todayKey } from '../data/ownerSummarySend';
+import { useAuthSafe } from '../data/AuthContext';
 import type { Shift } from '../data/types';
 
 const num = (v: string) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
@@ -41,7 +43,8 @@ type Tab = 'mine' | 'day' | 'history';
 export default function ShiftScreen({ route }: any) {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, money, cur, me, user, activeShift, openShift, closeShift, shiftTotals, lastClosedShift, can, closeDay, reopenDay, voidTicket } = useAppData();
+  const { db, money, cur, me, user, activeShift, openShift, closeShift, shiftTotals, lastClosedShift, can, closeDay, reopenDay, voidTicket, setSetting } = useAppData();
+  const account = useAuthSafe()?.account;
 
   const seeAll = db?.session.role === 'owner' || db?.session.role === 'manager' || can('shifts.view_all');
   const [tab, setTab] = useState<Tab>(route?.params?.close && seeAll ? 'day' : 'mine');
@@ -134,6 +137,11 @@ export default function ShiftScreen({ route }: any) {
     // the owner's day in a message, ready to send
     const owner = db?.users.find((u) => u.role === 'owner');
     setSummary(daySummary(db!, money));
+    // set to go by email: it goes now, with the day's final figures
+    const os = db?.settings.ownerSummary;
+    if (os?.on && os.autoEmail !== false && os.email && db) {
+      void emailToday(db, money, account?.localOnly ? undefined : account?.refresh).then((r) => { if (r.ok) { setSetting({ ownerSummarySentOn: todayKey() }); } });
+    }
     Alert.alert('Day closed', 'Today\'s transactions are frozen. Only the owner can reopen the day to change them.', [
       { text: 'Done', style: 'cancel' },
       { text: 'Send summary to ' + (owner?.name || 'the owner'), onPress: () => setSummaryOpen(true) },

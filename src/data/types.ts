@@ -606,6 +606,13 @@ export interface Settings {
   defaultOrderType?: OrderType;
   /** Restaurant: the tables on the floor, by name, for the table plan. */
   tables?: string[];
+  /**
+   * The owner's daily summary: sent by email from the server at the set hour
+   * (whichever phone is open then sends it), and offered on WhatsApp.
+   */
+  ownerSummary?: { on: boolean; time: string; email?: string; whatsapp?: string; autoEmail?: boolean; askWhatsapp?: boolean };
+  /** The day the summary last went out (YYYY-MM-DD), so two phones do not both send it. */
+  ownerSummarySentOn?: string;
   /** Restaurant: each table's area (Inside, Patio, VIP) and seats, by table name. */
   tableInfo?: Record<string, { area?: string; seats?: number }>;
   /** Restaurant: orders go to a kitchen display screen (with or without printers). */

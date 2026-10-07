@@ -257,6 +257,7 @@ export default function SettingsScreen() {
               <SettingRow label="Printer" value={db.printer.device || '—'} onPress={() => go('Printing')} />
               <SettingRow label="Connection" value={db.session.online ? 'Online' : 'Offline'} />
               <SettingRow label="Backup & data tools" value="Export, restore, health check" onPress={() => go('DataTools')} />
+              <SettingRow label="Owner's daily summary" value={db.settings.ownerSummary?.on ? 'Every day at ' + db.settings.ownerSummary.time : 'Off'} onPress={() => go('OwnerSummary')} />
               <SettingRow label="Tips for first use" value="Show them again" onPress={() => { void resetTips(); Alert.alert('Tips', 'The first-use tips will show again on each screen.'); }} />
             </SettingGroup>
 
