@@ -111,6 +111,29 @@ export async function sendInvite(email, { plan, until }) {
   });
 }
 
+/** The owner's day summary, as written by the app: plain text, with *bold* lines made bold. */
+export async function sendSummary(to, subject, text) {
+  if (!mailConfigured()) {
+    const e = new Error('mail_not_configured');
+    e.expose = true;
+    throw e;
+  }
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const html = text.split('\n').map((l) => {
+    const t = esc(l);
+    if (/^\*.*\*$/.test(l.trim())) return '<p style="font-size:16px;font-weight:700;color:#111;margin:14px 0 4px">' + t.trim().slice(1, -1) + '</p>';
+    if (!t.trim()) return '';
+    return '<div style="font-size:14px;color:#333;line-height:1.55;white-space:pre-wrap">' + t + '</div>';
+  }).join('');
+  await get().sendMail({
+    from: process.env.MAIL_FROM,
+    to,
+    subject,
+    text: text.replace(/\*/g, ''),
+    html: '<div style="font-family:system-ui,sans-serif;max-width:520px">' + html + '</div>',
+  });
+}
+
 /** Proves the credentials work, so a misconfiguration is found at boot. */
 export async function verifyMail() {
   if (!mailConfigured()) return { ok: false, why: 'not configured' };

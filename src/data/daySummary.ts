@@ -8,6 +8,7 @@
  */
 import type { DB } from './types';
 import { editionOf } from './editions';
+import { ledgerBalances } from './coa';
 
 export function daySummary(d: DB, money: (n: number) => string, now = new Date()): string {
   const start = new Date(now); start.setHours(0, 0, 0, 0);
@@ -53,13 +54,50 @@ export function daySummary(d: DB, money: (n: number) => string, now = new Date()
     top.forEach(([n, x], i) => lines.push('  ' + (i + 1) + '. ' + n + ' — ' + x.qty + ' · ' + money(x.v)));
   }
 
+  // the money position: this month so far, and what is held, owed and owing now
+  lines.push('');
+  lines.push('*Financial report*');
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const coa = d.coa || [];
+  const month = ledgerBalances(d, monthStart, now.getTime());
+  const sumType = (type: string, skip: string[] = []) => coa.filter((l) => l.type === type && !skip.includes(l.id)).reduce((n, l) => n + (month.get(l.id) || 0), 0);
+  const income = sumType('income');
+  const cogs = month.get('n_cogs') || 0;
+  const expenses = sumType('expense', ['n_cogs']);
+  lines.push(now.toLocaleDateString('en-GB', { month: 'long' }) + ' so far:');
+  lines.push('  • Income: ' + money(income));
+  lines.push('  • Cost of goods sold: ' + money(cogs));
+  lines.push('  • Gross profit: ' + money(income - cogs));
+  lines.push('  • Expenses: ' + money(expenses));
+  lines.push('  • Net profit: ' + (income - cogs - expenses < 0 ? '−' : '') + money(Math.abs(income - cogs - expenses)));
+  const all = ledgerBalances(d, 0, now.getTime());
+  const moneyIds = new Set((d.accounts || []).map((x) => x.id));
+  const held = coa.filter((l) => moneyIds.has(l.id));
+  const heldLines = held.map((l) => [l.name, all.get(l.id) || 0] as const).filter(([, v]) => Math.abs(v) >= 1);
+  if (heldLines.length) {
+    lines.push('Money held now:');
+    heldLines.forEach(([n, v]) => lines.push('  • ' + n + ': ' + (v < 0 ? '−' : '') + money(Math.abs(v))));
+  }
+  const ar = all.get('n_ar') || 0;
+  const ap = all.get('n_ap') || 0;
+  const stockValue = all.get('n_inventory') || 0;
+  if (ar) lines.push('Customers owe you: ' + money(ar));
+  if (ap) lines.push('You owe suppliers: ' + money(ap));
+  if (stockValue) lines.push('Stock at cost: ' + money(stockValue));
+
   // what needs attention tomorrow
   const watch: string[] = [];
   const ed = editionOf(d);
-  if (ed === 'pharmacy') {
+  // anything with batches: expired and still on the shelf, or expiring within 30 days
+  {
     const soon = now.getTime() + 30 * 864e5;
-    const lots = d.products.flatMap((p) => (p.batches || []).filter((b) => b.qty > 0 && b.expiry && new Date(b.expiry).getTime() <= soon).map((b) => p.name + ' (' + b.no + ')'));
-    if (lots.length) watch.push(lots.length + ' batch(es) expire within 30 days: ' + lots.slice(0, 4).join(', ') + (lots.length > 4 ? '…' : ''));
+    const lots = d.products.filter((p) => p.active !== false).flatMap((p) => (p.batches || [])
+      .filter((b) => b.qty > 0 && b.expiry && new Date(b.expiry).getTime() <= soon)
+      .map((b) => ({ name: p.name + ' (' + b.no + ', ' + new Date(b.expiry!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ')', gone: new Date(b.expiry!).getTime() < now.getTime() })));
+    const gone = lots.filter((x) => x.gone);
+    const near = lots.filter((x) => !x.gone);
+    if (gone.length) watch.push(gone.length + ' EXPIRED batch(es) still in stock: ' + gone.slice(0, 4).map((x) => x.name).join(', ') + (gone.length > 4 ? '…' : ''));
+    if (near.length) watch.push(near.length + ' batch(es) expire within 30 days: ' + near.slice(0, 4).map((x) => x.name).join(', ') + (near.length > 4 ? '…' : ''));
   }
   if (ed === 'restaurant') {
     const cancelled = (d.tickets || []).filter((t) => t.status === 'void' && inDay(t.updatedAt));
@@ -68,8 +106,6 @@ export function daySummary(d: DB, money: (n: number) => string, now = new Date()
   const low = d.products.filter((p) => p.active !== false && p.kind !== 'service' && p.trackInventory !== false && p.reorder > 0
     && Object.values(p.stock || {}).reduce((n, v) => n + (v || 0), 0) <= p.reorder);
   if (low.length) watch.push(low.length + ' item(s) at or below reorder: ' + low.slice(0, 4).map((p) => p.name).join(', ') + (low.length > 4 ? '…' : ''));
-  const owed = d.sales.filter((s) => s.status !== 'void' && s.due > 0).reduce((n, s) => n + s.due, 0);
-  if (owed) watch.push('Customers owe ' + money(owed) + ' in all');
   if (watch.length) {
     lines.push('');
     lines.push('To watch:');

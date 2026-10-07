@@ -17,6 +17,7 @@ import googleRoutes from './google.js';
 import syncRoutes from './sync.js';
 import adminRoutes, { recordRequest, runBackup } from './admin.js';
 import crashRoutes from './crash.js';
+import summaryRoutes from './summary.js';
 
 const app = Fastify({
   logger: {
@@ -82,6 +83,7 @@ await app.register(googleRoutes);
 await app.register(syncRoutes);
 await app.register(adminRoutes);
 await app.register(crashRoutes);
+await app.register(summaryRoutes);
 
 
 /*

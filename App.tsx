@@ -10,6 +10,7 @@ import SyncKeeper from './src/data/SyncKeeper';
 import DeviceGate from './src/components/DeviceGate';
 import StorageKeeper from './src/data/StorageKeeper';
 import BackupKeeper from './src/data/BackupKeeper';
+import OwnerSummaryKeeper from './src/data/OwnerSummaryKeeper';
 import { installRefusalHandler } from './src/data/refusal';
 import { installCrashReporting } from './src/data/crashReporter';
 import CrashContext from './src/components/CrashContext';
@@ -52,6 +53,7 @@ export default function App() {
             <DeviceGate />
             <StorageKeeper />
             <BackupKeeper />
+            <OwnerSummaryKeeper />
             <CrashContext />
             <ErrorBoundary>
               <VersionGate>
