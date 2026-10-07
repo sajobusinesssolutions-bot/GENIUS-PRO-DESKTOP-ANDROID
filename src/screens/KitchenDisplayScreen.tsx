@@ -20,6 +20,7 @@ import { AppBar } from '../components/AppBar';
 import { stationsOf, orderTypeWord } from '../data/restaurant';
 import { requestSync } from '../data/SyncKeeper';
 import { explain } from '../data/refusal';
+import FirstTimeTip from '../components/FirstTimeTip';
 import type { KitchenOrder } from '../data/types';
 
 const NEXT: Record<KitchenOrder['status'], KitchenOrder['status']> = { new: 'cooking', cooking: 'ready', ready: 'served', served: 'served' };
@@ -71,6 +72,13 @@ export default function KitchenDisplayScreen({ navigation }: any) {
           </View>
         )}
       />
+      <View style={{ paddingHorizontal: 12, paddingTop: 10 }}>
+        <FirstTimeTip
+          id="first-kds"
+          title="The kitchen display"
+          text="Every order saved at the till appears here. Tap the button on a card to move it on: Start cooking, Mark ready, Served. Cards turn orange after 10 minutes and red after 20. Pick a station to see only its dishes."
+        />
+      </View>
       {/* stations, and what is showing */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, padding: 12 }}>
         {stations.map((s) => {

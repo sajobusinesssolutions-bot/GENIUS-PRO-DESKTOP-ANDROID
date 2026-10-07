@@ -34,6 +34,7 @@ import { keepPhoto, dropPhoto } from '../data/photos';
 import { kindLabel, CODE_DATA, POWERED_BY } from '../data/defaults';
 import type { Printer, CodeKind, CodeData, PrintTemplate, ReceiptStyle, PrintPurpose } from '../data/types';
 import { isRestaurant, stationsOf } from '../data/restaurant';
+import FirstTimeTip from '../components/FirstTimeTip';
 import { dmy, numberToWords, InvoiceStyle } from '../data/invoiceLayouts';
 
 const ACCENT_COLORS = ['#1A7AE6', '#1DA362', '#D97706', '#DC2626', '#7C3AED', '#111827'];
@@ -419,6 +420,15 @@ export default function PrintingScreen() {
             <InfoBanner tone="danger" icon="alert" text={problem} />
           </View>
         ) : null}
+
+        <View style={{ marginTop: 12 }}>
+          <FirstTimeTip
+            id="first-printer"
+            when={!db.printers.some((p) => p.kind === 'bluetooth' || p.kind === 'wifi')}
+            title="Setting up a printer"
+            text="Switch the printer on. Bluetooth: tap Scan and pick it. Network: type its IP address. Tick what it prints — receipts, invoices or kitchen orders. A test page confirms it works; if it does not answer you can still save it."
+          />
+        </View>
 
         {/* the receipt printer in use — only a real one, found or tested here */}
         {(() => {

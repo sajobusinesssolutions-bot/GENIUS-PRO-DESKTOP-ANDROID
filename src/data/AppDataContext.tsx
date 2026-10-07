@@ -29,6 +29,7 @@ import type { StoredOp } from './syncProtocol';
 import NetInfo from '@react-native-community/netinfo';
 import { businessAllowance, businessLimitWords } from './editions';
 import { lastAccountLicence } from './syncClient';
+import { demoBook } from './demos';
 import { importStatementLines, matchStatementLine, summarizeReconciliation, completeReconciliation, StatementInput, ReconciliationSummary } from './reconciliation';
 
 interface Ctx {
@@ -52,6 +53,8 @@ interface Ctx {
   claimBooksFor: (email: string) => boolean;
   /** Replaces the books on this phone with a business's books from the account. */
   adoptBook: (data: DB, o: { businessId: string; ownerEmail: string; snapshotVersion?: number }) => void;
+  /** Opens a ready-made demo business of an edition (owner PIN 0000). */
+  loadDemo: (edition: import('./editions').Edition) => void;
   /** Replaces the local book with a validated backup selected on this phone. */
   restoreBackup: (data: DB) => void;
   commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: OrderType; priceListId?: string; rx?: import('./types').RxRecord }) => Sale;
@@ -551,6 +554,19 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setDb(restored);
       void flushSave();
       scheduleSave(restored);
+    },
+    loadDemo: (edition) => {
+      // only over books with nothing of anyone's in them: a fresh book, or another demo
+      const cur = dbRef.current;
+      if (cur && cur.onboarded && !cur.demo && (cur.sales.length || cur.products.length)) {
+        throw new Refusal('These books have a business in them', 'A demo would replace them. Start a demo from a new business instead.');
+      }
+      const demo = demoBook(edition);
+      dbRef.current = demo;
+      setRoleRegistry(demo.roles);
+      setDb(demo);
+      void flushSave();
+      scheduleSave(demo);
     },
     startFreshBook: (o) => {
       const fresh = emptyBook(o || {});

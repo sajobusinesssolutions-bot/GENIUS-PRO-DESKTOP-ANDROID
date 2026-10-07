@@ -12,6 +12,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { starterModifiers } from '../data/restaurant';
 import { EDITIONS, Edition, PHARMACY_UNITS, PHARMACY_CLASSES, licensedEdition, editionLockReason } from '../data/editions';
 import { lastAccountLicence } from '../data/syncClient';
+import { explain } from '../data/refusal';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
@@ -39,7 +40,7 @@ const BUSINESS_TYPES: { id: Edition; label: string; icon: IconName; sub: string 
 
 export default function OnboardingScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { setOnboarded, db, updateUser, updateFirm, updateWarehouse, me, setSetting, saveModifierGroup, addUnit, addCategory } = useAppData();
+  const { setOnboarded, db, updateUser, updateFirm, updateWarehouse, me, setSetting, saveModifierGroup, addUnit, addCategory, loadDemo } = useAppData();
   const [step, setStep] = useState(0);
   // the licence decides the edition: the automatic trial is Retail only
   const allowed = licensedEdition(lastAccountLicence(), db?.licence?.licence);
@@ -157,6 +158,26 @@ export default function OnboardingScreen({ navigation }: Props) {
                 </Pressable>
               );
             })}
+            {/* just looking: a ready-made business to try, of any edition */}
+            <View style={{ marginTop: 6, padding: 15, borderRadius: radius.lg, borderWidth: 1.4, borderColor: colors.line, gap: 10 }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Just looking? Try a demo</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>A ready-made business with its stock and a little history. Owner PIN 0000. Start your own any time.</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {BUSINESS_TYPES.map((t) => (
+                  <Pressable
+                    key={t.id}
+                    onPress={() => {
+                      try { loadDemo(t.id); navigation.replace('PinLock', {}); } catch (e) { explain(e); }
+                    }}
+                    style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.sunk }}
+                  >
+                    <Icon name={t.icon} size={20} color={colors.ink} />
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.ink }}>{EDITIONS[t.id].name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
             <View style={{ marginTop: 6, padding: 15, borderRadius: radius.lg, backgroundColor: colors.sunk, gap: 7 }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>The {EDITIONS[businessType].name} edition sets you up with</Text>
               {EDITIONS[businessType].special.map((f) => (

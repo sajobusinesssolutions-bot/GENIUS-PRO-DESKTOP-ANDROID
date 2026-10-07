@@ -28,6 +28,7 @@ import { useGo } from '../nav/navigate';
 import { plural } from '../data/helpers';
 import { planSummary } from '../data/logic';
 import { NUMBER_LABEL, BUILD } from '../data/defaults';
+import { resetTips } from '../components/FirstTimeTip';
 import type { NumberingKey, Settings, BelowCost, Costing } from '../data/types';
 
 const num = (v: string) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
@@ -256,6 +257,7 @@ export default function SettingsScreen() {
               <SettingRow label="Printer" value={db.printer.device || '—'} onPress={() => go('Printing')} />
               <SettingRow label="Connection" value={db.session.online ? 'Online' : 'Offline'} />
               <SettingRow label="Backup & data tools" value="Export, restore, health check" onPress={() => go('DataTools')} />
+              <SettingRow label="Tips for first use" value="Show them again" onPress={() => { void resetTips(); Alert.alert('Tips', 'The first-use tips will show again on each screen.'); }} />
             </SettingGroup>
 
             {/* Account / Cloud / This phone / About — the later wrappers */}

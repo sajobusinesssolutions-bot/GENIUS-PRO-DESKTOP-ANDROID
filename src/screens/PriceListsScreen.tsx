@@ -26,6 +26,7 @@ import { fonts, useTheme } from '../theme';
 import { explain } from '../data/refusal';
 import { adjLabel, listPriceOf, listProducts, round100 } from '../data/priceLists';
 import { vocab } from '../data/editions';
+import FirstTimeTip from '../components/FirstTimeTip';
 import type { PriceList, Product } from '../data/types';
 
 type Status = 'Active' | 'Draft';
@@ -211,6 +212,12 @@ export default function PriceListsScreen({ navigation }: any) {
             </View>
           </View>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120, gap: 8 }}>
+            <FirstTimeTip
+              id="first-price-list"
+              when={!lists.length}
+              title="Price lists"
+              text="Make a list for wholesale buyers, a customer group or a promotion. Set a margin on cost, type any item's own price, and Activate it. Then choose it on a sale — or give it to a customer so it applies by itself."
+            />
             {visible.map((l) => {
               const sc = statusColors(C, l.status);
               const n = listProducts(db, l).length;
