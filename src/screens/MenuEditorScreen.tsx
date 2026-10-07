@@ -10,7 +10,10 @@
  *   Settings  — stations (Kitchen, Bar, Grill…), service charge, and what a
  *               new ticket starts as.
  *
- * Dishes made here are not stock-counted: a kitchen sells plates, not pieces.
+ * Ingredients — what dishes are made from. A dish with a recipe draws them
+ *               down as it is sold; a dish kept in stock (chapati, samosas)
+ *               is made in batches with Make, or made automatically when a
+ *               sale finds it short.
  */
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Alert, Image } from 'react-native';
@@ -23,7 +26,7 @@ import { Icon } from '../components/icons';
 import Sheet from '../components/Sheet';
 import { Button } from '../components/ui';
 import { Field, ToggleRow, SelectField, MultiSelectField } from '../components/form';
-import SegmentSlider from '../components/SegmentSlider';
+import TablePlanEditor from '../components/TablePlanEditor';
 import { explain } from '../data/refusal';
 import { keepPhoto } from '../data/photos';
 import { DISH_TAGS, GROUP_COLORS, ORDER_TYPES, menuSections, stationOf, stationsOf } from '../data/restaurant';
@@ -35,6 +38,7 @@ interface DishDraft {
   id?: string; name: string; price: string; cost: string; description: string; category: string;
   station: string; tags: string[]; prepMins: string; groups: string[]; soldOut: boolean; photo: string;
   recipe: { productId: string; qty: string }[];
+  madeAhead: boolean;
 }
 interface IngredientDraft { id?: string; name: string; unit: string; cost: string; stock: string; reorder: string }
 interface GroupDraft { id?: string; name: string; required: boolean; multi: boolean; options: (ModifierOption & { priceText: string })[] }
@@ -47,7 +51,7 @@ const tmpId = () => 'mo_' + Date.now().toString(36) + (tmp++).toString(36);
 export default function MenuEditorScreen() {
   const { colors } = useTheme();
   const {
-    db, money, addProduct, updateProduct, saveModifierGroup, removeModifierGroup,
+    db, money, addProduct, updateProduct, produceDish, saveModifierGroup, removeModifierGroup,
     saveMenuGroup, removeMenuGroup, moveMenuGroup, setSetting, saveMenu, removeMenu, updateUser,
   } = useAppData();
   const { success, error } = useToast();
@@ -59,18 +63,20 @@ export default function MenuEditorScreen() {
   const [menuDraft, setMenuDraft] = useState<MenuDraft | null>(null);
   const [newStation, setNewStation] = useState('');
   const [service, setService] = useState(String(db?.settings.serviceChargePct || ''));
-  const [tablesText, setTablesText] = useState((db?.settings.tables || []).join(', '));
 
   const sections = useMemo(() => menuSections(db), [db]);
   const items = useMemo(() => (db?.products || []).filter((p) => p.active !== false && !p.ingredient), [db]);
   const ingredients = useMemo(() => (db?.products || []).filter((p) => p.active !== false && p.ingredient), [db]);
   const [ingredient, setIngredient] = useState<IngredientDraft | null>(null);
   const [recipePick, setRecipePick] = useState(false);
+  const [making, setMaking] = useState<{ p: Product; qty: string } | null>(null);
   const groups = db?.modifierGroups || [];
   const stations = stationsOf(db);
   const menus = db?.menus || [];
 
   if (!db) return null;
+  const wh = db.session.warehouse || 'w1';
+  const dishStock = (p: Product) => Math.round((p.stock?.[wh] || 0) * 100) / 100;
 
   const needle = q.trim().toLowerCase();
   const inSection = (name: string) => items.filter((p) => (p.category || 'Other') === name
@@ -80,7 +86,7 @@ export default function MenuEditorScreen() {
 
   function newDish(category?: string) {
     const sec = category || sections[0]?.name || 'Food';
-    setDish({ name: '', price: '', cost: '', description: '', category: sec, station: '', tags: [], prepMins: '', groups: [], soldOut: false, photo: '', recipe: [] });
+    setDish({ name: '', price: '', cost: '', description: '', category: sec, station: '', tags: [], prepMins: '', groups: [], soldOut: false, photo: '', recipe: [], madeAhead: false });
   }
 
   function editDish(p: Product, copy = false) {
@@ -89,6 +95,7 @@ export default function MenuEditorScreen() {
       description: p.description || '', category: p.category || 'Other', station: p.station || '', tags: p.tags || [],
       prepMins: p.prepMins ? String(p.prepMins) : '', groups: p.modifierGroups || [], soldOut: !!p.soldOut, photo: p.photo || '',
       recipe: (p.recipe || []).map((x) => ({ productId: x.productId, qty: String(x.qty) })),
+      madeAhead: !!p.madeAhead,
     });
   }
 
@@ -108,11 +115,14 @@ export default function MenuEditorScreen() {
     if (!dish) return;
     const name = dish.name.trim();
     if (!name) { error('Give the dish a name.'); return; }
+    const recipe = dish.recipe.filter((x) => Number(x.qty) > 0);
+    if (dish.madeAhead && !recipe.length) { error('A dish kept in stock needs its recipe, so it can be made. Add its ingredients first.'); return; }
     const patch = {
       name, price: Number(dish.price) || 0, cost: Number(dish.cost) || 0, category: dish.category.trim() || 'Other',
       description: dish.description.trim() || undefined, station: dish.station || undefined, tags: dish.tags,
       prepMins: Number(dish.prepMins) || undefined, modifierGroups: dish.groups, soldOut: dish.soldOut, photo: dish.photo || undefined,
-      recipe: dish.recipe.filter((x) => Number(x.qty) > 0).map((x) => ({ productId: x.productId, qty: Number(x.qty) })),
+      recipe: recipe.map((x) => ({ productId: x.productId, qty: Number(x.qty) })),
+      madeAhead: dish.madeAhead, trackInventory: dish.madeAhead,
     };
     try {
       if (dish.id) updateProduct(dish.id, patch);
@@ -120,7 +130,7 @@ export default function MenuEditorScreen() {
         addProduct({
           ...patch, sku: name.slice(0, 8).toUpperCase().replace(/\s+/g, ''), kind: 'product', unit: 'PC',
           taxRate: db!.settings.taxRate || 0, stock: {}, reorder: 0, warrantyMonths: 0, active: true,
-          trackInventory: false, batches: [], barcodes: [],
+          batches: [], barcodes: [],
         } as Omit<Product, 'id'>);
       }
       success(name + (dish.id ? ' updated' : ' added to the menu'));
@@ -194,14 +204,31 @@ export default function MenuEditorScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-        <SegmentSlider
-          value={tab}
-          onChange={setTab}
-          options={[
-            { v: 'menus', l: 'Menus', i: 'doc' }, { v: 'sections', l: 'Sections', i: 'menu' }, { v: 'dishes', l: 'Dishes', i: 'food' },
-            { v: 'ingredients', l: 'Stock', i: 'box' }, { v: 'mods', l: 'Modifiers', i: 'tag' }, { v: 'settings', l: 'Settings', i: 'cog' },
-          ]}
-        />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {([
+            { v: 'dishes', l: 'Dishes', i: 'food', n: items.length }, { v: 'sections', l: 'Sections', i: 'menu', n: sections.length },
+            { v: 'menus', l: 'Menus', i: 'doc', n: menus.length }, { v: 'ingredients', l: 'Ingredients', i: 'box', n: ingredients.length },
+            { v: 'mods', l: 'Modifiers', i: 'tag', n: groups.length }, { v: 'settings', l: 'Settings', i: 'cog', n: null },
+          ] as const).map((o) => {
+            const on = tab === o.v;
+            return (
+              <Pressable
+                key={o.v}
+                onPress={() => setTab(o.v)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                style={({ pressed }) => ({
+                  width: '31.6%', flexGrow: 1, height: 46, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 8,
+                  backgroundColor: on ? colors.ink : pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: on ? colors.ink : colors.line,
+                })}
+              >
+                <Icon name={o.i} size={16} color={on ? colors.bg : colors.ink} />
+                <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 13.5, color: on ? colors.bg : colors.ink }}>{o.l}</Text>
+                {o.n ? <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: on ? colors.bg : colors.faint, opacity: 0.8 }}>{o.n}</Text> : null}
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }} keyboardShouldPersistTaps="handled">
@@ -313,6 +340,17 @@ export default function MenuEditorScreen() {
                         <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
                           {[stationOf(db, p), (p.tags || []).join(', '), p.modifierGroups?.length ? p.modifierGroups.length + ' modifier group(s)' : ''].filter(Boolean).join(' · ')}
                         </Text>
+                        {p.madeAhead ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                            <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: dishStock(p) > 0 ? colors.good : colors.warn }}>{dishStock(p)} in stock</Text>
+                            <Pressable hitSlop={6} onPress={() => setMaking({ p, qty: '' })} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999, backgroundColor: colors.accentSoft }}>
+                              <Icon name="plus" size={12} color={colors.accent} />
+                              <Text style={{ fontFamily: fonts.uiBold, fontSize: 11.5, color: colors.accent }}>Make</Text>
+                            </Pressable>
+                          </View>
+                        ) : p.recipe?.length ? (
+                          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: colors.soft, marginTop: 3 }}>Made to order from {p.recipe.length} ingredient{p.recipe.length === 1 ? '' : 's'}</Text>
+                        ) : null}
                       </View>
                       <View style={{ alignItems: 'flex-end', gap: 4 }}>
                         <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{money(p.price)}</Text>
@@ -334,7 +372,7 @@ export default function MenuEditorScreen() {
         {tab === 'ingredients' ? (
           <>
             <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginBottom: 12 }}>
-              What dishes are made from. Give a dish its recipe and every plate sold draws its ingredients down, so stock and food cost stay true. Buy them in with a purchase.
+              What dishes are made from. Give a dish its recipe and every plate sold draws its ingredients down, so stock and food cost stay true. A dish kept in stock uses them when it is made. Buy ingredients in with a purchase.
             </Text>
             {ingredients.map((p) => {
               const qty = Object.values(p.stock || {}).reduce((n, v) => n + (v || 0), 0);
@@ -425,19 +463,7 @@ export default function MenuEditorScreen() {
               />
             </View>
 
-            <View style={[card, { padding: 14 }]}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 4 }}>Tables</Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 10 }}>
-                The table plan on the order screen. Type a number for numbered tables, or names separated by commas (Patio 1, Bar 2, VIP).
-              </Text>
-              <Field label="Tables" value={tablesText} onChangeText={setTablesText} placeholder="12 — or Patio 1, Patio 2, VIP" />
-              <Button size="sm" label="Save tables" onPress={() => {
-                const v = tablesText.trim();
-                const n = /^\d+$/.test(v) ? Math.min(200, Number(v)) : 0;
-                const list = n ? Array.from({ length: n }, (_, i) => 'Table ' + (i + 1)) : v.split(',').map((x) => x.trim()).filter(Boolean);
-                try { setSetting({ tables: list }); setTablesText(list.join(', ')); success(list.length + ' table' + (list.length === 1 ? '' : 's') + ' saved'); } catch (e) { explain(e); }
-              }} />
-            </View>
+            <TablePlanEditor />
 
             <View style={[card, { padding: 14 }]}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 10 }}>A new ticket starts as</Text>
@@ -556,8 +582,17 @@ export default function MenuEditorScreen() {
                 </Text>
               ) : null;
             })()}
-            <Button size="sm" label="Add an ingredient" icon={<Icon name="plus" size={15} color={colors.ink} />} onPress={() => (ingredients.length ? setRecipePick(true) : error('Add ingredients first, under the Stock tab.'))} />
+            <Button size="sm" label="Add an ingredient" icon={<Icon name="plus" size={15} color={colors.ink} />} onPress={() => (ingredients.length ? setRecipePick(true) : error('Add ingredients first, under the Ingredients tab.'))} />
             <View style={{ height: 12 }} />
+
+            <ToggleRow
+              label="Keep in stock"
+              sub={dish.madeAhead
+                ? 'Made in batches with Make. Each sale takes plates from stock; when it runs out, the missing plates are made from the recipe automatically.'
+                : 'For dishes cooked ahead (chapati, samosas, soup). Off: ingredients are drawn each time it is sold.'}
+              on={dish.madeAhead}
+              onChange={(v) => setDish({ ...dish, madeAhead: v })}
+            />
 
             <ToggleRow label="Sold out for now" sub="Shown greyed on the order screen and cannot be ordered" on={dish.soldOut} onChange={(v) => setDish({ ...dish, soldOut: v })} />
 
@@ -615,6 +650,51 @@ export default function MenuEditorScreen() {
               <View style={{ flex: 1 }}><Field label="Reorder level" numeric decimal money={false} value={ingredient.reorder} onChangeText={(v) => setIngredient({ ...ingredient, reorder: v })} /></View>
             </View>
             {ingredient.id ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Change the stock with a purchase or Adjust stock.</Text> : null}
+          </>
+        ) : null}
+      </Sheet>
+
+      {/* ---------- making a batch of a dish kept in stock ---------- */}
+      <Sheet
+        visible={!!making}
+        title={making ? 'Make ' + making.p.name : ''}
+        subtitle={making ? dishStock(making.p) + ' in stock now' : undefined}
+        icon="food"
+        onClose={() => setMaking(null)}
+        footer={making ? (
+          <Button variant="pri" label={'Make ' + (Number(making.qty) || '') + ' and add to stock'} disabled={!(Number(making.qty) > 0)} onPress={() => {
+            const n = Number(making.qty);
+            try {
+              const run = produceDish(making.p.id, n);
+              if (run) success(n + ' ' + making.p.name + ' made · ' + money(run.componentCost) + ' of ingredients used');
+              setMaking(null);
+            } catch (e) { explain(e); }
+          }} />
+        ) : undefined}
+      >
+        {making ? (
+          <>
+            <Field label="How many to make" numeric decimal money={false} value={making.qty} onChangeText={(v) => setMaking({ ...making, qty: v })} placeholder="20" />
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Ingredients used</Text>
+            {(making.p.recipe || []).map((r) => {
+              const ing = ingredients.find((x) => x.id === r.productId);
+              const need = r.qty * (Number(making.qty) || 0);
+              const have = ing ? (ing.stock?.[wh] || 0) : 0;
+              return (
+                <View key={r.productId} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+                  <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{ing?.name || 'Removed'}</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: need > have ? colors.danger : colors.ink }}>
+                    {Math.round(need * 1000) / 1000} {ing?.unit || ''}
+                  </Text>
+                  <Text style={{ width: 96, textAlign: 'right', fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>of {Math.round(have * 100) / 100}</Text>
+                </View>
+              );
+            })}
+            {(making.p.recipe || []).some((r) => r.qty * (Number(making.qty) || 0) > (ingredients.find((x) => x.id === r.productId)?.stock?.[wh] || 0)) ? (
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger, marginTop: 10 }}>
+                Some ingredients will go below zero. Record the purchase that brought them in, or count them with Adjust stock.
+              </Text>
+            ) : null}
           </>
         ) : null}
       </Sheet>

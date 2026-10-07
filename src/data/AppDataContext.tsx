@@ -134,6 +134,8 @@ export interface Ctx {
 
   // Production runs
   runProduction: (productId: string, qty: number) => ProductionRun | null;
+  /** Restaurant: cooks a batch of a dish kept in stock from its recipe. */
+  produceDish: (productId: string, qty: number) => ProductionRun | null;
 
   // Recurring invoices
   scheduleRecurring: (o: { partyId: string; lines: SaleLine[]; discount: number; frequency: 'weekly' | 'monthly' }) => RecurringInvoice;
@@ -200,7 +202,7 @@ export interface Ctx {
   /** Removes a modifier group, and takes it off every item that offered it. */
   removeModifierGroup: (id: string) => void;
   /** Saves an open ticket: a new one, or more ordered on one already open. */
-  saveTicket: (t: { id?: string; name: string; lines: SaleLine[]; sent: number[]; orderType?: OrderType; guests?: number; note?: string }) => Ticket;
+  saveTicket: (t: { id?: string; name: string; lines: SaleLine[]; sent: number[]; orderType?: OrderType; guests?: number; note?: string; partyId?: string; address?: string; phone?: string }) => Ticket;
   /** Adds or changes a section of the menu. */
   saveMenuGroup: (g: Omit<MenuGroup, 'id' | 'sort'> & { id?: string; sort?: number }) => MenuGroup;
   /** Removes a section; its dishes move to Other. */
@@ -1033,6 +1035,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       requireRecordable(); requirePerm('inventory.create');
       let run: ProductionRun | null = null;
       commit((d) => { run = logic.runProduction(d, productId, qty); });
+      return run;
+    },
+    produceDish: (productId, qty) => {
+      requireRecordable(); requirePerm('inventory.edit');
+      let run: ProductionRun | null = null;
+      commit((d) => { run = logic.produceDish(d, productId, qty); });
       return run;
     },
 
