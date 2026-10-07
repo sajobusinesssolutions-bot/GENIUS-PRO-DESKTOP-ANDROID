@@ -15,6 +15,7 @@ import {
   Panel, Badge, StatGrid, SectionLabel, FilterChips, EmptyBlock, Avatar, DetailRow, ProgressBar,
 } from '../components/ui';
 import { finRange, FIN_PERIODS, inRange } from '../data/helpers';
+import { roleName } from '../data/perms';
 
 export default function StaffReportScreen(p: any) {
   // checked before the body runs, so nothing inside it can post first
@@ -125,7 +126,7 @@ function StaffReportScreenBody() {
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{r.name}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                {r.role ? r.role.charAt(0).toUpperCase() + r.role.slice(1) : 'Staff'} · {r.count} sale{r.count === 1 ? '' : 's'}
+                {roleName(db, r.role || undefined)} · {r.count} sale{r.count === 1 ? '' : 's'}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 3 }}>

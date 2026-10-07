@@ -325,6 +325,16 @@ export function canWith(roles: RoleDef[], roleId: string | undefined, k: string 
   return !!r.perms[mod + '.view'];
 }
 
+/**
+ * A role's name for display. A role made in Staff & roles has an id like
+ * "r_lq3x9k"; showing the id (capitalised) put that under people's names.
+ */
+export function roleName(d: { roles?: unknown } | null | undefined, roleId: string | undefined): string {
+  if (!roleId) return 'Staff';
+  const r = d ? roleById(ensureRoles(d), roleId) : undefined;
+  return r?.name || roleId.charAt(0).toUpperCase() + roleId.slice(1);
+}
+
 /** How many active people sit on a role — reference the roles list at 7660. */
 export function usersOnRole(users: { role: string; active: boolean }[], roleId: string): number {
   return users.filter((u) => u.role === roleId && u.active).length;

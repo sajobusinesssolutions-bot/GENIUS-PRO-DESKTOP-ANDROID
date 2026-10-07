@@ -24,6 +24,10 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   NewSale: (p) => (p && p.editSaleId ? 'sales.edit' : 'sales.create'),
   Receipt: 'sales.view',
   Sales: 'sales.view',
+  // the bottom tabs are not stack screens: their rules are here and MainTabs applies them
+  SalesTab: 'sales.view',
+  OrderTab: 'sales.create',
+  KitchenTab: 'restaurant.kitchen',
   SaleDetail: 'sales.view',
   EditSale: 'sales.edit',
   Estimates: 'quotes.view',

@@ -24,6 +24,7 @@ import { Avatar, Panel, ListRow, SectionLabel } from '../components/ui';
 import { Icon } from '../components/icons';
 import { PinResetSheet } from '../components/PinResetSheet';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { roleName } from '../data/perms';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PinLock'>;
@@ -231,7 +232,7 @@ export default function PinLockScreen({ navigation }: Props) {
               key={u.id}
               icon={u.role === 'owner' ? 'owner' : 'user'}
               title={u.name}
-              subtitle={cap(u.role) + (u.pin ? '' : ' · no PIN yet')}
+              subtitle={roleName(db, u.role) + (u.pin ? '' : ' · no PIN yet')}
               onPress={() => { setSelected(u.id); setPin(''); setFirst(''); setErr(''); }}
               last={i === arr.length - 1}
             />

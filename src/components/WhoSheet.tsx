@@ -15,6 +15,7 @@ import { useAppData } from '../data/AppDataContext';
 import { verifyPin } from '../data/pinHash';
 import { Button, SectionLabel, InfoBanner, Avatar } from './ui';
 import { Icon } from './icons';
+import { roleName } from '../data/perms';
 import Sheet from './Sheet';
 
 export interface WhoResult {
@@ -162,7 +163,7 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{u.name}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                      {u.id === current?.id ? 'Signed in' : u.role.charAt(0).toUpperCase() + u.role.slice(1)}
+                      {u.id === current?.id ? 'Signed in' : roleName(db, u.role)}
                     </Text>
                   </View>
                   {on ? <Icon name="check" size={23} color={colors.accent} /> : null}

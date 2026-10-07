@@ -27,7 +27,7 @@ const NEXT: Record<KitchenOrder['status'], KitchenOrder['status']> = { new: 'coo
 const WORD: Record<KitchenOrder['status'], string> = { new: 'New', cooking: 'Cooking', ready: 'Ready', served: 'Served' };
 const ACTION: Record<KitchenOrder['status'], string> = { new: 'Start cooking', cooking: 'Mark ready', ready: 'Served', served: '' };
 
-export default function KitchenDisplayScreen({ navigation }: any) {
+export default function KitchenDisplayScreen({ navigation, route }: any) {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const { db, setKitchenStatus } = useAppData();
@@ -61,7 +61,7 @@ export default function KitchenDisplayScreen({ navigation }: any) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AppBar
         title="Kitchen display"
-        onBack={() => navigation.goBack()}
+        onBack={route?.name === 'KitchenTab' ? undefined : () => navigation.goBack()}
         right={(
           <View style={{ flexDirection: 'row', gap: 6 }}>
             {(['new', 'cooking', 'ready'] as const).map((s) => (
