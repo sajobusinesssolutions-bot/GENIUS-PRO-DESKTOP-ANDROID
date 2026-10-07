@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, Animated } from 'react-native';
+import { View, Text, ScrollView, Animated, Alert } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -9,6 +9,9 @@ import { SettingToggle } from '../components/form';
 import { TRIAL_DAYS, accessDaysLeft } from '../data/logic';
 import { fmtDay } from '../data/helpers';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { starterModifiers } from '../data/restaurant';
+import { EDITIONS, Edition, PHARMACY_UNITS, PHARMACY_CLASSES, licensedEdition, editionLockReason } from '../data/editions';
+import { lastAccountLicence } from '../data/syncClient';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
@@ -28,22 +31,19 @@ const STEP_HEAD: Array<{ icon: IconName; title: string; sub: string }> = [
   { icon: 'gift', title: 'Congratulations!', sub: 'Your business is set up.' },
 ];
 
-const BUSINESS_TYPES = [
-  { id: 'retail', label: 'Retail shop', emoji: '🛒', sub: 'General goods over the counter' },
-  { id: 'hardware', label: 'Hardware', emoji: '🧱', sub: 'Building and construction supply' },
-  { id: 'restaurant', label: 'Restaurant / bar', emoji: '🍽️', sub: 'Food and drink service' },
-  { id: 'pharmacy', label: 'Pharmacy', emoji: '💊', sub: 'Medicines, batches and expiry' },
-  { id: 'salon', label: 'Salon / services', emoji: '💈', sub: 'Services sold by time' },
-  { id: 'wholesale', label: 'Wholesale', emoji: '📦', sub: 'Bulk supply and distribution' },
-  { id: 'electronics', label: 'Electronics', emoji: '🔌', sub: 'Serials and warranties' },
-  { id: 'other', label: 'Other', emoji: '🏪', sub: 'Something else entirely' },
+const BUSINESS_TYPES: { id: Edition; label: string; icon: IconName; sub: string }[] = [
+  { id: 'retail', label: 'Retail shop', icon: 'cart', sub: EDITIONS.retail.tagline },
+  { id: 'restaurant', label: 'Restaurant / bar / café', icon: 'food', sub: EDITIONS.restaurant.tagline },
+  { id: 'pharmacy', label: 'Pharmacy / drug shop', icon: 'shield', sub: EDITIONS.pharmacy.tagline },
 ];
 
 export default function OnboardingScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { setOnboarded, db, updateUser, updateFirm, updateWarehouse, me, setSetting } = useAppData();
+  const { setOnboarded, db, updateUser, updateFirm, updateWarehouse, me, setSetting, saveModifierGroup, addUnit, addCategory } = useAppData();
   const [step, setStep] = useState(0);
-  const [businessType, setBusinessType] = useState('retail');
+  // the licence decides the edition: the automatic trial is Retail only
+  const allowed = licensedEdition(lastAccountLicence(), db?.licence?.licence);
+  const [businessType, setBusinessType] = useState<Edition>(allowed);
   const [name, setName] = useState(db?.firm.name || '');
   const [phone, setPhone] = useState(db?.firm.phone || '');
   const [branchName, setBranchName] = useState(db?.warehouses[0]?.name && db.warehouses[0].name !== 'Main shop' ? db.warehouses[0].name : '');
@@ -59,7 +59,21 @@ export default function OnboardingScreen({ navigation }: Props) {
   const head = STEP_HEAD[step];
 
   function next() {
-    if (step === 1) updateFirm({ name, phone, businessType });
+    if (step === 1) {
+      updateFirm({ name, phone, businessType });
+      // a restaurant starts ready to take orders: no customer asked for, and
+      // two example modifier groups to show how choices work
+      if (businessType === 'restaurant') {
+        setSetting({ askCustomer: false, defaultMethod: 'cash' });
+        if (!(db?.modifierGroups || []).length) starterModifiers().forEach(({ id: _id, ...g }) => saveModifierGroup(g));
+      }
+      // a pharmacy sells by batch and expiry, never below zero, with its own units and drug classes
+      if (businessType === 'pharmacy') {
+        setSetting({ trackBatches: true, lowStockAlerts: true, blockNegativeStock: true, allowNegativeStock: false, askCustomer: false });
+        PHARMACY_UNITS.forEach((u) => addUnit(u));
+        PHARMACY_CLASSES.forEach((c) => addCategory(c));
+      }
+    }
     if (step === 2 && db?.warehouses[0] && (branchName.trim() || name.trim())) {
       updateWarehouse(db.warehouses[0].id, { name: branchName.trim() || name.trim() });
     }
@@ -76,6 +90,23 @@ export default function OnboardingScreen({ navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
+        {/* a way out: back to the businesses already on the account */}
+        {step === 0 || (lastAccountLicence()?.owned || 0) > 0 ? (
+          <Pressable
+            onPress={() => Alert.alert('Stop setting up?', 'This new business is not saved. Your other businesses are untouched.', [
+              { text: 'Keep going', style: 'cancel' },
+              { text: 'Cancel setup', style: 'destructive', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Businesses' as any, params: { stay: true } }] }) },
+            ])}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel setup"
+            style={{ alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: colors.sunk, marginBottom: 14 }}
+          >
+            <Icon name="x" size={15} color={colors.ink} />
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Cancel</Text>
+          </Pressable>
+        ) : null}
+
         {/* progress */}
         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 26 }}>
           {STEPS.map((_, i) => (
@@ -103,10 +134,11 @@ export default function OnboardingScreen({ navigation }: Props) {
           <View style={{ gap: 10 }}>
             {BUSINESS_TYPES.map((t) => {
               const on = businessType === t.id;
+              const locked = t.id !== allowed;
               return (
                 <Pressable
                   key={t.id}
-                  onPress={() => setBusinessType(t.id)}
+                  onPress={() => (locked ? Alert.alert(EDITIONS[t.id].name + ' needs its own licence', editionLockReason(allowed, t.id)) : setBusinessType(t.id))}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 13,
                     borderRadius: radius.lg, borderWidth: 1.5, paddingHorizontal: 15, paddingVertical: 14,
@@ -114,15 +146,26 @@ export default function OnboardingScreen({ navigation }: Props) {
                     backgroundColor: on ? colors.accentSoft : colors.surface,
                   }}
                 >
-                  <Text style={{ fontSize: 26 }}>{t.emoji}</Text>
+                  <View style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? colors.surface : colors.sunk }}>
+                    <Icon name={t.icon} size={22} color={colors.ink} />
+                  </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{t.label}</Text>
-                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{t.sub}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{locked ? 'Needs a ' + EDITIONS[t.id].name + ' licence from Genius Pro' : t.sub}</Text>
                   </View>
-                  {on ? <Icon name="check" size={20} color={colors.accent} /> : <Icon name="chev" size={18} color={colors.faint} />}
+                  {locked ? <Icon name="lock" size={18} color={colors.faint} /> : on ? <Icon name="check" size={20} color={colors.accent} /> : <Icon name="chev" size={18} color={colors.faint} />}
                 </Pressable>
               );
             })}
+            <View style={{ marginTop: 6, padding: 15, borderRadius: radius.lg, backgroundColor: colors.sunk, gap: 7 }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>The {EDITIONS[businessType].name} edition sets you up with</Text>
+              {EDITIONS[businessType].special.map((f) => (
+                <View key={f} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Icon name="check" size={14} color={colors.ink} />
+                  <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>{f}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 

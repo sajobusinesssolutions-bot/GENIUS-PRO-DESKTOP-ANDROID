@@ -61,10 +61,7 @@ export default function EstimatesScreen({ navigation }: Props) {
             action={e.status === 'open'
               ? {
                 label: 'Convert',
-                onPress: () => Alert.alert('Turn ' + e.no + ' into a sale?', 'A cash sale for ' + money(e.total) + ' is recorded.', [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Convert', onPress: () => { const sale = convertEstimate(e.id, 'cash'); if (sale) navigation.navigate('Receipt', { saleId: sale.id }); } },
-                ]),
+                onPress: () => navigation.navigate('NewSale', { fromEstimateId: e.id }),
               }
               : e.status === 'converted' && e.convertedSaleId
                 ? { label: 'See invoice' + (no ? ' #' + no : ''), onPress: () => navigation.navigate('Receipt', { saleId: e.convertedSaleId! }) }

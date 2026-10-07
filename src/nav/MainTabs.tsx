@@ -16,6 +16,10 @@ import DashboardScreen from '../screens/DashboardScreen';
 import ItemsScreen from '../screens/ItemsScreen';
 import MenuScreen from '../screens/MenuScreen';
 import SalesListScreen from '../screens/SalesListScreen';
+import OrderScreen from '../screens/OrderScreen';
+import { useAppData } from '../data/AppDataContext';
+import { vocab } from '../data/editions';
+import { isRestaurant } from '../data/restaurant';
 
 const Tab = createBottomTabNavigator();
 
@@ -27,8 +31,19 @@ const BAR: { s: string; i: IconName; l: string }[] = [
   { s: 'MenuTab', i: 'menu', l: 'Menu' },
 ];
 
+/** A restaurant opens on taking orders: the menu replaces Items in the bar. */
+const RESTAURANT_BAR: { s: string; i: IconName; l: string }[] = [
+  { s: 'DashboardTab', i: 'home', l: 'Home' },
+  { s: 'OrderTab', i: 'food', l: 'Order' },
+  { s: 'SalesTab', i: 'receipt', l: 'Orders' },
+  { s: 'MenuTab', i: 'menu', l: 'More' },
+];
+
 function TabBar({ state, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
+  const book = useAppData().db;
+  // a pharmacy keeps drugs, not items
+  const bar = isRestaurant(book) ? RESTAURANT_BAR : BAR.map((t) => (t.s === 'ItemsTab' ? { ...t, l: vocab(book).items } : t));
   const insets = useSafeAreaInsets();
   const current = state.routes[state.index].name;
 
@@ -42,7 +57,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
     return () => { a.remove(); b.remove(); };
   }, []);
 
-  const btn = (t: typeof BAR[number]) => {
+  const btn = (t: { s: string; i: IconName; l: string }) => {
     const on = t.s === current;
     return (
       <Tap
@@ -83,7 +98,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
         shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: -3 },
         elevation: 4,
       }}>
-        {BAR.map(btn)}
+        {bar.map(btn)}
       </View>
     </>
   );
@@ -92,6 +107,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
 
 export default function MainTabs() {
   const { colors } = useTheme();
+  const restaurant = isRestaurant(useAppData().db);
   return (
     <Tab.Navigator
       tabBar={(props) => <TabBar {...props} />}
@@ -113,6 +129,7 @@ export default function MainTabs() {
     >
       <Tab.Screen name="DashboardTab" component={DashboardScreen} />
       <Tab.Screen name="SalesTab" component={SalesListScreen} />
+      {restaurant ? <Tab.Screen name="OrderTab" component={OrderScreen as any} /> : null}
       <Tab.Screen name="ItemsTab" component={ItemsScreen} />
       <Tab.Screen name="MenuTab" component={MenuScreen} />
     </Tab.Navigator>

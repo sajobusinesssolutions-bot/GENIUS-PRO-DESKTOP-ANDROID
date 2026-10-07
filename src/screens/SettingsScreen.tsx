@@ -137,6 +137,15 @@ export default function SettingsScreen() {
               />
             </SettingGroup>
 
+            <SettingGroup title="Cash control">
+              <SettingToggle
+                label="Stop cash going below zero"
+                sub="Expenses, payments, cash purchases and journals that take a cash drawer below zero are refused"
+                on={!!s.blockNegativeCash}
+                onChange={(v) => set({ blockNegativeCash: v })}
+              />
+            </SettingGroup>
+
             <SettingGroup title="Tax">
               <SettingToggle
                 label="Charge tax on sales"

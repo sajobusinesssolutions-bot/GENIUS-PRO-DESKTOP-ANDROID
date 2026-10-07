@@ -15,7 +15,7 @@ import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { Icon, IconName } from './icons';
 import Sheet from './Sheet';
-import { Field } from './form';
+import { Field, groupDigits } from './form';
 
 export function AmountCard({ label, value, onChange, prefix = 'Sh', tone, hint, sign }: {
   label: string; value: string; onChange: (v: string) => void;
@@ -31,7 +31,7 @@ export function AmountCard({ label, value, onChange, prefix = 'Sh', tone, hint, 
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: tone || colors.faint, marginRight: 6 }}>{(sign ? sign + ' ' : '') + prefix}</Text>
         <TextInput
           ref={ref}
-          value={value}
+          value={groupDigits(value)}
           onChangeText={(v) => onChange(v.replace(/[^0-9.]/g, ''))}
           keyboardType="decimal-pad"
           placeholder="0"

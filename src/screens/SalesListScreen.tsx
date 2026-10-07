@@ -35,6 +35,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 import { listRange, inRange } from '../data/helpers';
 import SegmentSlider from '../components/SegmentSlider';
+import { isRestaurant, words } from '../data/restaurant';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 type Props = NativeStackScreenProps<RootStackParamList, any>;
@@ -101,7 +102,7 @@ function dayLabel(ts: string) {
 
 export default function SalesListScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party, deleteSale, deletePayment, deletePurchase, convertEstimate, voidEstimate, canEditSale, can } = useAppData();
+  const { db, money, party, deleteSale, deletePayment, deletePurchase, voidEstimate, canEditSale, can } = useAppData();
   const { saleDoc, paymentDoc, purchaseDoc } = useDocBuilder();
   /** A document being sent as a message, and to whom. */
   const [sending, setSending] = useState<{ doc: DocMeta; phone?: string; email?: string } | null>(null);
@@ -169,6 +170,8 @@ export default function SalesListScreen({ navigation }: Props) {
     const mineOnly = !canFor(db.session.role, 'sales.view_all');
     db.sales.forEach((s) => {
       if (mineOnly && s.userId !== db.session.userId) return;
+      // a deleted sale leaves the activity; it waits in More, Deleted transactions
+      if (s.deletedAt) return;
       const void_ = s.status === 'void';
       out.push({
         id: s.id, kind: 'sale', ts: s.ts,
@@ -182,7 +185,7 @@ export default function SalesListScreen({ navigation }: Props) {
           : s.due <= 0.01 ? { label: 'Paid', tone: 'good' }
             : s.due < s.total ? { label: 'Partial', tone: 'warn' }
               : { label: 'Unpaid', tone: 'danger' },
-        label: s.method === 'credit' ? 'Credit sale' : 'Cash sale',
+        label: s.ticketName ? 'Order · ' + s.ticketName : isRestaurant(db) ? 'Order' : s.method === 'credit' ? 'Credit sale' : 'Cash sale',
         labelColor: s.method === 'credit' ? colors.accent : colors.good,
         foot: void_ ? undefined
           : s.due > 0.01 ? owed(s.due, s.paid)
@@ -190,7 +193,7 @@ export default function SalesListScreen({ navigation }: Props) {
         phone: phoneOf(s.partyId),
         userId: s.userId, partyId: s.partyId, status: void_ ? 'void' : s.due <= 0.01 ? 'paid' : s.paid > 0 ? 'partial' : 'unpaid',
         open: () => navigation.navigate('SaleDetail', { saleId: s.id }),
-        edit: void_ ? undefined : () => {
+        edit: void_ || !can('sales.edit') ? undefined : () => {
           const ok = canEditSale(s.id);
           if (!ok.ok) { error(ok.why || 'This sale can no longer be edited.'); return; }
           navigation.navigate('EditSale', { saleId: s.id });
@@ -200,7 +203,7 @@ export default function SalesListScreen({ navigation }: Props) {
         settle: !void_ && s.due > 0.01 ? { label: 'Receive payment', run: () => navigation.navigate('PaymentNew', { direction: 'in', partyId: s.partyId || undefined }) } : undefined,
         remove: can('sales.delete') && !void_ ? {
           label: 'Delete sale',
-          text: 'The sale will be reversed and stay in the audit trail.',
+          text: 'It leaves your activity. Stock and money are reversed, and you can restore it from More → Deleted transactions.',
           run: () => { if (deleteSale(s.id, 'Deleted from sales overview')) success(s.no + ' deleted'); },
         } : undefined,
       });
@@ -209,6 +212,7 @@ export default function SalesListScreen({ navigation }: Props) {
     // what was bought sits beside what was sold, for those allowed to see it
     if (can('purchases.view')) {
       db.purchases.forEach((pu) => {
+        if (pu.deletedAt) return;
         const void_ = pu.status === 'void';
         out.push({
           id: pu.id, kind: 'purchase', ts: pu.ts,
@@ -234,8 +238,8 @@ export default function SalesListScreen({ navigation }: Props) {
           settle: !void_ && pu.due > 0.01 ? { label: 'Pay this bill', run: () => navigation.navigate('PaymentNew', { direction: 'out', partyId: pu.partyId || undefined }) } : undefined,
           edit: void_ || !can('purchases.edit') ? undefined : () => navigation.navigate('PurchaseNew', { editPurchaseId: pu.id }),
           remove: can('purchases.delete') && !void_ ? {
-            label: 'Delete sale',
-            text: 'The stock and money will be reversed and it stays in the audit trail.',
+            label: 'Delete purchase',
+            text: 'It leaves your activity. Stock and money are reversed, and you can restore it from More → Deleted transactions.',
             run: () => { if (deletePurchase(pu.id, 'Deleted from transactions')) success(pu.no + ' deleted'); },
           } : undefined,
         });
@@ -274,7 +278,7 @@ export default function SalesListScreen({ navigation }: Props) {
         phone: phoneOf(p.partyId),
         partyId: p.partyId,
         open: () => navigation.navigate('PaymentDetail', { paymentId: p.id }),
-        edit: () => navigation.navigate('PaymentDetail', { paymentId: p.id }),
+        edit: can('finance.edit') ? () => navigation.navigate('PaymentDetail', { paymentId: p.id }) : undefined,
         doc: () => paymentDoc(p),
         remove: can('finance.delete') ? {
           label: 'Delete payment',
@@ -305,17 +309,14 @@ export default function SalesListScreen({ navigation }: Props) {
           ...(e as any), gross: e.lines.reduce((a, l) => a + l.qty * l.price, 0) , tax: 0, additionalCharges: 0,
           paid: 0, due: 0, method: 'cash', userId: db.session.userId,
         } as any, 'Quotation'),
-        edit: open ? () => navigation.navigate('EstimateNew', { editEstimateId: e.id }) : undefined,
-        remove: open ? {
+        edit: open && can('quotes.create') ? () => navigation.navigate('EstimateNew', { editEstimateId: e.id }) : undefined,
+        remove: open && can('quotes.delete') ? {
           label: 'Delete quotation',
           text: 'The quotation is closed and kept in the audit log. Nothing was posted, so no stock or money moves.',
           run: () => { voidEstimate(e.id); success(e.no + ' deleted'); },
         } : undefined,
-        convert: open && can('sales.create') ? () => {
-          const sale = convertEstimate(e.id, (db.settings.defaultMethod as PayMethod) || 'cash');
-          if (!sale) { error('This quotation could not be converted.'); return; }
-          success(e.no + ' converted to ' + sale.no);
-          navigation.navigate('SaleDetail', { saleId: sale.id });
+        convert: open && can('quotes.convert') && can('sales.create') ? () => {
+          navigation.navigate('NewSale', { fromEstimateId: e.id });
         } : undefined,
       });
     });
@@ -438,16 +439,21 @@ export default function SalesListScreen({ navigation }: Props) {
   const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
   const balanceDue = sales.reduce((sum, s) => sum + Math.max(0, s.due), 0);
 
+  const showTotals = can('sales.view_totals');
+  const showBalances = can('sales.view_balances');
+
   const openMenu = (r: Row) => { setConfirm(false); setMenu(r); };
   const closeMenu = () => { setMenu(null); setConfirm(false); };
   const after = (fn: () => void) => () => { closeMenu(); setTimeout(fn, 120); };
 
   const header = (
     <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 12 }}>
-      {/* the period's takings and what is still owed on them */}
+      {/* the period's takings and what is still owed on them — each only for roles allowed to see it */}
+      {showTotals || showBalances ? (
       <View style={{
         flexDirection: 'row', borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden',
       }}>
+        {showTotals ? (
         <View style={{ flex: 1, padding: 14, gap: 4 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Icon name="receipt" size={14} color={colors.accent} />
@@ -456,7 +462,9 @@ export default function SalesListScreen({ navigation }: Props) {
           <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(totalSales)}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{sales.length} sale{sales.length === 1 ? '' : 's'} · {periodLabel}</Text>
         </View>
-        <View style={{ width: 1, backgroundColor: colors.line, marginVertical: 12 }} />
+        ) : null}
+        {showTotals && showBalances ? <View style={{ width: 1, backgroundColor: colors.line, marginVertical: 12 }} /> : null}
+        {showBalances ? (
         <View style={{ flex: 1, padding: 14, gap: 4 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Icon name="alert" size={14} color={balanceDue ? colors.danger : colors.good} />
@@ -465,7 +473,9 @@ export default function SalesListScreen({ navigation }: Props) {
           <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: balanceDue ? colors.danger : colors.good }}>{money(balanceDue)}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{balanceDue ? 'Still to collect' : 'All collected'}</Text>
         </View>
+        ) : null}
       </View>
+      ) : null}
 
       {/* search, and one button for every filter */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -546,7 +556,7 @@ export default function SalesListScreen({ navigation }: Props) {
             <Empty
               title={q || kind !== 'all' ? 'Nothing matches' : 'No transactions yet'}
               subtitle={q || kind !== 'all' ? 'Try another search or filter.' : 'Sales, purchases, payments and quotations will collect here.'}
-              actionLabel="New sale"
+              actionLabel={words(db).newSale}
               onAction={() => navigation.navigate('NewSale')}
             />
           }
@@ -687,7 +697,7 @@ export default function SalesListScreen({ navigation }: Props) {
       />
 
       {tab === 'txn' ? (
-        <FAB label="New sale" icon="plus" color={FAB_COLORS.newSale} hidden={fab.hidden} onPress={() => navigation.navigate('NewSale')} />
+        <FAB label={words(db).newSale} icon="plus" color={FAB_COLORS.newSale} hidden={fab.hidden} onPress={() => navigation.navigate('NewSale')} />
       ) : null}
     </View>
   );

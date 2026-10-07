@@ -11,6 +11,7 @@ import { useAppData } from '../data/AppDataContext';
 import { Icon, IconName } from './icons';
 import Sheet from './Sheet';
 import { Field, FieldShell, Button, SegPill } from './ui';
+import { ledgerBalances } from '../data/coa';
 import type { Ledger, LedgerType } from '../data/coa';
 
 const TYPE_LABEL: Record<LedgerType, string> = {
@@ -26,8 +27,10 @@ function nextCode(all: Ledger[], type: LedgerType): string {
 }
 
 export default function LedgerPicker({
-  label, value, onChange, types, icon = 'doc', placeholder = 'Choose a ledger', canCreate, style, compact, trigger,
+  label, value, onChange, types, icon = 'doc', placeholder = 'Choose a ledger', canCreate, style, compact, trigger, showBalance,
 }: {
+  /** Shows each ledger's balance today beside its name, and under the one chosen. */
+  showBalance?: boolean;
   label: string;
   value: string;
   onChange: (id: string) => void;
@@ -44,7 +47,7 @@ export default function LedgerPicker({
   compact?: boolean;
 }) {
   const { colors } = useTheme();
-  const { db, addLedger } = useAppData();
+  const { db, addLedger, money } = useAppData();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [making, setMaking] = useState<{ name: string; type: LedgerType } | null>(null);
@@ -56,6 +59,12 @@ export default function LedgerPicker({
     [all, types],
   );
   const chosen = all.find((l) => l.id === value);
+  // one pass over the books for every ledger, only while balances are wanted
+  const balances = useMemo(() => (showBalance && db ? ledgerBalances(db) : null), [showBalance, db]);
+  const balText = (id: string) => {
+    const b = balances?.get(id) || 0;
+    return (b < 0 ? '-' : '') + money(Math.abs(b));
+  };
 
   // a ledger just created is chosen as soon as it exists
   useEffect(() => {
@@ -92,7 +101,10 @@ export default function LedgerPicker({
           {chosen ? chosen.name : placeholder}
         </Text>
         {chosen && !compact ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 1 }}>{chosen.code} · {TYPE_LABEL[chosen.type]}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 1 }}>{chosen.code} · {TYPE_LABEL[chosen.type]}{balances ? ' · Balance ' + balText(chosen.id) : ''}</Text>
+        ) : null}
+        {chosen && compact && balances ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 1 }}>Balance {balText(chosen.id)}</Text>
         ) : null}
       </FieldShell>
       )}
@@ -157,6 +169,9 @@ export default function LedgerPicker({
                     >
                       <Text style={{ width: 46, fontFamily: fonts.mono, fontSize: 12.5, color: colors.faint }}>{l.code}</Text>
                       <Text numberOfLines={1} style={{ flex: 1, fontFamily: on ? fonts.uiBold : fonts.ui, fontSize: 15, color: on ? colors.accent : colors.ink }}>{l.name}</Text>
+                      {balances ? (
+                        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: (balances.get(l.id) || 0) < 0 ? colors.danger : colors.soft }}>{balText(l.id)}</Text>
+                      ) : null}
                       {on ? <Icon name="check" size={16} color={colors.accent} /> : null}
                     </Pressable>
                   );

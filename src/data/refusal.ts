@@ -14,13 +14,21 @@ import { Alert } from 'react-native';
 export class Refusal extends Error {
   readonly title: string;
   readonly why: string;
-  constructor(title: string, why: string) {
-    // the message keeps the old one-line form for callers that show e.message
-    super(title + ' — ' + why);
+  constructor(title: string, why?: string) {
+    // the message keeps the old one-line form for callers that show e.message;
+    // a one-argument refusal is just the reason, under a plain heading
+    super(why === undefined ? title : title + ' — ' + why);
     this.name = 'Refusal';
-    this.title = title;
-    this.why = why;
+    this.title = why === undefined ? 'Cannot do that' : title;
+    this.why = why === undefined ? title : why;
   }
+}
+
+/** Shows why something was refused (or failed) instead of letting it crash. */
+export function explain(error: unknown) {
+  const r = error as Refusal;
+  if (r?.name === 'Refusal') Alert.alert(r.title || 'Not allowed', r.why || r.message);
+  else Alert.alert('That did not work', (error as Error)?.message || String(error));
 }
 
 let installed = false;

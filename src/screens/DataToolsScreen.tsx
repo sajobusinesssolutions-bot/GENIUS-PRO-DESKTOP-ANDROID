@@ -7,7 +7,12 @@
  * readable in the documents folder, is removed the first time this opens.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { useAuthSafe } from '../data/AuthContext';
+import { refreshSession } from '../data/authApi';
+import { driveStatus, driveLinkUrl, unlinkDrive, uploadDriveBackup, DriveStatus } from '../data/syncClient';
+import { returnUrl } from './GoogleSignInScreen';
 import { Pressable } from '../components/Press';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
@@ -23,6 +28,7 @@ import { BACKUP_MIME } from '../data/backupCrypto';
 import { pickReadableFile } from '../data/pickFile';
 import {
   BackupSchedule, DeviceBackup, backupFolderPath, deleteBackup, listBackups, readBackup, writeBackup,
+  chooseBackupFolder, chosenFolderText, forgetBackupFolder, loadChosenFolder, backupBase64,
 } from '../data/deviceBackup';
 
 const SCHEDULES: { v: BackupSchedule; l: string }[] = [
@@ -43,6 +49,88 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
   const [busy, setBusy] = useState<string | null>(null);
 
   const reload = useCallback(() => setBackups(listBackups()), []);
+  const account = useAuthSafe()?.account;
+  const [folder, setFolder] = useState<string | null>(chosenFolderText());
+  const [drive, setDrive] = useState<DriveStatus | null>(null);
+
+  /** A short-lived session token for the account, for the Drive calls. */
+  const token = useCallback(async () => {
+    if (!account?.refresh || account.localOnly) return null;
+    const r = await refreshSession(account.refresh);
+    return r.ok ? r.value.access : null;
+  }, [account?.refresh, account?.localOnly]);
+
+  const loadDrive = useCallback(async () => {
+    const t = await token();
+    if (!t) { setDrive(null); return; }
+    const r = await driveStatus(t);
+    setDrive(r.ok ? r.value : null);
+  }, [token]);
+
+  useEffect(() => {
+    void loadChosenFolder().then(() => setFolder(chosenFolderText()));
+    void loadDrive();
+  }, [loadDrive]);
+
+  async function pickFolder() {
+    try {
+      const uri = await chooseBackupFolder();
+      setFolder(chosenFolderText());
+      if (uri) success('Backups will also be saved to ' + (chosenFolderText() || 'Downloads'));
+    } catch (e: any) {
+      error(e?.message || 'That folder could not be used. Choose Downloads.');
+    }
+  }
+
+  async function connectDrive() {
+    const t = await token();
+    if (!t) { error('Sign in to your Genius Pro account first.'); return; }
+    setBusy('drive');
+    try {
+      const back = returnUrl();
+      const r = await driveLinkUrl(t, back);
+      if (!r.ok) { error(r.error.message); return; }
+      const res = await WebBrowser.openAuthSessionAsync(r.value.url, back);
+      if (res.type === 'success' && /drive=linked/.test(res.url)) success('Google Drive connected');
+      else if (res.type === 'success') error('Google Drive was not connected. Try again.');
+      await loadDrive();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function disconnectDrive() {
+    Alert.alert('Disconnect Google Drive?', 'Backups already in Drive stay there. New ones will not go up until you connect again.', [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Disconnect', style: 'destructive', onPress: async () => {
+          const t = await token();
+          if (t) await unlinkDrive(t);
+          await loadDrive();
+        },
+      },
+    ]);
+  }
+
+  /** Makes a fresh encrypted backup and sends it to the Drive folder. */
+  async function backupToDrive(existing?: DeviceBackup) {
+    if (!db) return;
+    const t = await token();
+    if (!t) { error('Sign in to your Genius Pro account first.'); return; }
+    setBusy('driveUp');
+    try {
+      const b = existing || writeBackup(db, false);
+      if (!existing) { setSetting({ lastBackupAt: new Date().toISOString() }); reload(); }
+      const r = await uploadDriveBackup(t, b.name, await backupBase64(b.uri));
+      if (!r.ok) { error(r.error.message); return; }
+      success('Backed up to Google Drive · ' + r.value.folder);
+      await loadDrive();
+    } catch (e: any) {
+      error(e?.message || 'The backup could not be sent to Google Drive.');
+    } finally {
+      setBusy(null);
+    }
+  }
 
   useEffect(() => {
     reload();
@@ -56,12 +144,29 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
 
   function backupNow() {
     if (!db) return;
+    // the first time, offer the Downloads folder, so the backup outlives the app
+    if (Platform.OS === 'android' && !folder) {
+      Alert.alert(
+        'Save backups to Downloads?',
+        'Choose Downloads on the next screen and tap "Use this folder". A "Genius Pro Backups" folder is made there, and every backup is saved into it as well as in the app.',
+        [
+          { text: 'Only in the app', onPress: () => writeNow() },
+          { text: 'Choose Downloads', onPress: async () => { await pickFolder(); writeNow(); } },
+        ],
+      );
+      return;
+    }
+    writeNow();
+  }
+
+  function writeNow() {
+    if (!db) return;
     setBusy('backup');
     try {
       const b = writeBackup(db, false);
       setSetting({ lastBackupAt: new Date().toISOString() });
       reload();
-      success('Encrypted backup saved · ' + sizeText(b.size));
+      success('Encrypted backup saved' + (b.outside ? ' to ' + (chosenFolderText() || 'Downloads') : '') + ' · ' + sizeText(b.size));
     } catch (e: any) {
       error(e?.message || 'The backup could not be saved.');
     } finally {
@@ -207,6 +312,23 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
           <Icon name="alert" size={17} color={colors.faint} />
         </Pressable>
 
+        {Platform.OS === 'android' ? (
+          <Pressable
+            onPress={folder ? () => Alert.alert('Backup folder', 'Backups are also saved to ' + folder + '.', [
+              { text: 'OK', style: 'cancel' },
+              { text: 'Choose another', onPress: pickFolder },
+              { text: 'Stop saving there', style: 'destructive', onPress: async () => { await forgetBackupFolder(); setFolder(null); } },
+            ]) : pickFolder}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 }}
+          >
+            <Icon name="down" size={17} color={folder ? colors.good : colors.accent} />
+            <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: folder ? colors.ink : colors.accent }}>
+              {folder ? 'Also saved to ' + folder : 'Save backups to a Downloads folder'}
+            </Text>
+            <Icon name="chev" size={16} color={colors.faint} />
+          </Pressable>
+        ) : null}
+
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginTop: 16, marginBottom: 10 }}>Auto-backup schedule</Text>
         <ChoiceChips value={schedule} options={SCHEDULES} onChange={(v) => setSetting({ backupSchedule: v })} />
 
@@ -228,6 +350,9 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
                 {(b.at ? fmtDate(new Date(b.at).toISOString()) : '') + ' · ' + sizeText(b.size) + (b.auto ? ' · scheduled' : '')}
               </Text>
             </View>
+            {drive?.linked ? (
+              <Pressable hitSlop={8} accessibilityLabel={'Send ' + b.name + ' to Google Drive'} onPress={() => backupToDrive(b)}><Icon name="cloud" size={18} color={colors.accent} /></Pressable>
+            ) : null}
             <Pressable hitSlop={8} accessibilityLabel={'Share ' + b.name} onPress={() => share(b)}><Icon name="up" size={18} color={colors.accent} /></Pressable>
             <Pressable hitSlop={8} accessibilityLabel={'Restore ' + b.name} onPress={() => confirmRestore(() => readBackup(b.uri), b.name)}><Icon name="down" size={18} color={colors.good} /></Pressable>
             <Pressable hitSlop={8} accessibilityLabel={'Delete ' + b.name} onPress={() => remove(b)}><Icon name="trash" size={18} color={colors.danger} /></Pressable>
@@ -242,6 +367,30 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
         <View style={{ marginTop: 14 }}>
           <Button label="Restore from a file" loading={busy === 'restore'} icon={<Icon name="down" size={17} color={colors.ink} />} onPress={restoreFromFile} />
         </View>
+      </ToolCard>
+
+      <ToolCard
+        icon="cloud" tone="accent" title="Google Drive"
+        sub={drive?.linked ? 'Backups go to "Genius Pro Backups" in ' + (drive.email || 'your Drive') : 'Keep encrypted backups in the Google Drive of ' + (account?.email || 'your account')}
+      >
+        {!account || account.localOnly ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>Sign in to a Genius Pro account to back up to Google Drive.</Text>
+        ) : drive?.linked ? (
+          <>
+            <Button variant="pri" label="Back up to Google Drive now" loading={busy === 'driveUp'} icon={<Icon name="cloud" size={17} color={colors.accentInk} />} onPress={() => backupToDrive()} />
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 8, textAlign: 'center' }}>
+              Last sent: {drive.lastBackupAt ? fmtDate(drive.lastBackupAt) : 'never'}
+            </Text>
+            {row('x', 'Disconnect Google Drive', disconnectDrive, colors.danger)}
+          </>
+        ) : (
+          <>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginBottom: 12 }}>
+              Google asks once to let Genius Pro add files to your Drive. It can only see the backups it puts there.
+            </Text>
+            <Button variant="pri" label="Connect Google Drive" loading={busy === 'drive'} icon={<Icon name="cloud" size={17} color={colors.accentInk} />} onPress={connectDrive} />
+          </>
+        )}
       </ToolCard>
 
       <ToolCard icon="swap" tone="accent" title="Import and export" sub="Items in and out as spreadsheet files.">

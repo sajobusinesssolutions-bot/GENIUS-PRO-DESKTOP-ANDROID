@@ -22,7 +22,8 @@ import { Logo } from '../components/Logo';
 
 import { Icon } from '../components/icons';
 import { useGoReset } from '../nav/navigate';
-import { listBusinesses, downloadSnapshot, setBusinessStatus, RemoteBusiness, filterVisibleBusinesses } from '../data/syncClient';
+import { listBusinesses, downloadSnapshot, setBusinessStatus, RemoteBusiness, filterVisibleBusinesses, lastAccountLicence } from '../data/syncClient';
+import { EDITIONS, editionOfType, licensedEdition, editionLockReason, businessAllowance, businessLimitWords } from '../data/editions';
 import { refreshSession, serverConfigured } from '../data/authApi';
 import { useSyncRun } from '../data/useSyncRun';
 import { fmtDate } from '../data/helpers';
@@ -30,7 +31,7 @@ import { fmtDate } from '../data/helpers';
 /** Enough of the unique id to tell two shops with the same name apart. */
 const shortId = (id: string) => 'ID ' + id.replace(/-/g, '').slice(0, 8).toUpperCase();
 
-export default function BusinessesScreen() {
+export default function BusinessesScreen({ route }: { route?: { params?: { stay?: boolean } } } = {}) {
   const { colors } = useTheme();
   const { db, adoptBook, startFreshBook } = useAppData();
   const { account } = useAuth();
@@ -69,7 +70,7 @@ export default function BusinessesScreen() {
 
   // A brand-new account with nothing anywhere: straight into setting up.
   useEffect(() => {
-    if (list && list.length === 0 && !problem && !hasBooks) goReset('Onboarding');
+    if (list && list.length === 0 && !problem && !hasBooks && !route?.params?.stay) goReset('Onboarding');
   }, [list, problem, hasBooks, goReset]);
 
   /** Sends this phone's books up before they are replaced. */
@@ -92,6 +93,13 @@ export default function BusinessesScreen() {
 
   async function open(b: RemoteBusiness) {
     if (isHere(b)) { goReset('PinLock'); return; }
+    // a business of another kind needs that edition's licence
+    const allowed = licensedEdition(lastAccountLicence(), db?.licence?.licence);
+    const kind = b.business_type ? editionOfType(b.business_type) : null;
+    if (lastAccountLicence()?.plan && kind && kind !== allowed) {
+      Alert.alert(b.name + ' is a ' + EDITIONS[kind].name.toLowerCase() + ' business', editionLockReason(allowed, kind));
+      return;
+    }
     setBusy(b.id);
     try {
       if (!(await keepCurrent())) return;
@@ -128,6 +136,12 @@ export default function BusinessesScreen() {
   }
 
   async function startNew() {
+    // only as many businesses as the licence allows; the server refuses more too
+    const room = businessAllowance(lastAccountLicence(), db);
+    if (room.left <= 0) {
+      Alert.alert('Business limit reached', businessLimitWords(room));
+      return;
+    }
     setBusy('new');
     try {
       if (!(await keepCurrent())) return;
@@ -155,7 +169,22 @@ export default function BusinessesScreen() {
     ]);
   }
 
-  const card = (o: { key: string; name: string; sub: string; current?: boolean; off?: boolean; loading?: boolean; onPress?: () => void; onMore?: () => void; idLine?: string }) => (
+  /** How long ago, in a few words: 'just now', '5 min ago', '3 h ago', '2 days ago'. */
+  const ago = (iso?: string | null) => {
+    if (!iso) return '';
+    const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' day' + (Math.round(m / 1440) === 1 ? '' : 's') + ' ago';
+  };
+
+  /** Sync on or off, at a glance, with when it last reached the account. */
+  const syncPill = (on: boolean | null | undefined, when?: string | null) => (on === undefined ? null : (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: on ? colors.goodSoft : colors.sunk }}>
+      <Icon name="cloud" size={12} color={on ? colors.good : colors.faint} />
+      <Text style={{ fontFamily: fonts.uiBold, fontSize: 11.5, color: on ? colors.good : colors.faint }}>{on ? 'Sync on' : 'Sync off'}{when ? ' · ' + ago(when) : ''}</Text>
+    </View>
+  ));
+
+  const card = (o: { key: string; name: string; sub: string; current?: boolean; off?: boolean; loading?: boolean; onPress?: () => void; onMore?: () => void; idLine?: string; sync?: boolean | null; syncedAt?: string | null }) => (
     <Tap
       key={o.key}
       feel="soft"
@@ -182,6 +211,7 @@ export default function BusinessesScreen() {
         <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: o.current ? colors.accent : colors.faint, marginTop: 3 }}>
           {o.sub}{o.idLine ? ' · ' + o.idLine : ''}
         </Text>
+        {syncPill(o.sync, o.syncedAt)}
       </View>
       {o.loading ? <ActivityIndicator color={colors.accent} /> : o.onMore ? (
         <Pressable onPress={o.onMore} hitSlop={10} accessibilityLabel={'More for ' + o.name} style={{ padding: 4 }}>
@@ -223,13 +253,22 @@ export default function BusinessesScreen() {
             key: 'here', name: here?.name || db.firm.name, current: true,
             sub: here ? 'On this phone' : 'On this phone · not saved to your account yet',
             idLine: here && named(here) ? shortId(here.id) : undefined,
+            // the books on this phone say for themselves
+            sync: !!db.sync?.on,
+            syncedAt: db.sync?.on ? db.sync.lastAt || null : null,
             onPress: () => goReset('PinLock'),
           }) : null}
 
           {others.map((b) => card({
             key: b.id, name: b.name, off: b.active === false, loading: busy === b.id,
-            sub: b.active === false ? 'Deactivated' : b.snapshot_at ? 'Saved ' + fmtDate(b.snapshot_at) : 'Nothing saved yet',
+            sub: (b.business_type ? EDITIONS[editionOfType(b.business_type)].name + ' · ' : '')
+              + (b.active === false ? 'Deactivated' : b.snapshot_at ? 'Saved ' + fmtDate(b.snapshot_at) : 'Nothing saved yet'),
             idLine: named(b) ? shortId(b.id) : undefined,
+            // The server says, from the last copy of the books. An older server says
+            // nothing — then a saved copy is the answer: copies only go up while
+            // cloud sync is on, so a business with one has been syncing.
+            sync: b.active === false ? false : typeof b.sync_on === 'boolean' ? b.sync_on : !!b.snapshot_at,
+            syncedAt: b.snapshot_at,
             onPress: () => void open(b),
             onMore: b.active === false ? undefined : () => more(b),
           }))}
@@ -247,6 +286,11 @@ export default function BusinessesScreen() {
             {busy === 'new' ? <ActivityIndicator color={colors.accent} /> : <Icon name="plus" size={18} color={colors.accent} />}
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>Start a new business</Text>
           </Tap>
+          {lastAccountLicence() ? (
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', marginTop: 10 }}>
+              {EDITIONS[licensedEdition(lastAccountLicence(), db?.licence?.licence)].name} edition · {businessAllowance(lastAccountLicence(), db).used} of {businessAllowance(lastAccountLicence(), db).max} business{businessAllowance(lastAccountLicence(), db).max === 1 ? '' : 'es'} used
+            </Text>
+          ) : null}
         </>
       )}
     </ScrollView>

@@ -9,7 +9,7 @@
  */
 import { Platform } from 'react-native';
 import * as Print from 'expo-print';
-import type { DB, DocKind, Paper, Printer } from './types';
+import type { DB, DocKind, Paper, Printer, PrintPurpose } from './types';
 import type { PrintOpts } from './docPrint';
 
 /** The template key for a document, from its printed title. */
@@ -28,6 +28,27 @@ export function defaultPrinter(db: DB | null | undefined): Printer | undefined {
   return db?.printers?.find((p) => p.dflt) || db?.printers?.[0];
 }
 
+/** What a printer prints; an older printer without the choice prints bills, not kitchen tickets. */
+export function printsOf(p: Printer): PrintPurpose[] {
+  return p.prints && p.prints.length ? p.prints : ['invoice', 'cash'];
+}
+
+/** What a document is for, so it goes to the printer set up for it. */
+export function purposeOf(d: { method?: string; due?: number; docKind?: DocKind; kind: string }): PrintPurpose {
+  const k = d.docKind || docKindOf(d.kind);
+  if (k !== 'invoice' && k !== 'receipt') return 'invoice';
+  const credit = (d.due || 0) > 0 || /credit/i.test(d.method || '');
+  return credit ? 'invoice' : 'cash';
+}
+
+/** The printer for a purpose: the default if it prints that, else the first that does, else the default. */
+export function printerFor(db: DB | null | undefined, purpose: PrintPurpose): Printer | undefined {
+  const all = db?.printers || [];
+  const able = all.filter((p) => printsOf(p).includes(purpose));
+  if (purpose === 'order') return able.find((p) => p.dflt) || able[0];
+  return able.find((p) => p.dflt) || able[0] || defaultPrinter(db);
+}
+
 /** The paper a printer takes. "Save as PDF" is A4. */
 export function paperOf(p: Printer | undefined, fallback: Paper = '80mm'): Paper {
   if (!p) return fallback;
@@ -35,7 +56,7 @@ export function paperOf(p: Printer | undefined, fallback: Paper = '80mm'): Paper
 }
 
 /** Everything printDoc needs for one document on one printer. */
-export function printOptsFor(db: DB | null | undefined, docKind: DocKind, printer?: Printer): PrintOpts {
+export function printOptsFor(db: DB | null | undefined, docKind: DocKind, printer?: Printer, purpose?: PrintPurpose): PrintOpts {
   // Receipt settings, "Print receipts as": an A4 page uses the invoice layout and the print dialog
   if (docKind === 'receipt' && db?.printer?.receiptMode === 'a4' && !printer) {
     const a4 = printOptsFor(db, 'invoice');
@@ -46,7 +67,7 @@ export function printOptsFor(db: DB | null | undefined, docKind: DocKind, printe
   const found = db?.templates?.find((t) => t.id === tplId);
   // "Copies per bill" under Printing is the shop's rule; the template's is its own default
   const tpl = found && db?.printer?.copies ? { ...found, copies: Math.max(found.copies || 1, db.printer.copies) } : found;
-  const p = printer || defaultPrinter(db);
+  const p = printer || (purpose ? printerFor(db, purpose) : defaultPrinter(db));
   return {
     tpl,
     // 'Save as PDF' takes the template's own paper: a thermal receipt stays roll-sized,

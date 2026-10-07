@@ -13,6 +13,39 @@ import { View, Text, TextInput, ViewStyle, Animated } from 'react-native';
 import { useTheme, radius, fonts } from '../theme';
 import { Icon, IconName } from './icons';
 import { Tap, TapProps } from './Tap';
+import { useAppDataSafe } from '../data/AppDataContext';
+import { revealFocused } from './KeyboardSafe';
+
+/*
+ * MONEY BOXES. A number box for an amount shows the shop's currency and
+ * groups the digits with commas as they are typed (1,250,000), but the screen
+ * behind it still receives the plain number ("1250000"), so nothing that adds
+ * or saves the figure has to change. Numeric boxes whose label reads like an
+ * amount get this on their own; `money` turns it on or off by hand.
+ */
+const MONEY_LABEL = /amount|price|rate\b|cost|paid|pay\b|received|receive|balance|charges?|salary|wage|limit|total|opening|value|cash|fee|expense|income|debit|credit|deposit|withdraw|float|tip|budget/i;
+const NOT_MONEY_LABEL = /%|percent|qty|quantity|days?\b|months?\b|stock|count\b|pieces|pcs\b|age\b|year|port\b|copies|points|level|digits|decimals|minutes|hours|width|factor|tax rate/i;
+
+export function isMoneyLabel(label?: string): boolean {
+  return !!label && MONEY_LABEL.test(label) && !NOT_MONEY_LABEL.test(label);
+}
+
+/** "1250000.5" → "1,250,000.5", leaving what is being typed after the point alone. */
+export function groupDigits(raw: string): string {
+  if (!raw) return raw;
+  const neg = raw.trim().startsWith('-');
+  const clean = raw.replace(/[^0-9.]/g, '');
+  const dot = clean.indexOf('.');
+  const int = dot >= 0 ? clean.slice(0, dot) : clean;
+  const frac = dot >= 0 ? clean.slice(dot + 1).replace(/\./g, '') : null;
+  const grouped = int.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '-' : '') + grouped + (frac !== null ? '.' + frac : '');
+}
+
+/** What the screen gets back: the digits without the commas. */
+export function ungroupDigits(shown: string): string {
+  return shown.replace(/[^0-9.\-]/g, '');
+}
 
 const SoftTap = (p: TapProps) => <Tap feel="soft" {...p} />;
 
@@ -74,7 +107,7 @@ export function FieldNote({ children }: { children: React.ReactNode }) {
 export function Field({
   label, value, onChangeText, placeholder, numeric, decimal, multiline, readOnly, right, style,
   compact, error, icon, secure, maxLength, autoCapitalize, onFocus, onBlur, suffix, autoFocus, inputRef, big, keyboard,
-  trailing, returnKeyType, onSubmitEditing, autoCorrect, keepFocus,
+  trailing, returnKeyType, onSubmitEditing, autoCorrect, keepFocus, money,
 }: {
   label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string;
   numeric?: boolean; decimal?: boolean; multiline?: boolean; readOnly?: boolean; right?: React.ReactNode;
@@ -94,16 +127,23 @@ export function Field({
   autoCorrect?: boolean;
   /** Stay in the box after Enter, for typing or scanning several in a row. */
   keepFocus?: boolean;
+  /** An amount: shows the currency and groups the digits. On by itself for amount-like labels. */
+  money?: boolean;
 }) {
   const { colors } = useTheme();
+  const app = useAppDataSafe();
   const [focused, setFocused] = React.useState(false);
   const hasError = !!error;
+  const isMoney = !!numeric && !secure && (money ?? isMoneyLabel(label));
+  const sym = isMoney ? (app?.db?.settings.currency || '') : '';
+  const symBefore = app?.db?.settings.symbolBefore !== false;
   const bg = readOnly ? colors.sunk : colors.surface;
   const hasLabel = !!label;
   // a lone zero in a number box is a blank, not a value: it clears on focus
   // so the first key typed replaces it instead of landing after it
   const raw = String(value ?? '');
-  const shown = numeric && focused && raw !== '' && /^0*(\.0*)?$/.test(raw) ? '' : value;
+  const blankZero = numeric && focused && raw !== '' && /^0*(\.0*)?$/.test(raw);
+  const shown = blankZero ? '' : isMoney ? groupDigits(raw) : value;
   const filled = raw !== '';
   const up = !hasLabel || big || focused || filled;
 
@@ -142,11 +182,14 @@ export function Field({
               <Icon name={icon} size={19} color={hasError ? colors.danger : focused ? colors.accent : colors.soft} />
             </View>
           ) : null}
+          {sym && symBefore && up ? (
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: big ? 22 : 15, color: colors.faint, marginRight: -6 }}>{sym}</Text>
+          ) : null}
 
           <TextInput
             ref={inputRef}
             value={shown}
-            onChangeText={onChangeText}
+            onChangeText={onChangeText && isMoney ? (v) => onChangeText(ungroupDigits(v)) : onChangeText}
             editable={!readOnly}
             placeholder={placeholder}
             placeholderTextColor={focused || !hasLabel ? colors.faint : 'transparent'}
@@ -160,7 +203,7 @@ export function Field({
             onSubmitEditing={onSubmitEditing}
             autoCorrect={autoCorrect}
             submitBehavior={keepFocus ? 'submit' : undefined}
-            onFocus={() => { setFocused(true); onFocus?.(); }}
+            onFocus={() => { setFocused(true); onFocus?.(); revealFocused(); }}
             onBlur={() => { setFocused(false); onBlur?.(); }}
             style={{
               flex: 1, padding: 0, alignSelf: 'stretch',
@@ -173,6 +216,9 @@ export function Field({
             }}
           />
 
+          {sym && !symBefore && up && !suffix ? (
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>{sym}</Text>
+          ) : null}
           {suffix ? (
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>{suffix}</Text>
           ) : null}
@@ -401,6 +447,64 @@ export function SelectField<T extends string>({ label, value, options, onChange,
               {o.v === value ? <Icon name="check" size={17} color={colors.accent} /> : null}
             </Tap>
           ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** A dropdown where several can be ticked: tags, sections of a menu. */
+export function MultiSelectField({ label, value, options, onChange, style, icon, placeholder }: {
+  label?: string; value: string[]; options: { v: string; l: string }[]; onChange: (v: string[]) => void;
+  style?: ViewStyle; icon?: IconName; placeholder?: string;
+}) {
+  const { colors } = useTheme();
+  const [open, setOpen] = React.useState(false);
+  const chosen = options.filter((o) => value.includes(o.v)).map((o) => o.l);
+  const border = open ? colors.accent : colors.line;
+  return (
+    <View style={[{ marginTop: label ? 6 : 0, marginBottom: 14 }, style]}>
+      <Tap feel="soft"
+        onPress={() => setOpen((o) => !o)}
+        style={{
+          minHeight: 56, borderRadius: radius.md, borderWidth: 1.4, borderColor: border,
+          backgroundColor: colors.surface, paddingHorizontal: 15, paddingVertical: 8,
+          flexDirection: 'row', alignItems: 'center', gap: 12,
+        }}
+      >
+        {icon ? <Icon name={icon} size={19} color={open ? colors.accent : colors.soft} /> : null}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 15, color: chosen.length ? colors.ink : colors.faint }}>
+            {chosen.length ? chosen.join(', ') : placeholder || 'None'}
+          </Text>
+        </View>
+        <Icon name={open ? 'up' : 'down'} size={18} color={colors.faint} />
+        {label ? <StaticLabel text={label} bg={colors.surface} color={open ? colors.accent : colors.faint} left={10} /> : null}
+      </Tap>
+      {open ? (
+        <View style={{ marginTop: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, overflow: 'hidden' }}>
+          {options.map((o, i) => {
+            const on = value.includes(o.v);
+            return (
+              <Tap feel="soft"
+                key={o.v}
+                onPress={() => onChange(on ? value.filter((x) => x !== o.v) : [...value, o.v])}
+                style={{
+                  paddingVertical: 14, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 12,
+                  borderBottomWidth: i === options.length - 1 ? 0 : 1, borderBottomColor: colors.line,
+                  backgroundColor: on ? colors.accentSoft : colors.surface,
+                }}
+              >
+                <View style={{ width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: on ? colors.accent : colors.lineHard, backgroundColor: on ? colors.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                  {on ? <Icon name="check" size={12} color={colors.accentInk} /> : null}
+                </View>
+                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{o.l}</Text>
+              </Tap>
+            );
+          })}
+          <Tap feel="soft" onPress={() => setOpen(false)} style={{ paddingVertical: 12, alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.line }}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>Done</Text>
+          </Tap>
         </View>
       ) : null}
     </View>

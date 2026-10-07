@@ -94,7 +94,7 @@ async function owners() {
   const { rows } = await q(`
     select a.id, a.email, a.name, a.status, a.blocked_reason, a.created_at,
            a.last_login_at, a.last_seen_at,
-           l.plan, l.term, l.seats, l.status as lic_status, l.expires_at, l.started_at as licensed_at,
+           l.plan, l.edition, l.max_businesses, l.term, l.seats, l.status as lic_status, l.expires_at, l.started_at as licensed_at,
            (select count(*)::int from devices d where d.account_id = a.id and d.revoked_at is null) as devices,
            (select coalesce(json_agg(json_build_object('id', b.id, 'name', b.name, 'created', b.created_at)
                     order by b.created_at), '[]'::json)
@@ -125,7 +125,8 @@ async function owners() {
       lastLoginAt: r.last_login_at,
       lastSeenAt: r.last_seen_at,
       licence: r.plan ? {
-        plan: r.plan, term: r.term, seats: r.seats, status,
+        plan: r.plan, edition: r.edition || 'retail', term: r.term, seats: r.seats, status,
+        maxBusinesses: r.max_businesses ? Number(r.max_businesses) : (r.plan === 'pro' || r.plan === 'lifetime' ? 5 : 1),
         expiresAt: r.expires_at, daysLeft, since: r.licensed_at,
       } : null,
       devices: r.devices,
@@ -193,8 +194,13 @@ function licenceTerms(body, reply) {
     return null;
   }
   const seats = Math.max(1, Math.min(100, Number(body?.seats) || 1));
+  // which edition of the app the licence is for; Retail when not said
+  const edition = ['retail', 'restaurant', 'pharmacy'].includes(body?.edition) ? body.edition : 'retail';
   const term = days === null ? 'lifetime' : days >= 360 ? 'yearly' : days >= 28 ? 'monthly' : 'days';
-  return { plan, days, seats, term };
+  // how many businesses; empty keeps the plan's own number (Starter 1, Pro 5)
+  const max = body?.businesses === null || body?.businesses === undefined || body?.businesses === '' ? null
+    : Math.max(1, Math.min(99, Number(body.businesses) || 1));
+  return { plan, days, seats, term, edition, maxBusinesses: max };
 }
 
 /**
@@ -205,11 +211,11 @@ function licenceTerms(body, reply) {
 async function grant(accountId, t, by) {
   const status = t.plan === 'trial' ? 'trial' : 'active';
   const { rows } = await q(
-    `insert into licences (account_id, plan, term, seats, status, expires_at, issued_by)
+    `insert into licences (account_id, plan, term, seats, status, expires_at, issued_by, edition, max_businesses)
      values ($1, $2, $3, $4, $5,
-             case when $6::int is null then null else now() + ($6::int * interval '1 day') end, $7)
+             case when $6::int is null then null else now() + ($6::int * interval '1 day') end, $7, $8, $9)
      returning expires_at`,
-    [accountId, t.plan, t.term, t.seats, status, t.days, by],
+    [accountId, t.plan, t.term, t.seats, status, t.days, by, t.edition || 'retail', t.maxBusinesses ?? null],
   );
   return rows[0]?.expires_at || null;
 }

@@ -4,14 +4,15 @@ export type RootStackParamList = {
   Welcome: undefined;
   PinLock: { userId?: string } | undefined;
   Onboarding: undefined;
-  Businesses: undefined;
+  /** `stay`: came back from cancelling setup, so do not send a business-less account straight back into it. */
+  Businesses: { stay?: boolean } | undefined;
   Main: { screen?: keyof TabParamList } | undefined;
 
   MenuGroup: { groupId: string };
 
   // Sell
   /** copyFromId starts a new sale with another one's items, customer and method. */
-  NewSale: { editSaleId?: string; copyFromId?: string } | undefined;
+  NewSale: { editSaleId?: string; copyFromId?: string; fromEstimateId?: string } | undefined;
   Receipt: { saleId: string };
   Sales: undefined;
   SaleDetail: { saleId: string };
@@ -111,6 +112,11 @@ export type RootStackParamList = {
   Business: undefined;
   Firms: undefined;
   AuditLog: undefined;
+  DeletedTransactions: undefined;
+  Order: { ticketId?: string } | undefined;
+  PriceLists: undefined;
+  MenuEditor: undefined;
+  PrintingKitchen: undefined;
   Notifications: undefined;
   Plans: undefined;
   About: undefined;

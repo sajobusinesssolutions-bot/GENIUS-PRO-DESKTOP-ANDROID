@@ -6,16 +6,17 @@
  * The prototype returned HTML; here every report returns a `ReportResult` so
  * one renderer (ReportDetailScreen) and one exporter set can serve all of them.
  */
-import { DB, Sale, SaleLine, Product, Offer, CreditNoteLine } from './types';
+import { DB, Sale, SaleLine, Product, Offer, CreditNoteLine, Shift } from './types';
 import { money0, fmtDay, startOfDay, endOfDay, daysAgo } from './helpers';
-import { shiftTotals, stockOfImpl, partyBalance } from './logic';
+import { shiftTotals, stockOfImpl, partyBalance, shiftSales as logicShiftSales } from './logic';
+import { isRestaurant, stationOf } from './restaurant';
 
 /* ------------------------------------------------------------------ */
 /* Catalogue                                                           */
 /* ------------------------------------------------------------------ */
 
 export type ReportCategory =
-  | 'Sales' | 'Purchase' | 'Money' | 'Receivables' | 'Payables'
+  | 'Restaurant' | 'Sales' | 'Purchase' | 'Money' | 'Receivables' | 'Payables'
   | 'Stock' | 'Tax & books';
 
 export interface ReportDef { id: string; cat: ReportCategory; name: string; sub: string }
@@ -43,6 +44,19 @@ export const isPremiumReport = (id: string) => PREMIUM_REPORTS.has(id);
  * log, which this build does not carry, so 66.
  */
 export const REPORTS: ReportDef[] = [
+  // Restaurant — the reports a restaurant manager reads (menu engineering, covers, service)
+  { id: 'rest-menu-mix', cat: 'Restaurant', name: 'Menu mix (dish sales)', sub: 'Every dish: plates sold, revenue, share of sales and rank' },
+  { id: 'rest-sections', cat: 'Restaurant', name: 'Sales by section', sub: 'Starters, mains, drinks… ranked by revenue' },
+  { id: 'rest-menus', cat: 'Restaurant', name: 'Sales by menu', sub: 'Food menu, bar menu… what each brought in' },
+  { id: 'rest-order-types', cat: 'Restaurant', name: 'Dine in, takeaway & delivery', sub: 'Orders, revenue and average bill for each' },
+  { id: 'rest-hours', cat: 'Restaurant', name: 'Busy hours', sub: 'Orders and revenue by hour — plan staff and prep' },
+  { id: 'rest-day-week', cat: 'Restaurant', name: 'Day of the week', sub: 'Which days are busiest' },
+  { id: 'rest-servers', cat: 'Restaurant', name: 'Sales by waiter', sub: 'Orders, revenue, average bill and tips of service' },
+  { id: 'rest-tables', cat: 'Restaurant', name: 'Sales by table', sub: 'Which tables and names bring in the most' },
+  { id: 'rest-modifiers', cat: 'Restaurant', name: 'Modifier sales', sub: 'How often each choice is taken and what it adds' },
+  { id: 'rest-stations', cat: 'Restaurant', name: 'Sales by station', sub: 'Kitchen, bar, grill… plates and revenue' },
+  { id: 'rest-cancelled', cat: 'Restaurant', name: 'Cancelled tickets', sub: 'Orders cancelled before they were paid, and their value' },
+  { id: 'rest-sold-out', cat: 'Restaurant', name: 'Sold out & slow dishes', sub: 'Dishes marked sold out, and dishes that did not sell' },
   // Sales
   { id: 'day-close', cat: 'Sales', name: 'Z report · end of day', sub: 'Close the day — takings by mode and cashier' },
   { id: 'x-report', cat: 'Sales', name: 'X report', sub: 'Today so far, without closing' },
@@ -120,7 +134,7 @@ export const REPORTS: ReportDef[] = [
   // Tax & books
   { id: 'tax-summary', cat: 'Tax & books', name: 'Tax summary', sub: 'VAT levied — sales vs purchases' },
   { id: 'party-statement', cat: 'Tax & books', name: 'Party statement', sub: 'Running ledger for any party' },
-  { id: 'ledger-summary', cat: 'Tax & books', name: 'Ledger summary', sub: 'Debit, credit and closing by ledger' },
+  { id: 'ledger-summary', cat: 'Tax & books', name: 'Ledger summary', sub: 'Every ledger, customer and supplier — open one for its ledger' },
   { id: 'voucher-summary', cat: 'Tax & books', name: 'Voucher summary', sub: 'Journal vouchers with date, type and reference' },
   { id: 'chart-of-accounts', cat: 'Tax & books', name: 'Chart of accounts', sub: 'Every ledger with type, totals and balance' },
   { id: 'trial-balance', cat: 'Tax & books', name: 'Trial balance', sub: 'All accounts — Dr must equal Cr' },
@@ -131,8 +145,12 @@ export const REPORTS: ReportDef[] = [
 ];
 
 export const REPORT_CATEGORIES: ReportCategory[] = [
-  'Sales', 'Purchase', 'Money', 'Receivables', 'Payables', 'Stock', 'Tax & books',
+  'Restaurant', 'Sales', 'Purchase', 'Money', 'Receivables', 'Payables', 'Stock', 'Tax & books',
 ];
+
+/** Reports that only mean something to a restaurant. */
+export const RESTAURANT_REPORTS = new Set(['rest-menu-mix', 'rest-sections', 'rest-menus', 'rest-modifiers', 'rest-order-types',
+  'rest-hours', 'rest-servers', 'rest-tables', 'rest-stations', 'rest-cancelled', 'rest-sold-out', 'rest-day-week']);
 
 /** The five the prototype pinned above the list — reference SCREENS.reports.body, 5359. */
 export const FAVOURITE_REPORTS = ['day-close', 'sale-summary', 'ar-aging-summary', 'reorder-list', 'pnl'];
@@ -799,17 +817,23 @@ function orderedLedgerIds(db: DB): string[] {
 function partyLedgerRows(db: DB, id: string): LedgerRow[] {
   const rows: LedgerRow[] = [];
   const p = db.parties.find((x) => x.id === id);
+  // the balance the party was set up with comes before everything else
   if (p && p.openingBalance) {
-    rows.push({ ts: new Date(daysAgo(60)).toISOString(), memo: 'Opening balance', debit: p.openingBalance, credit: 0, balance: 0 });
+    rows.push({ ts: new Date(0).toISOString(), memo: 'Opening balance', debit: Math.max(0, p.openingBalance), credit: Math.max(0, -p.openingBalance), balance: 0 });
   }
   db.sales.forEach((s) => {
     if (s.partyId === id && s.status !== 'void') {
-      rows.push({ ts: s.ts, memo: 'Sale ' + s.no, debit: s.total, credit: s.paidAtSale || 0, balance: 0, ref: { kind: 'sale', id: s.id } });
+      rows.push({ ts: s.ts, memo: 'Sale ' + s.no, debit: s.total, credit: 0, balance: 0, ref: { kind: 'sale', id: s.id } });
+      const paidThen = s.paidAtSale ?? (s.method === 'credit' ? 0 : s.total);
+      if (paidThen > 0) rows.push({ ts: s.ts, memo: 'Paid at sale ' + s.no, debit: 0, credit: paidThen, balance: 0, ref: { kind: 'sale', id: s.id } });
     }
   });
   db.purchases.forEach((x) => {
-    if (x.partyId === id) {
-      rows.push({ ts: x.ts, memo: 'Purchase ' + x.no, debit: x.paid || 0, credit: x.total, balance: 0, ref: { kind: 'purchase', id: x.id } });
+    if (x.partyId === id && x.status !== 'void') {
+      rows.push({ ts: x.ts, memo: 'Purchase ' + (x.ref || x.no), debit: 0, credit: x.total, balance: 0, ref: { kind: 'purchase', id: x.id } });
+      // only what was paid on the day: later payments are their own lines
+      const paidThen = x.method === 'credit' ? 0 : x.total;
+      if (paidThen > 0) rows.push({ ts: x.ts, memo: 'Paid at purchase ' + (x.ref || x.no), debit: paidThen, credit: 0, balance: 0, ref: { kind: 'purchase', id: x.id } });
     }
   });
   db.payments.forEach((x) => {
@@ -855,18 +879,279 @@ RPT['day-close'] = (db, _f, _t, money) => {
     ['On credit', m(z.credit)],
     ['Receipts into drawer', m(z.recv)],
     ['Cash paid out', { text: '(' + money0(z.paidOut) + ')', n: -z.paidOut, tone: 'danger' }],
+    [{ text: 'Money received on debts (all accounts)' + (z.recvCount ? ' · ' + z.recvCount : ''), tone: 'good' }, m(z.recvAll || 0)],
   ];
+  if (isRestaurant(db)) {
+    byMenuOf(db, shiftSalesOf(db, sh)).forEach(([k, v]) => rows.push([{ text: 'Menu · ' + k, tone: 'accent' }, m(v.amount)]));
+  }
   return {
     title,
     stats: [
       { k: 'Opening float', v: money(sh.openingFloat) },
       { k: 'Cash sales', v: money(z.cash), tone: 'g' },
       { k: 'Expected in drawer', v: money(z.expected), tone: 'a' },
+      { k: 'Money received', v: money(z.recvAll || 0), tone: 'g' },
       { k: 'Sales', v: String(z.count) },
     ],
     cols: [{ h: 'Line' }, { h: 'Amount', r: true }],
     rows,
     foot: ['Expected cash', m(z.expected)],
+  };
+};
+
+/* ------------------------------------------------------------------ */
+/* Restaurant                                                          */
+/* ------------------------------------------------------------------ */
+
+/** A shift's bills, the same set the drawer counts. */
+function shiftSalesOf(db: DB, sh: Shift): Sale[] { return logicShiftSales(db, sh); }
+
+/** Revenue by menu (or by section when no menus are set up), largest first. */
+function byMenuOf(db: DB, sales: Sale[]): [string, { qty: number; amount: number }][] {
+  const menus = db.menus || [];
+  const out = new Map<string, { qty: number; amount: number }>();
+  sales.forEach((s) => s.lines.forEach((l) => {
+    const cat = db.products.find((p) => p.id === l.productId)?.category || 'Other';
+    const k = menus.length ? (menus.find((mn) => mn.sections.includes(cat))?.name || 'Not on a menu') : cat;
+    const v = out.get(k) || { qty: 0, amount: 0 };
+    v.qty += l.qty; v.amount += l.qty * l.price;
+    out.set(k, v);
+  }));
+  return [...out.entries()].sort((a, b) => b[1].amount - a[1].amount);
+}
+
+const share = (part: number, all: number): CellObj => ({ text: all ? (part / all * 100).toFixed(1) + '%' : '—', n: all ? part / all * 100 : 0 });
+
+/** Plates and revenue by a key read off each line. */
+function lineRollup(db: DB, from: number, to: number, keyOf: (l: SaleLine, s: Sale) => string) {
+  const out = new Map<string, { qty: number; amount: number; orders: Set<string> }>();
+  salesBetween(db, from, to).forEach((s) => s.lines.forEach((l) => {
+    const k = keyOf(l, s);
+    const v = out.get(k) || { qty: 0, amount: 0, orders: new Set<string>() };
+    v.qty += l.qty; v.amount += l.qty * l.price; v.orders.add(s.id);
+    out.set(k, v);
+  }));
+  return [...out.entries()].sort((a, b) => b[1].amount - a[1].amount);
+}
+
+RPT['rest-menu-mix'] = (db, from, to, money) => {
+  const list = lineRollup(db, from, to, (l) => l.productId);
+  const all = list.reduce((n, [, v]) => n + v.amount, 0);
+  const plates = list.reduce((n, [, v]) => n + v.qty, 0);
+  const avgQty = list.length ? plates / list.length : 0;
+  const rows: Cell[][] = list.map(([id, v], i) => {
+    const p = db.products.find((x) => x.id === id);
+    // menu engineering, by popularity alone: a dish selling well above the average is a star
+    const tag = v.qty >= avgQty * 1.2 ? { text: 'Star', tone: 'good' as const } : v.qty <= avgQty * 0.5 ? { text: 'Slow', tone: 'danger' as const } : { text: 'Steady', tone: 'muted' as const };
+    return [String(i + 1), p?.name || 'Removed dish', p?.category || '—', v.qty, m(v.amount), share(v.amount, all), tag];
+  });
+  return {
+    title: 'Menu mix',
+    stats: [
+      { k: 'Plates sold', v: String(plates), tone: 'a' },
+      { k: 'Revenue', v: money(all), tone: 'g' },
+      { k: 'Best seller', v: rows[0] ? String(rows[0][1]) : '—' },
+    ],
+    cols: [{ h: '#' }, { h: 'Dish' }, { h: 'Section' }, { h: 'Plates', r: true }, { h: 'Revenue', r: true }, { h: 'Share', r: true }, { h: 'Popularity' }],
+    rows,
+    foot: ['', 'Total', '', plates, m(all), '100%', ''],
+    rowRefs: list.map(([id]) => ({ kind: 'product' as const, id })),
+    searchable: true,
+    note: 'Star: sells at least 20% above the average dish. Slow: half the average or less — a candidate to change or drop.',
+  };
+};
+
+RPT['rest-sections'] = (db, from, to) => {
+  const list = lineRollup(db, from, to, (l) => db.products.find((p) => p.id === l.productId)?.category || 'Other');
+  const all = list.reduce((n, [, v]) => n + v.amount, 0);
+  const rows: Cell[][] = list.map(([k, v]) => [k, v.orders.size, v.qty, m(v.amount), share(v.amount, all)]);
+  return {
+    title: 'Sales by section',
+    cols: [{ h: 'Section' }, { h: 'Orders', r: true }, { h: 'Plates', r: true }, { h: 'Revenue', r: true }, { h: 'Share', r: true }],
+    rows,
+    foot: ['Total', '', sumCol(rows, 2), m(all), '100%'],
+  };
+};
+
+RPT['rest-menus'] = (db, from, to) => {
+  const list = byMenuOf(db, salesBetween(db, from, to));
+  const all = list.reduce((n, [, v]) => n + v.amount, 0);
+  const rows: Cell[][] = list.map(([k, v]) => [k, v.qty, m(v.amount), share(v.amount, all)]);
+  return {
+    title: 'Sales by menu',
+    cols: [{ h: (db.menus || []).length ? 'Menu' : 'Section' }, { h: 'Plates', r: true }, { h: 'Revenue', r: true }, { h: 'Share', r: true }],
+    rows,
+    foot: ['Total', sumCol(rows, 1), m(all), '100%'],
+    note: (db.menus || []).length ? undefined : 'No menus are set up yet, so this shows sections. Make menus in Menu & modifiers.',
+  };
+};
+
+RPT['rest-order-types'] = (db, from, to, money) => {
+  const words: Record<string, string> = { dine: 'Dine in', takeaway: 'Takeaway', delivery: 'Delivery' };
+  const out = new Map<string, { n: number; v: number; service: number }>();
+  salesBetween(db, from, to).forEach((s) => {
+    const k = words[s.orderType || ''] || 'Not recorded';
+    const x = out.get(k) || { n: 0, v: 0, service: 0 };
+    x.n++; x.v += s.total; x.service += s.additionalCharges || 0;
+    out.set(k, x);
+  });
+  const list = [...out.entries()].sort((a, b) => b[1].v - a[1].v);
+  const all = list.reduce((n, [, x]) => n + x.v, 0);
+  const rows: Cell[][] = list.map(([k, x]) => [k, x.n, m(x.v), m(x.n ? x.v / x.n : 0), m(x.service), share(x.v, all)]);
+  return {
+    title: 'Dine in, takeaway & delivery',
+    stats: [{ k: 'Orders', v: String(sumCol(rows, 1)), tone: 'a' }, { k: 'Revenue', v: money(all), tone: 'g' }],
+    cols: [{ h: 'Type' }, { h: 'Orders', r: true }, { h: 'Revenue', r: true }, { h: 'Average bill', r: true }, { h: 'Service charge', r: true }, { h: 'Share', r: true }],
+    rows,
+    foot: ['Total', sumCol(rows, 1), m(all), m(sumCol(rows, 1) ? all / sumCol(rows, 1) : 0), m(sumCol(rows, 4)), '100%'],
+  };
+};
+
+RPT['rest-hours'] = (db, from, to) => {
+  const b = Array.from({ length: 24 }, () => ({ n: 0, v: 0, plates: 0 }));
+  salesBetween(db, from, to).forEach((s) => {
+    const h = new Date(s.ts).getHours();
+    b[h].n++; b[h].v += s.total; b[h].plates += s.lines.reduce((n, l) => n + l.qty, 0);
+  });
+  const peak = Math.max(1, ...b.map((x) => x.n));
+  const rows: Cell[][] = [];
+  b.forEach((x, i) => {
+    if (!x.n) return;
+    rows.push([pad2(i) + ':00', x.n, x.plates, m(x.v), m(x.v / x.n), { text: '█'.repeat(Math.max(1, Math.round(x.n / peak * 10))), tone: x.n === peak ? 'good' : 'muted' }]);
+  });
+  const best = b.reduce((n, x, i) => (x.n > b[n].n ? i : n), 0);
+  return {
+    title: 'Busy hours',
+    stats: rows.length ? [{ k: 'Busiest hour', v: pad2(best) + ':00', tone: 'a' }] : undefined,
+    cols: [{ h: 'Hour' }, { h: 'Orders', r: true }, { h: 'Plates', r: true }, { h: 'Revenue', r: true }, { h: 'Average bill', r: true }, { h: 'Busy' }],
+    rows,
+    foot: ['Total', sumCol(rows, 1), sumCol(rows, 2), m(sumCol(rows, 3)), '', ''],
+  };
+};
+
+RPT['rest-day-week'] = (db, from, to) => {
+  const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const b = names.map(() => ({ n: 0, v: 0, days: new Set<string>() }));
+  salesBetween(db, from, to).forEach((s) => {
+    const d = new Date(s.ts);
+    b[d.getDay()].n++; b[d.getDay()].v += s.total; b[d.getDay()].days.add(d.toDateString());
+  });
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const rows: Cell[][] = order.filter((i) => b[i].n).map((i) => [names[i], b[i].n, m(b[i].v), m(b[i].days.size ? b[i].v / b[i].days.size : 0)]);
+  return {
+    title: 'Day of the week',
+    cols: [{ h: 'Day' }, { h: 'Orders', r: true }, { h: 'Revenue', r: true }, { h: 'Average per day', r: true }],
+    rows,
+    foot: ['Total', sumCol(rows, 1), m(sumCol(rows, 2)), ''],
+  };
+};
+
+RPT['rest-servers'] = (db, from, to) => {
+  const out = new Map<string, { n: number; v: number; plates: number; service: number }>();
+  salesBetween(db, from, to).forEach((s) => {
+    const x = out.get(s.userId) || { n: 0, v: 0, plates: 0, service: 0 };
+    x.n++; x.v += s.total; x.plates += s.lines.reduce((n, l) => n + l.qty, 0); x.service += s.additionalCharges || 0;
+    out.set(s.userId, x);
+  });
+  const list = [...out.entries()].sort((a, b) => b[1].v - a[1].v);
+  const rows: Cell[][] = list.map(([id, x]) => [db.users.find((u) => u.id === id)?.name || 'Staff', x.n, x.plates, m(x.v), m(x.n ? x.v / x.n : 0), m(x.service)]);
+  return {
+    title: 'Sales by waiter',
+    cols: [{ h: 'Waiter' }, { h: 'Orders', r: true }, { h: 'Plates', r: true }, { h: 'Revenue', r: true }, { h: 'Average bill', r: true }, { h: 'Service charge', r: true }],
+    rows,
+    foot: ['Total', sumCol(rows, 1), sumCol(rows, 2), m(sumCol(rows, 3)), '', m(sumCol(rows, 5))],
+  };
+};
+
+RPT['rest-tables'] = (db, from, to) => {
+  const out = new Map<string, { n: number; v: number }>();
+  salesBetween(db, from, to).forEach((s) => {
+    const k = s.ticketName || 'No table / name';
+    const x = out.get(k) || { n: 0, v: 0 };
+    x.n++; x.v += s.total;
+    out.set(k, x);
+  });
+  const rows: Cell[][] = [...out.entries()].sort((a, b) => b[1].v - a[1].v).map(([k, x]) => [k, x.n, m(x.v), m(x.v / x.n)]);
+  return {
+    title: 'Sales by table',
+    cols: [{ h: 'Table or name' }, { h: 'Orders', r: true }, { h: 'Revenue', r: true }, { h: 'Average bill', r: true }],
+    rows,
+    foot: ['Total', sumCol(rows, 1), m(sumCol(rows, 2)), ''],
+    searchable: true,
+  };
+};
+
+RPT['rest-modifiers'] = (db, from, to) => {
+  const out = new Map<string, { n: number; v: number; group: string }>();
+  let orders = 0;
+  salesBetween(db, from, to).forEach((s) => {
+    orders++;
+    s.lines.forEach((l) => (l.modifiers || []).forEach((mo) => {
+      const k = mo.group + ' · ' + mo.name;
+      const x = out.get(k) || { n: 0, v: 0, group: mo.group };
+      x.n += l.qty; x.v += mo.price * l.qty;
+      out.set(k, x);
+    }));
+  });
+  const rows: Cell[][] = [...out.entries()].sort((a, b) => b[1].n - a[1].n).map(([k, x]) => [x.group, k.split(' · ').slice(1).join(' · '), x.n, m(x.v)]);
+  return {
+    title: 'Modifier sales',
+    cols: [{ h: 'Group' }, { h: 'Choice' }, { h: 'Times', r: true }, { h: 'Revenue added', r: true }],
+    rows,
+    foot: ['Total', '', sumCol(rows, 2), m(sumCol(rows, 3))],
+    note: rows.length ? 'Choices taken on ' + orders + ' orders in the period.' : 'No modifiers were ordered in this period.',
+  };
+};
+
+RPT['rest-stations'] = (db, from, to) => {
+  const list = lineRollup(db, from, to, (l) => stationOf(db, db.products.find((p) => p.id === l.productId)));
+  const all = list.reduce((n, [, v]) => n + v.amount, 0);
+  const rows: Cell[][] = list.map(([k, v]) => [k, v.orders.size, v.qty, m(v.amount), share(v.amount, all)]);
+  return {
+    title: 'Sales by station',
+    cols: [{ h: 'Station' }, { h: 'Orders', r: true }, { h: 'Plates', r: true }, { h: 'Revenue', r: true }, { h: 'Share', r: true }],
+    rows,
+    foot: ['Total', '', sumCol(rows, 2), m(all), '100%'],
+  };
+};
+
+RPT['rest-cancelled'] = (db, from, to, money) => {
+  const list = (db.tickets || []).filter((x) => x.status === 'void' && within(x.updatedAt, from, to))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const rows: Cell[][] = list.map((x) => {
+    const v = x.lines.reduce((n, l) => n + l.qty * l.price, 0);
+    const sent = x.lines.reduce((n, l, i) => n + Math.min(l.qty, x.sent[i] || 0), 0);
+    return [shortDay(x.updatedAt), x.no + ' · ' + x.name, db.users.find((u) => u.id === x.userId)?.name || '—',
+      sent ? { text: sent + ' cooked', tone: 'danger' } : { text: 'none', tone: 'muted' }, m(v)];
+  });
+  const all = sumCol(rows, 4);
+  return {
+    title: 'Cancelled tickets',
+    stats: [{ k: 'Cancelled', v: String(rows.length), tone: 'w' }, { k: 'Value', v: money(all), tone: 'd' }],
+    cols: [{ h: 'Date' }, { h: 'Ticket' }, { h: 'Waiter' }, { h: 'Sent to kitchen' }, { h: 'Value', r: true }],
+    rows,
+    foot: ['Total', '', '', '', m(all)],
+    note: 'Food already sent to the kitchen and then cancelled is waste worth checking.',
+  };
+};
+
+RPT['rest-sold-out'] = (db, from, to) => {
+  const sold = new Map<string, number>();
+  salesBetween(db, from, to).forEach((s) => s.lines.forEach((l) => sold.set(l.productId, (sold.get(l.productId) || 0) + l.qty)));
+  const dishes = db.products.filter((p) => p.active !== false);
+  const rows: Cell[][] = dishes
+    .filter((p) => p.soldOut || !sold.get(p.id))
+    .sort((a, b) => Number(!!b.soldOut) - Number(!!a.soldOut) || a.name.localeCompare(b.name))
+    .map((p) => [p.name, p.category || '—', p.soldOut ? { text: 'Sold out now', tone: 'danger' } : { text: 'Available', tone: 'muted' }, sold.get(p.id) || 0]);
+  return {
+    title: 'Sold out & slow dishes',
+    cols: [{ h: 'Dish' }, { h: 'Section' }, { h: 'Now' }, { h: 'Plates in period', r: true }],
+    rows,
+    foot: ['Total', '', rows.filter((x) => (x[2] as CellObj).text === 'Sold out now').length + ' sold out', sumCol(rows, 3)],
+    rowRefs: dishes.filter((p) => p.soldOut || !sold.get(p.id))
+      .sort((a, b) => Number(!!b.soldOut) - Number(!!a.soldOut) || a.name.localeCompare(b.name))
+      .map((p) => ({ kind: 'product' as const, id: p.id })),
+    searchable: true,
   };
 };
 
@@ -2290,37 +2575,31 @@ RPT['party-statement'] = (db, from, to) => {
   };
 };
 
-/* --- Ledger summary — a high-level account roll-up for the period --- */
-RPT['ledger-summary'] = (db, from, to) => {
+/* --- Ledger summary — every ledger in the books, to search and open ---
+ * Only the names: the chart's ledgers (cash, bank, sales, each expense…) and
+ * every customer and supplier. Tapping one opens its ledger for the period,
+ * with the opening balance, each debit and credit, the running balance and
+ * the closing balance. */
+RPT['ledger-summary'] = (db) => {
+  const typeWord: Record<string, string> = { asset: 'Asset', liability: 'Liability', equity: 'Equity', income: 'Income', expense: 'Expense' };
   const ids = orderedLedgerIds(db);
-  const rows: Cell[][] = ids.map((id) => {
-    let dr = 0; let cr = 0;
-    let opening = 0;
-    db.journal.forEach((e) => {
-      const at = new Date(e.ts).getTime();
-      if (at < from && !from) return;
-      if (from && at < from) {
-        e.lines.forEach((l) => { if (l.acc === id) { opening += (l.dr || 0) - (l.cr || 0); } });
-      }
-      if (!within(e.ts, from, to)) return;
-      e.lines.forEach((l) => {
-        if (l.acc !== id) return;
-        dr += l.dr || 0;
-        cr += l.cr || 0;
-      });
-    });
-    const current = dr - cr;
-    const closing = opening + current;
-    const drcr = (v: number) => ({ text: money0(Math.abs(v)) + (v >= 0 ? ' Dr' : ' Cr'), n: v });
-    return [accName(db, id), drcr(opening), m(dr), m(cr), drcr(current), drcr(closing)];
+  const rows: Cell[][] = [];
+  const rowRefs: (RowRef | null)[] = [];
+  ids.forEach((id) => {
+    rows.push([accName(db, id), typeWord[db.coa?.find((l) => l.id === id)?.type || accType(db, id)] || 'Ledger']);
+    rowRefs.push({ kind: 'ledger', id });
+  });
+  [...db.parties].sort((x, y) => x.name.localeCompare(y.name)).forEach((p) => {
+    rows.push([p.name, p.type === 'supplier' ? 'Supplier' : 'Customer']);
+    rowRefs.push({ kind: 'party', id: p.id });
   });
   return {
     title: 'Ledger summary',
-    cols: [{ h: 'Particulars' }, { h: 'Opening', r: true }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Current', r: true }, { h: 'Closing', r: true }],
+    cols: [{ h: 'Ledger' }, { h: 'Group' }],
     rows,
-    foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4)), m(sumCol(rows, 5))],
-    rowRefs: ids.map((id) => ({ kind: 'ledger', id })),
-    note: 'All ledgers, grouped by asset, equity and liability, with opening, current and closing balances. Tap one for its postings.',
+    foot: ['Total', rows.length + ' ledgers'],
+    rowRefs,
+    note: rows.length + ' ledgers. Search for one and tap it to see its debits, credits and balance for the period.',
     searchable: true,
   };
 };
@@ -2747,9 +3026,10 @@ export function ledgerDrill(db: DB, accId: string, from: number, to: number): Re
     });
   });
   lines.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-  const bal = (n: number): Cell => ({ text: money0(Math.abs(n)) + (n >= 0 ? ' Dr' : ' Cr'), n });
+  const bal = (n: number): CellObj => ({ text: Math.abs(n) < 0.005 ? '0' : money0(Math.abs(n)) + (n > 0 ? ' Dr' : ' Cr'), n, tone: Math.abs(n) < 0.005 ? 'muted' : undefined });
+  const day = (ts: number) => new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
   let run = opening;
-  const rows: Cell[][] = [['', 'Opening Balance', '', '', bal(opening)]];
+  const rows: Cell[][] = [[from ? day(from) : '—', { text: 'Opening balance', tone: 'accent' } as CellObj, '', '', bal(opening)]];
   const rowRefs: (RowRef | null)[] = [null];
   lines.forEach((l) => {
     run += l.dr - l.cr;
@@ -2758,20 +3038,24 @@ export function ledgerDrill(db: DB, accId: string, from: number, to: number): Re
     const pu = !sale && l.ref ? db.purchases.find((x) => x.no === l.ref) : undefined;
     rowRefs.push(sale ? { kind: 'sale', id: sale.id } : pu ? { kind: 'purchase', id: pu.id } : null);
   });
-  const dr = lines.reduce((t, l) => t + l.dr, 0);
-  const cr = lines.reduce((t, l) => t + l.cr, 0);
+  const dr = lines.reduce((t2, l) => t2 + l.dr, 0);
+  const cr = lines.reduce((t2, l) => t2 + l.cr, 0);
+  rows.push([day(Math.min(to, Date.now())), { text: 'Closing balance', tone: 'accent' } as CellObj, '', '', bal(run)]);
+  rowRefs.push(null);
   return {
     title: name,
     stats: [
-      { k: 'Opening', v: money0(opening), tone: 'a' },
-      { k: 'Closing', v: money0(run), tone: run >= 0 ? 'g' : 'w' },
+      { k: 'Opening', v: bal(opening).text, tone: 'a' },
+      { k: 'Debit', v: money0(dr), tone: 'w' },
+      { k: 'Credit', v: money0(cr), tone: 'g' },
+      { k: 'Closing', v: bal(run).text, tone: run >= 0 ? 'g' : 'w' },
     ],
     cols: [{ h: 'Date' }, { h: 'Particulars' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Balance', r: true }],
     rows,
-    foot: ['Closing', '', m(dr), m(cr), bal(run)],
+    foot: ['Totals', '', m(dr), m(cr), bal(run).text],
     rowRefs,
     searchable: true,
-    note: lines.length ? undefined : 'Nothing was posted to ' + name + ' in this range.',
+    note: lines.length ? undefined : 'Nothing was posted to ' + name + ' in this period.',
   };
 }
 
@@ -2779,25 +3063,35 @@ export function ledgerDrill(db: DB, accId: string, from: number, to: number): Re
 export function partyDrill(db: DB, partyId: string, from: number, to: number): ReportResult {
   const p = db.parties.find((x) => x.id === partyId);
   const all = partyLedgerRows(db, partyId);
-  const opening = all.filter((r) => new Date(r.ts).getTime() < from).reduce((t, r) => t + r.debit - r.credit, 0);
+  const opening = all.filter((r) => new Date(r.ts).getTime() < from).reduce((t2, r) => t2 + r.debit - r.credit, 0);
   const inRange = all.filter((r) => within(r.ts, from, to));
+  // "12,000 Dr": what they owe you is a debit balance, what you owe them a credit one
+  const bal = (n: number): CellObj => ({ text: Math.abs(n) < 0.005 ? '0' : money0(Math.abs(n)) + (n > 0 ? ' Dr' : ' Cr'), n, tone: n > 0.005 ? 'danger' : n < -0.005 ? 'good' : 'muted' });
   let run = opening;
-  const rows: Cell[][] = [['', 'Opening Balance', '', '', m(opening)]];
+  const day = (ts: number) => new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+  const rows: Cell[][] = [[from ? day(from) : '—', { text: 'Opening balance', tone: 'accent' } as CellObj, '', '', bal(opening)]];
   const rowRefs: (RowRef | null)[] = [null];
   inRange.forEach((r) => {
     run += r.debit - r.credit;
-    rows.push([shortDay(r.ts), r.memo, dash(r.debit, 'accent'), dash(r.credit, 'good'), m(run)]);
+    rows.push([shortDay(r.ts), r.memo, dash(r.debit, 'danger'), dash(r.credit, 'good'), bal(run)]);
     rowRefs.push(r.ref || null);
   });
+  const dr = inRange.reduce((t2, r) => t2 + r.debit, 0);
+  const cr = inRange.reduce((t2, r) => t2 + r.credit, 0);
+  rows.push([day(Math.min(to, Date.now())), { text: 'Closing balance', tone: 'accent' } as CellObj, '', '', bal(run)]);
+  rowRefs.push(null);
+  const word = (n: number) => (n > 0.005 ? 'owes you' : n < -0.005 ? (p?.type === 'supplier' ? 'you owe' : 'in credit') : 'settled');
   return {
     title: p?.name || 'Party',
     stats: [
-      { k: 'Opening', v: money0(opening), tone: 'a' },
-      { k: 'Closing', v: money0(run), tone: run > 0 ? 'w' : 'g' },
+      { k: 'Opening · ' + word(opening), v: money0(Math.abs(opening)), tone: 'a' },
+      { k: 'Debit', v: money0(dr), tone: 'w' },
+      { k: 'Credit', v: money0(cr), tone: 'g' },
+      { k: 'Closing · ' + word(run), v: money0(Math.abs(run)), tone: run > 0 ? 'w' : 'g' },
     ],
-    cols: [{ h: 'Date' }, { h: 'Detail' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Balance', r: true }],
+    cols: [{ h: 'Date' }, { h: 'Details' }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Balance', r: true }],
     rows,
-    foot: ['Closing balance', '', m(inRange.reduce((t, r) => t + r.debit, 0)), m(inRange.reduce((t, r) => t + r.credit, 0)), m(run)],
+    foot: ['Totals', '', m(dr), m(cr), bal(run).text],
     rowRefs,
     searchable: true,
   };

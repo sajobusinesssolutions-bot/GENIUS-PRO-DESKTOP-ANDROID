@@ -98,6 +98,10 @@ export async function issueLicence({ account, licence, businesses }) {
     // when the subscription itself ends, as distinct from when this token does
     until: licence.expires_at ? new Date(licence.expires_at).toISOString() : null,
     plan: licence.plan,
+    // Retail, Restaurant or Pharmacy: the edition the plan was bought for
+    edition: licence.edition || 'retail',
+    // how many businesses the account may run
+    maxBusinesses: licence.max_businesses ? Number(licence.max_businesses) : (licence.plan === 'pro' || licence.plan === 'lifetime' ? 5 : 1),
     term: licence.term,
     seats: licence.seats,
     // a trial gets the app, not sync: that is for paid plans only

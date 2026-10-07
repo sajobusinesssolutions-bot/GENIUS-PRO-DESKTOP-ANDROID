@@ -18,6 +18,8 @@ import { Icon, IconName } from './icons';
 import { LineEditor, CartLine } from './LineEditor';
 import { useWho, WhoResult } from './WhoSheet';
 import { CustomerPickerSheet, CustomerFormSheet, BalanceTag } from './CustomerSheets';
+import PriceListPicker from './PriceListPicker';
+import { priceFor, repriceLines } from '../data/priceLists';
 import { Pressable } from './Press';
 
 export interface DocEntryProps {
@@ -57,6 +59,9 @@ export interface DocEntryProps {
   autoStart?: boolean;
   /** The item entry's title, e.g. "Add Items to Estimate/Quotation". */
   entryTitle?: string;
+  /** The price list the lines are priced from; shown as a picker when given. */
+  priceListId?: string | null;
+  onPriceListChange?: (id: string | null) => void;
 }
 
 export default function DocEntry({
@@ -64,7 +69,7 @@ export default function DocEntry({
   partyType = 'customer', partyLabel, partyRequired, partyId, onPartyChange,
   lines, onLinesChange, priceOf = 'price', linesLabel = 'Items',
   children, summary, saveLabel, blockedReason, askWho, onSave, showTotals = true,
-  autoStart = true, entryTitle,
+  autoStart = true, entryTitle, priceListId, onPriceListChange,
 }: DocEntryProps) {
   const { colors } = useTheme();
   const { db, money, partyBalance, addParty } = useAppData();
@@ -73,6 +78,11 @@ export default function DocEntry({
   const [formOpen, setFormOpen] = useState(false);
   /** Bumped to open the item entry. */
   const [entrySignal, setEntrySignal] = useState(0);
+  // the screen may hold the choice (to save it); otherwise it lives here
+  const [ownList, setOwnList] = useState<string | null>(null);
+  const listId = priceListId !== undefined ? priceListId : ownList;
+  const setListId = (id: string | null) => { if (priceListId === undefined) setOwnList(id); };
+  const list = (db?.priceLists || []).find((l) => l.id === listId) || null;
 
   const parties = useMemo(
     () => (db?.parties || []).filter((p) => p.active && (partyType === 'none' || p.type === partyType)),
@@ -146,6 +156,21 @@ export default function DocEntry({
           </>
         ) : null}
 
+        {/* the price list, on documents that sell */}
+        {priceOf === 'price' ? (
+          <View style={{ marginTop: 12 }}>
+            <PriceListPicker
+              value={listId}
+              onChange={(id) => {
+                setListId(id);
+                onPriceListChange?.(id);
+                const l = (db?.priceLists || []).find((x) => x.id === id) || null;
+                onLinesChange(repriceLines(lines as any, l, db?.products || []) as CartLine[]);
+              }}
+            />
+          </View>
+        ) : null}
+
         {children}
 
         <View style={{ height: 8 }} />
@@ -160,7 +185,7 @@ export default function DocEntry({
           products={products}
           lines={lines}
           setLines={onLinesChange}
-          priceOf={(p) => (priceOf === 'cost' ? p.cost : p.price)}
+          priceOf={(p) => (priceOf === 'cost' ? p.cost : priceFor(list, p))}
           rateIs={priceOf}
           money={money}
           openSignal={entrySignal}

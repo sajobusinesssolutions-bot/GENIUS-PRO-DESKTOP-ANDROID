@@ -5,7 +5,7 @@ import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
-import { menuGroup, itemShown } from '../data/menuGroups';
+import { menuGroup, itemShown, rowName } from '../data/menuGroups';
 import { EmptyState } from '../components/ui';
 import { Icon } from '../components/icons';
 import { useGo } from '../nav/navigate';
@@ -15,6 +15,8 @@ export default function MenuGroupScreen({ route, navigation }: any) {
   const go = useGo();
   const { db } = useAppData();
   const g = menuGroup(route?.params?.groupId);
+  // the header says the group's name in this business's own words
+  useEffect(() => { if (g) navigation?.setOptions?.({ title: rowName(g, db) }); }, [g?.id, db?.firm?.businessType]);
 
 
 
@@ -38,7 +40,7 @@ export default function MenuGroupScreen({ route, navigation }: any) {
             })}
           >
             <Icon name={it.i} size={20} color={colors.ink} />
-            <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{it.n}</Text>
+            <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{rowName(it, db)}</Text>
             <Icon name="chev" size={14} color={colors.faint} />
           </Pressable>
         ))}

@@ -149,6 +149,10 @@ export interface RemoteBusiness {
   created_at: string;
   snapshot_at: string | null;
   snapshot_bytes: number | null;
+  /** Whether cloud sync was switched on in the last copy of its books. Absent from an older server. */
+  sync_on?: boolean | null;
+  /** The kind of business in its last copy: retail, restaurant, pharmacy. */
+  business_type?: string | null;
   role?: 'owner' | 'manager' | 'staff';
   active?: boolean;
 }
@@ -158,8 +162,15 @@ export async function createBusiness(access: string, input: { name: string; tin?
 }
 
 /** The businesses on this account, as the server knows them. */
+/** What the account is licensed for: its edition and how many businesses it may run. */
+export interface AccountLicence { plan: string | null; edition: string; maxBusinesses: number; owned: number }
+let accountLicence: AccountLicence | null = null;
+/** The last answer the server gave, kept for onboarding a new business. Null before the first list. */
+export function lastAccountLicence(): AccountLicence | null { return accountLicence; }
+
 export async function listBusinesses(access: string, includeInactive = false): Promise<Result<RemoteBusiness[]>> {
-  const r = await call<{ businesses: RemoteBusiness[] }>('/v1/businesses' + (includeInactive ? '?all=true' : ''), access, undefined, 'GET');
+  const r = await call<{ businesses: RemoteBusiness[]; licence?: AccountLicence }>('/v1/businesses' + (includeInactive ? '?all=true' : ''), access, undefined, 'GET');
+  if (r.ok && r.value.licence) accountLicence = r.value.licence;
   return r.ok ? { ok: true, value: r.value.businesses || [] } : r;
 }
 
@@ -197,11 +208,34 @@ export async function revokeBusinessAccess(access: string, businessId: string, a
  * Sends a whole copy of the books, so this business can be opened on another
  * phone. The queue is left out — it is this phone's unsent work, not the books.
  */
-export async function uploadSnapshot(d: DB, access: string, wiring: Wiring): Promise<Result<{ bytes: number; version: number }>> {
+export async function uploadSnapshot(d: DB, access: string, wiring: Wiring, cursor = d.sync?.cursor || 0): Promise<Result<{ bytes: number; version: number }>> {
   const version = Number(d.sync?.snapshotVersion || 0);
   const data = { ...d, sync: { ...d.sync, pending: [], log: [], snapshotVersion: version } };
   return call<{ bytes: number; version: number }>('/v1/businesses/' + wiring.businessId + '/snapshot', access,
-    { data, device: wiring.deviceId, version }, 'PUT');
+    { data, device: wiring.deviceId, version, cursor }, 'PUT');
+}
+
+/* ---------------- Google Drive backups ---------------- */
+
+export interface DriveStatus { linked: boolean; email?: string; lastBackupAt?: string }
+
+/** Whether this account has a Google Drive linked for backups. */
+export async function driveStatus(access: string): Promise<Result<DriveStatus>> {
+  return call<DriveStatus>('/v1/drive/status', access, undefined, 'GET');
+}
+
+/** The Google page where the person allows backups to their Drive. */
+export async function driveLinkUrl(access: string, redirect: string): Promise<Result<{ url: string }>> {
+  return call<{ url: string }>('/v1/drive/link', access, { redirect });
+}
+
+export async function unlinkDrive(access: string): Promise<Result<{ linked: boolean }>> {
+  return call<{ linked: boolean }>('/v1/drive/link', access, undefined, 'DELETE');
+}
+
+/** Puts an encrypted backup into the account's "Genius Pro Backups" folder on Drive. */
+export async function uploadDriveBackup(access: string, name: string, base64: string): Promise<Result<{ id: string; name: string; size: number; folder: string }>> {
+  return call<{ id: string; name: string; size: number; folder: string }>('/v1/drive/backup', access, { name, data: base64 });
 }
 
 /** The last copy of a business's books that any phone sent up. */
@@ -232,12 +266,20 @@ const KIND_OF: Record<string, OpKind> = {
   purchaseOrder: 'record.upsert',
   recurring: 'record.upsert',
   plan: 'record.upsert',
+  user: 'record.upsert',
+  role: 'record.upsert',
+  ticket: 'record.upsert',
+  modifierGroup: 'record.upsert',
+  menuGroup: 'record.upsert',
+  menu: 'record.upsert',
+  priceList: 'record.upsert',
 };
 
 /** Which collection a record.upsert lands in, by queue kind. */
 const COLL_OF: Record<string, string> = {
   product: 'products', party: 'parties', estimate: 'estimates', ledger: 'coa', firm: 'firm',
   challan: 'challans', purchaseOrder: 'purchaseOrders', recurring: 'recurringInvoices', plan: 'instalmentPlans',
+  user: 'users', role: 'roles', ticket: 'tickets', modifierGroup: 'modifierGroups', menuGroup: 'menuGroups', menu: 'menus', priceList: 'priceLists',
 };
 
 /** Finds the record a queue entry points at. */
@@ -260,6 +302,15 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
     case 'purchaseOrder': return (d.purchaseOrders || []).find((x) => x.id === ref);
     case 'recurring': return (d.recurringInvoices || []).find((x) => x.id === ref);
     case 'plan': return (d.instalmentPlans || []).find((x) => x.id === ref);
+    // staff and what their roles allow, so a change made by the owner reaches every phone
+    case 'user': return (d.users || []).find((x) => x.id === ref);
+    case 'role': return (d.roles || []).find((x) => x.id === ref);
+    // restaurant: open tickets are shared, so any waiter can pick one up
+    case 'ticket': return (d.tickets || []).find((x) => x.id === ref);
+    case 'modifierGroup': return (d.modifierGroups || []).find((x) => x.id === ref);
+    case 'menuGroup': return (d.menuGroups || []).find((x) => x.id === ref);
+    case 'menu': return (d.menus || []).find((x) => x.id === ref);
+    case 'priceList': return (d.priceLists || []).find((x) => x.id === ref);
     // the business's own details: name, phones, address, logo, signature…
     case 'firm': return d.firm?.id === ref ? d.firm : undefined;
     default: return undefined;

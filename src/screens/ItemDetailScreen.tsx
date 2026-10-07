@@ -88,7 +88,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   const low = stock <= p.reorder;
 
   function openAdjust() {
-    if (!can('stock.adjust')) { error('Your role cannot adjust stock.'); return; }
+    if (!can('inventory.stock_adjustment')) { error('Your role cannot adjust stock.'); return; }
     const first = p!.trackBatches ? liveBatches(p!)[0] : undefined;
     setAdjustBatch(first ? first.no : '');
     setCounted(String(first ? first.qty : stockOf(p!)));

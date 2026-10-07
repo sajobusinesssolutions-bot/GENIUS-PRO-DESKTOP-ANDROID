@@ -25,14 +25,15 @@ import { Icon, IconName } from '../components/icons';
 import { useToast } from '../components/Toast';
 import { useGo } from '../nav/navigate';
 import { printDoc, DocMeta } from '../data/docPrint';
-import { printOptsFor, paperOf, defaultPrinter } from '../data/printSetup';
+import { printOptsFor, paperOf, defaultPrinter, printsOf } from '../data/printSetup';
 import {
   FoundDevice, scanBluetooth, stopScan, notAPrinter, testBluetooth, printBluetooth, testNetwork,
   testPage as rawTestPage,
 } from '../data/rawPrinter';
 import { keepPhoto, dropPhoto } from '../data/photos';
 import { kindLabel, CODE_DATA, POWERED_BY } from '../data/defaults';
-import type { Printer, CodeKind, CodeData, PrintTemplate, ReceiptStyle } from '../data/types';
+import type { Printer, CodeKind, CodeData, PrintTemplate, ReceiptStyle, PrintPurpose } from '../data/types';
+import { isRestaurant, stationsOf } from '../data/restaurant';
 import { dmy, numberToWords, InvoiceStyle } from '../data/invoiceLayouts';
 
 const ACCENT_COLORS = ['#1A7AE6', '#1DA362', '#D97706', '#DC2626', '#7C3AED', '#111827'];
@@ -176,6 +177,14 @@ function NavCard({ icon, title, sub, onPress }: { icon: IconName; title: string;
   );
 }
 
+const PURPOSES: { v: PrintPurpose; l: string }[] = [
+  { v: 'invoice', l: 'Invoices' },
+  { v: 'cash', l: 'Cash sales' },
+  { v: 'order', l: 'Kitchen orders' },
+];
+const purposeText = (list: PrintPurpose[]) =>
+  PURPOSES.filter((x) => list.includes(x.v)).map((x) => x.l.toLowerCase()).join(', ');
+
 export default function PrintingScreen() {
   const { colors } = useTheme();
   const { db, money, addPrinter, updatePrinter, makeDefaultPrinter, removePrinter } = useAppData();
@@ -191,9 +200,40 @@ export default function PrintingScreen() {
   const [found, setFound] = useState<FoundDevice[] | null>(null);
   const [joining, setJoining] = useState('');
   const [problem, setProblem] = useState('');
+  /** What a printer added here will print. */
+  const [prints, setPrints] = useState<PrintPurpose[]>(['invoice', 'cash']);
   useEffect(() => () => { stopScan(); }, []);
 
   if (!db) return <Guard>{null}</Guard>;
+
+  /** A printer only for kitchen orders is not made the printer for bills. */
+  const forBills = prints.includes('invoice') || prints.includes('cash');
+  const togglePurpose = (list: PrintPurpose[], v: PrintPurpose) => {
+    const next = list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
+    return next.length ? next : list;
+  };
+  const purposeChips = (value: PrintPurpose[], onChange: (v: PrintPurpose[]) => void) => (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {PURPOSES.map((x) => {
+        const on = value.includes(x.v);
+        return (
+          <Pressable
+            key={x.v}
+            onPress={() => onChange(togglePurpose(value, x.v))}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: on }}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+              borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
+            }}
+          >
+            {on ? <Icon name="check" size={14} color={colors.accent} /> : null}
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accent : colors.ink }}>{x.l}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 
   const rollPaper = () => (db!.printer.width === 'A4' ? '80mm' : db!.printer.width);
 
@@ -249,24 +289,32 @@ export default function PrintingScreen() {
     // the test page is the check: nothing is saved unless the printer answered
     setBusy(true);
     setProblem('');
+    const keep = (online: boolean) => {
+      let p: Printer;
+      if (same) {
+        updatePrinter(same.id, { port: n, online, prints });
+        p = { ...same, port: n, online, prints };
+      } else {
+        p = addPrinter({ name, kind: 'wifi', width: rollPaper(), address: h, port: n, dflt: forBills, online, note: '', prints });
+      }
+      if (forBills) makeDefaultPrinter(p.id);
+      success((online ? 'Test page sent. ' : 'Saved. ') + p.name + ' prints ' + purposeText(prints));
+    };
     try {
       await testNetwork(h, n, rawTestPage(db.firm.name, name, same ? paperOf(same) : rollPaper()));
     } catch (e: any) {
-      setProblem(e?.message || 'No printer answered at ' + h + ':' + n + '.');
-      error(e?.message || 'No printer answered at ' + h + ':' + n + '.');
+      const why = e?.message || 'No printer answered at ' + h + ':' + n + '.';
+      setProblem(why);
+      // the printer may simply be off right now: it can still be kept and tried later
+      Alert.alert('The test page did not print', why, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Save anyway', onPress: () => keep(false) },
+      ]);
       return;
     } finally {
       setBusy(false);
     }
-    let p: Printer;
-    if (same) {
-      updatePrinter(same.id, { port: n, online: true });
-      p = { ...same, port: n, online: true };
-    } else {
-      p = addPrinter({ name, kind: 'wifi', width: rollPaper(), address: h, port: n, dflt: true, online: true, note: '' });
-    }
-    makeDefaultPrinter(p.id);
-    success('Test page sent. ' + p.name + ' is now the printer for this phone');
+    keep(true);
   }
 
   async function scan() {
@@ -293,20 +341,28 @@ export default function PrintingScreen() {
     setJoining(d.address);
     setProblem('');
     const same = db.printers.find((p) => p.kind === 'bluetooth' && p.address === d.address);
+    const keep = (online: boolean) => {
+      if (same) updatePrinter(same.id, { online, prints });
+      const p = same || addPrinter({
+        name: d.name, kind: 'bluetooth', width: rollPaper(), address: d.address, port: 0, dflt: forBills, online, note: '', prints,
+      });
+      if (forBills) makeDefaultPrinter(p.id);
+      success((online ? 'Connected. ' : 'Saved. ') + d.name + ' prints ' + purposeText(prints));
+    };
     try {
       await testBluetooth(d, rawTestPage(db.firm.name, d.name, same ? paperOf(same) : rollPaper()));
     } catch (e: any) {
-      setProblem(e?.message || 'Could not connect to ' + d.name + '.');
-      error(e?.message || 'Could not connect to ' + d.name + '.');
+      const why = e?.message || 'Could not connect to ' + d.name + '.';
+      setProblem(why);
+      Alert.alert('The test page did not print', why, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Save anyway', onPress: () => keep(false) },
+      ]);
       return;
     } finally {
       setJoining('');
     }
-    const p = same || addPrinter({
-      name: d.name, kind: 'bluetooth', width: rollPaper(), address: d.address, port: 0, dflt: true, online: true, note: '',
-    });
-    makeDefaultPrinter(p.id);
-    success('Connected. A test page was printed on ' + d.name);
+    keep(true);
   }
 
   function openBluetoothSettings() {
@@ -340,6 +396,7 @@ export default function PrintingScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
         <NavCard icon="receipt" title="Receipt settings" sub="Paper size, header, footer, what prints" onPress={() => go('PrintingReceipt')} />
         <NavCard icon="doc" title="Invoice PDF settings" sub="Tagline, accent colour, footer, contact info" onPress={() => go('PrintingInvoice')} />
+        <NavCard icon="food" title="Kitchen & restaurant receipts" sub="Kitchen ticket layout, dish choices and table on receipts" onPress={() => go('PrintingKitchen' as any)} />
 
         <View style={{
           flexDirection: 'row', borderRadius: 999, borderWidth: 1.4, borderColor: colors.lineHard,
@@ -400,6 +457,9 @@ export default function PrintingScreen() {
         })()}
 
         <View style={{ marginTop: 18 }}>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>This printer prints</Text>
+          {purposeChips(prints, setPrints)}
+          <View style={{ height: 14 }} />
           {mode === 'network' ? (
             <>
               <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
@@ -497,6 +557,30 @@ export default function PrintingScreen() {
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
                 {paperOf(p)}{p.address ? ' · ' + p.address + (p.port ? ':' + p.port : '') : ''}{p.dflt ? '' : ' · tap to use'}
               </Text>
+              <View style={{ marginTop: 8 }}>
+                {purposeChips(printsOf(p), (v) => updatePrinter(p.id, { prints: v }))}
+              </View>
+              {printsOf(p).includes('order') && isRestaurant(db) ? (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint, marginBottom: 6 }}>
+                    Prints orders for {p.stations?.length ? p.stations.join(', ') : 'every station'}
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {stationsOf(db).map((st) => {
+                      const on = !!p.stations?.includes(st);
+                      return (
+                        <Pressable
+                          key={st}
+                          onPress={() => updatePrinter(p.id, { stations: on ? (p.stations || []).filter((x) => x !== st) : [...(p.stations || []), st] })}
+                          style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.ink : colors.surface }}
+                        >
+                          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.bg : colors.ink }}>{st}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
             </Pressable>
             {db.printers.length > 1 ? (
               <Pressable

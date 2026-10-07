@@ -27,6 +27,8 @@ import { Icon } from '../components/icons';
 import Sheet from '../components/Sheet';
 import { useDeveloper } from '../data/useDeveloper';
 import * as dev from '../data/devApi';
+import { EDITIONS, EDITION_LIST, Edition } from '../data/editions';
+import { money0 } from '../data/helpers';
 import type { Owner, Reports, ServerStats, Backup } from '../data/devApi';
 
 type Tab = 'owners' | 'reports' | 'server' | 'backups' | 'crashes';
@@ -45,11 +47,36 @@ function licenceTone(o: Owner): 'good' | 'warn' | 'danger' | 'accent' | 'neutral
   return 'neutral';
 }
 
+/** Retail, Restaurant or Pharmacy, with what each one is and costs. */
+function EditionPick({ value, onChange, plan }: { value: Edition; onChange: (e: Edition) => void; plan: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ gap: 8, marginBottom: 6 }}>
+      {EDITION_LIST.map((e) => {
+        const d = EDITIONS[e];
+        const on = value === e;
+        const p = d.plans[plan === 'starter' ? 'starter' : 'pro'];
+        return (
+          <Pressable key={e} onPress={() => onChange(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}>
+            <Icon name={d.icon} size={20} color={colors.ink} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{d.name}</Text>
+              <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{d.tagline}</Text>
+              {plan !== 'trial' ? <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.soft, marginTop: 2 }}>{p.name}: {money0(p.prices.month)}/month · {money0(p.prices.year)}/year</Text> : null}
+            </View>
+            {on ? <Icon name="check" size={18} color={colors.accent} /> : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function licenceLabel(o: Owner): string {
   if (o.blocked) return 'Blocked';
   if (!o.licence) return 'No licence';
   const l = o.licence;
-  const name = l.plan.charAt(0).toUpperCase() + l.plan.slice(1);
+  const name = (EDITIONS[(l.edition || 'retail') as Edition]?.name || 'Retail') + ' ' + l.plan.charAt(0).toUpperCase() + l.plan.slice(1);
   if (l.status === 'expired') return name + ' · expired';
   if (l.daysLeft === null) return name + ' · lifetime';
   return name + ' · ' + l.daysLeft + 'd left';
@@ -530,13 +557,15 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [plan, setPlan] = useState('pro');
+  const [edition, setEdition] = useState<Edition>('retail');
   const [period, setPeriod] = useState('365');
   const [seats, setSeats] = useState('2');
+  const [businesses, setBusinesses] = useState('');
   const [invite, setInvite] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (visible) { setEmail(''); setName(''); setPlan('pro'); setPeriod('365'); setSeats('2'); setInvite(true); }
+    if (visible) { setEmail(''); setName(''); setPlan('pro'); setEdition('retail'); setPeriod('365'); setSeats('2'); setInvite(true); }
   }, [visible]);
 
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -547,7 +576,7 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
     const a = await access();
     if (!a) return;
     setBusy(true);
-    const r = await dev.addOwner(a, { email: email.trim().toLowerCase(), name: name.trim() || undefined, plan, days, seats: n, invite });
+    const r = await dev.addOwner(a, { email: email.trim().toLowerCase(), name: name.trim() || undefined, plan, days, seats: n, invite, edition, businesses: businesses.trim() ? Number(businesses) : null });
     setBusy(false);
     if (!r.ok) { error(r.error.message); return; }
     const who = email.trim().toLowerCase();
@@ -583,7 +612,9 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
     >
       <Field icon="user" label="Owner's email *" value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="name@example.com" />
       <Field icon="pencil" label="Name (optional)" value={name} onChangeText={setName} />
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Plan</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Edition</Text>
+      <EditionPick value={edition} onChange={setEdition} plan={plan} />
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginTop: 8, marginBottom: 8 }}>Plan</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {['trial', 'starter', 'pro'].map((p) => chip(p.charAt(0).toUpperCase() + p.slice(1), plan === p, () => setPlan(p)))}
       </View>
@@ -593,6 +624,7 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
       </View>
       <View style={{ height: 14 }} />
       <Field icon="phone" label="Devices allowed" value={seats} onChangeText={setSeats} numeric maxLength={3} />
+      <Field icon="home" label={'Businesses allowed · blank = ' + (plan === 'pro' ? '5 (Pro)' : '1 (' + plan + ')')} value={businesses} onChangeText={setBusinesses} numeric money={false} maxLength={2} />
       <Pressable onPress={() => setInvite(!invite)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}>
         <View style={{
           width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
@@ -616,8 +648,10 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
   const { colors } = useTheme();
   const { success, error } = useToast();
   const [plan, setPlan] = useState('pro');
+  const [edition, setEdition] = useState<Edition>('retail');
   const [period, setPeriod] = useState('365');
   const [seats, setSeats] = useState('2');
+  const [businesses, setBusinesses] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -625,6 +659,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
     if (!owner) return;
     setPlan(owner.licence?.plan === 'trial' ? 'pro' : owner.licence?.plan || 'pro');
     setSeats(String(owner.licence?.seats || 2));
+    setEdition(((owner.licence?.edition || 'retail') as Edition));
     setPeriod('365');
     setReason(owner.blockedReason || '');
   }, [owner?.id]);
@@ -635,7 +670,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
   async function grant() {
     const days = PERIODS.find((p) => p.v === period)?.days ?? 365;
     const n = Math.max(1, Math.min(100, Number(seats) || 1));
-    const what = plan.toUpperCase() + ', ' + (days === null ? 'lifetime' : PERIODS.find((p) => p.v === period)!.l) + ', ' + n + ' device' + (n === 1 ? '' : 's');
+    const what = EDITIONS[edition].name + ' ' + plan.toUpperCase() + ', ' + (days === null ? 'lifetime' : PERIODS.find((p) => p.v === period)!.l) + ', ' + n + ' device' + (n === 1 ? '' : 's');
     Alert.alert('License ' + o.email + '?', what, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -644,7 +679,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
           const a = await access();
           if (!a) return;
           setBusy(true);
-          const r = await dev.grantLicence(a, o.id, { plan, days, seats: n });
+          const r = await dev.grantLicence(a, o.id, { plan, days, seats: n, edition, businesses: businesses.trim() ? Number(businesses) : null });
           setBusy(false);
           if (!r.ok) { error(r.error.message); return; }
           success(o.email + ' licensed — ' + what + '. Their phones pick it up at their next check-in.');
@@ -716,9 +751,11 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
       <View style={{ height: 14 }} />
       <SectionLabel>Current licence</SectionLabel>
       <Panel>
+        <DetailRow label="Edition" value={o.licence ? EDITIONS[(o.licence.edition || 'retail') as Edition]?.name || 'Retail' : '—'} />
         <DetailRow label="Plan" value={o.licence ? o.licence.plan + ' · ' + o.licence.term : 'None'} />
         <DetailRow label="Status" value={o.blocked ? 'Blocked' : o.licence?.status || '—'} />
         <DetailRow label="Devices allowed" value={String(o.licence?.seats ?? '—')} />
+        <DetailRow label="Businesses" value={(o.businesses?.length ?? 0) + ' of ' + (o.licence?.maxBusinesses ?? '—') + ' allowed'} />
         <DetailRow
           label="Ends"
           value={!o.licence ? '—' : o.licence.daysLeft === null ? 'Never (lifetime)'
@@ -730,7 +767,9 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
       <View style={{ height: 14 }} />
       <SectionLabel>Grant a licence</SectionLabel>
       <Panel>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Plan</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Edition</Text>
+        <EditionPick value={edition} onChange={setEdition} plan={plan} />
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginTop: 8, marginBottom: 8 }}>Plan</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {['trial', 'starter', 'pro'].map((p) => chip(p.charAt(0).toUpperCase() + p.slice(1), plan === p, () => setPlan(p)))}
         </View>
@@ -740,6 +779,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
         </View>
         <View style={{ height: 14 }} />
         <Field icon="phone" label="Devices allowed" value={seats} onChangeText={setSeats} numeric maxLength={3} />
+      <Field icon="home" label={'Businesses allowed · blank = ' + (plan === 'pro' ? '5 (Pro)' : '1 (' + plan + ')')} value={businesses} onChangeText={setBusinesses} numeric money={false} maxLength={2} />
         <Button label="Grant licence" variant="pri" loading={busy} icon={<Icon name="check" size={17} color={colors.accentInk} />} onPress={grant} />
       </Panel>
 

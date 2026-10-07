@@ -7,6 +7,8 @@
  * AUTO_KEEP; ones made by hand are only removed by hand.
  */
 import { Directory, File, Paths } from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { validateBackup } from './storage';
 import { BACKUP_EXT, fromBase64, fromUtf8, isSealed, openBackup, sealBackup, toBase64 } from './backupCrypto';
 import type { DB } from './types';
@@ -14,7 +16,11 @@ import type { DB } from './types';
 export const AUTO_KEEP = 10;
 export type BackupSchedule = 'off' | 'daily' | 'weekly' | 'monthly';
 
-export interface DeviceBackup { name: string; uri: string; size: number; at: number; auto: boolean }
+export interface DeviceBackup {
+  name: string; uri: string; size: number; at: number; auto: boolean;
+  /** Also written to the chosen folder in Downloads. */
+  outside?: boolean;
+}
 
 const DAY = 86400000;
 export const SCHEDULE_MS: Record<Exclude<BackupSchedule, 'off'>, number> = {
@@ -57,10 +63,84 @@ export function writeBackup(db: DB, auto = false): DeviceBackup {
   const name = backupName(db.firm.name, auto);
   const file = new File(backupFolder(), name);
   file.create({ overwrite: true, intermediates: true });
-  file.write(toBase64(sealBook(db)), { encoding: 'base64' });
+  const data = toBase64(sealBook(db));
+  file.write(data, { encoding: 'base64' });
   if (!file.exists || !(file.size && file.size > 0)) throw new Error('The backup file could not be written.');
   if (auto) pruneAuto();
-  return { name, uri: file.uri, size: file.size || 0, at: Date.now(), auto };
+  // a second copy in the phone's own Downloads folder, which survives an uninstall
+  const outside = copyToChosenFolder(name, data);
+  return { name, uri: file.uri, size: file.size || 0, at: Date.now(), auto, outside };
+}
+
+/* ---------------- a folder in Downloads ----------------
+ *
+ * The app's own storage goes when the app is uninstalled. So backups are also
+ * written to a folder the person can see in their file manager —
+ * Downloads/Genius Pro Backups. Android lets an app write outside its own
+ * storage only to a folder the person has picked once; the permission is kept,
+ * so after that every backup lands there by itself.
+ */
+export const OUTSIDE_FOLDER = 'Genius Pro Backups';
+const FOLDER_KEY = 'genius.backupFolderUri';
+const DOWNLOADS_URI = 'content://com.android.externalstorage.documents/tree/primary%3ADownload';
+let chosenFolder: string | null = null;
+
+/** Reads the folder picked before, once, when the app starts. */
+export async function loadChosenFolder(): Promise<string | null> {
+  try { chosenFolder = await AsyncStorage.getItem(FOLDER_KEY); } catch { chosenFolder = null; }
+  return chosenFolder;
+}
+
+export function chosenFolderUri(): string | null { return chosenFolder; }
+
+/** Where backups also go, in words: "Download/Genius Pro Backups". */
+export function chosenFolderText(): string | null {
+  if (!chosenFolder) return null;
+  const tail = decodeURIComponent(chosenFolder).split(/[:/]/).filter(Boolean).slice(-2).join('/');
+  return tail || OUTSIDE_FOLDER;
+}
+
+/**
+ * Asks the person to allow Downloads (Android opens the folder picker there),
+ * then makes "Genius Pro Backups" inside whatever they chose and remembers it.
+ */
+export async function chooseBackupFolder(): Promise<string | null> {
+  if (Platform.OS !== 'android') return null;
+  const picked = await Directory.pickDirectoryAsync(DOWNLOADS_URI);
+  if (!picked) return null;
+  let target: Directory = picked;
+  // they may have picked the backup folder itself; otherwise make it inside
+  if (!/Genius(%20| )Pro(%20| )Backups/i.test(picked.uri)) {
+    const existing = picked.list().find((x) => x instanceof Directory && x.name === OUTSIDE_FOLDER);
+    target = (existing as Directory) || picked.createDirectory(OUTSIDE_FOLDER);
+  }
+  chosenFolder = target.uri;
+  try { await AsyncStorage.setItem(FOLDER_KEY, target.uri); } catch { /* kept for this run only */ }
+  return target.uri;
+}
+
+export async function forgetBackupFolder(): Promise<void> {
+  chosenFolder = null;
+  try { await AsyncStorage.removeItem(FOLDER_KEY); } catch { /* nothing to forget */ }
+}
+
+/** Writes a copy into the chosen folder. Quietly false when there is none or it is gone. */
+export function copyToChosenFolder(name: string, base64: string): boolean {
+  if (!chosenFolder) return false;
+  try {
+    const dir = new Directory(chosenFolder);
+    const file = dir.createFile(name, BACKUP_MIME_OUT);
+    file.write(base64, { encoding: 'base64' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+const BACKUP_MIME_OUT = 'application/octet-stream';
+
+/** A backup's bytes as base64, for sending to Google Drive. */
+export async function backupBase64(uri: string): Promise<string> {
+  return new File(uri).base64();
 }
 
 export function listBackups(): DeviceBackup[] {

@@ -12,7 +12,7 @@
  * the Receipt settings preview shows.
  */
 import type { DocLine, DocMeta } from './docPrint';
-import type { Paper, PrintTemplate, SoldSerial } from './types';
+import type { KitchenSettings, Paper, PrintTemplate, SoldSerial } from './types';
 
 /** "IMEI 356… / 356… · Used" — one line per phone sold on a line. */
 export function imeiTexts(serials?: SoldSerial[]): string[] {
@@ -177,6 +177,7 @@ export function escposDoc(doc: DocMeta, money: (n: number) => string, opts: Escp
 
     // what this bill is
     o.lines(lr('Number', d.no, w)).lines(lr('Date', date, w));
+    if (d.table) o.lines(lr('Order', d.table, w));
     if (showParty && d.partyName) o.lines(lr(partyLabel, d.partyName, w));
     if (showParty && d.partyPhone) o.lines(lr('Phone', d.partyPhone, w));
     if (d.method && !compact) o.lines(lr('Paid by', d.method, w));
@@ -191,6 +192,8 @@ export function escposDoc(doc: DocMeta, money: (n: number) => string, opts: Escp
         o.lines(lr('  ' + qtyText(l, money, sh), money(l.qty * l.price), w));
       }
       if (sh.imei) imeiTexts(l.serials).forEach((t) => o.lines(wrap('  ' + t, w)));
+      // restaurant choices under the item
+      if (l.mods && l.mods.length) o.lines(wrap('  + ' + l.mods.join(', '), w));
       const b = showBatch && l.batchNo ? 'Batch ' + l.batchNo : '';
       const e = showExpiry && l.expiry ? 'Exp ' + new Date(l.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
       if (b || e) o.lines(wrap('  ' + [b, e].filter(Boolean).join(' - '), w));
@@ -232,5 +235,73 @@ export function escposDoc(doc: DocMeta, money: (n: number) => string, opts: Escp
     o.feed(4).raw(GS, 0x56, 0x42, 0x00); // feed past the cutter, then cut
   }
   if (opts.openDrawer) o.raw(ESC, 0x70, 0x00, 0x19, 0xfa); // pulse the drawer
+  return Uint8Array.from(o.bytes);
+}
+
+/**
+ * The order type on a kitchen ticket. Each prints differently, so the cook
+ * knows at a glance:
+ *   DINE IN   — double size, between two rules
+ *   TAKEAWAY  — white on black, double size
+ *   DELIVERY  — white on black, underlined, triple width, between double rules
+ */
+function orderBanner(o: Out, t: string | undefined, w: number, narrow: boolean) {
+  if (!t) return;
+  const reverse = (on: boolean) => o.raw(GS, 0x42, on ? 1 : 0);
+  const underline = (on: boolean) => o.raw(ESC, 0x2d, on ? 2 : 0);
+  o.align('center').feed(1);
+  if (t === 'takeaway') {
+    o.bold(true).size(2); reverse(true);
+    o.line(narrow ? ' TAKEAWAY ' : '  * TAKEAWAY *  ');
+    reverse(false); o.size(1).bold(false);
+  } else if (t === 'delivery') {
+    o.line('='.repeat(w));
+    o.bold(true); underline(true); reverse(true);
+    o.raw(GS, 0x21, narrow ? 0x11 : 0x21); // wider and taller than the rest
+    o.line(narrow ? '!DELIVERY!' : ' !! DELIVERY !! ');
+    o.raw(GS, 0x21, 0x00); reverse(false); underline(false); o.bold(false);
+    o.line('='.repeat(w));
+  } else {
+    o.line('-'.repeat(w));
+    o.bold(true).size(2).line('DINE IN').size(1).bold(false);
+    o.line('-'.repeat(w));
+  }
+  o.align('left');
+}
+
+/**
+ * A kitchen order ticket: what to make, in big print, and no prices — the
+ * kitchen needs the items and the notes, not the money.
+ */
+export function escposKitchen(doc: DocMeta, paper?: Paper, k?: KitchenSettings): Uint8Array {
+  const narrow = paper === '58mm';
+  const w = lineWidth(paper);
+  const big = narrow ? w : Math.floor(w / 2);
+  const large = k?.bigText !== false && !narrow;
+  const time = new Date(doc.ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const copies = Math.max(1, Math.min(5, k?.copies || 1));
+  const o = new Out();
+  o.raw(ESC, 0x40);
+  for (let c = 0; c < copies; c++) {
+    o.align('center').bold(true).size(2).lines(wrap(k?.title || 'KITCHEN ORDER', big)).size(1).bold(false);
+    // how it is eaten, each in its own unmissable style
+    orderBanner(o, doc.orderType, w, narrow);
+    if (doc.table && k?.showTable !== false) o.bold(true).size(2).lines(wrap(doc.table, big)).size(1).bold(false);
+    o.align('left').rule(w);
+    o.lines(lr('Order', doc.no, w));
+    if (k?.showTime !== false) o.lines(lr('Time', time, w));
+    if (doc.partyName) o.lines(lr('Customer', doc.partyName, w));
+    if (doc.servedBy && k?.showServer !== false) o.lines(lr('Server', doc.servedBy, w));
+    o.rule(w, '=');
+    doc.lines.forEach((l: DocLine) => {
+      o.bold(true).size(large ? 2 : 1).lines(wrap(l.qty + ' x ' + l.name, large ? big : w)).size(1).bold(false);
+      (l.mods || []).forEach((m) => o.lines(wrap('   + ' + m, w)));
+      if (l.note && k?.showNotes !== false) o.lines(wrap('   * ' + l.note, w));
+    });
+    o.rule(w, '=');
+    if (doc.note && k?.showNotes !== false) o.lines(wrap('Note: ' + doc.note, w));
+    if (k?.footer) o.align('center').lines(wrap(k.footer, w)).align('left');
+    o.feed(4).raw(GS, 0x56, 0x42, 0x00);
+  }
   return Uint8Array.from(o.bytes);
 }

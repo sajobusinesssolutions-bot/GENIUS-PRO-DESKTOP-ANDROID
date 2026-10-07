@@ -9,7 +9,8 @@
  * Both are native modules, so they are loaded lazily: tests and the web build
  * run without them and get a plain "not available" instead of a crash.
  */
-import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
+import { NativeModules, PermissionsAndroid, Platform, TurboModuleRegistry } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 export interface FoundDevice {
   name: string;
@@ -27,15 +28,28 @@ export class PrinterError extends Error {}
  * the installed app. Expo Go has no native half, so check for it first and
  * say so plainly, rather than failing with a null-pointer message.
  */
+/**
+ * Whether a native module is in this build. Under the new architecture an
+ * old-style module is reached through the TurboModule registry, and the
+ * NativeModules lookup alone can come back empty in a release APK even though
+ * the module is there — which used to be reported as "Expo Go".
+ */
+function hasNative(name: string): boolean {
+  if (NativeModules[name]) return true;
+  try { return !!TurboModuleRegistry.get(name); } catch { return false; }
+}
 function bt(): any {
-  if (!NativeModules.RNBluetoothClassic) return null;
+  if (!hasNative('RNBluetoothClassic')) return null;
   try { return require('react-native-bluetooth-classic').default; } catch { return null; }
 }
 function tcp(): any {
-  if (!NativeModules.TcpSockets) return null;
+  if (!hasNative('TcpSockets')) return null;
   try { return require('react-native-tcp-socket').default; } catch { return null; }
 }
-const NOT_HERE = ' This copy of the app cannot use it (Expo Go has no Bluetooth or network printing). Install the Genius Pro app (APK) to print.';
+const inExpoGo = () => Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+const NOT_HERE_GO = ' This copy of the app cannot use it (Expo Go has no Bluetooth or network printing). Install the Genius Pro app (APK) to print.';
+const NOT_HERE_BUILD = ' The printer part of the app did not load. Close Genius Pro fully and open it again; if this keeps happening, install the latest Genius Pro APK.';
+const notHere = () => (inExpoGo() ? NOT_HERE_GO : NOT_HERE_BUILD);
 
 /* ---------------- permissions ---------------- */
 
@@ -59,7 +73,7 @@ async function askBluetooth(): Promise<void> {
 
 async function ready(): Promise<any> {
   const B = bt();
-  if (!B) throw new PrinterError('Bluetooth printing is not available here.' + NOT_HERE);
+  if (!B) throw new PrinterError('Bluetooth printing is not available here.' + notHere());
   await askBluetooth();
   let on = false;
   try { on = await B.isBluetoothEnabled(); } catch { on = false; }
@@ -185,7 +199,7 @@ export async function printBluetooth(address: string, page: Uint8Array): Promise
  */
 export function testNetwork(host: string, port: number, page: Uint8Array, timeoutMs = 5000): Promise<void> {
   const T = tcp();
-  if (!T) return Promise.reject(new PrinterError('Network printing is not available here.' + NOT_HERE));
+  if (!T) return Promise.reject(new PrinterError('Network printing is not available here.' + notHere()));
   return new Promise((resolve, reject) => {
     let done = false;
     let sock: any;

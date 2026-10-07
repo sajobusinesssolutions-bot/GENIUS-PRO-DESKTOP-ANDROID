@@ -46,6 +46,7 @@ import BatchEditor from '../components/BatchEditor';
 import SerialEditor from '../components/SerialEditor';
 import SegmentSlider from '../components/SegmentSlider';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { vocab, editionOf, DOSAGE_FORMS } from '../data/editions';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProductDetail'>;
@@ -137,6 +138,9 @@ function SumChip({ label, on }: { label: string; on: boolean }) {
 export default function ProductDetailScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const ctx = useAppData();
+  // the words this business uses: Drug in a pharmacy, Dish in a restaurant
+  const V = vocab(ctx.db);
+  const pharmacy = editionOf(ctx.db) === 'pharmacy';
   const { db, product, updateProduct, addProduct, money, can, addUnit, addCategory } = ctx;
   const { error } = useToast();
   const existing = route.params?.productId ? product(route.params.productId) : undefined;
@@ -154,6 +158,12 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   const [barcodes, setBarcodes] = useState<string[]>(existing?.barcodes || []);
   const [image, setImage] = useState(existing?.emoji || existing?.image || '📦');
   const [color, setColor] = useState(existing?.color || '');
+  // pharmacy
+  const [genericName, setGenericName] = useState(existing?.genericName || '');
+  const [strength, setStrength] = useState(existing?.strength || '');
+  const [dosageForm, setDosageForm] = useState(existing?.dosageForm || '');
+  const [manufacturer, setManufacturer] = useState(existing?.manufacturer || '');
+  const [rxOnly, setRxOnly] = useState(!!existing?.rxOnly);
 
   const [cost, setCost] = useState(String(existing?.cost ?? ''));
   const [price, setPrice] = useState(String(existing?.price ?? ''));
@@ -293,6 +303,10 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       priceChangeAllowed, defaultQty: num(defaultQty) || 1, startQtyFilled,
       note, color, emoji: image, image,
       photo: photo || undefined,
+      ...(pharmacy ? {
+        genericName: genericName.trim() || undefined, strength: strength.trim() || undefined,
+        dosageForm: dosageForm || undefined, manufacturer: manufacturer.trim() || undefined, rxOnly,
+      } : {}),
       taxExempt,
       salesAccount, cogsAccount, active,
       rateType: svc ? rateType : undefined,
@@ -368,18 +382,37 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       <SegmentSlider
         value={kind}
         options={[
-          { v: 'product' as ProductKind, l: 'Product', i: 'box' as IconName },
+          { v: 'product' as ProductKind, l: V.product, i: (pharmacy ? 'shield' : 'box') as IconName },
           { v: 'service' as ProductKind, l: 'Service', i: 'tools' as IconName },
         ]}
         onChange={(k: ProductKind) => { setKind(k); if (k === 'service' && tab === 'stock') setTab('basics'); }}
       />
 
       <Field
-        label="Name"
+        label={V.itemName}
         value={name}
         onChangeText={(v: string) => { setName(v); if (nameErr && v.trim()) setNameErr(false); }}
         error={nameErr ? 'Give it a name.' : undefined}
       />
+
+      {/* a drug: its generic name, strength, form and maker, and whether it needs a prescription */}
+      {pharmacy && !svc ? (
+        <>
+          <Field label="Generic name" value={genericName} onChangeText={setGenericName} placeholder="Paracetamol" />
+          <Grid cols={2} gap={12}>
+            <Field label="Strength" value={strength} onChangeText={setStrength} placeholder="500 mg" />
+            <SelectField
+              label="Dosage form"
+              value={dosageForm}
+              placeholder="Choose"
+              options={DOSAGE_FORMS.map((v) => ({ v, l: v }))}
+              onChange={setDosageForm}
+            />
+          </Grid>
+          <Field label="Manufacturer" value={manufacturer} onChangeText={setManufacturer} placeholder="Optional" />
+          <ToggleRow label="Prescription only (Rx)" sub="The counter is reminded to see a prescription before selling it" on={rxOnly} onChange={setRxOnly} bare />
+        </>
+      ) : null}
 
       {/* the photo: a field like the others, with the camera and the gallery inside it */}
       <View style={{
@@ -409,9 +442,9 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         ) : null}
       </View>
 
-      <Field label="Item code" value={sku} onChangeText={setSku} placeholder="Leave empty and one is made" />
-      {pickBox('Category', category, () => setSheet('category'))}
-      {pickBox('Unit', unit ? unit + (secondaryUnit ? ' · also by ' + secondaryUnit + (num(conversionRate) ? ' (' + num(conversionRate) + ' in one)' : '') : '') : '', () => setSheet('unit'))}
+      <Field label={V.itemCode} value={sku} onChangeText={setSku} placeholder="Leave empty and one is made" />
+      {pickBox(V.category, category, () => setSheet('category'))}
+      {pickBox(V.unit, unit ? unit + (secondaryUnit ? ' · also by ' + secondaryUnit + (num(conversionRate) ? ' (' + num(conversionRate) + ' in one)' : '') : '') : '', () => setSheet('unit'))}
 
       {svc ? null : (
         <>
@@ -474,11 +507,11 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
 
       <Field
         inset
-        label="Description"
+        label={V.description}
         value={description}
         onChangeText={setDescription}
         multiline
-        placeholder={svc ? 'What is included, how it is done' : 'Condition, specifications, colour, size…'}
+        placeholder={svc ? 'What is included, how it is done' : V.descriptionHint}
       />
     </>
   );
@@ -555,7 +588,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         <Field
           inset
           big
-          label="Opening stock"
+          label={V.openingStock}
           value={openingQty}
           onChangeText={setOpeningQty}
           numeric
@@ -578,7 +611,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       )}
 
       <Grid cols={2} gap={12}>
-        <Field inset icon="alert" label="Reorder at" value={reorder} onChangeText={setReorder} numeric />
+        <Field inset icon="alert" label={V.reorderAt} value={reorder} onChangeText={setReorder} numeric />
         <Field inset icon="shield" label="Warranty (months)" value={warrantyMonths} onChangeText={setWarrantyMonths} numeric />
       </Grid>
 

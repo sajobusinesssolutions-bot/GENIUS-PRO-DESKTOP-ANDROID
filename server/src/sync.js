@@ -35,7 +35,29 @@ export function effectiveStatus(account, licence, now = new Date()) {
 }
 
 /** Pulls the account off the bearer token. Everything below is scoped by it. */
-async function whoami(req, reply) {
+/** How many businesses a licence allows: what the developer set, else the plan's own number. */
+export function businessLimit(lic) {
+  if (lic?.max_businesses) return Number(lic.max_businesses);
+  return lic?.plan === 'pro' || lic?.plan === 'lifetime' ? 5 : 1;
+}
+
+/** The account's current licence, with what it allows and how much of it is used. */
+async function accountLicence(accountId) {
+  const lic = await q(
+    `select plan, edition, max_businesses from licences where account_id = $1 order by started_at desc limit 1`,
+    [accountId],
+  );
+  const owned = await q(`select count(*)::int as n from businesses where account_id = $1 and status = 'active'`, [accountId]);
+  const l = lic.rows[0];
+  return {
+    plan: l?.plan || null,
+    edition: l?.edition || 'retail',
+    maxBusinesses: businessLimit(l),
+    owned: owned.rows[0].n,
+  };
+}
+
+export async function whoami(req, reply) {
   const header = String(req.headers.authorization || '');
   if (!header.startsWith('Bearer ')) {
     fail(reply, 401, 'badCredentials', 'Sign in again.');
@@ -273,7 +295,7 @@ export default async function syncRoutes(app) {
 
     const acct = await q('select id, email, name, status from accounts where id = $1', [me.id]);
     const lic = await q(
-      `select plan, term, seats, status, expires_at from licences
+      `select plan, edition, term, seats, status, expires_at, max_businesses from licences
         where account_id = $1 order by started_at desc limit 1`,
       [me.id],
     );
@@ -298,7 +320,9 @@ export default async function syncRoutes(app) {
       `select b.id, b.name, b.tin, b.local_id, b.created_at, b.status,
               case when b.account_id = $1 then 'owner'
                    else coalesce(bm.role, 'staff') end as role,
-              s.updated_at as snapshot_at, s.bytes as snapshot_bytes
+              s.updated_at as snapshot_at, s.bytes as snapshot_bytes,
+              (s.data->'sync'->>'on') = 'true' as sync_on,
+              s.data->'firm'->>'businessType' as business_type
          from businesses b
          left join business_members bm on bm.business_id = b.id and bm.account_id = $1
          left join business_snapshots s on s.business_id = b.id
@@ -307,7 +331,11 @@ export default async function syncRoutes(app) {
         order by b.created_at`,
       [me.id, String(req.query?.all || '') === 'true'],
     );
-    return { businesses: rows.map((b) => ({ ...b, active: b.status === 'active', role: b.role || 'staff' })) };
+    return {
+      businesses: rows.map((b) => ({ ...b, active: b.status === 'active', role: b.role || 'staff' })),
+      // the edition this account is licensed for, and how many businesses it may run
+      licence: await accountLicence(me.id),
+    };
   });
 
   /* ------------------------------------------------------- snapshots */
@@ -330,7 +358,18 @@ export default async function syncRoutes(app) {
       [biz.id],
     );
     if (current.rows[0] && version < current.rows[0].version) {
-      return fail(reply, 409, 'staleSnapshot', 'This device has an older snapshot than the server. Refresh first.');
+      // Every phone sends copies, so a phone's version is behind as soon as
+      // another phone sends one. What matters is whether this phone has every
+      // change the server holds: if it has pulled them all, its copy is current.
+      const head = await q('select coalesce(max(seq),0)::bigint as seq from ops where business_id = $1', [biz.id]);
+      const cursor = Number(req.body?.cursor);
+      if (!Number.isFinite(cursor) || cursor < Number(head.rows[0].seq)) {
+        return reply.code(409).send({
+          error: 'staleSnapshot',
+          message: 'This device has an older snapshot than the server. Refresh first.',
+          version: current.rows[0].version,
+        });
+      }
     }
     const text = JSON.stringify(data);
     const nextVersion = (current.rows[0]?.version || 0) + 1;
@@ -378,6 +417,13 @@ export default async function syncRoutes(app) {
         [me.id, String(req.body.localId)],
       );
       if (had.rows[0]) return had.rows[0];
+    }
+    // a new business: only as many as the licence allows
+    const lim = await accountLicence(me.id);
+    if (lim.owned >= lim.maxBusinesses) {
+      return fail(reply, 409, 'businessLimit',
+        'Your plan allows ' + lim.maxBusinesses + ' business' + (lim.maxBusinesses === 1 ? '' : 'es')
+        + ' and you have ' + lim.owned + '. Ask Genius Pro to raise the limit, or deactivate one you no longer use.');
     }
     const { rows } = await q(
       `insert into businesses (account_id, name, tin, local_id)

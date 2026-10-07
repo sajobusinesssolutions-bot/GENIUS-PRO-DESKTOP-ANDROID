@@ -34,6 +34,7 @@ async function call<T>(path: string, access: string, body?: unknown, method?: st
 
 export interface OwnerLicence {
   plan: string; term: string; seats: number;
+  edition?: string; maxBusinesses?: number;
   status: 'active' | 'trial' | 'expired' | 'blocked' | 'revoked' | string;
   expiresAt: string | null; daysLeft: number | null; since: string;
 }
@@ -96,10 +97,10 @@ export const runBackup = (a: string) => call<{ ok: true; backup: Backup & { ms: 
 
 /** `days: null` grants a lifetime licence. */
 /** Adds an owner by email with a subscription, and emails them how to get in. */
-export const addOwner = (a: string, o: { email: string; name?: string; plan: string; days: number | null; seats: number; invite: boolean }) =>
+export const addOwner = (a: string, o: { email: string; name?: string; plan: string; days: number | null; seats: number; invite: boolean; edition?: string; businesses?: number | null }) =>
   call<{ ok: true; id: string; created: boolean; invited: boolean; inviteError: string | null }>('/v1/admin/owners', a, o);
 
-export const grantLicence = (a: string, ownerId: string, o: { plan: string; days: number | null; seats: number }) =>
+export const grantLicence = (a: string, ownerId: string, o: { plan: string; days: number | null; seats: number; edition?: string; businesses?: number | null }) =>
   call<{ ok: true }>('/v1/admin/owners/' + ownerId + '/licence', a, o);
 
 export const setBlocked = (a: string, ownerId: string, blocked: boolean, reason?: string) =>

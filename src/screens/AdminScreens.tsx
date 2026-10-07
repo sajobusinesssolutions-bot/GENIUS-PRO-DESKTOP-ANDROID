@@ -16,7 +16,7 @@ import { useGo } from '../nav/navigate';
 import { ageOfDays, plural, fmtDate } from '../data/helpers';
 
 function Input({ value, onChangeText }: any) {
-  return <Field compact numeric decimal label="Value" value={value} onChangeText={onChangeText} style={{ width: 130, marginBottom: 0 }} />;
+  return <Field compact numeric decimal money={false} label="Value" value={value} onChangeText={onChangeText} style={{ width: 130, marginBottom: 0 }} />;
 }
 
 /** Settings moved to its own file when it was rebuilt from SCREENS.settings (6712). */
