@@ -45,6 +45,14 @@ export type ProductKind = 'product' | 'service';
 /** Reference SERVICE_RATE, used by the service tab at 16897. */
 export type ServiceRate = 'fixed' | 'hour' | 'day' | 'unit';
 
+/** A prescription as it was seen at the counter. */
+export interface RxRecord {
+  prescriber: string; number?: string; patient?: string; facility?: string;
+  /** A photo of the prescription, as a local file. */
+  photo?: string;
+  seenBy: string; seenAt: string;
+}
+
 /** A named set of selling prices: Wholesale, Cafés, a promotion. See priceLists.ts. */
 export interface PriceList {
   id: string; name: string; currency: string; status: 'Active' | 'Draft';
@@ -113,6 +121,10 @@ export interface Product {
   manufacturer?: string;
   /** Pharmacy: may only be sold against a prescription. */
   rxOnly?: boolean;
+  /** Restaurant: the ingredients one serving uses, drawn from stock each time it is sold. */
+  recipe?: { productId: string; qty: number }[];
+  /** Restaurant: an ingredient, kept in stock but never shown on the menu. */
+  ingredient?: boolean;
   /** Restaurant: run out for now ("86'd"); shown greyed and cannot be ordered. */
   soldOut?: boolean;
   /** Restaurant: Vegetarian, Spicy, Halal, New… */
@@ -161,6 +173,8 @@ export interface Party {
   id: string; name: string; type: 'customer' | 'supplier'; phone: string;
   openingBalance: number; creditLimit: number; points: number; active: boolean;
   address?: string; email?: string; gstin?: string;
+  /** The price list this customer is sold at by default: a wholesale buyer, a café on contract. */
+  priceListId?: string;
 }
 
 // `pin` is a salted hash (see pinHash.ts), or '' when none has been chosen
@@ -209,6 +223,8 @@ export interface Sale {
   ticketName?: string;
   /** The price list the sale was priced from. */
   priceListId?: string;
+  /** Pharmacy: the prescription seen for the prescription-only drugs on it. */
+  rx?: RxRecord;
   /** Restaurant: eaten in, taken away or delivered. */
   orderType?: OrderType;
   /** Payments received against this invoice after it was raised, each by id. */
@@ -556,6 +572,8 @@ export interface Settings {
   stations?: string[];
   /** Restaurant: what a new ticket starts as. */
   defaultOrderType?: OrderType;
+  /** Restaurant: the tables on the floor, by name, for the table plan. */
+  tables?: string[];
   /**
    * Day close freezes the books up to the moment it ran: nothing dated on or
    * before it can be edited, deleted or backdated until the owner reopens it.

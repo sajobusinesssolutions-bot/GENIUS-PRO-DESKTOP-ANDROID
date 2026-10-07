@@ -16,10 +16,11 @@ import { isPremiumReport , reportPermission } from '../data/reports';
 import { Card, Cap, SearchBar, EmptyState, Pad, Badge } from '../components/ui';
 import Icon from '../components/icons';
 import {
-  REPORTS, REPORT_CATEGORIES, FAVOURITE_REPORTS, RESTAURANT_REPORTS, ReportDef, isImplemented, reportEntries, ReportEntry, groupOf,
+  REPORTS, REPORT_CATEGORIES, FAVOURITE_REPORTS, RESTAURANT_REPORTS, PHARMACY_REPORTS, ReportDef, isImplemented, reportEntries, ReportEntry, groupOf,
 } from '../data/reports';
 import type { RootStackParamList } from '../nav/types';
 import { isRestaurant } from '../data/restaurant';
+import { editionOf } from '../data/editions';
 
 function ReportRow({ r, last, onPress, icon, isFav, onToggleFav }: {
   r: ReportEntry; last?: boolean; onPress: () => void; icon?: boolean; isFav?: boolean; onToggleFav?: () => void;
@@ -83,7 +84,7 @@ export default function ReportsScreen() {
     // a tax report means nothing to a shop that charges no tax
     const taxOff = db?.settings.taxEnabled === false;
     // restaurant reports are for restaurants only
-    const may = (id: string) => { if (taxOff && id === 'tax-summary') return false; if (RESTAURANT_REPORTS.has(id) && !isRestaurant(db)) return false; const p = reportPermission(id); return !p || canFor(role, p); };
+    const may = (id: string) => { if (taxOff && id === 'tax-summary') return false; if (RESTAURANT_REPORTS.has(id) && !isRestaurant(db)) return false; if (PHARMACY_REPORTS.has(id) && editionOf(db) !== 'pharmacy') return false; const p = reportPermission(id); return !p || canFor(role, p); };
     const all = reportEntries().filter((e) => (e.group ? e.group.views.some((v) => may(v.id)) : may(e.id)));
     const list = needle ? all.filter((e) => words(e).toLowerCase().includes(needle)) : all;
     return REPORT_CATEGORIES

@@ -105,6 +105,14 @@ export default function DocEntry({
   /** A party was chosen: go straight on to the first item. */
   function chosen(id: string | null) {
     onPartyChange(id);
+    // the customer's own price list comes with them
+    const own = id ? db?.parties.find((x) => x.id === id)?.priceListId : undefined;
+    if (priceOf === 'price' && own && (db?.priceLists || []).some((l) => l.id === own && l.status === 'Active') && own !== listId) {
+      setListId(own);
+      onPriceListChange?.(own);
+      const l = (db?.priceLists || []).find((x) => x.id === own) || null;
+      onLinesChange(repriceLines(lines as any, l, db?.products || []) as CartLine[]);
+    }
     if (!lines.length) setTimeout(() => setEntrySignal((n) => n + 1), 350);
   }
 

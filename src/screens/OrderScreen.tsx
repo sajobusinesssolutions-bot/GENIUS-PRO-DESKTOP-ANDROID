@@ -67,6 +67,11 @@ export default function OrderScreen({ navigation, route }: Props) {
   const [method, setMethod] = useState<PayMethod>('cash');
   const [received, setReceived] = useState('');
   const [orderNote, setOrderNote] = useState('');
+  /** Splitting the bill: how many of each line this payer takes; null when not splitting. */
+  const [split, setSplit] = useState<number[] | null>(null);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [people, setPeople] = useState(2);
+  const [openView, setOpenView] = useState<'tables' | 'list'>((db?.settings.tables || []).length ? 'tables' : 'list');
   const [orderType, setOrderType] = useState<OrderType>(db?.settings.defaultOrderType || 'dine');
   // which menu is being sold from: someone kept to one menu (a bartender) cannot change it
   const menus = db?.menus || [];
@@ -88,7 +93,7 @@ export default function OrderScreen({ navigation, route }: Props) {
   }, [route.params?.ticketId]);
 
 
-  const menu = useMemo(() => (db?.products || []).filter((p) => p.active !== false), [db]);
+  const menu = useMemo(() => (db?.products || []).filter((p) => p.active !== false && !p.ingredient), [db]);
   const allSections = useMemo(() => menuSections(db), [db]);
   // only the sections of the menu being sold from
   const sections = activeMenu ? allSections.filter((x) => activeMenu.sections.includes(x.name)) : allSections;
@@ -111,6 +116,9 @@ export default function OrderScreen({ navigation, route }: Props) {
   const servicePct = orderType === 'dine' ? Number(db?.settings.serviceChargePct) || 0 : 0;
   const service = Math.round(subtotal * servicePct / 100);
   const total = subtotal + service;
+  const splitSub = split ? lines.reduce((s, l, i) => s + (split[i] || 0) * l.price, 0) : 0;
+  const splitService = split ? Math.round(splitSub * servicePct / 100) : 0;
+  const due = split ? splitSub + splitService : total;
   const count = lines.reduce((s, l) => s + l.qty, 0);
   /** At least one dish with a quantity: only then can the ticket be saved or charged. */
   const hasDish = lines.some((l) => l.qty > 0);
@@ -272,20 +280,37 @@ export default function OrderScreen({ navigation, route }: Props) {
 
   async function charge() {
     if (!lines.some((l) => l.qty > 0)) return;
-    const paid = method === 'cash' ? Number(received) || total : total;
-    if (method === 'cash' && paid < total - 0.005) { error('The cash received is less than the total.'); return; }
+    const taking = split ? lines.map((l, i) => ({ ...l, qty: split[i] || 0 })).filter((l) => l.qty > 0) : lines.filter((l) => l.qty > 0);
+    if (!taking.length) { error('Choose what this person is paying for.'); return; }
+    const paid = method === 'cash' ? Number(received) || due : due;
+    if (method === 'cash' && paid < due - 0.005) { error('The cash received is less than the total.'); return; }
     let sale;
     try {
       sale = commitSale({
-        lines: lines.filter((l) => l.qty > 0), partyId: null, method, discount: 0,
-        additionalCharges: service || undefined, ticketName: name.trim() || undefined, orderType,
+        lines: taking, partyId: null, method, discount: 0,
+        additionalCharges: (split ? splitService : service) || undefined,
+        ticketName: (name.trim() || '') + (split ? ' (split)' : '') || undefined, orderType,
         description: orderNote.trim() || undefined,
       });
     } catch (e) { explain(e); return; }
     // anything not yet cooked still goes to the kitchen
     await sendToKitchen(sale.no);
+    const change = Math.max(0, paid - due);
+    // a split: what is left stays on the ticket for the next payer
+    const rest = split ? lines.map((l, i) => ({ ...l, qty: l.qty - (split[i] || 0) })) : [];
+    if (split && rest.some((l) => l.qty > 0)) {
+      const keep = rest.filter((l) => l.qty > 0);
+      try {
+        const t = saveTicket({ id: ticketId || undefined, name: name.trim(), lines: keep, sent: keep.map((l) => l.qty), orderType, note: orderNote.trim() });
+        setTicketId(t.id); setLines(keep); setSent(keep.map((l) => l.qty));
+      } catch (e) { explain(e); }
+      setSplit(null); setPaying(false); setReceived(''); setMethod('cash');
+      success(sale.no + ' paid' + (change ? ' · change ' + money(change) : '') + ' · ' + money(keep.reduce((n, l) => n + l.qty * l.price, 0)) + ' left on the ticket');
+      if (db?.printer?.autoPrint) printDoc(saleDoc(sale, 'Receipt'), money, printOptsFor(db, 'receipt', undefined, 'cash')).catch(() => {});
+      return;
+    }
     if (ticketId) closeTicket(ticketId, sale.id);
-    const change = Math.max(0, paid - total);
+    setSplit(null);
     clear();
     setPaying(false); setReceived(''); setMethod('cash');
     if (db?.printer?.autoPrint) {
@@ -558,6 +583,9 @@ export default function OrderScreen({ navigation, route }: Props) {
         )}
         {lines.length ? (
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+            {mayCharge && count > 1 ? (
+              <View style={{ flex: 1 }}><Button size="sm" label="Split bill" icon={<Icon name="swap" size={15} color={colors.ink} />} onPress={() => { setSplit(lines.map(() => 0)); setTicketOpen(false); setTimeout(() => setSplitOpen(true), 250); }} /></View>
+            ) : null}
             {mayBill ? (
               <View style={{ flex: 1 }}><Button size="sm" label="Print bill" icon={<Icon name="print" size={15} color={colors.ink} />} onPress={() => printBill(ticketId ? (open.find((t) => t.id === ticketId)?.no || 'BILL') : 'BILL')} /></View>
             ) : null}
@@ -572,8 +600,55 @@ export default function OrderScreen({ navigation, route }: Props) {
       </Sheet>
 
       {/* open tickets */}
-      <Sheet visible={openList} title="Open tickets" subtitle={open.length + ' waiting to be paid'} icon="receipt" full onClose={() => setOpenList(false)}>
-        {open.length ? open.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((t) => {
+      <Sheet visible={openList} title={openView === 'tables' ? 'Tables' : 'Open tickets'} subtitle={open.length + ' waiting to be paid'} icon="receipt" full onClose={() => setOpenList(false)}>
+        {(db.settings.tables || []).length ? (
+          <View style={{ flexDirection: 'row', padding: 4, borderRadius: 12, backgroundColor: colors.sunk, marginBottom: 12 }}>
+            {(['tables', 'list'] as const).map((v) => (
+              <Pressable key={v} onPress={() => setOpenView(v)} style={{ flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center', backgroundColor: openView === v ? colors.surface : 'transparent' }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: openView === v ? colors.ink : colors.faint }}>{v === 'tables' ? 'Table plan' : 'All open tickets'}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {openView === 'tables' && (db.settings.tables || []).length ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            {(db.settings.tables || []).map((tn) => {
+              // a table is busy while a ticket is open under its name (anyone's: two waiters must not seat the same table)
+              const t = (db.tickets || []).find((x) => x.status === 'open' && x.name.trim().toLowerCase() === tn.trim().toLowerCase());
+              const mine = !t || seeAll || t.userId === db.session.userId;
+              const mins = t ? Math.round((Date.now() - new Date(t.ts).getTime()) / 60000) : 0;
+              const amt = t ? t.lines.reduce((s, l) => s + l.qty * l.price, 0) : 0;
+              const long = mins >= 90;
+              return (
+                <Pressable
+                  key={tn}
+                  onPress={() => {
+                    if (t && !mine) { error(tn + ' is being served by another waiter.'); return; }
+                    if (t) { load(t); return; }
+                    // a free table: a new ticket under its name, eaten in
+                    if (lines.length && !ticketId) { error('Save or clear the ticket you are on first.'); return; }
+                    clear(); setName(tn); setOrderType('dine'); setOpenList(false);
+                  }}
+                  style={{
+                    width: '31%', minHeight: 84, padding: 10, borderRadius: 14, justifyContent: 'space-between',
+                    backgroundColor: t ? (long ? colors.dangerSoft : colors.warnSoft) : colors.goodSoft,
+                    borderWidth: ticketId && t?.id === ticketId ? 2 : 0, borderColor: colors.ink, opacity: mine ? 1 : 0.55,
+                  }}
+                >
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{tn}</Text>
+                  {t ? (
+                    <>
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: long ? colors.danger : colors.warn }}>{money(amt)}</Text>
+                      <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.soft }}>{mins < 60 ? mins + ' min' : Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min'}</Text>
+                    </>
+                  ) : (
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.good }}>Free</Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : open.length ? open.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((t) => {
           const amt = t.lines.reduce((s, l) => s + l.qty * l.price, 0);
           return (
             <Pressable
@@ -607,15 +682,55 @@ export default function OrderScreen({ navigation, route }: Props) {
         {ticketId || lines.length ? <Button label="Start a new ticket" icon={<Icon name="plus" size={16} color={colors.ink} />} onPress={() => { clear(); setOpenList(false); }} /> : null}
       </Sheet>
 
+      {/* splitting the bill */}
+      <Sheet
+        visible={splitOpen && !!split}
+        title="Split the bill"
+        subtitle={'Choose what this person pays for · ' + money(due)}
+        icon="swap"
+        full
+        onClose={() => { setSplitOpen(false); setSplit(null); }}
+        footer={(
+          <Button variant="pri" label={'Charge this share · ' + money(due)} disabled={!splitSub} onPress={() => { setSplitOpen(false); setTimeout(() => setPaying(true), 250); }} />
+        )}
+      >
+        {/* evenly: what each pays */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: colors.sunk, marginBottom: 14 }}>
+          <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>Split evenly between</Text>
+          <Pressable onPress={() => setPeople(Math.max(2, people - 1))} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>−</Text></Pressable>
+          <Text style={{ minWidth: 24, textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{people}</Text>
+          <Pressable onPress={() => setPeople(Math.min(30, people + 1))} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>+</Text></Pressable>
+        </View>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, marginBottom: 14 }}>
+          {people} people pay {money(Math.ceil(total / people / 100) * 100)} each (of {money(total)}). To give each their own receipt, pick their dishes below.
+        </Text>
+        {split ? lines.map((l, i) => (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{l.name}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{l.qty} on the ticket · {money(l.price)} each</Text>
+            </View>
+            <Pressable onPress={() => setSplit(split.map((q, k) => (k === i ? Math.max(0, q - 1) : q)))} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>−</Text></Pressable>
+            <Text style={{ minWidth: 22, textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 15, color: split[i] ? colors.accent : colors.faint }}>{split[i] || 0}</Text>
+            <Pressable onPress={() => setSplit(split.map((q, k) => (k === i ? Math.min(l.qty, q + 1) : q)))} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>+</Text></Pressable>
+          </View>
+        )) : null}
+        {split ? (
+          <Pressable onPress={() => setSplit(lines.map((l) => l.qty))} style={{ alignSelf: 'center', paddingVertical: 12 }}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.accent }}>Everything left</Text>
+          </Pressable>
+        ) : null}
+      </Sheet>
+
       {/* payment */}
       <Sheet
         visible={paying}
-        title={'Charge ' + money(total)}
+        title={(split ? 'Charge a share · ' : 'Charge ') + money(due)}
         subtitle={name.trim() || undefined}
         icon="cash"
         iconTone="good"
-        onClose={() => setPaying(false)}
-        footer={<Button variant="pri" label={'Take payment · ' + money(total)} onPress={charge} />}
+        onClose={() => { setPaying(false); setSplit(null); }}
+        footer={<Button variant="pri" label={'Take payment · ' + money(due)} onPress={charge} />}
       >
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
           {([['cash', 'Cash', 'cash'], ['momo', 'Mobile money', 'phone'], ['bank', 'Card / bank', 'card']] as const).map(([v, l, i]) => {
@@ -630,17 +745,17 @@ export default function OrderScreen({ navigation, route }: Props) {
         </View>
         {method === 'cash' ? (
           <>
-            <Field label="Cash received" numeric decimal value={received} onChangeText={setReceived} placeholder={String(total)} />
+            <Field label="Cash received" numeric decimal value={received} onChangeText={setReceived} placeholder={String(due)} />
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-              {[total, Math.ceil(total / 5000) * 5000, Math.ceil(total / 10000) * 10000, Math.ceil(total / 50000) * 50000]
+              {[due, Math.ceil(due / 5000) * 5000, Math.ceil(due / 10000) * 10000, Math.ceil(due / 50000) * 50000]
                 .filter((v, i, a) => v > 0 && a.indexOf(v) === i).map((v) => (
                   <Pressable key={v} onPress={() => setReceived(String(v))} style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.sunk }}>
                     <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{money(v)}</Text>
                   </Pressable>
                 ))}
             </View>
-            {Number(received) > total ? (
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.good, textAlign: 'center', marginVertical: 6 }}>Change {money(Number(received) - total)}</Text>
+            {Number(received) > due ? (
+              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.good, textAlign: 'center', marginVertical: 6 }}>Change {money(Number(received) - due)}</Text>
             ) : null}
           </>
         ) : null}

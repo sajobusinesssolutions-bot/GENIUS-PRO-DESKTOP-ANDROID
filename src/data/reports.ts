@@ -45,6 +45,7 @@ export const isPremiumReport = (id: string) => PREMIUM_REPORTS.has(id);
  */
 export const REPORTS: ReportDef[] = [
   // Restaurant — the reports a restaurant manager reads (menu engineering, covers, service)
+  { id: 'rx-register', cat: 'Stock', name: 'Prescription register', sub: 'Every prescription-only sale: drug, prescriber, number and patient' },
   { id: 'rest-menu-mix', cat: 'Restaurant', name: 'Menu mix (dish sales)', sub: 'Every dish: plates sold, revenue, share of sales and rank' },
   { id: 'rest-sections', cat: 'Restaurant', name: 'Sales by section', sub: 'Starters, mains, drinks… ranked by revenue' },
   { id: 'rest-menus', cat: 'Restaurant', name: 'Sales by menu', sub: 'Food menu, bar menu… what each brought in' },
@@ -147,6 +148,9 @@ export const REPORTS: ReportDef[] = [
 export const REPORT_CATEGORIES: ReportCategory[] = [
   'Restaurant', 'Sales', 'Purchase', 'Money', 'Receivables', 'Payables', 'Stock', 'Tax & books',
 ];
+
+/** Reports that only mean something to a pharmacy. */
+export const PHARMACY_REPORTS = new Set(['rx-register']);
 
 /** Reports that only mean something to a restaurant. */
 export const RESTAURANT_REPORTS = new Set(['rest-menu-mix', 'rest-sections', 'rest-menus', 'rest-modifiers', 'rest-order-types',
@@ -1152,6 +1156,28 @@ RPT['rest-sold-out'] = (db, from, to) => {
       .sort((a, b) => Number(!!b.soldOut) - Number(!!a.soldOut) || a.name.localeCompare(b.name))
       .map((p) => ({ kind: 'product' as const, id: p.id })),
     searchable: true,
+  };
+};
+
+/* --- Prescription register: every prescription-only drug sold, with what was seen --- */
+RPT['rx-register'] = (db, from, to) => {
+  const rows: Cell[][] = [];
+  const rowRefs: (RowRef | null)[] = [];
+  salesBetween(db, from, to).forEach((s) => {
+    s.lines.forEach((l) => {
+      if (!db.products.find((p) => p.id === l.productId)?.rxOnly) return;
+      rows.push([shortDay(s.ts), s.no, l.name, l.qty, s.rx?.prescriber || { text: 'Not recorded', tone: 'danger' }, s.rx?.number || '—', s.rx?.patient || partyName(db, s.partyId) || '—']);
+      rowRefs.push({ kind: 'sale', id: s.id });
+    });
+  });
+  return {
+    title: 'Prescription register',
+    cols: [{ h: 'Date' }, { h: 'Sale' }, { h: 'Drug' }, { h: 'Qty', r: true }, { h: 'Prescriber' }, { h: 'Rx no.' }, { h: 'Patient' }],
+    rows,
+    foot: ['Total', '', '', sumCol(rows, 3), '', '', ''],
+    rowRefs,
+    searchable: true,
+    note: rows.length ? undefined : 'No prescription-only drugs were sold in this period.',
   };
 };
 

@@ -24,6 +24,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 import PriceListPicker from '../components/PriceListPicker';
 import { priceFor, repriceLines } from '../data/priceLists';
+import * as ImagePicker from 'expo-image-picker';
+import { keepPhoto } from '../data/photos';
 import { Product, PayMethod, SaleLine } from '../data/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'NewSale'>;
@@ -92,6 +94,23 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   }
   /** The prescription for the Rx-only drugs on this bill has been seen. */
   const [rxSeen, setRxSeen] = useState(false);
+  const [rxOpen, setRxOpen] = useState(false);
+  const [rxForm, setRxForm] = useState({ prescriber: '', number: '', patient: '', facility: '', photo: '' });
+  async function rxPhoto() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) { error('Allow the camera to photograph the prescription.'); return; }
+    const r = await ImagePicker.launchCameraAsync({ quality: 0.5 });
+    if (!r.canceled && r.assets?.[0]?.uri) {
+      const kept = await keepPhoto(r.assets[0].uri, 'rx');
+      setRxForm((f) => ({ ...f, photo: kept }));
+    }
+  }
+  function rxConfirm() {
+    if (!rxForm.prescriber.trim()) { error('Write who prescribed it — the doctor or clinician.'); return; }
+    setRxSeen(true);
+    setRxOpen(false);
+    setTimeout(checkout, 300);
+  }
 
   const customers = useMemo(() => (db?.parties || []).filter((p) => p.type === 'customer' && p.active), [db]);
   const selectedParty = partyId ? customers.find((p) => p.id === partyId) : undefined;
@@ -125,6 +144,12 @@ export default function NewSaleScreen({ navigation, route }: Props) {
 
   function customerChosen(id: string | null) {
     setPartyId(id);
+    // a customer with their own price list is priced from it straight away
+    const own = id ? db?.parties.find((x) => x.id === id)?.priceListId : undefined;
+    if (own && (db?.priceLists || []).some((l) => l.id === own && l.status === 'Active') && own !== priceListId) {
+      choosePriceList(own);
+      success('Priced from ' + (db?.priceLists || []).find((l) => l.id === own)?.name);
+    }
     if (!cart.length) setTimeout(() => openEntry(null), 350);
   }
 
@@ -201,14 +226,8 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     // a prescription-only drug: the counter confirms it has seen the prescription
     const rx = cart.filter((l) => productOf(l)?.rxOnly);
     if (rx.length && !rxSeen) {
-      Alert.alert(
-        'Prescription needed',
-        rx.map((l) => '• ' + l.name).join('\n') + '\n\n' + (rx.length === 1 ? 'This drug is' : 'These drugs are') + ' prescription only. Check the customer\'s prescription before selling.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'I have seen it', onPress: () => { setRxSeen(true); setTimeout(checkout, 50); } },
-        ],
-      );
+      // the prescription is recorded: who wrote it, its number, for whom, and a photo if there is one
+      setRxOpen(true);
       return;
     }
 
@@ -290,11 +309,19 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         momoRef: (method === 'momo' || (method === 'credit' && receivedVia === 'momo')) ? momoRef : undefined,
         userId,
         priceListId: priceListId || undefined,
+        ...(rxSeen && rxForm.prescriber.trim() ? {
+          rx: {
+            prescriber: rxForm.prescriber.trim(), number: rxForm.number.trim() || undefined, patient: rxForm.patient.trim() || undefined,
+            facility: rxForm.facility.trim() || undefined, photo: rxForm.photo || undefined,
+            seenBy: userName, seenAt: new Date().toISOString(),
+          },
+        } : {}),
       });
       if (fromQuote) markEstimateConverted(fromQuote.id, sale.id);
       success((fromQuote ? fromQuote.no + ' became ' : '') + sale.no + ' · saved by ' + userName);
       setCart([]);
       setRxSeen(false);
+      setRxForm({ prescriber: '', number: '', patient: '', facility: '', photo: '' });
       setMethod((db?.settings.defaultMethod as PayMethod) || 'cash');
       setMethods(undefined);
       setDiscount(0);
@@ -483,6 +510,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         maxFor={maxFor}
         trackBatches
         trackImei
+        blockExpired
         // The owner and managers are never limited; cashiers follow Settings.
         // role first ("Change prices at the till", "Give discounts"), then the till settings
         editRate={trusted || can('sales.price_edit') || db?.settings.allowPriceEdit === true}
@@ -611,6 +639,25 @@ export default function NewSaleScreen({ navigation, route }: Props) {
           </View>
         }
       >
+        <Sheet
+          visible={rxOpen}
+          title="Prescription"
+          subtitle={cart.filter((l) => productOf(l)?.rxOnly).map((l) => l.name).join(', ') + ' — prescription only'}
+          icon="shield"
+          iconTone="warn"
+          full
+          onClose={() => setRxOpen(false)}
+          footer={<Button variant="pri" label="Recorded — continue" onPress={rxConfirm} />}
+        >
+          <InfoBanner tone="warn" icon="alert" text="Check the prescription, then record it. It is kept with the sale and listed in the Prescription register." />
+          <View style={{ height: 12 }} />
+          <Field label="Prescribed by (doctor or clinician) *" value={rxForm.prescriber} onChangeText={(v) => setRxForm({ ...rxForm, prescriber: v })} />
+          <Field label="Prescription number" value={rxForm.number} onChangeText={(v) => setRxForm({ ...rxForm, number: v })} />
+          <Field label="Patient" value={rxForm.patient} onChangeText={(v) => setRxForm({ ...rxForm, patient: v })} placeholder={selectedParty?.name || 'Name of the patient'} />
+          <Field label="Hospital or clinic" value={rxForm.facility} onChangeText={(v) => setRxForm({ ...rxForm, facility: v })} />
+          <Button label={rxForm.photo ? 'Photo taken — take again' : 'Photograph the prescription'} icon={<Icon name="camera" size={16} color={colors.ink} />} onPress={rxPhoto} />
+        </Sheet>
+
         <CheckoutSheet
           total={subtotal}
           money={money}
