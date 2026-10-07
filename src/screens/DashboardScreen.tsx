@@ -417,6 +417,7 @@ export default function DashboardScreen() {
         <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 11 }}>
           {(editionOf(db) === 'restaurant' ? [
             { l: 'New order', i: 'food', r: 'Order', p: undefined, ok: can('sales.create') },
+            { l: 'Kitchen', i: 'food', r: 'KitchenDisplay', p: undefined, ok: can('restaurant.kitchen') },
             { l: 'Menu', i: 'menu', r: 'MenuEditor', p: undefined, ok: can('inventory.edit') },
             { l: 'Expense', i: 'up', r: 'EntryNew', p: { direction: 'out' }, ok: can('expenses.create') },
             { l: 'Day close', i: 'lock', r: 'Shift', p: { close: true }, ok: can('shifts.close') },
