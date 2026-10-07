@@ -34,6 +34,7 @@ import { AppBar } from '../components/AppBar';
 import type { OrderType, PayMethod, Product, SaleLine, SaleModifier, Ticket } from '../data/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import FirstTimeTip from '../components/FirstTimeTip';
+import OrderStart from '../components/OrderStart';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Order'>;
@@ -74,6 +75,12 @@ export default function OrderScreen({ navigation, route }: Props) {
   const [people, setPeople] = useState(2);
   const [openView, setOpenView] = useState<'tables' | 'list'>((db?.settings.tables || []).length ? 'tables' : 'list');
   const [orderType, setOrderType] = useState<OrderType>(db?.settings.defaultOrderType || 'dine');
+  // a new order starts with how it is eaten, who it is for and (dine in) the table; then the menu
+  const [stage, setStage] = useState<'start' | 'change' | 'menu'>(route.params?.ticketId ? 'menu' : 'start');
+  const [guests, setGuests] = useState(2);
+  const [partyId, setPartyId] = useState<string | undefined>(undefined);
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
   // which menu is being sold from: someone kept to one menu (a bartender) cannot change it
   const menus = db?.menus || [];
   const meUser = db?.users.find((u) => u.id === db?.session.userId);
@@ -125,16 +132,25 @@ export default function OrderScreen({ navigation, route }: Props) {
   const hasDish = lines.some((l) => l.qty > 0);
   const unsent = lines.reduce((s, l, i) => s + Math.max(0, l.qty - (sent[i] || 0)), 0);
   const me = user(db?.session.userId || '')?.name;
+  /** What the ticket keeps besides its dishes: the party, the customer, where a delivery goes. */
+  const extra = {
+    guests: orderType === 'dine' ? guests : undefined, partyId,
+    address: orderType === 'delivery' ? address.trim() : undefined, phone: orderType === 'delivery' ? phone.trim() : undefined,
+  };
+  const customerName = partyId ? db?.parties.find((p) => p.id === partyId)?.name : undefined;
 
   function clear() {
     setTicketId(null); setName(''); setLines([]); setSent([]); setTicketOpen(false); setEditing(null); setOrderNote('');
     setOrderType(db?.settings.defaultOrderType || 'dine');
+    setGuests(2); setPartyId(undefined); setAddress(''); setPhone(''); setStage('start');
   }
 
   function load(t: Ticket) {
     setTicketId(t.id); setName(t.name); setLines(t.lines.map((l) => ({ ...l }))); setSent([...t.sent]);
     setOrderType(t.orderType || 'dine');
     setOrderNote(t.note || '');
+    setGuests(t.guests || 2); setPartyId(t.partyId); setAddress(t.address || ''); setPhone(t.phone || '');
+    setStage('menu');
     setOpenList(false); setTicketOpen(true);
   }
 
@@ -208,7 +224,10 @@ export default function OrderScreen({ navigation, route }: Props) {
       kind, no, ts: new Date().toISOString(), firmName: db?.firm.name || '', firmPhone: db?.firm.phone, firmAddress: db?.firm.address,
       // the kitchen reads the type off its banner; the customer's bill says it beside the table
       table: (priced ? [name.trim(), orderTypeWord(orderType)].filter(Boolean).join(' · ') : name.trim()) || undefined, orderType, servedBy: me, lines: ls,
-      ...(orderNote.trim() ? { note: orderNote.trim() } : {}),
+      ...((() => {
+        const n = [orderType === 'delivery' ? [phone.trim(), address.trim()].filter(Boolean).join(' · ') : '', orderNote.trim()].filter(Boolean).join('\n');
+        return n ? { note: n } : {};
+      })()),
       subtotal: priced ? sub : 0, total: priced ? sub + Math.round(sub * servicePct / 100) : 0,
       ...(priced && servicePct ? { charges: Math.round(sub * servicePct / 100) } : {}),
     };
@@ -268,7 +287,7 @@ export default function OrderScreen({ navigation, route }: Props) {
     if (!hasDish) { error('Add at least one dish before saving the ticket.'); return; }
     let t: Ticket;
     try {
-      t = saveTicket({ id: ticketId || undefined, name: name.trim(), lines, sent: lines.map((l) => l.qty), orderType, note: orderNote.trim() });
+      t = saveTicket({ id: ticketId || undefined, name: name.trim(), lines, sent: lines.map((l) => l.qty), orderType, note: orderNote.trim(), ...extra });
     } catch (e) { explain(e); return; }
     await sendToKitchen(t.no);
     const saved = lines;
@@ -298,7 +317,7 @@ export default function OrderScreen({ navigation, route }: Props) {
     let sale;
     try {
       sale = commitSale({
-        lines: taking, partyId: null, method, discount: 0,
+        lines: taking, partyId: partyId || null, method, discount: 0,
         additionalCharges: (split ? splitService : service) || undefined,
         ticketName: (name.trim() || '') + (split ? ' (split)' : '') || undefined, orderType,
         description: orderNote.trim() || undefined,
@@ -312,7 +331,7 @@ export default function OrderScreen({ navigation, route }: Props) {
     if (split && rest.some((l) => l.qty > 0)) {
       const keep = rest.filter((l) => l.qty > 0);
       try {
-        const t = saveTicket({ id: ticketId || undefined, name: name.trim(), lines: keep, sent: keep.map((l) => l.qty), orderType, note: orderNote.trim() });
+        const t = saveTicket({ id: ticketId || undefined, name: name.trim(), lines: keep, sent: keep.map((l) => l.qty), orderType, note: orderNote.trim(), ...extra });
         setTicketId(t.id); setLines(keep); setSent(keep.map((l) => l.qty));
       } catch (e) { explain(e); }
       setSplit(null); setPaying(false); setReceived(''); setMethod('cash');
@@ -345,6 +364,40 @@ export default function OrderScreen({ navigation, route }: Props) {
   const modGroups = modsFor ? groupsFor(db, modsFor) : [];
   const modExtra = modGroups.reduce((s, g) => s + (picked[g.id] || []).reduce((a, oid) => a + (g.options.find((o) => o.id === oid)?.price || 0), 0), 0);
   const line = editing !== null ? lines[editing] : null;
+  const contextLine = [orderType === 'dine' ? guests + ' guest' + (guests === 1 ? '' : 's') : '', customerName,
+    orderType === 'delivery' ? [phone.trim(), address.trim()].filter(Boolean).join(' · ') : ''].filter(Boolean).join(' · ');
+
+  // the first steps: how it is eaten, who for, and the table
+  if (stage !== 'menu') {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <AppBar
+          title="Order"
+          onBack={route.name === 'Order' ? () => navigation.goBack() : undefined}
+          right={(
+            <Pressable onPress={() => { setStage('menu'); setOpenList(true); }} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.ink }}>
+              <Icon name="receipt" size={15} color={colors.bg} />
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.bg }}>Open tickets {open.length}</Text>
+            </Pressable>
+          )}
+        />
+        <OrderStart
+          key={stage}
+          initial={{ orderType, name, guests, partyId, address, phone }}
+          seeAll={seeAll}
+          onClose={stage === 'change' ? () => setStage('menu') : undefined}
+          onOpenTicket={(t) => {
+            if (lines.length && ticketId !== t.id) { error('Save or clear the ticket you are on first.'); return; }
+            load(t);
+          }}
+          onDone={(v) => {
+            setOrderType(v.orderType); setName(v.name); setGuests(v.guests); setPartyId(v.partyId);
+            setAddress(v.address || ''); setPhone(v.phone || ''); setStage('menu');
+          }}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -358,6 +411,26 @@ export default function OrderScreen({ navigation, route }: Props) {
           </Pressable>
         )}
       />
+      {/* whose order this is */}
+      <Pressable
+        onPress={() => setStage('change')}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 10, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 12,
+          backgroundColor: pressed ? colors.sunk : orderType === 'takeaway' ? '#111' : orderType === 'delivery' ? colors.danger : colors.surface,
+          borderWidth: orderType === 'dine' ? 1 : 0, borderColor: colors.line })}
+      >
+        {(() => {
+          const fg = orderType === 'dine' ? colors.ink : '#fff';
+          return (
+            <>
+              <Icon name={orderType === 'dine' ? 'chair' : orderType === 'delivery' ? 'taxi' : 'cart'} size={17} color={fg} />
+              <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: fg }}>
+                {orderTypeWord(orderType).toUpperCase()} · {name.trim() || 'No name'}{contextLine ? <Text style={{ fontFamily: fonts.ui }}>{'  ' + contextLine}</Text> : null}
+              </Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: fg, opacity: 0.85 }}>Change</Text>
+            </>
+          );
+        })()}
+      </Pressable>
       {/* the menu */}
       <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
@@ -543,17 +616,17 @@ export default function OrderScreen({ navigation, route }: Props) {
           </View>
         )}
       >
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-          {ORDER_TYPES.map((o) => {
-            const on = orderType === o.v;
-            return (
-              <Pressable key={o.v} onPress={() => setOrderType(o.v)} style={{ flex: 1, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.ink : colors.surface }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: on ? colors.bg : colors.ink }}>{o.l}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <Field icon="chair" label={orderType === 'dine' ? 'Table' : orderType === 'delivery' ? 'Customer and address' : 'Name'} value={name} onChangeText={setName} placeholder={orderType === 'dine' ? 'Table 4' : orderType === 'delivery' ? 'John, Ntinda' : 'John'} />
+        <Pressable
+          onPress={() => { setTicketOpen(false); setTimeout(() => setStage('change'), 250); }}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginBottom: 12, backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line })}
+        >
+          <Icon name={orderType === 'dine' ? 'chair' : orderType === 'delivery' ? 'taxi' : 'cart'} size={19} color={colors.ink} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{orderTypeWord(orderType)} · {name.trim() || 'No name'}</Text>
+            <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{contextLine || 'Tap to set the table or the customer'}</Text>
+          </View>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Change</Text>
+        </Pressable>
         {lines.map((l, i) => {
           const s = sent[i] || 0;
           return (
@@ -645,7 +718,7 @@ export default function OrderScreen({ navigation, route }: Props) {
                     if (t) { load(t); return; }
                     // a free table: a new ticket under its name, eaten in
                     if (lines.length && !ticketId) { error('Save or clear the ticket you are on first.'); return; }
-                    clear(); setName(tn); setOrderType('dine'); setOpenList(false);
+                    clear(); setName(tn); setOrderType('dine'); setOpenList(false); setStage('menu');
                   }}
                   style={{
                     width: '31%', minHeight: 84, padding: 10, borderRadius: 14, justifyContent: 'space-between',

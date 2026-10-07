@@ -856,6 +856,31 @@ describe('dishes made to a recipe', () => {
     logic.voidSale(d, sale.id);
     expect(d.products.find((p) => p.id === 'p_b')!.stock.w1).toBe(100);
   });
+
+  it('a dish kept in stock is made in batches, sold from stock, and made automatically when short', () => {
+    const d = makeDb();
+    d.products.push({ id: 'p_chap', sku: 'CHA', name: 'Chapati', unit: 'PC', category: 'Mains', cost: 0, price: 1000, taxRate: 0, stock: {}, reorder: 0, warrantyMonths: 0, bom: null, active: true, trackInventory: true, madeAhead: true, recipe: [{ productId: 'p_b', qty: 2 }] } as Product);
+    const chap = () => d.products.find((p) => p.id === 'p_chap')!;
+    const b = () => d.products.find((p) => p.id === 'p_b')!.stock.w1;
+    // a batch of 5: ingredients out, plates in, costed from the recipe
+    logic.produceDish(d, 'p_chap', 5);
+    expect(chap().stock.w1).toBe(5);
+    expect(b()).toBe(90);
+    expect(chap().cost).toBe(60);
+    // selling 3 takes plates only
+    const s1 = logic.commitSale(d, { lines: [{ productId: 'p_chap', name: 'Chapati', sku: 'CHA', unit: 'PC', qty: 3, price: 1000, cost: 0, taxRate: 0 }], partyId: null, method: 'cash', discount: 0 });
+    expect(chap().stock.w1).toBe(2);
+    expect(b()).toBe(90);
+    // selling 6 with 2 left makes the missing 4 there and then
+    const s2 = logic.commitSale(d, { lines: [{ productId: 'p_chap', name: 'Chapati', sku: 'CHA', unit: 'PC', qty: 6, price: 1000, cost: 0, taxRate: 0 }], partyId: null, method: 'cash', discount: 0 });
+    expect(chap().stock.w1).toBe(0);
+    expect(b()).toBe(82);
+    // a void puts the plates back, not the ingredients
+    logic.voidSale(d, s2.id);
+    expect(chap().stock.w1).toBe(6);
+    expect(b()).toBe(82);
+    expect(s1.lines[0].fromRecipe).toBeUndefined();
+  });
 });
 
 describe('expired batches', () => {

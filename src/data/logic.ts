@@ -274,6 +274,17 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     }
   }
   const wh = d.session.warehouse || 'w1';
+  // a dish kept in stock that has run short is made there and then from its recipe
+  {
+    const want = new Map<string, number>();
+    o.lines.forEach((l) => want.set(l.productId, (want.get(l.productId) || 0) + stockQty(l)));
+    want.forEach((n, id) => {
+      const p = d.products.find((x) => x.id === id);
+      if (!p || !p.madeAhead || !p.recipe?.length) return;
+      const short = n - Math.max(0, p.stock[wh] || 0);
+      if (short > 0) produceDish(d, id, short, when, 'auto');
+    });
+  }
   // A batch-tracked item arrives as one line per lot, so the quantities have to
   // be added up per product before they are compared with what is on the shelf —
   // checking each line on its own would let an oversell through.
@@ -343,9 +354,13 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
   d.sales.push(sale);
   sale.lines.forEach((l) => move(d, l.productId, wh, -stockQty(l), 'sale', sale.no, when, l.batchNo));
   // a dish made to order draws down what it is made from
-  sale.lines.forEach((l) => (d.products.find((p) => p.id === l.productId)?.recipe || []).forEach((r) => {
-    move(d, r.productId, wh, -(r.qty * stockQty(l)), 'recipe', sale.no, when);
-  }));
+  // (a dish kept in stock was made beforehand: its plates go, not its ingredients)
+  sale.lines.forEach((l) => {
+    const p = d.products.find((x) => x.id === l.productId);
+    if (!p?.recipe?.length || p.madeAhead) return;
+    l.fromRecipe = true;
+    p.recipe.forEach((r) => move(d, r.productId, wh, -(r.qty * stockQty(l)), 'recipe', sale.no, when));
+  });
   const jl: JournalLine[] = [];
   if (useSplitTender && o.methods) {
     o.methods.forEach((m) => {
@@ -396,9 +411,12 @@ export function voidSale(d: DB, saleId: string, reason?: string, when = new Date
   if (!s || s.status === 'void') return;
   s.status = 'void'; s.voidedAt = iso(when); s.voidReason = reason || '';
   s.lines.forEach((l) => move(d, l.productId, s.warehouse, stockQty(l), 'void', s.no, when, l.batchNo));
-  s.lines.forEach((l) => (d.products.find((p) => p.id === l.productId)?.recipe || []).forEach((r) => {
-    move(d, r.productId, s.warehouse, r.qty * stockQty(l), 'void', s.no, when);
-  }));
+  s.lines.forEach((l) => {
+    const p = d.products.find((x) => x.id === l.productId);
+    // older sales carry no mark: their ingredients were drawn unless the dish is kept in stock
+    if (!(l.fromRecipe ?? !p?.madeAhead)) return;
+    (p?.recipe || []).forEach((r) => move(d, r.productId, s.warehouse, r.qty * stockQty(l), 'void', s.no, when));
+  });
   const jl: JournalLine[] = [];
   const paidNow = s.paid - (s.redeemed || 0);
   if (s.methods && s.methods.length > 1) {
@@ -681,6 +699,34 @@ export function postStockTake(d: DB, stockTakeId: string, when = new Date(), use
   st.status = 'posted'; st.postedAt = iso(when); st.postedBy = userId || d.session.userId;
   audit(d, 'Stock-take posted', st.warehouse + ' — variance value ' + Math.round(varValue));
   return varValue;
+}
+
+/**
+ * Makes plates of a dish from its recipe: the ingredients go out, the plates
+ * come into stock at what they cost to make. Used for a batch cooked ahead
+ * (Make on the menu) and, with ref 'auto', when a sale finds the stock short.
+ * Ingredients may go below zero, as they may when a dish is sold to order.
+ */
+export function produceDish(d: DB, productId: string, qty: number, when = new Date(), ref = 'batch'): ProductionRun | null {
+  const prod = d.products.find((p) => p.id === productId);
+  if (!prod || !prod.recipe?.length || !(qty > 0)) return null;
+  const wh = d.session.warehouse || 'w1';
+  let componentCost = 0;
+  prod.recipe.forEach((r) => {
+    const ing = d.products.find((p) => p.id === r.productId);
+    if (!ing) return;
+    componentCost += (ing.cost || 0) * r.qty * qty;
+    move(d, r.productId, wh, -(r.qty * qty), 'production-consume', ref === 'auto' ? 'AUTO' : 'MAKE', when);
+  });
+  componentCost = Math.round(componentCost * 100) / 100;
+  if (componentCost > 0) prod.cost = Math.round(componentCost / qty * 100) / 100;
+  move(d, productId, wh, qty, 'production-output', ref === 'auto' ? 'AUTO' : 'MAKE', when);
+  const run: ProductionRun = { id: uid('prn'), ts: iso(when), productId, qty, warehouse: wh, componentCost, finishedValue: componentCost };
+  d.productionRuns = d.productionRuns || [];
+  d.productionRuns.push(run);
+  enqueue(d, 'product', prod.id);
+  if (ref !== 'auto') audit(d, 'Dish made', qty + ' x ' + prod.name);
+  return run;
 }
 
 export function runProduction(d: DB, productId: string, qty: number, when = new Date()): ProductionRun | null {

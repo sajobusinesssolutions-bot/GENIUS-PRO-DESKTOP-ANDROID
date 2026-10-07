@@ -122,6 +122,11 @@ export interface Ticket {
   guests?: number;
   /** A note for the whole order: "allergic to nuts", "bring together". */
   note?: string;
+  /** The customer, when known: a regular, or who a delivery goes to. */
+  partyId?: string;
+  /** Delivery: where it goes and who to call. */
+  address?: string;
+  phone?: string;
 }
 
 export interface Product {
@@ -144,6 +149,12 @@ export interface Product {
   recipe?: { productId: string; qty: number }[];
   /** Restaurant: an ingredient, kept in stock but never shown on the menu. */
   ingredient?: boolean;
+  /**
+   * Restaurant: a dish kept in stock (chapati, samosas, a pot of soup). Made in
+   * batches from its recipe; a sale takes plates off the stock, and when the
+   * stock runs short the missing plates are made there and then.
+   */
+  madeAhead?: boolean;
   /** Restaurant: run out for now ("86'd"); shown greyed and cannot be ordered. */
   soldOut?: boolean;
   /** Restaurant: Vegetarian, Spicy, Halal, New… */
@@ -217,6 +228,8 @@ export interface SerialInfo { imei2?: string; condition?: ItemCondition }
 export interface SoldSerial { imei: string; imei2?: string; condition?: ItemCondition }
 
 export interface SaleLine {
+  /** Restaurant: its ingredients were drawn when it was sold, so a void returns them. */
+  fromRecipe?: boolean;
   productId: string; name: string; sku: string; unit: string;
   qty: number; price: number; cost: number; taxRate: number;
   batchNo?: string; serialNo?: string;
@@ -593,6 +606,8 @@ export interface Settings {
   defaultOrderType?: OrderType;
   /** Restaurant: the tables on the floor, by name, for the table plan. */
   tables?: string[];
+  /** Restaurant: each table's area (Inside, Patio, VIP) and seats, by table name. */
+  tableInfo?: Record<string, { area?: string; seats?: number }>;
   /** Restaurant: orders go to a kitchen display screen (with or without printers). */
   kitchenDisplay?: boolean;
   /**

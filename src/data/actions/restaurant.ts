@@ -54,7 +54,8 @@ export function restaurantActions(deps: {
         const now = iso(new Date());
         const i = t.id ? d.tickets.findIndex((x) => x.id === t.id) : -1;
         if (i >= 0) {
-          out = { ...d.tickets[i], name: t.name, lines: t.lines, sent: t.sent, updatedAt: now, orderType: t.orderType, guests: t.guests, note: t.note || undefined };
+          out = { ...d.tickets[i], name: t.name, lines: t.lines, sent: t.sent, updatedAt: now, orderType: t.orderType, guests: t.guests, note: t.note || undefined,
+            partyId: t.partyId || undefined, address: t.address || undefined, phone: t.phone || undefined };
           d.tickets[i] = out;
         } else {
           const n = d.tickets.length + 1;
@@ -62,6 +63,7 @@ export function restaurantActions(deps: {
             id: uid('tkt'), no: 'T' + String(n).padStart(3, '0'), name: t.name || 'Ticket ' + n, ts: now, updatedAt: now,
             lines: t.lines, sent: t.sent, status: 'open', userId: d.session.userId, branch: activeBranchId(d),
             ...(t.orderType ? { orderType: t.orderType } : {}), ...(t.guests ? { guests: t.guests } : {}), ...(t.note ? { note: t.note } : {}),
+            ...(t.partyId ? { partyId: t.partyId } : {}), ...(t.address ? { address: t.address } : {}), ...(t.phone ? { phone: t.phone } : {}),
           };
           d.tickets.push(out);
         }
