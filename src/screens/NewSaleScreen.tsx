@@ -26,6 +26,7 @@ import PriceListPicker from '../components/PriceListPicker';
 import { priceFor, repriceLines } from '../data/priceLists';
 import * as ImagePicker from 'expo-image-picker';
 import { keepPhoto } from '../data/photos';
+import FirstTimeTip from '../components/FirstTimeTip';
 import { Product, PayMethod, SaleLine } from '../data/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'NewSale'>;
@@ -355,6 +356,12 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         contentContainerStyle={{ padding: 14, paddingBottom: 190 + insets.bottom, gap: 12 }}
         showsVerticalScrollIndicator={false}
       >
+        <FirstTimeTip
+          id="first-sale"
+          when={!cart.length && !editingSale}
+          title="Your first sale"
+          text="Choose the customer (or Walk-in), then type an item's name or scan its barcode. Tap Checkout to take the money — the receipt prints and the stock goes out."
+        />
         {fromQuote ? (
           <InfoBanner tone="accent" icon="doc" text={'From quotation ' + fromQuote.no + '. Change anything you need, then save — the quotation closes only once this sale is saved.'} />
         ) : null}

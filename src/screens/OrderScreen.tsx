@@ -33,6 +33,7 @@ import { explain } from '../data/refusal';
 import { AppBar } from '../components/AppBar';
 import type { OrderType, PayMethod, Product, SaleLine, SaleModifier, Ticket } from '../data/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import FirstTimeTip from '../components/FirstTimeTip';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Order'>;
@@ -361,6 +362,13 @@ export default function OrderScreen({ navigation, route }: Props) {
       <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
           <View style={{ flex: 1 }}>
+            <FirstTimeTip
+              id="first-order"
+              when={!lines.length}
+              style={{ marginBottom: 10 }}
+              title="Taking an order"
+              text="Tap dishes to put them on the ticket. Save sends them to the kitchen and keeps the table open; Charge takes the payment. Tables and open tickets are on the button at the top."
+            />
             <Field icon="search" label="Search the menu" value={q} onChangeText={setQ} autoCorrect={false} style={{ marginBottom: 8 }} />
           </View>
           {menus.length ? (
