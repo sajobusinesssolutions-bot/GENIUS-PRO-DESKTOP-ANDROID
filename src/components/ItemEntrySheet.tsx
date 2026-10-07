@@ -23,7 +23,7 @@ import { Field } from './form';
 import ImeiSheet from './ImeiSheet';
 import { unitsFor } from './LineEditSheet';
 import { plain } from './BilledItems';
-import { liveBatches } from '../data/batches';
+import { liveBatches, firstSellable, isExpired } from '../data/batches';
 import { useAppData } from '../data/AppDataContext';
 import { vocab } from '../data/editions';
 import type { Product, SoldSerial } from '../data/types';
@@ -84,7 +84,7 @@ export default function ItemEntrySheet({
   visible, title, products, money, stockOf, priceOf, rateLabel = 'Rate (Price/Unit)',
   start, startProduct, onSave, onRemove, onClose,
   maxFor, canCreate, onCreateProduct, units = ['Pcs'],
-  trackBatches = false, trackImei = false, discount = true, editRate = true, maxDiscountPct = 100, belowCost = 'allow',
+  trackBatches = false, trackImei = false, blockExpired = false, discount = true, editRate = true, maxDiscountPct = 100, belowCost = 'allow',
   askSellPrice = false, takenImeis = [],
 }: {
   visible: boolean;
@@ -120,6 +120,8 @@ export default function ItemEntrySheet({
   belowCost?: 'allow' | 'warn' | 'block';
   /** A purchase also asks what a new item sells for. */
   askSellPrice?: boolean;
+  /** A sale: expired batches cannot be sold, and the first good one is chosen. */
+  blockExpired?: boolean;
   /** IMEIs already on other lines of this bill. */
   takenImeis?: string[];
 }) {
@@ -182,7 +184,8 @@ export default function ItemEntrySheet({
     setUnit(p.unit);
     setRate(String(priceOf(p)));
     setQty(startQty ?? (p.startQtyFilled ? String(p.defaultQty || 1) : ''));
-    setBatchNo(trackBatches && p.trackBatches ? liveBatches(p)[0]?.no : undefined);
+    // first expiry first out — and on a sale, never a batch that has already expired
+    setBatchNo(trackBatches && p.trackBatches ? (blockExpired ? firstSellable(p)?.no : liveBatches(p)[0]?.no) : undefined);
     setSerials([]);
     setErr('');
     // the cursor stays put: the cashier taps the field they want next
@@ -281,7 +284,17 @@ export default function ItemEntrySheet({
       else { setErr(needle ? 'Pick an item from the list.' : 'Type an item name.'); return; }
     }
     if (qtyNum <= 0) { setErr('Enter the quantity.'); return; }
-    if (over) { setErr('Only ' + plain(limit / factor) + ' ' + (chosenUnit?.unit || '') + ' available.'); return; }
+    if (blockExpired && p && batchNo && isExpired((p.batches || []).find((b) => b.no === batchNo))) {
+      setErr('Batch ' + batchNo + ' has expired and cannot be sold.');
+      return;
+    }
+    if (over) {
+      // one batch short: say which one to take the rest from
+      const next = batchNo && product ? liveBatches(product).find((b) => b.no !== batchNo && !(blockExpired && isExpired(b))) : undefined;
+      setErr('Only ' + plain(limit / factor) + ' ' + (chosenUnit?.unit || '') + ' available' + (batchNo ? ' in batch ' + batchNo : '') + '.'
+        + (next ? ' Add the rest as a second line from batch ' + next.no + '.' : ''));
+      return;
+    }
     if (underCost && belowCost === 'block') { setErr('Below cost (' + money(unitCost) + '). Settings do not allow selling under cost.'); return; }
     if (p && wantsImei && imeiShort) { setSaveAfterImei(andNew); setImeiOpen(true); Keyboard.dismiss(); return; }
 
@@ -473,19 +486,25 @@ export default function ItemEntrySheet({
                   <View style={{ marginBottom: 14 }}>
                     <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 7 }}>Batch</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={{ gap: 8 }}>
-                      {batches.map((b) => {
+                      {batches.map((b, bi) => {
                         const on = b.no === batchNo;
+                        const dead = blockExpired && isExpired(b);
+                        const first = blockExpired && b.no === firstSellable(product)?.no;
                         return (
                           <Pressable
                             key={b.no}
-                            onPress={() => setBatchNo(b.no)}
+                            onPress={() => (dead ? setErr('Batch ' + b.no + ' expired. It cannot be sold — take it off the shelf.') : setBatchNo(b.no))}
                             style={{
                               paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1.4,
-                              borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
+                              borderColor: dead ? colors.danger : on ? colors.accent : colors.line,
+                              backgroundColor: dead ? colors.dangerSoft : on ? colors.accentSoft : colors.surface,
+                              opacity: dead ? 0.7 : 1,
                             }}
                           >
-                            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accent : colors.ink }}>{b.no}</Text>
-                            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 1 }}>
+                            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: dead ? colors.danger : on ? colors.accent : colors.ink }}>
+                              {b.no}{dead ? ' · EXPIRED' : first ? ' · sell first' : ''}
+                            </Text>
+                            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: dead ? colors.danger : colors.faint, marginTop: 1 }}>
                               {plain(b.qty)} left{b.expiry ? ' · exp ' + new Date(b.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''}
                             </Text>
                           </Pressable>

@@ -843,3 +843,28 @@ describe('prices with or without tax', () => {
     expect(d.journal.every((e: any) => e.balanced)).toBe(true);
   });
 });
+
+describe('dishes made to a recipe', () => {
+  it('draws the ingredients down when sold, costs the plate from them, and puts them back on a void', () => {
+    const d = makeDb();
+    // a burger made from 2 of Component B, not itself counted
+    d.products.push({ id: 'p_burger', sku: 'BUR', name: 'Burger', unit: 'PC', category: 'Mains', cost: 0, price: 500, taxRate: 0, stock: {}, reorder: 0, warrantyMonths: 0, bom: null, active: true, trackInventory: false, recipe: [{ productId: 'p_b', qty: 2 }] } as Product);
+    const sale = logic.commitSale(d, { lines: [{ productId: 'p_burger', name: 'Burger', sku: 'BUR', unit: 'PC', qty: 3, price: 500, cost: 0, taxRate: 0 }], partyId: null, method: 'cash', discount: 0 });
+    expect(d.products.find((p) => p.id === 'p_b')!.stock.w1).toBe(94);
+    expect(sale.lines[0].cost).toBe(60);
+    expect(sale.cogs).toBe(180);
+    logic.voidSale(d, sale.id);
+    expect(d.products.find((p) => p.id === 'p_b')!.stock.w1).toBe(100);
+  });
+});
+
+describe('expired batches', () => {
+  it('are refused on a sale', () => {
+    const d = makeDb();
+    const a = d.products.find((p) => p.id === 'p_a')!;
+    a.trackBatches = true;
+    a.batches = [{ no: 'OLD', qty: 10, expiry: '2020-01-01' } as any];
+    expect(() => logic.commitSale(d, { lines: [{ productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty: 1, price: 200, cost: 100, taxRate: 0, batchNo: 'OLD' }], partyId: null, method: 'cash', discount: 0 }))
+      .toThrow(/expired/);
+  });
+});

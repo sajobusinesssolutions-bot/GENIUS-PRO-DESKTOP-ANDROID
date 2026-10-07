@@ -240,10 +240,17 @@ export function enqueue(d: DB, kind: string, ref: string) {
   d.queue.push({ id: uid('q'), ts: iso(new Date()), kind, ref });
 }
 
-export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: import('./types').OrderType; priceListId?: string }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
+export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: import('./types').OrderType; priceListId?: string; rx?: import('./types').RxRecord }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
   if (!canWith(ensureRoles(d), d.session.role, 'sales.create')) {
     throw new Refusal('Permission denied: sales.create');
   }
+  // A dish made to a recipe costs what its ingredients cost, so its profit is real.
+  o = { ...o, lines: o.lines.map((l) => {
+    const r = d.products.find((p) => p.id === l.productId)?.recipe;
+    if (!r || !r.length || l.cost) return l;
+    const cost = r.reduce((n, x) => n + (d.products.find((p) => p.id === x.productId)?.cost || 0) * x.qty, 0);
+    return { ...l, cost: Math.round(cost * (l.unitFactor || 1) * 100) / 100 };
+  }) };
   // With tax switched off for the shop, nothing is charged or reported.
   const taxable = d.settings.taxEnabled === false
     ? o.lines.map((l) => ({ ...l, taxRate: 0 }))
@@ -286,6 +293,16 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
       );
     }
   });
+  // a batch past its expiry is not sold, whichever screen the sale came from
+  o.lines.forEach((l) => {
+    if (!l.batchNo) return;
+    const prod = d.products.find((p) => p.id === l.productId);
+    const b = prod?.batches?.find((x) => x.no === l.batchNo);
+    if (b?.expiry && new Date(b.expiry).getTime() < when.getTime()) {
+      throw new Refusal(l.name + ' — batch ' + l.batchNo + ' expired', 'It expired on ' + new Date(b.expiry).toLocaleDateString('en-GB')
+        + ' and cannot be sold. Choose another batch, or take the expired stock off the shelf with Adjust stock.');
+    }
+  });
   // the phones sold leave the IMEI list, so the same one cannot be sold twice
   o.lines.forEach((l) => {
     if (!l.serials || !l.serials.length) return;
@@ -311,6 +328,7 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     ...(o.ticketName ? { ticketName: o.ticketName } : {}),
     ...(o.orderType ? { orderType: o.orderType } : {}),
     ...(o.priceListId ? { priceListId: o.priceListId } : {}),
+    ...(o.rx ? { rx: o.rx } : {}),
     method: o.method,
     ...(o.method === 'credit' && finalPaidNow > 0 ? { receivedVia: o.receivedVia || 'cash' } : {}),
     ...(o.method === 'momo' || (o.method === 'credit' && o.receivedVia === 'momo') ? {
@@ -324,6 +342,10 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
   };
   d.sales.push(sale);
   sale.lines.forEach((l) => move(d, l.productId, wh, -stockQty(l), 'sale', sale.no, when, l.batchNo));
+  // a dish made to order draws down what it is made from
+  sale.lines.forEach((l) => (d.products.find((p) => p.id === l.productId)?.recipe || []).forEach((r) => {
+    move(d, r.productId, wh, -(r.qty * stockQty(l)), 'recipe', sale.no, when);
+  }));
   const jl: JournalLine[] = [];
   if (useSplitTender && o.methods) {
     o.methods.forEach((m) => {
@@ -374,6 +396,9 @@ export function voidSale(d: DB, saleId: string, reason?: string, when = new Date
   if (!s || s.status === 'void') return;
   s.status = 'void'; s.voidedAt = iso(when); s.voidReason = reason || '';
   s.lines.forEach((l) => move(d, l.productId, s.warehouse, stockQty(l), 'void', s.no, when, l.batchNo));
+  s.lines.forEach((l) => (d.products.find((p) => p.id === l.productId)?.recipe || []).forEach((r) => {
+    move(d, r.productId, s.warehouse, r.qty * stockQty(l), 'void', s.no, when);
+  }));
   const jl: JournalLine[] = [];
   const paidNow = s.paid - (s.redeemed || 0);
   if (s.methods && s.methods.length > 1) {

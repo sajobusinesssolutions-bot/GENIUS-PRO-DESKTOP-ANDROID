@@ -32,7 +32,7 @@ export function menuSections(d: DB | null | undefined): MenuGroup[] {
   if (!d) return [];
   const set = [...(d.menuGroups || [])].sort((a, b) => a.sort - b.sort);
   const known = new Set(set.map((g) => g.name));
-  const extra = [...new Set(d.products.filter((p) => p.active !== false).map((p) => p.category || 'Other'))]
+  const extra = [...new Set(d.products.filter((p) => p.active !== false && !p.ingredient).map((p) => p.category || 'Other'))]
     .filter((c) => !known.has(c)).sort();
   return [...set, ...extra.map((name, i) => ({ id: 'cat:' + name, name, color: GROUP_COLORS[(set.length + i) % GROUP_COLORS.length], sort: set.length + i }))];
 }
@@ -43,6 +43,12 @@ export function stationOf(d: DB | null | undefined, p: Product | null | undefine
   if (p?.station) return p.station;
   const g = (d.menuGroups || []).find((x) => x.name === p?.category);
   return g?.station || stationsOf(d)[0];
+}
+
+/** What one serving's ingredients cost, at their current cost. */
+export function recipeCost(d: Pick<DB, 'products'> | null | undefined, p: Product | null | undefined): number {
+  if (!d || !p?.recipe?.length) return 0;
+  return p.recipe.reduce((n, r) => n + (d.products.find((x) => x.id === r.productId)?.cost || 0) * r.qty, 0);
 }
 
 /** Whether a kitchen printer takes this station's orders. A printer with no stations ticked takes them all. */

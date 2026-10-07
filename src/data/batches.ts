@@ -42,6 +42,16 @@ export function liveBatches(p: Product | undefined | null): ProductBatch[] {
     });
 }
 
+/** Whether a batch has passed its expiry date. */
+export function isExpired(b: { expiry?: string } | null | undefined, now = Date.now()): boolean {
+  return !!b?.expiry && new Date(b.expiry).getTime() < now;
+}
+
+/** The batch to sell from first: the earliest expiry that has not passed. */
+export function firstSellable(p: Product | undefined | null, now = Date.now()): ProductBatch | undefined {
+  return liveBatches(p).find((b) => !isExpired(b, now));
+}
+
 export interface BatchPick { no: string; qty: number; expiry: string }
 
 /**

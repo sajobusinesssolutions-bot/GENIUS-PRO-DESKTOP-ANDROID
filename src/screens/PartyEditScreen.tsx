@@ -7,6 +7,7 @@ import {
 } from '../components/ui';
 import { Icon } from '../components/icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import PriceListPicker from '../components/PriceListPicker';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PartyEdit'>;
@@ -26,6 +27,7 @@ export default function PartyEditScreen({ route, navigation }: Props) {
   const [type, setType] = useState<'customer' | 'supplier'>(existing?.type || 'customer');
   const [openingBalance, setOpeningBalance] = useState(String(existing?.openingBalance ?? ''));
   const [creditLimit, setCreditLimit] = useState(String(existing?.creditLimit ?? ''));
+  const [priceListId, setPriceListId] = useState<string | null>(existing?.priceListId || null);
 
   function save() {
     const patch = {
@@ -37,6 +39,8 @@ export default function PartyEditScreen({ route, navigation }: Props) {
       type,
       openingBalance: num(openingBalance),
       creditLimit: num(creditLimit),
+      // only a customer is sold to at a price list
+      priceListId: type === 'customer' ? priceListId || undefined : undefined,
     };
     if (existing) updateParty(existing.id, patch);
     else addParty({ ...patch, points: 0, active: true });
@@ -102,6 +106,9 @@ export default function PartyEditScreen({ route, navigation }: Props) {
           </View>
           <View style={{ flex: 1 }}>
             <Field label="Credit limit" value={creditLimit} onChangeText={setCreditLimit} numeric placeholder="0" />
+            {type === 'customer' ? (
+              <PriceListPicker value={priceListId} onChange={setPriceListId} style={{ marginBottom: 14 }} />
+            ) : null}
           </View>
         </View>
       </ScrollView>

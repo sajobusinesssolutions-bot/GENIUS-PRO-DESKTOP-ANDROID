@@ -29,12 +29,14 @@ import { keepPhoto } from '../data/photos';
 import { DISH_TAGS, GROUP_COLORS, ORDER_TYPES, menuSections, stationOf, stationsOf } from '../data/restaurant';
 import type { ModifierGroup, ModifierOption, OrderType, Product } from '../data/types';
 
-type Tab = 'menus' | 'sections' | 'dishes' | 'mods' | 'settings';
+type Tab = 'menus' | 'sections' | 'dishes' | 'ingredients' | 'mods' | 'settings';
 
 interface DishDraft {
   id?: string; name: string; price: string; cost: string; description: string; category: string;
   station: string; tags: string[]; prepMins: string; groups: string[]; soldOut: boolean; photo: string;
+  recipe: { productId: string; qty: string }[];
 }
+interface IngredientDraft { id?: string; name: string; unit: string; cost: string; stock: string; reorder: string }
 interface GroupDraft { id?: string; name: string; required: boolean; multi: boolean; options: (ModifierOption & { priceText: string })[] }
 interface SectionDraft { id?: string; name: string; color: string; station: string }
 interface MenuDraft { id?: string; name: string; sections: string[] }
@@ -57,9 +59,13 @@ export default function MenuEditorScreen() {
   const [menuDraft, setMenuDraft] = useState<MenuDraft | null>(null);
   const [newStation, setNewStation] = useState('');
   const [service, setService] = useState(String(db?.settings.serviceChargePct || ''));
+  const [tablesText, setTablesText] = useState((db?.settings.tables || []).join(', '));
 
   const sections = useMemo(() => menuSections(db), [db]);
-  const items = useMemo(() => (db?.products || []).filter((p) => p.active !== false), [db]);
+  const items = useMemo(() => (db?.products || []).filter((p) => p.active !== false && !p.ingredient), [db]);
+  const ingredients = useMemo(() => (db?.products || []).filter((p) => p.active !== false && p.ingredient), [db]);
+  const [ingredient, setIngredient] = useState<IngredientDraft | null>(null);
+  const [recipePick, setRecipePick] = useState(false);
   const groups = db?.modifierGroups || [];
   const stations = stationsOf(db);
   const menus = db?.menus || [];
@@ -74,7 +80,7 @@ export default function MenuEditorScreen() {
 
   function newDish(category?: string) {
     const sec = category || sections[0]?.name || 'Food';
-    setDish({ name: '', price: '', cost: '', description: '', category: sec, station: '', tags: [], prepMins: '', groups: [], soldOut: false, photo: '' });
+    setDish({ name: '', price: '', cost: '', description: '', category: sec, station: '', tags: [], prepMins: '', groups: [], soldOut: false, photo: '', recipe: [] });
   }
 
   function editDish(p: Product, copy = false) {
@@ -82,6 +88,7 @@ export default function MenuEditorScreen() {
       id: copy ? undefined : p.id, name: copy ? p.name + ' (copy)' : p.name, price: String(p.price || ''), cost: p.cost ? String(p.cost) : '',
       description: p.description || '', category: p.category || 'Other', station: p.station || '', tags: p.tags || [],
       prepMins: p.prepMins ? String(p.prepMins) : '', groups: p.modifierGroups || [], soldOut: !!p.soldOut, photo: p.photo || '',
+      recipe: (p.recipe || []).map((x) => ({ productId: x.productId, qty: String(x.qty) })),
     });
   }
 
@@ -105,6 +112,7 @@ export default function MenuEditorScreen() {
       name, price: Number(dish.price) || 0, cost: Number(dish.cost) || 0, category: dish.category.trim() || 'Other',
       description: dish.description.trim() || undefined, station: dish.station || undefined, tags: dish.tags,
       prepMins: Number(dish.prepMins) || undefined, modifierGroups: dish.groups, soldOut: dish.soldOut, photo: dish.photo || undefined,
+      recipe: dish.recipe.filter((x) => Number(x.qty) > 0).map((x) => ({ productId: x.productId, qty: Number(x.qty) })),
     };
     try {
       if (dish.id) updateProduct(dish.id, patch);
@@ -181,7 +189,7 @@ export default function MenuEditorScreen() {
     </View>
   );
 
-  const addLabel = tab === 'dishes' ? 'Add dish' : tab === 'sections' ? 'Add section' : tab === 'mods' ? 'Add modifier group' : tab === 'menus' ? 'Add menu' : '';
+  const addLabel = tab === 'dishes' ? 'Add dish' : tab === 'sections' ? 'Add section' : tab === 'mods' ? 'Add modifier group' : tab === 'menus' ? 'Add menu' : tab === 'ingredients' ? 'Add ingredient' : '';
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -191,7 +199,7 @@ export default function MenuEditorScreen() {
           onChange={setTab}
           options={[
             { v: 'menus', l: 'Menus', i: 'doc' }, { v: 'sections', l: 'Sections', i: 'menu' }, { v: 'dishes', l: 'Dishes', i: 'food' },
-            { v: 'mods', l: 'Modifiers', i: 'tag' }, { v: 'settings', l: 'Settings', i: 'cog' },
+            { v: 'ingredients', l: 'Stock', i: 'box' }, { v: 'mods', l: 'Modifiers', i: 'tag' }, { v: 'settings', l: 'Settings', i: 'cog' },
           ]}
         />
       </View>
@@ -322,6 +330,30 @@ export default function MenuEditorScreen() {
           </>
         ) : null}
 
+        {/* ---------- ingredients ---------- */}
+        {tab === 'ingredients' ? (
+          <>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginBottom: 12 }}>
+              What dishes are made from. Give a dish its recipe and every plate sold draws its ingredients down, so stock and food cost stay true. Buy them in with a purchase.
+            </Text>
+            {ingredients.map((p) => {
+              const qty = Object.values(p.stock || {}).reduce((n, v) => n + (v || 0), 0);
+              const low = qty <= (p.reorder || 0);
+              return (
+                <Pressable key={p.id} onPress={() => setIngredient({ id: p.id, name: p.name, unit: p.unit, cost: String(p.cost || ''), stock: '', reorder: String(p.reorder || '') })}
+                  style={({ pressed }) => ({ ...card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: pressed ? colors.sunk : colors.surface })}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{money(p.cost)} per {p.unit} · used in {items.filter((d) => d.recipe?.some((x) => x.productId === p.id)).length} dish(es)</Text>
+                  </View>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: low ? colors.danger : colors.ink }}>{Math.round(qty * 100) / 100} {p.unit}</Text>
+                </Pressable>
+              );
+            })}
+            {!ingredients.length ? <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint, textAlign: 'center', paddingVertical: 30 }}>No ingredients yet. Add flour, chicken, oil…</Text> : null}
+          </>
+        ) : null}
+
         {/* ---------- modifiers ---------- */}
         {tab === 'mods' ? (
           <>
@@ -385,6 +417,20 @@ export default function MenuEditorScreen() {
             </View>
 
             <View style={[card, { padding: 14 }]}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 4 }}>Tables</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 10 }}>
+                The table plan on the order screen. Type a number for numbered tables, or names separated by commas (Patio 1, Bar 2, VIP).
+              </Text>
+              <Field label="Tables" value={tablesText} onChangeText={setTablesText} placeholder="12 — or Patio 1, Patio 2, VIP" />
+              <Button size="sm" label="Save tables" onPress={() => {
+                const v = tablesText.trim();
+                const n = /^\d+$/.test(v) ? Math.min(200, Number(v)) : 0;
+                const list = n ? Array.from({ length: n }, (_, i) => 'Table ' + (i + 1)) : v.split(',').map((x) => x.trim()).filter(Boolean);
+                try { setSetting({ tables: list }); setTablesText(list.join(', ')); success(list.length + ' table' + (list.length === 1 ? '' : 's') + ' saved'); } catch (e) { explain(e); }
+              }} />
+            </View>
+
+            <View style={[card, { padding: 14 }]}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 10 }}>A new ticket starts as</Text>
               {chips(ORDER_TYPES.map((o) => o.l), (v) => ORDER_TYPES.find((o) => o.l === v)?.v === (db.settings.defaultOrderType || 'dine'),
                 (v) => { try { setSetting({ defaultOrderType: ORDER_TYPES.find((o) => o.l === v)!.v as OrderType }); } catch (e) { explain(e); } })}
@@ -399,7 +445,7 @@ export default function MenuEditorScreen() {
             variant="pri"
             label={addLabel}
             icon={<Icon name="plus" size={17} color={colors.accentInk} />}
-            onPress={() => (tab === 'dishes' ? newDish() : tab === 'menus' ? setMenuDraft({ name: '', sections: [] }) : tab === 'sections'
+            onPress={() => (tab === 'ingredients' ? setIngredient({ name: '', unit: 'KG', cost: '', stock: '', reorder: '' }) : tab === 'dishes' ? newDish() : tab === 'menus' ? setMenuDraft({ name: '', sections: [] }) : tab === 'sections'
               ? setSection({ name: '', color: GROUP_COLORS[sections.length % GROUP_COLORS.length], station: '' }) : editGroup())}
           />
         </View>
@@ -479,6 +525,31 @@ export default function MenuEditorScreen() {
             })}
             {!groups.length ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginBottom: 8 }}>No modifier groups yet — add them under the Modifiers tab.</Text> : null}
 
+            {label('Recipe — what one serving uses')}
+            {dish.recipe.map((x, i) => {
+              const ing = ingredients.find((p) => p.id === x.productId);
+              return (
+                <View key={x.productId} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{ing?.name || 'Removed'}</Text>
+                  <View style={{ width: 110 }}>
+                    <Field compact label={ing?.unit || 'Qty'} numeric decimal money={false} value={x.qty} onChangeText={(v) => setDish({ ...dish, recipe: dish.recipe.map((y, k) => (k === i ? { ...y, qty: v } : y)) })} style={{ marginBottom: 0 }} />
+                  </View>
+                  <Pressable hitSlop={8} onPress={() => setDish({ ...dish, recipe: dish.recipe.filter((_, k) => k !== i) })}><Icon name="x" size={18} color={colors.danger} /></Pressable>
+                </View>
+              );
+            })}
+            {(() => {
+              const cost = dish.recipe.reduce((n, x) => n + (ingredients.find((p) => p.id === x.productId)?.cost || 0) * (Number(x.qty) || 0), 0);
+              const price = Number(dish.price) || 0;
+              return cost ? (
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft, marginBottom: 8 }}>
+                  Food cost {money(cost)}{price ? ' · ' + Math.round(cost / price * 100) + '% of the price · margin ' + money(price - cost) : ''}
+                </Text>
+              ) : null;
+            })()}
+            <Button size="sm" label="Add an ingredient" icon={<Icon name="plus" size={15} color={colors.ink} />} onPress={() => (ingredients.length ? setRecipePick(true) : error('Add ingredients first, under the Stock tab.'))} />
+            <View style={{ height: 12 }} />
+
             <ToggleRow label="Sold out for now" sub="Shown greyed on the order screen and cannot be ordered" on={dish.soldOut} onChange={(v) => setDish({ ...dish, soldOut: v })} />
 
             {dish.id ? (
@@ -496,6 +567,58 @@ export default function MenuEditorScreen() {
             ) : null}
           </>
         ) : null}
+      </Sheet>
+
+      {/* ---------- an ingredient ---------- */}
+      <Sheet
+        visible={!!ingredient}
+        title={ingredient?.id ? 'Edit ingredient' : 'New ingredient'}
+        icon="box"
+        onClose={() => setIngredient(null)}
+        footer={<Button variant="pri" label="Save ingredient" onPress={() => {
+          if (!ingredient) return;
+          if (!ingredient.name.trim()) { error('Give the ingredient a name.'); return; }
+          try {
+            const base = { name: ingredient.name.trim(), unit: ingredient.unit.trim() || 'KG', cost: Number(ingredient.cost) || 0, reorder: Number(ingredient.reorder) || 0 };
+            if (ingredient.id) updateProduct(ingredient.id, base);
+            else {
+              const wh = db!.session.warehouse || 'w1';
+              addProduct({
+                ...base, sku: base.name.slice(0, 8).toUpperCase().replace(/\s+/g, ''), kind: 'product', category: 'Ingredients', price: 0,
+                taxRate: 0, stock: { [wh]: Number(ingredient.stock) || 0 }, warrantyMonths: 0, active: true, trackInventory: true,
+                batches: [], barcodes: [], ingredient: true,
+              } as Omit<Product, 'id'>);
+            }
+            success(base.name + ' saved');
+            setIngredient(null);
+          } catch (e) { explain(e); }
+        }} />}
+      >
+        {ingredient ? (
+          <>
+            <Field label="Ingredient" value={ingredient.name} onChangeText={(v) => setIngredient({ ...ingredient, name: v })} placeholder="Chicken breast" />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}><Field label="Unit" value={ingredient.unit} onChangeText={(v) => setIngredient({ ...ingredient, unit: v })} placeholder="KG, L, PC" /></View>
+              <View style={{ flex: 1 }}><Field label="Cost per unit" numeric decimal value={ingredient.cost} onChangeText={(v) => setIngredient({ ...ingredient, cost: v })} /></View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {!ingredient.id ? <View style={{ flex: 1 }}><Field label="In stock now" numeric decimal money={false} value={ingredient.stock} onChangeText={(v) => setIngredient({ ...ingredient, stock: v })} /></View> : null}
+              <View style={{ flex: 1 }}><Field label="Reorder level" numeric decimal money={false} value={ingredient.reorder} onChangeText={(v) => setIngredient({ ...ingredient, reorder: v })} /></View>
+            </View>
+            {ingredient.id ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Change the stock with a purchase or Adjust stock.</Text> : null}
+          </>
+        ) : null}
+      </Sheet>
+
+      <Sheet visible={recipePick} title="Add to the recipe" icon="box" full onClose={() => setRecipePick(false)}>
+        {ingredients.filter((p) => !dish?.recipe.some((x) => x.productId === p.id)).map((p) => (
+          <Pressable key={p.id} onPress={() => { if (dish) setDish({ ...dish, recipe: [...dish.recipe, { productId: p.id, qty: '' }] }); setRecipePick(false); }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 6, borderRadius: 12, borderWidth: 1, borderColor: colors.line }}>
+            <Icon name="box" size={18} color={colors.ink} />
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{money(p.cost)} / {p.unit}</Text>
+          </Pressable>
+        ))}
       </Sheet>
 
       {/* ---------- a menu ---------- */}

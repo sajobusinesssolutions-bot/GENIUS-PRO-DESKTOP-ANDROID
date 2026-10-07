@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, Image } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
@@ -156,6 +156,22 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
             </View>
           ) : null}
         </View>
+
+        {sale.rx ? (
+          <>
+            {head('Prescription')}
+            <View style={card}>
+              <View style={{ padding: 14, gap: 4 }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>Prescribed by {sale.rx.prescriber}</Text>
+                {sale.rx.number ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>No. {sale.rx.number}</Text> : null}
+                {sale.rx.patient ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>Patient: {sale.rx.patient}</Text> : null}
+                {sale.rx.facility ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>{sale.rx.facility}</Text> : null}
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Seen by {sale.rx.seenBy} · {new Date(sale.rx.seenAt).toLocaleString('en-GB')}</Text>
+                {sale.rx.photo ? <Image source={{ uri: sale.rx.photo }} style={{ width: '100%', height: 180, borderRadius: 12, marginTop: 8 }} resizeMode="contain" /> : null}
+              </View>
+            </View>
+          </>
+        ) : null}
 
         {head('Summary')}
         <View style={{ ...card, paddingHorizontal: 16, paddingVertical: 8 }}>
