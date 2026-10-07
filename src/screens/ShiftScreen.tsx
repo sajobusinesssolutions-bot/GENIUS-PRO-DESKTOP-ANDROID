@@ -470,16 +470,16 @@ export default function ShiftScreen({ route }: any) {
 
       {footer ? <Foot>{footer}</Foot> : null}
 
-      <SendSheet
+      {summaryOpen ? <SendSheet
         visible={summaryOpen}
         onClose={() => setSummaryOpen(false)}
         title="Send the day's summary"
         to={db.users.find((u) => u.role === 'owner')?.name}
-        phone={db.firm.phone}
-        email={db.firm.email}
-        subject={db.firm.name + ' — day summary'}
+        phone={db.firm?.phone}
+        email={db.firm?.email}
+        subject={(db.firm?.name || 'Your business') + ' — day summary'}
         text={summary}
-      />
+      /> : null}
 
       {/* open */}
       <Sheet
