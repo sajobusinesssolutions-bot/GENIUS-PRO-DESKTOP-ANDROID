@@ -20,6 +20,10 @@ import OrderScreen from '../screens/OrderScreen';
 import { useAppData } from '../data/AppDataContext';
 import { vocab } from '../data/editions';
 import { isRestaurant } from '../data/restaurant';
+import KitchenDisplayScreen from '../screens/KitchenDisplayScreen';
+import RouteGuard from './RouteGuard';
+import { canFor } from '../data/perms';
+import type { DB } from '../data/types';
 
 const Tab = createBottomTabNavigator();
 
@@ -39,11 +43,25 @@ const RESTAURANT_BAR: { s: string; i: IconName; l: string }[] = [
   { s: 'MenuTab', i: 'menu', l: 'More' },
 ];
 
+/** Someone in the kitchen: the display, not the till. */
+const kitchenOnly = (d: DB | null | undefined) =>
+  !!d && isRestaurant(d) && !canFor(d.session.role, 'sales.create') && canFor(d.session.role, 'restaurant.kitchen');
+
+/** The tabs this person's role may open, in the bar's order. */
+function barFor(d: DB | null | undefined) {
+  const role = d?.session.role;
+  const ok = (s: string) => (s === 'OrderTab' ? canFor(role, 'sales.create') : s === 'SalesTab' ? canFor(role, 'sales.view') : true);
+  if (!isRestaurant(d)) return BAR.filter((t) => ok(t.s)).map((t) => (t.s === 'ItemsTab' ? { ...t, l: vocab(d).items } : t));
+  const bar = RESTAURANT_BAR.filter((t) => ok(t.s));
+  if (kitchenOnly(d)) bar.splice(1, 0, { s: 'KitchenTab', i: 'food', l: 'Kitchen' });
+  return bar;
+}
+
 function TabBar({ state, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
   const book = useAppData().db;
-  // a pharmacy keeps drugs, not items
-  const bar = isRestaurant(book) ? RESTAURANT_BAR : BAR.map((t) => (t.s === 'ItemsTab' ? { ...t, l: vocab(book).items } : t));
+  // a pharmacy keeps drugs, not items; a tab the role cannot open is not offered
+  const bar = barFor(book);
   const insets = useSafeAreaInsets();
   const current = state.routes[state.index].name;
 
@@ -107,10 +125,17 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
 
 export default function MainTabs() {
   const { colors } = useTheme();
-  const restaurant = isRestaurant(useAppData().db);
+  const book = useAppData().db;
+  const restaurant = isRestaurant(book);
+  const kitchen = kitchenOnly(book);
   return (
     <Tab.Navigator
+      // the kitchen opens on its display; everyone else on Home
+      key={kitchen ? 'kitchen' : 'till'}
+      initialRouteName={kitchen ? 'KitchenTab' : 'DashboardTab'}
       tabBar={(props) => <TabBar {...props} />}
+      // a tab is refused like any screen when the role does not allow it
+      screenLayout={({ children, route }) => <RouteGuard route={route.name} params={route.params}>{children}</RouteGuard>}
       screenListeners={{ focus: () => requestSync() }}
       /* A quick cross-fade on the native thread. 'shift' slid a screen that was
          often still being built on first visit, which stuttered. The tabs are
@@ -130,6 +155,7 @@ export default function MainTabs() {
       <Tab.Screen name="DashboardTab" component={DashboardScreen} />
       <Tab.Screen name="SalesTab" component={SalesListScreen} />
       {restaurant ? <Tab.Screen name="OrderTab" component={OrderScreen as any} /> : null}
+      {restaurant ? <Tab.Screen name="KitchenTab" component={KitchenDisplayScreen as any} /> : null}
       <Tab.Screen name="ItemsTab" component={ItemsScreen} />
       <Tab.Screen name="MenuTab" component={MenuScreen} />
     </Tab.Navigator>

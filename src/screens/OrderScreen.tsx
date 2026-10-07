@@ -308,7 +308,20 @@ export default function OrderScreen({ navigation, route }: Props) {
     ]);
   }
 
-  async function charge() {
+  /** Takeaway with dishes not yet sent: asks whether the kitchen should make them. */
+  function startCharge() {
+    if (orderType === 'takeaway' && unsent > 0 && !split) {
+      Alert.alert('Send to the kitchen?', unsent + ' item' + (unsent === 1 ? ' has' : 's have') + ' not gone to the kitchen. Should the kitchen make them for this takeaway?', [
+        { text: 'Back', style: 'cancel' },
+        { text: 'No, it is ready', onPress: () => { void charge(false); } },
+        { text: 'Send to kitchen', onPress: () => { void charge(true); } },
+      ]);
+      return;
+    }
+    void charge(true);
+  }
+
+  async function charge(toKitchen = true) {
     if (!lines.some((l) => l.qty > 0)) return;
     const taking = split ? lines.map((l, i) => ({ ...l, qty: split[i] || 0 })).filter((l) => l.qty > 0) : lines.filter((l) => l.qty > 0);
     if (!taking.length) { error('Choose what this person is paying for.'); return; }
@@ -323,8 +336,8 @@ export default function OrderScreen({ navigation, route }: Props) {
         description: orderNote.trim() || undefined,
       });
     } catch (e) { explain(e); return; }
-    // anything not yet cooked still goes to the kitchen
-    await sendToKitchen(sale.no);
+    // anything not yet cooked still goes to the kitchen (unless a takeaway said it is ready)
+    if (toKitchen) await sendToKitchen(sale.no);
     const change = Math.max(0, paid - due);
     // a split: what is left stays on the ticket for the next payer
     const rest = split ? lines.map((l, i) => ({ ...l, qty: l.qty - (split[i] || 0) })) : [];
@@ -826,39 +839,101 @@ export default function OrderScreen({ navigation, route }: Props) {
       {/* payment */}
       <Sheet
         visible={paying}
-        title={(split ? 'Charge a share · ' : 'Charge ') + money(due)}
-        subtitle={name.trim() || undefined}
+        title={split ? 'Charge a share' : 'Take payment'}
         icon="cash"
         iconTone="good"
+        full
         onClose={() => { setPaying(false); setSplit(null); }}
-        footer={<Button variant="pri" label={'Take payment · ' + money(due)} onPress={charge} />}
+        footer={(
+          <Button
+            variant="pri"
+            label={method === 'cash' && Number(received) > due ? 'Paid · give ' + money(Number(received) - due) + ' change' : 'Paid · ' + money(due)}
+            disabled={method === 'cash' && !!received && Number(received) < due}
+            onPress={startCharge}
+          />
+        )}
       >
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+        {/* what is being paid for */}
+        <View style={{ borderRadius: 18, padding: 16, backgroundColor: colors.ink, marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Icon name={orderType === 'dine' ? 'chair' : orderType === 'delivery' ? 'taxi' : 'cart'} size={15} color={colors.bg} />
+            <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13, letterSpacing: 0.5, color: colors.bg, opacity: 0.85 }}>
+              {orderTypeWord(orderType).toUpperCase()} · {name.trim() || 'No name'}{customerName ? ' · ' + customerName : ''}
+            </Text>
+          </View>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 36, color: colors.bg, marginTop: 8 }}>{money(due)}</Text>
+          {(() => {
+            const sub = split ? splitSub : subtotal;
+            const svc = split ? splitService : service;
+            const n = split ? split.reduce((x, q) => x + q, 0) : count;
+            return (
+              <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.bg, opacity: 0.75, marginTop: 2 }}>
+                {n} item{n === 1 ? '' : 's'} · {money(sub)}{svc ? ' + ' + servicePct + '% service ' + money(svc) : ''}{split ? ' · ' + money(total - due) + ' left on the ticket' : ''}
+              </Text>
+            );
+          })()}
+        </View>
+
+        {/* how */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
           {([['cash', 'Cash', 'cash'], ['momo', 'Mobile money', 'phone'], ['bank', 'Card / bank', 'card']] as const).map(([v, l, i]) => {
             const on = method === v;
             return (
-              <Pressable key={v} onPress={() => setMethod(v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.ink : colors.surface }}>
-                <Icon name={i} size={16} color={on ? colors.bg : colors.ink} />
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.bg : colors.ink }}>{l}</Text>
+              <Pressable
+                key={v}
+                onPress={() => { setMethod(v); if (v !== 'cash') setReceived(''); }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 14, borderWidth: 2, borderColor: on ? colors.good : colors.line, backgroundColor: on ? colors.goodSoft : colors.surface }}
+              >
+                <Icon name={i} size={22} color={on ? colors.good : colors.ink} />
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 13, color: on ? colors.good : colors.ink }}>{l}</Text>
               </Pressable>
             );
           })}
         </View>
+
         {method === 'cash' ? (
           <>
             <Field label="Cash received" numeric decimal value={received} onChangeText={setReceived} placeholder={String(due)} />
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-              {[due, Math.ceil(due / 5000) * 5000, Math.ceil(due / 10000) * 10000, Math.ceil(due / 50000) * 50000]
-                .filter((v, i, a) => v > 0 && a.indexOf(v) === i).map((v) => (
-                  <Pressable key={v} onPress={() => setReceived(String(v))} style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.sunk }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{money(v)}</Text>
-                  </Pressable>
-                ))}
+            {/* the notes customers usually hand over */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+              {[due, Math.ceil(due / 1000) * 1000, Math.ceil(due / 5000) * 5000, Math.ceil(due / 10000) * 10000, Math.ceil(due / 20000) * 20000, Math.ceil(due / 50000) * 50000]
+                .filter((v, i, arr) => v > 0 && arr.indexOf(v) === i).slice(0, 6).map((v, i) => {
+                  const on = Number(received) === v;
+                  return (
+                    <Pressable key={v} onPress={() => setReceived(String(v))} style={{ width: '31.5%', paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.sunk : colors.surface }}>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(v)}</Text>
+                      {i === 0 ? <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>Exact</Text> : null}
+                    </Pressable>
+                  );
+                })}
             </View>
-            {Number(received) > due ? (
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.good, textAlign: 'center', marginVertical: 6 }}>Change {money(Number(received) - due)}</Text>
+            {received ? (
+              Number(received) >= due ? (
+                <View style={{ alignItems: 'center', padding: 14, borderRadius: 14, backgroundColor: colors.goodSoft }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.good }}>Change to give</Text>
+                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: colors.good }}>{money(Number(received) - due)}</Text>
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', padding: 14, borderRadius: 14, backgroundColor: colors.dangerSoft }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger }}>Still short</Text>
+                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: colors.danger }}>{money(due - Number(received))}</Text>
+                </View>
+              )
             ) : null}
           </>
+        ) : (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft, textAlign: 'center', paddingVertical: 8 }}>
+            {method === 'momo' ? 'Confirm the mobile money message for ' + money(due) + ' has arrived, then tap Paid.' : 'Confirm the card or bank payment of ' + money(due) + ' went through, then tap Paid.'}
+          </Text>
+        )}
+
+        {orderType === 'takeaway' && unsent > 0 && !split ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, padding: 12, borderRadius: 12, backgroundColor: colors.warnSoft }}>
+            <Icon name="food" size={16} color={colors.warn} />
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.warn }}>{unsent} item{unsent === 1 ? '' : 's'} not sent to the kitchen yet. You will be asked whether to send them.</Text>
+          </View>
         ) : null}
       </Sheet>
     </View>

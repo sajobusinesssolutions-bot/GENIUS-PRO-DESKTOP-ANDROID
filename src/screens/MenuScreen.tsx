@@ -38,6 +38,7 @@ import { Field } from '../components/form';
 import { useDeveloper } from '../data/useDeveloper';
 
 import { BUILD } from '../data/defaults';
+import { roleName } from '../data/perms';
 export { BUILD };
 
 export default function MenuScreen() {
@@ -111,7 +112,7 @@ export default function MenuScreen() {
               onPress={isOwner ? () => go('Branches') : undefined}
               style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}
             >
-              {(branch?.name || 'No branch') + ' · ' + (isOwner ? 'own stock and own books' : (role || '').charAt(0).toUpperCase() + (role || '').slice(1))}
+              {(branch?.name || 'No branch') + ' · ' + (isOwner ? 'own stock and own books' : roleName(db, role))}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, height: 34, borderRadius: 10, backgroundColor: colors.accentSoft }}>

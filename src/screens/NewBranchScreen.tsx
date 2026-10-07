@@ -26,6 +26,7 @@ import { useIsOwner, Denied } from '../components/Gate';
 import { branchStockUnits } from '../data/branch';
 import { useAuthSafe } from '../data/AuthContext';
 import { createBusiness, uploadSnapshot } from '../data/syncClient';
+import { roleName } from '../data/perms';
 import { refreshSession, serverConfigured } from '../data/authApi';
 
 type StepId = 'shop' | 'papers' | 'money' | 'stock' | 'people' | 'review';
@@ -422,7 +423,7 @@ export default function NewBranchScreen() {
                   key={u.id}
                   icon="user"
                   title={u.name}
-                  subtitle={u.role.charAt(0).toUpperCase() + u.role.slice(1)}
+                  subtitle={roleName(db, u.role)}
                   tone={managerId === u.id ? 'accent' : undefined}
                   onPress={() => setManagerId(u.id)}
                   last={i === staff.length - 1}
