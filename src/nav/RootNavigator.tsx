@@ -68,6 +68,8 @@ import AuditLogScreen from '../screens/AuditLogScreen';
 import DeletedTransactionsScreen from '../screens/DeletedTransactionsScreen';
 import OrderScreen from '../screens/OrderScreen';
 import PriceListsScreen from '../screens/PriceListsScreen';
+import KitchenDisplayScreen from '../screens/KitchenDisplayScreen';
+import ApprovalsScreen from '../screens/ApprovalsScreen';
 import MenuEditorScreen from '../screens/MenuEditorScreen';
 import PrintingKitchenScreen from '../screens/PrintingKitchenScreen';
 
@@ -238,6 +240,8 @@ export default function RootNavigator() {
         <Stack.Screen name="Batches" component={BatchReportScreen} options={{ title: 'Batches & expiry' }} />
         <Stack.Screen name="StaffReport" component={StaffReportScreen} options={{ title: 'Staff performance' }} />
         <Stack.Screen name="BatchMovement" component={BatchMovementScreen} options={{ title: 'Batch movement' }} />
+        <Stack.Screen name="Approvals" component={ApprovalsScreen} options={{ title: 'Approvals' }} />
+        <Stack.Screen name="KitchenDisplay" component={KitchenDisplayScreen} options={{ headerShown: false }} />
         <Stack.Screen name="PriceLists" component={PriceListsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="PriceList" component={PriceListScreen} options={{ title: 'Bulk price editor' }} />
         <Stack.Screen name="NamesEditor" component={NamesEditorScreen} options={{ title: 'Names & descriptions' }} />

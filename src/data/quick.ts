@@ -119,6 +119,7 @@ const RESTAURANT_QUICK: QuickGroup[] = [
     g: 'Menu', i: 'menu', tone: 'warnc', perm: 'items', items: [
       { n: 'Add dish', i: 'plus', route: 'MenuEditor' },
       { n: 'Menu & modifiers', i: 'food', route: 'MenuEditor' },
+      { n: 'Kitchen display', i: 'food', route: 'KitchenDisplay' },
       { n: 'Kitchen printing', i: 'print', route: 'PrintingKitchen', perm: 'settings' },
       { n: 'Buy ingredients', i: 'cart', route: 'PurchaseNew' },
       { n: 'Adjust stock', i: 'box', route: 'StockAdjust' },

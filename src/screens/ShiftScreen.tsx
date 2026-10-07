@@ -31,6 +31,8 @@ import { fmtDate, money0 } from '../data/helpers';
 import { shiftVariance, shiftSales } from '../data/logic';
 import { isRestaurant, menuSections } from '../data/restaurant';
 import { activeBranchId } from '../data/branch';
+import SendSheet from '../components/SendSheet';
+import { daySummary } from '../data/daySummary';
 import type { Shift } from '../data/types';
 
 const num = (v: string) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
@@ -54,6 +56,8 @@ export default function ShiftScreen({ route }: any) {
   const [closing, setClosing] = useState<Shift[] | null>(null);
   /** The close came from Day close: the day is frozen once the drawers are closed. */
   const [closingDay, setClosingDay] = useState(false);
+  const [summary, setSummary] = useState('');
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
 
@@ -127,7 +131,13 @@ export default function ShiftScreen({ route }: any) {
   function finishDay() {
     closeDay();
     setClosingDay(false);
-    Alert.alert('Day closed', 'Today\'s transactions are frozen. Only the owner can reopen the day to change them.');
+    // the owner's day in a message, ready to send
+    const owner = db?.users.find((u) => u.role === 'owner');
+    setSummary(daySummary(db!, money));
+    Alert.alert('Day closed', 'Today\'s transactions are frozen. Only the owner can reopen the day to change them.', [
+      { text: 'Done', style: 'cancel' },
+      { text: 'Send summary to ' + (owner?.name || 'the owner'), onPress: () => setSummaryOpen(true) },
+    ]);
   }
 
   function confirmClose() {
@@ -459,6 +469,17 @@ export default function ShiftScreen({ route }: any) {
       </ScrollView>
 
       {footer ? <Foot>{footer}</Foot> : null}
+
+      <SendSheet
+        visible={summaryOpen}
+        onClose={() => setSummaryOpen(false)}
+        title="Send the day's summary"
+        to={db.users.find((u) => u.role === 'owner')?.name}
+        phone={db.firm.phone}
+        email={db.firm.email}
+        subject={db.firm.name + ' — day summary'}
+        text={summary}
+      />
 
       {/* open */}
       <Sheet

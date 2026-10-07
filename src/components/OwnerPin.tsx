@@ -13,6 +13,8 @@ import { verifyPin } from '../data/pinHash';
 import { Button, InfoBanner, Avatar, SectionLabel } from './ui';
 import { Icon } from './icons';
 import Sheet from './Sheet';
+import { ActivityIndicator } from 'react-native';
+import { requestSync } from '../data/SyncKeeper';
 
 /**
  * `ask(fn)` runs `fn` once an owner has entered their PIN. Render `sheet`.
@@ -54,14 +56,31 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
   visible: boolean; summary: string; onOk: () => void; onCancel: () => void;
 }) {
   const { colors } = useTheme();
-  const { db } = useAppData();
+  const { db, requestApproval } = useAppData();
   const [pin, setPin] = useState('');
   const [wrong, setWrong] = useState(false);
+  /** A request sent to the owner's phone, while it is waiting. */
+  const [askedId, setAskedId] = useState<string | null>(null);
+  const asked = askedId ? (db?.approvals || []).find((a) => a.id === askedId) : undefined;
+
+  // waiting on the owner: look for the answer every few seconds, and act on it
+  React.useEffect(() => {
+    if (!askedId) return;
+    const t = setInterval(() => { void requestSync(true); }, 4000);
+    return () => clearInterval(t);
+  }, [askedId]);
+  React.useEffect(() => {
+    if (!asked || asked.status === 'pending') return;
+    const ok = asked.status === 'approved';
+    setAskedId(null);
+    if (ok) onOk(); else { setWrong(true); setTimeout(() => setWrong(false), 2500); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asked?.status]);
 
   const owners = (db?.users || []).filter((u) => u.active && u.role === 'owner');
 
   function close() {
-    setPin(''); setWrong(false);
+    setPin(''); setWrong(false); setAskedId(null);
     onCancel();
   }
 
@@ -90,6 +109,24 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
     >
       <InfoBanner tone="warn" icon="alert" text={summary} />
 
+      {/* the owner is not at the counter: ask their phone */}
+      {db?.sync?.on ? (
+        askedId ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: colors.accentSoft, marginTop: 12 }}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>Waiting for the owner to answer on their phone…</Text>
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => { try { setAskedId(requestApproval(summary).id); void requestSync(true); } catch { /* the PIN still works */ } }}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 14, borderWidth: 1.4, borderColor: colors.accent, marginTop: 12 }}
+          >
+            <Icon name="phone" size={16} color={colors.accent} />
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>Ask the owner on their phone</Text>
+          </Pressable>
+        )
+      ) : null}
+
       <View style={{ height: 18 }} />
       <SectionLabel>Any owner can approve</SectionLabel>
       <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -114,7 +151,7 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
       </View>
       {wrong ? (
         <Text style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger, marginBottom: 10 }}>
-          That is not an owner PIN.
+          {wrong && !pin ? 'The owner declined.' : 'That is not an owner PIN.'}
         </Text>
       ) : null}
 

@@ -120,6 +120,8 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   DeletedTransactions: 'settings.deleted',
   Order: 'sales.create',
   MenuEditor: 'restaurant.menu',
+  KitchenDisplay: 'restaurant.kitchen',
+  Approvals: 'profiles.manage',
   PrintingKitchen: 'settings.printing',
   Plans: 'settings.view',
   Licence: 'settings.view',
@@ -188,6 +190,7 @@ const PHRASES: Record<string, string> = {
   'restaurant.switch_menu': 'sell from another menu',
   'restaurant.print_bill': 'print the bill',
   'restaurant.menu': 'edit the menu',
+  'restaurant.kitchen': 'use the kitchen display',
   'sales.view_totals': 'see total sales',
   'sales.view_balances': 'see the balance due',
 };

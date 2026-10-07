@@ -444,6 +444,15 @@ export default function DashboardScreen() {
           ))}
         </View>
 
+        {/* staff waiting on the owner's go-ahead */}
+        {can('profiles.manage') && (db.approvals || []).some((x) => x.status === 'pending') ? (
+          <Pressable onPress={() => go('Approvals')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, backgroundColor: colors.accentSoft }}>
+            <Icon name="lock" size={18} color={colors.accent} />
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>{(db.approvals || []).filter((x) => x.status === 'pending').length} request(s) waiting for your approval</Text>
+            <Icon name="chev" size={15} color={colors.accent} />
+          </Pressable>
+        ) : null}
+
         {/* the one thing each trade must not miss: open tables, drugs about to expire */}
         {(() => {
           const ed = editionOf(db);

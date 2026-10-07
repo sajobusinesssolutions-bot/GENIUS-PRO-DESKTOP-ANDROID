@@ -273,13 +273,15 @@ const KIND_OF: Record<string, OpKind> = {
   menuGroup: 'record.upsert',
   menu: 'record.upsert',
   priceList: 'record.upsert',
+  kitchenOrder: 'record.upsert',
+  approval: 'record.upsert',
 };
 
 /** Which collection a record.upsert lands in, by queue kind. */
 const COLL_OF: Record<string, string> = {
   product: 'products', party: 'parties', estimate: 'estimates', ledger: 'coa', firm: 'firm',
   challan: 'challans', purchaseOrder: 'purchaseOrders', recurring: 'recurringInvoices', plan: 'instalmentPlans',
-  user: 'users', role: 'roles', ticket: 'tickets', modifierGroup: 'modifierGroups', menuGroup: 'menuGroups', menu: 'menus', priceList: 'priceLists',
+  user: 'users', role: 'roles', ticket: 'tickets', modifierGroup: 'modifierGroups', menuGroup: 'menuGroups', menu: 'menus', priceList: 'priceLists', kitchenOrder: 'kitchenOrders', approval: 'approvals',
 };
 
 /** Finds the record a queue entry points at. */
@@ -311,6 +313,8 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
     case 'menuGroup': return (d.menuGroups || []).find((x) => x.id === ref);
     case 'menu': return (d.menus || []).find((x) => x.id === ref);
     case 'priceList': return (d.priceLists || []).find((x) => x.id === ref);
+    case 'kitchenOrder': return (d.kitchenOrders || []).find((x) => x.id === ref);
+    case 'approval': return (d.approvals || []).find((x) => x.id === ref);
     // the business's own details: name, phones, address, logo, signature…
     case 'firm': return d.firm?.id === ref ? d.firm : undefined;
     default: return undefined;

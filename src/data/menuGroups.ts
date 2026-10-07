@@ -105,6 +105,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     id: 'sell', n: 'Sales', names: { restaurant: 'Orders', pharmacy: 'Sales & dispensing' }, i: 'till', tone: 'accent', perm: 'sales',
     b: (c) => plural(liveSales(c.db).length, 'sale'),
     items: [
+      { route: 'KitchenDisplay', i: 'food', n: 'Kitchen display', b: (c) => plural((c.db.kitchenOrders || []).filter((k) => k.status !== 'served').length, 'order') + ' in the kitchen', show: (d) => isRestaurant(d), alt: 'kds kitchen screen cooks orders ready' },
       { route: 'Order', i: 'food', n: 'Take an order', b: (c) => plural((c.db.tickets || []).filter((t) => t.status === 'open').length, 'open ticket'), show: (d) => isRestaurant(d), alt: 'restaurant table ticket kitchen order' },
       { route: 'Sales', i: 'doc', n: 'Activity', b: (c) => plural(liveSales(c.db).length, 'sale'), alt: 'sales invoices receipts transactions parties' },
       { route: 'Estimates', i: 'doc', n: 'Quotations', b: (c) => (c.db.estimates || []).filter((e) => e.status === 'open').length + ' open', alt: 'quotes estimates proforma' },
@@ -191,6 +192,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
           return n ? plural(n, 'item') + ' to restore' : 'Nothing deleted';
         },
       },
+      { route: 'Approvals', i: 'lock', n: 'Approvals', perm: 'users', b: (c) => { const n = (c.db.approvals || []).filter((a) => a.status === 'pending').length; return n ? plural(n, 'request') + ' waiting' : 'Nothing waiting'; }, alt: 'approve request owner allow discount below cost' },
       { route: 'UsersRoles', i: 'user', n: 'Staff & roles', b: (c) => plural(c.db.users.filter((u) => u.active).length, 'person', 'people'), perm: 'users', alt: 'users permissions pins' },
       { route: 'Settings', i: 'cog', n: 'Settings', b: () => 'Business details, tax, till, numbering', perm: 'settings', alt: 'preferences currency numbering' },
       { route: 'ReminderSettings', i: 'share', n: 'Payment reminders', b: (c) => (c.db.settings.reminders?.enabled === false ? 'Off' : 'WhatsApp, SMS and email messages'), perm: 'settings', alt: 'remind debtors owe whatsapp sms email template' },
