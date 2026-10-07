@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { AppState } from 'react-native';
 import {
-  DB, Sale, SaleLine, ModifierGroup, Ticket, MenuGroup, OrderType, Menu, PriceList, Purchase, PurchaseLine, Payment, Entry, JournalLine, PayMethod, Product, Party,
+  DB, Sale, SaleLine, ModifierGroup, Ticket, MenuGroup, OrderType, Menu, PriceList, KitchenOrder, ApprovalRequest, Purchase, PurchaseLine, Payment, Entry, JournalLine, PayMethod, Product, Party,
   Estimate, Challan, ChallanLine, CreditNote, CreditNoteLine, Offer, StockTake, PurchaseOrder, POLine,
   ProductionRun, RecurringInvoice, AuditLogEntry, Firm, User,
   InstalmentPlan, Printer, PrintServer, PrintTemplate, PrinterSettings, DocKind,
@@ -203,6 +203,14 @@ interface Ctx {
   removeMenuGroup: (id: string) => void;
   /** Moves a section up (-1) or down (1) the menu. */
   moveMenuGroup: (id: string, by: -1 | 1) => void;
+  /** Asks the owner, on their own phone, to approve something. */
+  requestApproval: (what: string) => ApprovalRequest;
+  /** The owner answers a request. */
+  decideApproval: (id: string, approve: boolean) => void;
+  /** A round of an order reaches the kitchen display. */
+  sendKitchenOrder: (k: Omit<KitchenOrder, 'id' | 'sentAt' | 'status' | 'changedAt'>) => KitchenOrder;
+  /** The kitchen moves an order on: new → cooking → ready → served (or back, to recall it). */
+  setKitchenStatus: (id: string, status: KitchenOrder['status']) => void;
   /** Adds or changes a price list: a new one, a rename, its prices or items. */
   savePriceList: (l: Omit<PriceList, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => PriceList;
   /** Adds or changes a menu (a set of sections). */
@@ -1274,6 +1282,52 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         d.menuGroups = list;
       });
     },
+    requestApproval: (what) => {
+      let out!: ApprovalRequest;
+      commit((d) => {
+        const me = d.users.find((u) => u.id === d.session.userId);
+        out = { id: uid('apr'), what, byId: d.session.userId, by: me?.name || 'Staff', at: iso(new Date()), status: 'pending' };
+        d.approvals = [...(d.approvals || []).filter((a) => a.status === 'pending' || Date.now() - new Date(a.at).getTime() < 7 * 864e5), out];
+        logic.enqueue(d, 'approval', out.id);
+      });
+      return out;
+    },
+    decideApproval: (id, approve) => {
+      // only someone who could have typed the owner PIN may answer
+      if (dbRef.current?.session.role !== 'owner') requirePerm('profiles.manage');
+      commit((d) => {
+        const a = (d.approvals || []).find((x) => x.id === id);
+        if (!a || a.status !== 'pending') return;
+        a.status = approve ? 'approved' : 'declined';
+        a.decidedBy = d.users.find((u) => u.id === d.session.userId)?.name || 'Owner';
+        a.decidedAt = iso(new Date());
+        audit(d, approve ? 'Approved' : 'Declined', a.what + ' — asked by ' + a.by);
+        logic.enqueue(d, 'approval', id);
+      });
+    },
+    sendKitchenOrder: (k) => {
+      let out!: KitchenOrder;
+      commit((d) => {
+        const now = iso(new Date());
+        d.kitchenOrders = d.kitchenOrders || [];
+        out = { ...k, id: uid('kot'), sentAt: now, changedAt: now, status: 'new' };
+        d.kitchenOrders.push(out);
+        // the display only needs today's work: served orders older than two days are let go
+        const old = Date.now() - 2 * 864e5;
+        d.kitchenOrders = d.kitchenOrders.filter((x) => x.status !== 'served' || new Date(x.changedAt).getTime() > old);
+        logic.enqueue(d, 'kitchenOrder', out.id);
+      });
+      return out;
+    },
+    setKitchenStatus: (id, status) => {
+      requirePerm('restaurant.kitchen');
+      commit((d) => {
+        const x = (d.kitchenOrders || []).find((k) => k.id === id);
+        if (!x) return;
+        x.status = status; x.changedAt = iso(new Date());
+        logic.enqueue(d, 'kitchenOrder', id);
+      });
+    },
     savePriceList: (l) => {
       requirePerm('inventory.bulk_edit');
       let out!: PriceList;
@@ -1601,8 +1655,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               const coll = p.coll as 'challans' | 'purchaseOrders' | 'recurringInvoices' | 'instalmentPlans';
               (d as any)[coll] = (d as any)[coll] || [];
               put((d as any)[coll], p.doc);
-            } else if ((p?.coll === 'tickets' || p?.coll === 'modifierGroups' || p?.coll === 'menuGroups' || p?.coll === 'menus' || p?.coll === 'priceLists') && p.doc) {
-              const coll = p.coll as 'tickets' | 'modifierGroups' | 'menuGroups' | 'menus' | 'priceLists';
+            } else if ((p?.coll === 'tickets' || p?.coll === 'modifierGroups' || p?.coll === 'menuGroups' || p?.coll === 'menus' || p?.coll === 'priceLists' || p?.coll === 'kitchenOrders' || p?.coll === 'approvals') && p.doc) {
+              const coll = p.coll as 'tickets' | 'modifierGroups' | 'menuGroups' | 'menus' | 'priceLists' | 'kitchenOrders' | 'approvals';
               (d as any)[coll] = (d as any)[coll] || [];
               put((d as any)[coll], p.doc);
             } else if (p?.coll === 'users' && p.doc) {

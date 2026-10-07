@@ -42,7 +42,7 @@ export default function OrderScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { db, money, saveTicket, closeTicket, voidTicket, commitSale, user, can } = useAppData();
+  const { db, money, saveTicket, closeTicket, voidTicket, commitSale, user, can, sendKitchenOrder } = useAppData();
   // what this person may do here (Staff & roles → Restaurant)
   const mayCharge = can('restaurant.charge');
   const mayCancel = can('restaurant.cancel');
@@ -225,9 +225,19 @@ export default function OrderScreen({ navigation, route }: Props) {
     const fresh = lines.map((l, i) => ({ l, n: l.qty - (sent[i] || 0) })).filter((x) => x.n > 0)
       .map((x) => ({ station: stationOf(db, db.products.find((p) => p.id === x.l.productId)), line: docLine(x.l, x.n) }));
     if (!fresh.length) return;
+    // the kitchen display gets every round, with or without printers
+    if (db.settings.kitchenDisplay) {
+      try {
+        sendKitchenOrder({
+          ticketId: ticketId || undefined, no, table: name.trim() || undefined, orderType, by: me,
+          note: orderNote.trim() || undefined,
+          lines: fresh.map((f) => ({ name: f.line.name, qty: f.line.qty, mods: f.line.mods, note: f.line.note, station: f.station })),
+        });
+      } catch (e) { explain(e); }
+    }
     const kitchens = db.printers.filter((p) => printsOf(p).includes('order'));
     if (!kitchens.length) {
-      error('No kitchen printer is set up. Add one under Settings, Printing, and tick "Kitchen orders".');
+      if (!db.settings.kitchenDisplay) error('No kitchen printer is set up. Add one under Settings, Printing, and tick "Kitchen orders" — or switch on the kitchen display.');
       return;
     }
     const missed = new Set(fresh.map((f) => f.station));
@@ -638,6 +648,9 @@ export default function OrderScreen({ navigation, route }: Props) {
                   <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{tn}</Text>
                   {t ? (
                     <>
+                      {(db.kitchenOrders || []).some((k) => k.ticketId === t.id && k.status === 'ready') ? (
+                        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 11.5, color: colors.good }}>● READY</Text>
+                      ) : null}
                       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: long ? colors.danger : colors.warn }}>{money(amt)}</Text>
                       <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.soft }}>{mins < 60 ? mins + ' min' : Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min'}</Text>
                     </>

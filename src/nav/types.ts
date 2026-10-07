@@ -115,6 +115,8 @@ export type RootStackParamList = {
   DeletedTransactions: undefined;
   Order: { ticketId?: string } | undefined;
   PriceLists: undefined;
+  KitchenDisplay: undefined;
+  Approvals: undefined;
   MenuEditor: undefined;
   PrintingKitchen: undefined;
   Notifications: undefined;

@@ -30,7 +30,7 @@ export const PERM_MATRIX: PermGroup[] = [
   { k: 'restaurant', n: 'Restaurant', i: 'food', editions: ['restaurant'], acts: [
     ['charge', 'Charge and close tickets'], ['cancel', 'Cancel tickets'],
     ['all_tickets', "See and change other waiters' tickets"], ['switch_menu', 'Sell from any menu'],
-    ['print_bill', 'Print the bill'], ['menu', 'Edit the menu and modifiers'],
+    ['print_bill', 'Print the bill'], ['menu', 'Edit the menu and modifiers'], ['kitchen', 'Use the kitchen display'],
   ] },
   { k: 'quotes', n: 'Quotations', i: 'doc', acts: [
     ['view', 'View'], ['create', 'Create and edit'], ['convert', 'Convert to a sale'], ['delete', 'Delete'],
@@ -176,7 +176,7 @@ export const EDITION_ROLES: Record<Ed, { cashier: string[]; sales: string[] }> =
     // the cashier takes the money: charges and closes tickets, sees every table, opens and closes the till
     cashier: [
       'sales.view', 'sales.create', 'sales.discount', 'sales.refund', 'sales.view_all', 'shifts.open', 'shifts.close',
-      'restaurant.charge', 'restaurant.all_tickets', 'restaurant.print_bill', 'restaurant.switch_menu',
+      'restaurant.charge', 'restaurant.all_tickets', 'restaurant.print_bill', 'restaurant.switch_menu', 'restaurant.kitchen',
       'inventory.view', 'inventory.view_selling_price', 'customers.view', 'customers.create',
       'dashboard.view', 'dashboard.view_total_sales', 'dashboard.view_total_amount',
     ],
@@ -244,7 +244,7 @@ const INHERITS: Record<string, string> = {
   'settings.printing': 'settings.manage', 'settings.backup': 'settings.manage', 'settings.sync': 'settings.view',
   'settings.audit': 'settings.view', 'settings.deleted': 'settings.manage',
   'restaurant.charge': 'sales.create', 'restaurant.cancel': 'sales.void', 'restaurant.all_tickets': 'sales.view_all',
-  'restaurant.switch_menu': 'sales.create', 'restaurant.print_bill': 'sales.create', 'restaurant.menu': 'inventory.edit',
+  'restaurant.switch_menu': 'sales.create', 'restaurant.print_bill': 'sales.create', 'restaurant.menu': 'inventory.edit', 'restaurant.kitchen': 'sales.view',
 };
 
 /**

@@ -417,6 +417,15 @@ export default function MenuEditorScreen() {
             </View>
 
             <View style={[card, { padding: 14 }]}>
+              <ToggleRow
+                label="Kitchen display screen"
+                sub="Orders appear on a screen in the kitchen (a tablet on More → Kitchen display), as well as on any kitchen printer"
+                on={!!db.settings.kitchenDisplay}
+                onChange={(v) => { try { setSetting({ kitchenDisplay: v }); } catch (e) { explain(e); } }}
+              />
+            </View>
+
+            <View style={[card, { padding: 14 }]}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 4 }}>Tables</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 10 }}>
                 The table plan on the order screen. Type a number for numbered tables, or names separated by commas (Patio 1, Bar 2, VIP).

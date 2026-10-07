@@ -90,6 +90,25 @@ export type OrderType = 'dine' | 'takeaway' | 'delivery';
 /** A menu: a set of sections sold together — the Food menu, the Bar menu, Breakfast. */
 export interface Menu { id: string; name: string; sections: string[] }
 
+/** A request for the owner's go-ahead, answered from the owner's own phone. */
+export interface ApprovalRequest {
+  id: string; what: string;
+  byId: string; by: string; at: string;
+  status: 'pending' | 'approved' | 'declined';
+  decidedBy?: string; decidedAt?: string;
+}
+
+/** One round of an order as the kitchen sees it on the kitchen display. */
+export interface KitchenOrder {
+  id: string; ticketId?: string; no: string; table?: string; orderType?: OrderType;
+  lines: { name: string; qty: number; mods?: string[]; note?: string; station: string }[];
+  note?: string; by?: string;
+  sentAt: string;
+  status: 'new' | 'cooking' | 'ready' | 'served';
+  /** When it last changed status, for the timers. */
+  changedAt: string;
+}
+
 /** An order being built up at a table, saved and sent to the kitchen before it is paid. */
 export interface Ticket {
   id: string; no: string; name: string; ts: string; updatedAt: string;
@@ -574,6 +593,8 @@ export interface Settings {
   defaultOrderType?: OrderType;
   /** Restaurant: the tables on the floor, by name, for the table plan. */
   tables?: string[];
+  /** Restaurant: orders go to a kitchen display screen (with or without printers). */
+  kitchenDisplay?: boolean;
   /**
    * Day close freezes the books up to the moment it ran: nothing dated on or
    * before it can be edited, deleted or backdated until the owner reopens it.
@@ -738,6 +759,10 @@ export interface DB {
   menuGroups?: MenuGroup[];
   /** Restaurant: the menus, each a set of sections. */
   menus?: Menu[];
+  /** Restaurant: what the kitchen display shows. */
+  kitchenOrders?: KitchenOrder[];
+  /** Requests waiting on, or answered by, the owner. */
+  approvals?: ApprovalRequest[];
   /** Named sets of selling prices. */
   priceLists?: PriceList[];
   /** Restaurant: orders saved at tables, waiting to be paid. */
