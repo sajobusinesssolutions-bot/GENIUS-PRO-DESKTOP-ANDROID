@@ -22,7 +22,7 @@ const KEY = 'genius.crashQueue';
 const MAX_QUEUE = 30;
 
 export interface CrashReport {
-  at: string; kind: 'crash' | 'error' | 'render'; fatal: boolean;
+  at: string; kind: 'crash' | 'error' | 'render' | 'slow'; fatal: boolean;
   message: string; stack?: string; route?: string;
   appVersion: string; platform: string; osVersion: string; device: string;
   businessId?: string; extra?: Record<string, unknown>;
@@ -97,6 +97,26 @@ export async function reportError(e: unknown, opts: { kind?: CrashReport['kind']
     await writeQueue(q);
     void flushCrashReports();
   } catch { /* reporting must never cause a second crash */ }
+}
+
+/*
+ * SLOW SCREENS.
+ *
+ * Crashes were reported; slowness was not, so "the app lags" could not be
+ * traced to a screen. Each time a screen opens, the time until the app is idle
+ * again is measured; a screen that takes longer than SLOW_MS is reported once
+ * per session, with how big the books are, so the slow ones on real phones
+ * show up in the developer console beside the crashes.
+ */
+const SLOW_MS = 1200;
+const reportedSlow = new Set<string>();
+
+export function noteScreenTiming(route: string, ms: number, extra?: Record<string, unknown>) {
+  if (ms < SLOW_MS || reportedSlow.has(route)) return;
+  reportedSlow.add(route);
+  void reportError(new Error(route + ' took ' + Math.round(ms) + ' ms to open'), {
+    kind: 'slow', extra: { route, ms: Math.round(ms), ...extra },
+  });
 }
 
 let installed = false;

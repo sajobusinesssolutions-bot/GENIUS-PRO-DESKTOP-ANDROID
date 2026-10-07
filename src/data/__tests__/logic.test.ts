@@ -868,3 +868,74 @@ describe('expired batches', () => {
       .toThrow(/expired/);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* The flows money depends on, end to end through the posting code    */
+/* ------------------------------------------------------------------ */
+
+describe('money flows, end to end', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { mayRecord } = require('../recordGate');
+  const line = (qty: number) => ({ productId: 'p_a', name: 'Widget A', sku: 'A', unit: 'PC', qty, price: 200, cost: 100, taxRate: 0 });
+  const balanced = (d: DB) => {
+    const dr = d.journal.reduce((n, e) => n + e.lines.reduce((a, l) => a + (l.dr || 0), 0), 0);
+    const cr = d.journal.reduce((n, e) => n + e.lines.reduce((a, l) => a + (l.cr || 0), 0), 0);
+    return Math.abs(dr - cr) < 0.01;
+  };
+
+  it('a cash sale moves stock and money, keeps the books balanced, and a void undoes it all', () => {
+    const d = makeDb();
+    d.settings.taxEnabled = false;
+    const sale = logic.commitSale(d, { lines: [line(3)], partyId: null, method: 'cash', discount: 0 });
+    expect(d.products.find((p) => p.id === 'p_a')!.stock.w1).toBe(47);
+    expect(journalNet(d, 'acc_cash')).toBe(600);
+    expect(balanced(d)).toBe(true);
+    logic.voidSale(d, sale.id, 'test');
+    expect(d.products.find((p) => p.id === 'p_a')!.stock.w1).toBe(50);
+    expect(journalNet(d, 'acc_cash')).toBe(0);
+    expect(balanced(d)).toBe(true);
+  });
+
+  it('a credit sale is owed until it is paid, and the payment settles it', () => {
+    const d = makeDb();
+    d.settings.taxEnabled = false;
+    const sale = logic.commitSale(d, { lines: [line(2)], partyId: 'pty_1', method: 'credit', discount: 0 });
+    expect(logic.partyBalance(d, 'pty_1')).toBe(400);
+    logic.recordPayment(d, { partyId: 'pty_1', amount: 400, direction: 'in', accountId: 'acc_cash' });
+    expect(logic.partyBalance(d, 'pty_1')).toBe(0);
+    expect(d.sales.find((s) => s.id === sale.id)!.due).toBe(0);
+    expect(balanced(d)).toBe(true);
+  });
+
+  it('a split bill charged in two parts adds up to the whole ticket', () => {
+    const d = makeDb();
+    d.settings.taxEnabled = false;
+    const a = logic.commitSale(d, { lines: [line(2)], partyId: null, method: 'cash', discount: 0, ticketName: 'Table 4 (split)' });
+    const b = logic.commitSale(d, { lines: [line(3)], partyId: null, method: 'momo', discount: 0, ticketName: 'Table 4' });
+    expect(a.total + b.total).toBe(1000);
+    expect(d.products.find((p) => p.id === 'p_a')!.stock.w1).toBe(45);
+    expect(balanced(d)).toBe(true);
+  });
+
+  it('after day close, the day cannot be edited or backdated, but the next day sells', () => {
+    const d = makeDb();
+    const sale = logic.commitSale(d, { lines: [line(1)], partyId: null, method: 'cash', discount: 0 });
+    d.settings.closedThrough = new Date(Date.now() + 1000).toISOString();
+    expect(logic.canEditSale(d, sale.id).ok).toBe(false);
+    expect(() => logic.guardOpenDay(d, sale.ts)).toThrow(/closed/);
+    expect(() => logic.guardOpenDay(d, new Date(Date.now() + 864e5).toISOString())).not.toThrow();
+  });
+
+  it('a licence that runs out mid-shift stops new sales from that moment', () => {
+    const d = makeDb();
+    const ends = new Date(Date.now() + 60 * 60000);
+    d.licence = {
+      ...d.licence, key: 'k', status: 'active', checkedAt: new Date().toISOString(),
+      licence: { no: 'L1', plan: 'starter', planName: 'Retail Starter', term: 'monthly', expiresAt: ends.toISOString(), daysLeft: 0, devices: 1, limits: { devices: 1 }, features: [] },
+    } as any;
+    expect(mayRecord(d, true, new Date(Date.now() + 30 * 60000))).toBeNull();
+    const after = mayRecord(d, true, new Date(Date.now() + 90 * 60000));
+    expect(after).not.toBeNull();
+    expect(after.code).toBe('licence');
+  });
+});

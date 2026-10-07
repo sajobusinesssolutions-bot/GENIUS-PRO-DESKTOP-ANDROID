@@ -1,6 +1,6 @@
 import React from 'react';
 import { requestSync } from '../data/SyncKeeper';
-import { Platform } from 'react-native';
+import { Platform, InteractionManager } from 'react-native';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import AppLock from './AppLock';
@@ -101,6 +101,7 @@ import {
 import type { RootStackParamList } from './types';
 import { licBlocks } from '../data/logic';
 import { AfterTransition } from '../components/Skeleton';
+import { noteScreenTiming } from '../data/crashReporter';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -156,7 +157,21 @@ export default function RootNavigator() {
         : 'PinLock';
 
   return (
-    <NavigationContainer ref={navRef} theme={navTheme}>
+    <NavigationContainer
+      ref={navRef}
+      theme={navTheme}
+      // how long each screen takes to open, so slow ones are reported (see crashReporter)
+      onStateChange={() => {
+        const route = navRef.current?.getCurrentRoute()?.name;
+        if (!route) return;
+        const started = Date.now();
+        InteractionManager.runAfterInteractions(() => {
+          noteScreenTiming(route, Date.now() - started, {
+            products: db?.products.length, sales: db?.sales.length, journal: db?.journal.length,
+          });
+        });
+      }}
+    >
       <AppLock nav={navRef} />
       <Stack.Navigator
         initialRouteName={initialRoute}
