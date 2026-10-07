@@ -34,26 +34,35 @@ const shortId = (id: string) => 'ID ' + id.replace(/-/g, '').slice(0, 8).toUpper
 export default function BusinessesScreen({ route }: { route?: { params?: { stay?: boolean } } } = {}) {
   const { colors } = useTheme();
   const { db, adoptBook, startFreshBook } = useAppData();
-  const { account } = useAuth();
+  const { account, signOut } = useAuth();
   const goReset = useGoReset();
   const { run } = useSyncRun();
 
   const [list, setList] = useState<RemoteBusiness[] | null>(null);
   const [problem, setProblem] = useState('');
+  // the sign-in itself has ended (signed out elsewhere, device removed): retrying cannot help
+  const [ended, setEnded] = useState(false);
   const [busy, setBusy] = useState('');
   const [progress, setProgress] = useState(0);
 
-  const access = useCallback(async () => {
-    if (!account?.refresh) return null;
+  /** A fresh access token, or the reason there is none, in words that say what to do. */
+  const access = useCallback(async (): Promise<{ token: string } | { why: string; ended: boolean }> => {
+    if (!account?.refresh) return { why: 'This phone is not signed in to an account.', ended: true };
     const r = await refreshSession(account.refresh);
-    return r.ok ? r.value.access : null;
+    if (r.ok) return { token: r.value.access };
+    const f = r.error.failure;
+    if (f === 'badCredentials') return { why: 'Your sign-in on this phone has ended. Sign in again to see your businesses.', ended: true };
+    if (f === 'deviceRemoved') return { why: r.error.message, ended: true };
+    return { why: r.error.message, ended: false };
   }, [account?.refresh]);
 
   const load = useCallback(async () => {
     setProblem('');
     if (!serverConfigured() || !account || account.localOnly) { setList([]); return; }
-    const token = await access();
-    if (!token) { setProblem('Could not reach your account. Check the internet and try again.'); setList([]); return; }
+    setEnded(false);
+    const a = await access();
+    if (!('token' in a)) { setProblem(a.why); setEnded(a.ended); setList([]); return; }
+    const token = a.token;
     const r = await listBusinesses(token);
     if (!r.ok) { setProblem(r.error.message); setList([]); return; }
     setList(r.value);
@@ -103,8 +112,9 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
     setBusy(b.id);
     try {
       if (!(await keepCurrent())) return;
-      const token = await access();
-      if (!token) { Alert.alert('Not signed in', 'Your session has expired. Sign in again.'); return; }
+      const a = await access();
+      if (!('token' in a)) { Alert.alert('Could not reach your account', a.why); return; }
+      const token = a.token;
       setProgress(10);
       const r = await downloadSnapshot(token, b.id, setProgress);
       if (!r.ok) {
@@ -123,8 +133,9 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
   }
 
   async function deactivate(b: RemoteBusiness) {
-    const token = await access();
-    if (!token) { Alert.alert('Not signed in', 'Your session has expired. Sign in again.'); return; }
+    const a = await access();
+    if (!('token' in a)) { Alert.alert('Could not reach your account', a.why); return; }
+    const token = a.token;
     setBusy('deactivate:' + b.id);
     try {
       const r = await setBusinessStatus(token, b.id, false);
@@ -243,8 +254,8 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, backgroundColor: colors.dangerSoft, marginBottom: 16 }}>
               <Icon name="alert" size={17} color={colors.danger} />
               <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger }}>{problem}</Text>
-              <Pressable onPress={() => void load()} hitSlop={8}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.danger }}>Retry</Text>
+              <Pressable onPress={() => (ended ? void signOut() : void load())} hitSlop={8}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.danger }}>{ended ? 'Sign in again' : 'Retry'}</Text>
               </Pressable>
             </View>
           ) : null}
