@@ -222,9 +222,31 @@ export function redeemGoogleTicket(ticket: string) {
   return request<Session>('/v1/auth/google/redeem', { ticket });
 }
 
-/** Trades the stored refresh token for a fresh fifteen-minute access token. */
-export function refreshSession(refresh: string) {
+/**
+ * Kept so that sync, the licence check, app updates and every screen share one
+ * access token, instead of each asking for its own. Fifteen screens doing that
+ * ran past the server's sign-in limit, and everything after it was refused.
+ */
+const ACCESS_REUSE_MS = 10 * 60 * 1000; // the token lasts fifteen
+let held: { refresh: string; at: number; result: Promise<Awaited<ReturnType<typeof requestRefresh>>> } | null = null;
+
+function requestRefresh(refresh: string) {
   return request<{ access: string }>('/v1/auth/refresh', { refresh });
+}
+
+/** Trades the stored refresh token for a fifteen-minute access token, reusing a recent one. */
+export function refreshSession(refresh: string) {
+  if (held && held.refresh === refresh && Date.now() - held.at < ACCESS_REUSE_MS) return held.result;
+  const mine = { refresh, at: Date.now(), result: requestRefresh(refresh) };
+  held = mine;
+  // a refusal or a dropped connection is not kept: the next caller asks again
+  mine.result.then((r) => { if (!r.ok && held === mine) held = null; }, () => { if (held === mine) held = null; });
+  return mine.result;
+}
+
+/** Drops the kept access token, for sign-out or a token the server turned down. */
+export function forgetAccess() {
+  held = null;
 }
 
 export interface LinkedDevice { id: string; name: string; kind: string; platform: string; created_at: string; last_seen: string; current?: boolean }
@@ -264,4 +286,14 @@ export function requestDeleteCode(email: string) {
 
 export function deleteAccount(access: string, confirm: string, code: string) {
   return request<{ ok: boolean }>('/v1/account/delete', { confirm, code }, access);
+}
+
+/** Emails the code that signing this device out needs, as on the desktop. */
+export function requestSignOutCode(email: string) {
+  return request<{ sent: true }>('/v1/auth/otp/request', { email, purpose: 'signout' });
+}
+
+/** Signs this device out with the emailed code; the session ends on the server too. */
+export function confirmSignOut(access: string, code: string) {
+  return request<{ signedOut: boolean }>('/v1/auth/signout', { code }, access);
 }

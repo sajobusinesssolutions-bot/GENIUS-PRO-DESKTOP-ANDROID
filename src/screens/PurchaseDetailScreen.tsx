@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useOnDisk } from '../data/useOnDisk';
 import { useToast } from '../components/Toast';
 import {
   Button, Card, Cap, KV, Pill, Banner,
@@ -24,6 +25,7 @@ export default function PurchaseDetailScreen({ route, navigation }: Props) {
   const { db, money, party, product, deletePurchase, canEditPurchase, can, logAudit } = useAppData();
   const { error } = useToast();
   const x = db?.purchases.find((p) => p.id === route.params.purchaseId);
+  useOnDisk('purchases', route.params.purchaseId, !!x || !db);
   if (!x) return null;
 
   const live = x.status !== 'void';
@@ -63,7 +65,7 @@ export default function PurchaseDetailScreen({ route, navigation }: Props) {
         <Panel>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View style={{
-              width: 48, height: 48, borderRadius: 15,
+              width: 48, height: 48, borderRadius: 4,
               backgroundColor: !live ? colors.dangerSoft : x.due > 0 ? colors.warnSoft : colors.goodSoft,
               alignItems: 'center', justifyContent: 'center',
             }}>
@@ -109,7 +111,7 @@ export default function PurchaseDetailScreen({ route, navigation }: Props) {
                 borderBottomWidth: i === x.lines.length - 1 ? 0 : 1, borderBottomColor: colors.line,
               }}
             >
-              <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 30, height: 30, borderRadius: 4, backgroundColor: colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.warn }}>{i + 1}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>

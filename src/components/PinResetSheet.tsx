@@ -104,7 +104,7 @@ export function PinResetSheet({ visible, email, onClose, onDone }: {
               ? note('This copy of the app is not connected to a server, so a code cannot be sent.')
               : note('We will email a six-digit one-time code to the owner. If you are not the owner, ask them to read it to you — a PIN is never reset without them.')}
           {email ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: colors.sunk }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 4, backgroundColor: colors.sunk }}>
               <Icon name="shield" size={18} color={colors.accent} />
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{maskEmail(email)}</Text>
             </View>

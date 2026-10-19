@@ -49,7 +49,7 @@ function StepHead({ index, step }: { index: number; step: typeof STEPS[number] }
       <ProgressBar pct={((index + 1) / STEPS.length) * 100} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
         <View style={{
-          width: 38, height: 38, borderRadius: 13, backgroundColor: colors.sunk,
+          width: 38, height: 38, borderRadius: 4, backgroundColor: colors.sunk,
           alignItems: 'center', justifyContent: 'center',
         }}>
           <Icon name={step.icon} size={19} color={colors.ink} />

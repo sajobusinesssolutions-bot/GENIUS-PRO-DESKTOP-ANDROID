@@ -49,6 +49,7 @@ const PURPOSE_WORDS = {
   signup: 'confirm your email address',
   reset: 'reset your password',
   pin: 'reset your owner PIN',
+  signout: 'sign a device out of your Genius account',
   delete: 'permanently delete your Genius account and everything on it',
 };
 

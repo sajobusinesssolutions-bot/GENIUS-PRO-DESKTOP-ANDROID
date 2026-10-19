@@ -57,7 +57,7 @@ function EditionPick({ value, onChange, plan }: { value: Edition; onChange: (e: 
         const on = value === e;
         const p = d.plans[plan === 'starter' ? 'starter' : 'pro'];
         return (
-          <Pressable key={e} onPress={() => onChange(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}>
+          <Pressable key={e} onPress={() => onChange(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 4, borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}>
             <Icon name={d.icon} size={20} color={colors.ink} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{d.name}</Text>
@@ -479,7 +479,7 @@ export default function DeveloperScreen() {
           <Pressable
             key={c.id}
             onPress={() => setOpenCrash(expanded ? null : c.id)}
-            style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: c.fatal ? colors.danger : colors.line, padding: 13, marginBottom: 8 }}
+            style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: c.fatal ? colors.danger : colors.line, padding: 13, marginBottom: 8 }}
           >
             <Text numberOfLines={expanded ? undefined : 2} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{c.message}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>
@@ -627,7 +627,7 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
       <Field icon="home" label={'Businesses allowed · blank = ' + (plan === 'pro' ? '5 (Pro)' : '1 (' + plan + ')')} value={businesses} onChangeText={setBusinesses} numeric money={false} maxLength={2} />
       <Pressable onPress={() => setInvite(!invite)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}>
         <View style={{
-          width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
+          width: 22, height: 22, borderRadius: 4, borderWidth: 1.5,
           borderColor: invite ? colors.accent : colors.lineHard, backgroundColor: invite ? colors.accent : 'transparent',
           alignItems: 'center', justifyContent: 'center',
         }}>

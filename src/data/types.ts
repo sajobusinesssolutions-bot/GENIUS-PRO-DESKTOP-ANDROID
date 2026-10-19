@@ -424,6 +424,8 @@ export interface Printer {
   prints?: PrintPurpose[];
   /** Restaurant: the stations whose orders it prints ("Kitchen", "Bar"). Absent means every station. */
   stations?: string[];
+  /** Where it stands — "Cashier desk", "Kitchen", "Bar" — so the right one is easy to pick at print time. */
+  place?: string;
   /** iOS: the AirPrint address chosen for this printer, so it prints without asking. */
   url?: string;
 }

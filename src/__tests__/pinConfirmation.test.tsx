@@ -9,7 +9,7 @@
  */
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { render, screen, fireEvent } from '@testing-library/react-native';
+import { render, screen, fireEvent, act } from '@testing-library/react-native';
 import { hashPin } from '../data/pinHash';
 
 const mockDb: any = {
@@ -34,6 +34,11 @@ function type(digits: string) {
 }
 
 describe('useWho — "who is recording this?"', () => {
+  // the sheet waits for any sheet in front of it to finish closing
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+  const settle = () => act(() => { jest.advanceTimersByTime(400); });
+
   function Harness() {
     const { ask, sheet } = useWho();
     const [result, setResult] = React.useState('');
@@ -49,6 +54,7 @@ describe('useWho — "who is recording this?"', () => {
   it('accepts the real PIN, hashed or not', () => {
     render(<Harness />);
     fireEvent.press(screen.getByText('go'));
+    settle();
     fireEvent.press(screen.getByText('Grace')); // switch off the signed-in default
     fireEvent.press(screen.getByText('Confirm · Grace')); // Grace's till requires a PIN
     type('5678');
@@ -58,6 +64,7 @@ describe('useWho — "who is recording this?"', () => {
   it('still refuses the wrong PIN', () => {
     render(<Harness />);
     fireEvent.press(screen.getByText('go'));
+    settle();
     fireEvent.press(screen.getByText('Grace'));
     fireEvent.press(screen.getByText('Confirm · Grace'));
     type('0000');
@@ -92,5 +99,35 @@ describe('useOwnerPin — bulk-edit approval', () => {
     type('5678'); // Grace's real PIN, but Grace is not an owner
     expect(screen.getByText('That is not an owner PIN.')).toBeTruthy();
     expect(screen.getByTestId('approved').children.join('')).toBe('no');
+  });
+});
+
+describe('owner approval, then "who served"', () => {
+  // A discount over the cashier limit asks the owner first; the person who
+  // served must still be asked once the owner's sheet has closed.
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  function Harness() {
+    const owner = useOwnerPin();
+    const who = useWho('Who served this sale?');
+    const [result, setResult] = React.useState('');
+    return (
+      <View>
+        <Pressable onPress={() => owner.ask('Approve a wide discount', () => who.ask((w) => setResult(w.userName)))}><Text>go</Text></Pressable>
+        <Text testID="result">{result}</Text>
+        {owner.sheet}
+        {who.sheet}
+      </View>
+    );
+  }
+
+  it('asks who served after the owner approves', () => {
+    render(<Harness />);
+    fireEvent.press(screen.getByText('go'));
+    type('1234');
+    expect(screen.queryByText('Who served this sale?')).toBeNull(); // the owner's sheet is still closing
+    act(() => { jest.advanceTimersByTime(400); });
+    expect(screen.getByText('Who served this sale?')).toBeTruthy();
   });
 });

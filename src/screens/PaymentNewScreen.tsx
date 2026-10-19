@@ -89,14 +89,14 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 170, gap: 12 }} keyboardShouldPersistTaps="handled">
         {/* money in or money out */}
-        <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 12, padding: 3 }}>
+        <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 4, padding: 3 }}>
           {([['in', 'Money in', 'down', colors.good], ['out', 'Money out', 'up', colors.danger]] as const).map(([v, l, i, t]) => {
             const on = direction === v;
             return (
               <Pressable
                 key={v}
                 onPress={() => { setDirection(v); setPartyId(null); }}
-                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: on ? colors.surface : 'transparent' }}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 4, backgroundColor: on ? colors.surface : 'transparent' }}
               >
                 <Icon name={i} size={14} color={on ? t : colors.soft} />
                 <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 14, color: on ? t : colors.soft }}>{l}</Text>
@@ -110,7 +110,7 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
         {partyId && pending > 0.01 ? (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: -4 }}>
             {[{ l: 'Half', v: Math.round(pending / 2) }, { l: inbound ? 'All owed' : 'All pending', v: Math.round(pending) }].map((qk) => (
-              <Pressable key={qk.l} onPress={() => setAmount(String(qk.v))} style={{ flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center' }}>
+              <Pressable key={qk.l} onPress={() => setAmount(String(qk.v))} style={{ flex: 1, paddingVertical: 9, borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center' }}>
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{qk.l} · {money(qk.v)}</Text>
               </Pressable>
             ))}

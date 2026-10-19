@@ -6,6 +6,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useBookFrom } from '../data/useBookFrom';
 import {
   Card, Cap, KV, Grid, Stat, ChipStrip, EmptyState,
   Panel, DetailRow, StatGrid, FilterChips, AccentHead, InfoBanner,
@@ -20,8 +21,11 @@ export function AccountingScreen() {
   const { colors } = useTheme();
   const { db, money } = useAppData();
   const [period, setPeriod] = useState('month');
+  /* figures for the chosen period, read from disk when it starts before what is in memory */
+  const { book: rangeBook } = useBookFrom(db, finRange(period).from);
 
   const d = useMemo(() => {
+    const db = rangeBook;
     if (!db) return null;
     const R = finRange(period);
     const ss = db.sales.filter((s) => s.status !== 'void' && inRange(s.ts, R.from, R.to));
@@ -42,7 +46,7 @@ export function AccountingScreen() {
     });
     const rows = Object.keys(tb).map((k) => ({ acc: k, ...tb[k] })).sort((a, b) => (b.dr + b.cr) - (a.dr + a.cr));
     return { R, revenue, cogs, expenses, other, purchases, rows, profit: revenue - cogs - expenses + other };
-  }, [db, period]);
+  }, [rangeBook, period]);
 
   if (!db || !d) return null;
   const accName = (id: string) => db.accounts.find((a) => a.id === id)?.name || id;
@@ -133,10 +137,12 @@ export function TaxScreen() {
   const { colors } = useTheme();
   const { db, money } = useAppData();
   const [period, setPeriod] = useState('month');
+  /* figures for the chosen period, read from disk when it starts before what is in memory */
+  const { book: rangeBook } = useBookFrom(db, finRange(period).from);
   if (!db) return null;
 
   const R = finRange(period);
-  const ss = db.sales.filter((s) => s.status !== 'void' && inRange(s.ts, R.from, R.to));
+  const ss = (rangeBook || { sales: [] as typeof db.sales }).sales.filter((s) => s.status !== 'void' && inRange(s.ts, R.from, R.to));
   const collected = ss.reduce((a, s) => a + s.tax, 0);
   const net = ss.reduce((a, s) => a + (s.total - s.tax), 0);
 
@@ -196,7 +202,7 @@ export function AccountDetailScreen({ route }: any) {
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
       <RangeBar value={period} onChange={setPeriod} />
 
-      <View style={{ marginTop: 14, backgroundColor: colors.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: colors.line }}>
+      <View style={{ marginTop: 14, backgroundColor: colors.surface, borderRadius: 4, padding: 18, borderWidth: 1, borderColor: colors.line }}>
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>{acc.name} · {kind}</Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 10 }}>Balance at the end of {period.label.toLowerCase()}</Text>
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, color: colors.ink, letterSpacing: -0.8 }} numberOfLines={1} adjustsFontSizeToFit>{money(flow.closing)}</Text>
@@ -221,7 +227,7 @@ export function AccountDetailScreen({ route }: any) {
                 borderBottomWidth: i === g.rows.length - 1 ? 0 : 1, borderBottomColor: colors.line,
               }}>
                 <View style={{
-                  width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                  width: 30, height: 30, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: r.delta >= 0 ? colors.goodSoft : colors.dangerSoft,
                 }}>
                   <Icon name={r.delta >= 0 ? 'down' : 'up'} size={15} color={r.delta >= 0 ? colors.good : colors.danger} />

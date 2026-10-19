@@ -78,7 +78,7 @@ export function DocRow(p: DocRowProps) {
       onPress={onPress}
       hitSlop={4}
       accessibilityLabel={label}
-      style={({ pressed }) => ({ width: 42, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : 'transparent' })}
+      style={({ pressed }) => ({ width: 42, height: 40, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : 'transparent' })}
     >
       <Icon name={name} size={21} color={colors.faint} />
     </Pressable>
@@ -89,7 +89,7 @@ export function DocRow(p: DocRowProps) {
       onPress={p.onPress}
       disabled={!p.onPress}
       style={({ pressed }) => ({
-        marginHorizontal: 16, marginBottom: 10, borderRadius: 16, paddingTop: 14, paddingHorizontal: 15, paddingBottom: hasIcons || p.action ? 10 : 14,
+        marginHorizontal: 16, marginBottom: 10, borderRadius: 4, paddingTop: 14, paddingHorizontal: 15, paddingBottom: hasIcons || p.action ? 10 : 14,
         backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line, opacity: p.dim ? 0.55 : 1,
       })}
     >
@@ -147,7 +147,7 @@ export function SummaryTiles({ tiles }: { tiles: { label: string; value: string;
   return (
     <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 12 }}>
       {tiles.map((t) => (
-        <View key={t.label} style={{ flex: 1, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, paddingVertical: 11, paddingHorizontal: 13 }}>
+        <View key={t.label} style={{ flex: 1, borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, paddingVertical: 11, paddingHorizontal: 13 }}>
           <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{t.label}</Text>
           <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: t.tone || colors.ink, marginTop: 3 }}>{t.value}</Text>
         </View>
@@ -214,7 +214,7 @@ export function SortBar<T extends string>({ value, options, onChange }: {
               onPress={() => { onChange(o.v); setOpen(false); }}
               style={({ pressed }) => ({
                 flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 14,
-                borderRadius: 12, marginBottom: 6, backgroundColor: on ? colors.accentSoft : pressed ? colors.sunk : colors.surface,
+                borderRadius: 4, marginBottom: 6, backgroundColor: on ? colors.accentSoft : pressed ? colors.sunk : colors.surface,
                 borderWidth: 1, borderColor: on ? colors.accent : colors.line,
               })}
             >
@@ -326,7 +326,7 @@ export function NoData({ title = 'No Data Available', text = 'Nothing matches th
   const { colors } = useTheme();
   const sheet = (rotate: string, left: number, top: number, front?: boolean) => (
     <View style={{
-      position: 'absolute', left, top, width: 104, height: 128, borderRadius: 6, borderWidth: 3,
+      position: 'absolute', left, top, width: 104, height: 128, borderRadius: 4, borderWidth: 3,
       borderColor: colors.lineHard, backgroundColor: colors.surface, transform: [{ rotate }], padding: 12, gap: 8,
     }}>
       {[70, 58, 64, 44].map((w, i) => <View key={i} style={{ height: 5, width: w + '%' as any, borderRadius: 3, backgroundColor: colors.line }} />)}

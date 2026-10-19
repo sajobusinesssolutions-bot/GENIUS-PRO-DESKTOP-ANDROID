@@ -178,7 +178,7 @@ export default function MenuEditorScreen({ navigation }: any) {
 
   /* ---------------- pieces ---------------- */
 
-  const card = { borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, marginBottom: 12, overflow: 'hidden' as const };
+  const card = { borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, marginBottom: 12, overflow: 'hidden' as const };
   const label = (t: string) => <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8, marginTop: 4 }}>{t}</Text>;
   const chips = (list: string[], on: (v: string) => boolean, tap: (v: string) => void) => (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
@@ -193,7 +193,7 @@ export default function MenuEditorScreen({ navigation }: any) {
     </View>
   );
   const thumb = (p: { photo?: string; name: string }, color: string, size = 48) => (
-    <View style={{ width: size, height: size, borderRadius: 12, overflow: 'hidden', backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: size, height: size, borderRadius: 4, overflow: 'hidden', backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
       {p.photo ? <Image source={{ uri: p.photo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
         : <Text style={{ fontFamily: fonts.uiExtra, fontSize: size / 2.6, color: '#1B1B1F' }}>{p.name.slice(0, 2).toUpperCase()}</Text>}
     </View>
@@ -218,7 +218,7 @@ export default function MenuEditorScreen({ navigation }: any) {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: on }}
                 style={({ pressed }) => ({
-                  width: '31.6%', flexGrow: 1, height: 46, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 8,
+                  width: '31.6%', flexGrow: 1, height: 46, borderRadius: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 8,
                   backgroundColor: on ? colors.ink : pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: on ? colors.ink : colors.line,
                 })}
               >
@@ -299,10 +299,10 @@ export default function MenuEditorScreen({ navigation }: any) {
                   </Pressable>
                   {real ? (
                     <View style={{ flexDirection: 'row', gap: 6 }}>
-                      <Pressable hitSlop={6} disabled={i === 0} onPress={() => moveMenuGroup(s.id, -1)} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center', opacity: i === 0 ? 0.35 : 1 }}>
+                      <Pressable hitSlop={6} disabled={i === 0} onPress={() => moveMenuGroup(s.id, -1)} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center', opacity: i === 0 ? 0.35 : 1 }}>
                         <Icon name="up" size={16} color={colors.ink} />
                       </Pressable>
-                      <Pressable hitSlop={6} onPress={() => moveMenuGroup(s.id, 1)} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+                      <Pressable hitSlop={6} onPress={() => moveMenuGroup(s.id, 1)} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
                         <Icon name="down" size={16} color={colors.ink} />
                       </Pressable>
                     </View>
@@ -502,7 +502,7 @@ export default function MenuEditorScreen({ navigation }: any) {
           <>
             {/* the photo */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-              <View style={{ width: 96, height: 72, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line }}>
+              <View style={{ width: 96, height: 72, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.line }}>
                 {dish.photo ? <Image source={{ uri: dish.photo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" /> : <Icon name="image" size={26} color={colors.faint} />}
               </View>
               <View style={{ flex: 1, gap: 8 }}>
@@ -550,8 +550,8 @@ export default function MenuEditorScreen({ navigation }: any) {
             {groups.map((g) => {
               const on = dish.groups.includes(g.id);
               return (
-                <Pressable key={g.id} onPress={() => setDish({ ...dish, groups: on ? dish.groups.filter((x) => x !== g.id) : [...dish.groups, g.id] })} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 6, borderRadius: 12, borderWidth: 1.4, borderColor: on ? colors.ink : colors.line }}>
-                  <View style={{ width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: on ? colors.ink : colors.lineHard, backgroundColor: on ? colors.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                <Pressable key={g.id} onPress={() => setDish({ ...dish, groups: on ? dish.groups.filter((x) => x !== g.id) : [...dish.groups, g.id] })} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 6, borderRadius: 4, borderWidth: 1.4, borderColor: on ? colors.ink : colors.line }}>
+                  <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: on ? colors.ink : colors.lineHard, backgroundColor: on ? colors.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                     {on ? <Icon name="check" size={12} color={colors.bg} /> : null}
                   </View>
                   <View style={{ flex: 1 }}>
@@ -705,7 +705,7 @@ export default function MenuEditorScreen({ navigation }: any) {
       <Sheet visible={recipePick} title="Add to the recipe" icon="box" full onClose={() => setRecipePick(false)}>
         {ingredients.filter((p) => !dish?.recipe.some((x) => x.productId === p.id)).map((p) => (
           <Pressable key={p.id} onPress={() => { if (dish) setDish({ ...dish, recipe: [...dish.recipe, { productId: p.id, qty: '' }] }); setRecipePick(false); }}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 6, borderRadius: 12, borderWidth: 1, borderColor: colors.line }}>
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 6, borderRadius: 4, borderWidth: 1, borderColor: colors.line }}>
             <Icon name="box" size={18} color={colors.ink} />
             <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{money(p.cost)} / {p.unit}</Text>
@@ -762,7 +762,7 @@ export default function MenuEditorScreen({ navigation }: any) {
             {label('Colour on the order screen')}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
               {GROUP_COLORS.map((c) => (
-                <Pressable key={c} onPress={() => setSection({ ...section, color: c })} style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: c, borderWidth: section.color === c ? 3 : 1, borderColor: section.color === c ? colors.ink : colors.line }} />
+                <Pressable key={c} onPress={() => setSection({ ...section, color: c })} style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: c, borderWidth: section.color === c ? 3 : 1, borderColor: section.color === c ? colors.ink : colors.line }} />
               ))}
             </View>
             {label('Its dishes are made at')}
@@ -807,7 +807,7 @@ export default function MenuEditorScreen({ navigation }: any) {
             ))}
             <Pressable
               onPress={() => setGroup({ ...group, options: [...group.options, { id: tmpId(), name: '', price: 0, priceText: '' }] })}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 44, borderRadius: 12, borderWidth: 1.2, borderStyle: 'dashed', borderColor: colors.ink, marginBottom: 12 }}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 44, borderRadius: 4, borderWidth: 1.2, borderStyle: 'dashed', borderColor: colors.ink, marginBottom: 12 }}
             >
               <Icon name="plus" size={15} color={colors.ink} />
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Add a choice</Text>

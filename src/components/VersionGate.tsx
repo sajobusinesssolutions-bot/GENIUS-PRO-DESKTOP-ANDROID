@@ -27,7 +27,7 @@ export default function VersionGate({ children }: { children: React.ReactNode })
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: 24, justifyContent: 'center' }}>
       <View style={{ alignItems: 'center' }}>
-        <View style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 72, height: 72, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="cloud" size={32} color={colors.accent} />
         </View>
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: colors.ink, marginTop: 18, textAlign: 'center' }}>Update required</Text>

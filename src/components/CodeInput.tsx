@@ -71,7 +71,7 @@ export function CodeInput({ value, onChange, onComplete, state, message, autoFoc
             const border = state !== 'idle' && state !== 'checking' ? tone : current ? colors.accent : ch ? colors.lineHard : colors.line;
             return (
               <View key={i} style={{
-                flex: 1, aspectRatio: 0.86, maxHeight: 64, borderRadius: 14, borderWidth: current ? 2 : 1.5,
+                flex: 1, aspectRatio: 0.86, maxHeight: 64, borderRadius: 4, borderWidth: current ? 2 : 1.5,
                 borderColor: border, backgroundColor: ch ? fill : colors.surface,
                 alignItems: 'center', justifyContent: 'center',
               }}>
@@ -139,7 +139,7 @@ export function CodeSentNote({ to, left, busy, onResend }: {
   const wait = left > 0;
   return (
     <View style={{ marginTop: 14, gap: 12 }}>
-      <View style={{ flexDirection: 'row', gap: 10, padding: 13, borderRadius: 14, backgroundColor: colors.accentSoft }}>
+      <View style={{ flexDirection: 'row', gap: 10, padding: 13, borderRadius: 4, backgroundColor: colors.accentSoft }}>
         <Icon name="mail" size={18} color={colors.accent} />
         <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 19, color: colors.ink }}>
           Sent to <Text style={{ fontFamily: fonts.uiBold }}>{to}</Text>. It can take a minute.{' '}

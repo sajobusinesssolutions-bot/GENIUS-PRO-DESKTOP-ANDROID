@@ -18,6 +18,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useOnDisk } from '../data/useOnDisk';
 import {
   Card, Cap, Grid, Stat, Button, Chip, EmptyState, KV, Pill, IconTile,
   Panel, SectionLabel, DetailRow, InfoBanner, Badge, FilterChips, StatGrid, StickyBar, ActionGrid, ProgressBar,
@@ -110,6 +111,8 @@ export function PlanDetailScreen({ route }: DetailProps) {
   const { db, money, party, payInstalment } = useAppData();
 
   const pl: InstalmentPlan | undefined = db?.instalmentPlans.find((x) => x.id === route.params?.planId);
+  const planSaleId = pl?.saleId;
+  useOnDisk('sales', planSaleId, !planSaleId || !db || db.sales.some((s) => s.id === planSaleId));
   if (!db || !pl) return <EmptyState icon="calendar" title="Plan not found" />;
 
   const sale = db.sales.find((s) => s.id === pl.saleId);
@@ -146,7 +149,7 @@ export function PlanDetailScreen({ route }: DetailProps) {
         <Panel>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
             <View style={{
-              width: 48, height: 48, borderRadius: 15,
+              width: 48, height: 48, borderRadius: 4,
               backgroundColor: pct === 100 ? colors.goodSoft : overdue.length ? colors.dangerSoft : colors.warnSoft,
               alignItems: 'center', justifyContent: 'center',
             }}>
@@ -228,13 +231,13 @@ export function PlanDetailScreen({ route }: DetailProps) {
             <View
               key={i}
               style={{
-                backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 14,
+                backgroundColor: colors.surface, borderRadius: 4, paddingHorizontal: 15, paddingVertical: 14,
                 marginBottom: 10, borderLeftWidth: 5, borderLeftColor: fg,
                 shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
                   {x.paidAt
                     ? <Icon name="check" size={19} color={fg} />
                     : <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>{i + 1}</Text>}

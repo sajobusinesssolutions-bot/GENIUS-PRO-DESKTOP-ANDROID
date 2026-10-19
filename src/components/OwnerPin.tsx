@@ -112,14 +112,14 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
       {/* the owner is not at the counter: ask their phone */}
       {db?.sync?.on ? (
         askedId ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: colors.accentSoft, marginTop: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 4, backgroundColor: colors.accentSoft, marginTop: 12 }}>
             <ActivityIndicator color={colors.accent} />
             <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>Waiting for the owner to answer on their phone…</Text>
           </View>
         ) : (
           <Pressable
             onPress={() => { try { setAskedId(requestApproval(summary).id); void requestSync(true); } catch { /* the PIN still works */ } }}
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 14, borderWidth: 1.4, borderColor: colors.accent, marginTop: 12 }}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 4, borderWidth: 1.4, borderColor: colors.accent, marginTop: 12 }}
           >
             <Icon name="phone" size={16} color={colors.accent} />
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>Ask the owner on their phone</Text>
@@ -162,7 +162,7 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
             disabled={!k}
             onPress={() => (k === 'del' ? setPin(pin.slice(0, -1)) : k ? press(k) : undefined)}
             style={({ pressed }) => ({
-              width: '29%', height: 58, borderRadius: 16,
+              width: '29%', height: 58, borderRadius: 4,
               alignItems: 'center', justifyContent: 'center',
               backgroundColor: k && k !== 'del' ? (pressed ? colors.warnSoft : colors.sunk) : 'transparent',
             })}

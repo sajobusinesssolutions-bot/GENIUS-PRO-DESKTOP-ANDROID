@@ -42,14 +42,20 @@ beforeEach(() => {
 });
 afterEach(() => { jest.useRealTimers(); });
 
-it('asks who is at the till when there are several profiles', () => {
+it('with several profiles, shows only a PIN pad and the PIN finds the person', () => {
   mockDb.users = [
     { id: 'o', name: 'Amar', role: 'owner', pin: '1234', active: true },
     { id: 'c', name: 'Grace', role: 'cashier', pin: '1111', active: true },
   ];
+  mockLogin.mockReturnValue(true);
   renderIt();
-  expect(screen.getByText('Who is at the till?')).toBeTruthy();
+  expect(screen.getByText('Enter your PIN')).toBeTruthy();
   expect(screen.getByText('Amar Shop')).toBeTruthy();
+  expect(screen.queryByText('Grace')).toBeNull();
+  type('1111');
+  act(() => { jest.runAllTimers(); });
+  expect(mockLogin).toHaveBeenCalledWith('c', '1111');
+  expect(nav.replace).toHaveBeenCalledWith('Main');
 });
 
 it('has a new owner choose a PIN, twice, instead of an unchosen 0000', () => {

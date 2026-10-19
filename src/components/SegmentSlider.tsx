@@ -22,12 +22,12 @@ export default function SegmentSlider<T extends string>({ value, options, onChan
   return (
     <View
       onLayout={(e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)}
-      style={[{ flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: colors.sunk, borderWidth: 1, borderColor: colors.line, marginBottom: 16 }, style]}
+      style={[{ flexDirection: 'row', padding: 4, borderRadius: 4, backgroundColor: colors.sunk, borderWidth: 1, borderColor: colors.line, marginBottom: 16 }, style]}
       accessibilityRole="tablist"
     >
       {seg ? (
         <Animated.View style={{
-          position: 'absolute', top: 4, bottom: 4, left: 4, width: seg, borderRadius: 11, backgroundColor: colors.surface,
+          position: 'absolute', top: 4, bottom: 4, left: 4, width: seg, borderRadius: 4, backgroundColor: colors.surface,
           shadowColor: '#0B1D2A', shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
           transform: [{ translateX: x.interpolate({ inputRange: [0, Math.max(1, options.length - 1)], outputRange: [0, seg * Math.max(1, options.length - 1)] }) }],
         }} />

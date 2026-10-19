@@ -7,6 +7,7 @@ import { View, Text, ScrollView } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useBookFrom } from '../data/useBookFrom';
 import { canFor, PermKey } from '../data/perms';
 import {
   Card, Cap, Grid, Stat, KV, Button, Tile, EmptyState, ChipStrip, IconTile,
@@ -24,11 +25,14 @@ export default function FinanceScreen() {
   const go = useGo();
   const { db, money, partyBalance, accountBalance } = useAppData();
   const [period, setPeriod] = useState('month');
+  /* figures for the chosen period, read from disk when it starts before what is in memory */
+  const { book: rangeBook } = useBookFrom(db, finRange(period).from);
 
   const role = db?.session.role;
   const allowed = canFor(role, 'money');
 
   const d = useMemo(() => {
+    const db = rangeBook;
     if (!db || !allowed) return null;
     const R = finRange(period);
     let inP = 0, outP = 0;
@@ -59,7 +63,7 @@ export default function FinanceScreen() {
       return n;
     };
     return { R, inP, outP, owed, owe, ss, net, cogs, exp, inc, returns, profit, vat, moved };
-  }, [db, period, allowed]);
+  }, [rangeBook, period, allowed]);
 
   const right = <IconBtn name="plus" size={20} color={colors.accent} onPress={() => go('EntryNew')} />;
 

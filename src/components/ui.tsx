@@ -261,7 +261,7 @@ export function Tile({ icon, iconColor, name, sub, onPress, horizontal }: {
   return (
     <Tap onPress={onPress} style={({ pressed }) => ({
       backgroundColor: pressed ? colors.accentSoft : colors.surface,
-      borderWidth: 1, borderColor: pressed ? colors.accent : colors.line, borderRadius: 12,
+      borderWidth: 1, borderColor: pressed ? colors.accent : colors.line, borderRadius: 4,
       paddingVertical: horizontal ? 11 : 12, paddingHorizontal: horizontal ? 12 : 11,
       flexDirection: horizontal ? 'row' : 'column', alignItems: horizontal ? 'center' : 'flex-start',
       gap: horizontal ? 9 : 8, flex: 1,

@@ -10,7 +10,7 @@ import {
 import { setCostHidden, applyEditionRoles } from './perms';
 import { ensureRoles, setRoleRegistry, canWith, builtinRoles, allPermKeys, permCount } from './perms';
 import { seed, emptyBook } from './seed';
-import { loadDB, saveDB, clearDB, scheduleSave, flushSave, migrate } from './storage';
+import { loadDB, saveDB, clearDB, scheduleSave, flushSave, migrate, trackedChange, ensureLoaded as ensureOnDisk } from './storage';
 import { defaultSync } from './defaults';
 import { uid, iso } from './uid';
 import * as logic from './logic';
@@ -276,6 +276,8 @@ export interface Ctx {
   /** Drops queue entries the server has confirmed it holds. */
   dropQueued: (ids: string[]) => void;
   applyRemoteOps: (ops: StoredOp[]) => number;
+  /** Reads records older than what is in memory into the book, so they can be opened and changed. */
+  ensureLoaded: (coll: string, ids: string[]) => Promise<number>;
   setUpdateCfg: (patch: Partial<UpdateCfg>) => void;
   setNumbering: (mode: 'auto' | 'tag' | 'plain') => void;
   revisionsFor: (id: string) => Revision[];
@@ -380,7 +382,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const commit = useCallback((mut: (d: DB) => void) => {
     const d = dbRef.current;
     if (!d) return;
-    mut(d);
+    /* Tracked, so the save writes only the records this change touched. */
+    trackedChange(d, mut);
     setRoleRegistry(d.roles);
     const next = { ...d };
     dbRef.current = next;
@@ -1476,6 +1479,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     // Only ids the server acknowledged are removed; anything it did not confirm stays queued.
     dropQueued: (ids) => commit((d) => { const gone = new Set(ids); d.queue = d.queue.filter((q) => !gone.has(q.id)); }),
+    ensureLoaded: async (coll, ids) => {
+      const d = dbRef.current;
+      if (!d) return 0;
+      const n = await ensureOnDisk(d, coll, ids);
+      if (n > 0 && dbRef.current) { const next = { ...dbRef.current }; dbRef.current = next; setDb(next); }
+      return n;
+    },
     applyRemoteOps: (ops) => {
       let applied = 0;
       commit((d) => {
@@ -1510,7 +1520,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               (d as any)[coll] = (d as any)[coll] || [];
               put((d as any)[coll], p.doc);
             } else if (p?.coll === 'users' && p.doc) {
-              put(d.users, p.doc);
+              // merged, so a profile from a computer that sends no PIN keeps the PIN it has here
+              const had = d.users.find((u) => u.id === p.doc.id);
+              put(d.users, had ? { ...had, ...p.doc, pin: p.doc.pin || had.pin } : p.doc);
             } else if (p?.coll === 'roles' && p.doc) {
               ensureRoles(d);
               put(d.roles, p.doc);

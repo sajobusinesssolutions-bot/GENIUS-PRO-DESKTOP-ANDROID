@@ -25,7 +25,7 @@ export function AmountCard({ label, value, onChange, prefix = 'Sh', tone, hint, 
   const ref = useRef<TextInput>(null);
   const empty = !value;
   return (
-    <Pressable onPress={() => ref.current?.focus()} style={{ backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line, padding: 16 }}>
+    <Pressable onPress={() => ref.current?.focus()} style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, padding: 16 }}>
       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>{label}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: tone || colors.faint, marginRight: 6 }}>{(sign ? sign + ' ' : '') + prefix}</Text>
@@ -48,7 +48,7 @@ export function RowGroup({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
   const rows = React.Children.toArray(children).filter(Boolean);
   return (
-    <View style={{ backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
+    <View style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
       {rows.map((c, i) => (
         <View key={i} style={{ borderTopWidth: i ? 1 : 0, borderTopColor: colors.line }}>{c}</View>
       ))}
@@ -62,7 +62,7 @@ export function PickRow({ icon, label, value, placeholder, onPress }: {
   const { colors } = useTheme();
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, backgroundColor: pressed ? colors.sunk : colors.surface })}>
-      <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 34, height: 34, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={16} color={colors.soft} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -91,7 +91,7 @@ export function AccountTiles({ accounts, value, onChange, tone }: {
             key={a.id}
             onPress={() => onChange(a.id)}
             style={{
-              flexGrow: 1, flexBasis: '30%', alignItems: 'center', gap: 6, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 14,
+              flexGrow: 1, flexBasis: '30%', alignItems: 'center', gap: 6, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 4,
               borderWidth: on ? 1.6 : 1, borderColor: on ? t : colors.line, backgroundColor: colors.surface,
             }}
           >
@@ -111,8 +111,8 @@ export function NoteBox({ value, onChange, placeholder = 'Add a note (optional)'
   const ref = useRef<TextInput>(null);
   return (
     // the whole box answers a tap, not only the words in it
-    <Pressable onPress={() => ref.current?.focus()} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line }}>
-      <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+    <Pressable onPress={() => ref.current?.focus()} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line }}>
+      <View style={{ width: 34, height: 34, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name="doc" size={16} color={colors.soft} />
       </View>
       <TextInput
@@ -171,7 +171,7 @@ export function PickSheet({ visible, title, items, selected, onPick, onClose, se
 export function SumCard({ rows }: { rows: { l: string; v: string; tone?: string; bold?: boolean }[] }) {
   const { colors } = useTheme();
   return (
-    <View style={{ backgroundColor: colors.sunk, borderRadius: 16, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 8 }}>
+    <View style={{ backgroundColor: colors.sunk, borderRadius: 4, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 8 }}>
       {rows.map((r) => (
         <View key={r.l} style={{ flexDirection: 'row', alignItems: 'center', ...(r.bold ? { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10, marginTop: 2 } : {}) }}>
           <Text numberOfLines={1} style={{ flex: 1, fontFamily: r.bold ? fonts.uiBold : fonts.ui, fontSize: r.bold ? 15 : 13.5, color: r.bold ? colors.ink : colors.soft }}>{r.l}</Text>

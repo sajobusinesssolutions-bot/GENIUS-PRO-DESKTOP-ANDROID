@@ -137,7 +137,7 @@ export default function LineEditSheet({
                     key={u.unit}
                     onPress={() => pickUnit(u)}
                     style={{
-                      flex: 1, paddingVertical: 11, borderRadius: 12, borderWidth: 1.4, alignItems: 'center',
+                      flex: 1, paddingVertical: 11, borderRadius: 4, borderWidth: 1.4, alignItems: 'center',
                       borderColor: on ? colors.accent : colors.line,
                       backgroundColor: on ? colors.accentSoft : colors.surface,
                     }}
@@ -156,7 +156,7 @@ export default function LineEditSheet({
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, letterSpacing: 0.3 }}>BATCH</Text>
             <Pressable
               onPress={onChooseBatch}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderRadius: 12, backgroundColor: colors.sunk, borderWidth: 1, borderColor: colors.lineHard, paddingHorizontal: 12, paddingVertical: 12 }}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderRadius: 4, backgroundColor: colors.sunk, borderWidth: 1, borderColor: colors.lineHard, paddingHorizontal: 12, paddingVertical: 12 }}
             >
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: batchNo ? colors.ink : colors.faint }}>
                 {batchNo ? 'Batch ' + batchNo : 'Choose batch'}
@@ -168,11 +168,11 @@ export default function LineEditSheet({
 
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Pressable onPress={() => step(-1)} style={{ width: 48, height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+            <Pressable onPress={() => step(-1)} style={{ width: 48, height: 48, borderRadius: 4, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>−</Text>
             </Pressable>
             <Field style={{ flex: 1, marginBottom: 0 }} label="Quantity" value={qty} onChangeText={setQty} numeric decimal error={overStock ? " " : undefined} />
-            <Pressable onPress={() => step(1)} style={{ width: 48, height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+            <Pressable onPress={() => step(1)} style={{ width: 48, height: 48, borderRadius: 4, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>+</Text>
             </Pressable>
           </View>
@@ -195,7 +195,7 @@ export default function LineEditSheet({
           </Text>
         ) : null}
 
-        <View style={{ backgroundColor: colors.sunk, borderRadius: 14, padding: 14, gap: 8 }}>
+        <View style={{ backgroundColor: colors.sunk, borderRadius: 4, padding: 14, gap: 8 }}>
           <Row label={'Net price × ' + qtyNum} value={money(netPrice)} colors={colors} />
           {discNum > 0 ? <Row label="You save" value={'− ' + money(qtyNum * (listNum - netPrice))} colors={colors} tone={colors.good} /> : null}
           <View style={{ height: 1, backgroundColor: colors.line }} />

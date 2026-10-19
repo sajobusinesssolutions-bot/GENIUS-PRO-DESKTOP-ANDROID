@@ -127,8 +127,8 @@ export default function DeletedTransactionsScreen({ navigation }: Props) {
   const header = (
     <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
       {/* what the bin holds */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 18, backgroundColor: colors.dangerSoft, marginBottom: 14 }}>
-        <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 4, backgroundColor: colors.dangerSoft, marginBottom: 14 }}>
+        <View style={{ width: 46, height: 46, borderRadius: 4, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="trash" size={22} color={colors.danger} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -136,7 +136,7 @@ export default function DeletedTransactionsScreen({ navigation }: Props) {
           <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, marginTop: 2 }}>Worth {money(total)} · restore anything you need</Text>
         </View>
         {list.length ? (
-          <Pressable onPress={purgeAll} hitSlop={8} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, backgroundColor: colors.surface }}>
+          <Pressable onPress={purgeAll} hitSlop={8} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 4, backgroundColor: colors.surface }}>
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.danger }}>Empty</Text>
           </Pressable>
         ) : null}
@@ -171,10 +171,10 @@ export default function DeletedTransactionsScreen({ navigation }: Props) {
         const k = KIND[x.kind];
         const go = open(x);
         return (
-          <View style={{ marginHorizontal: 16, marginBottom: 12, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
+          <View style={{ marginHorizontal: 16, marginBottom: 12, borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
             <Pressable onPress={go} disabled={!go} style={{ padding: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name={k.icon} size={19} color={colors.soft} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>

@@ -34,6 +34,8 @@ import { Icon, IconName } from '../components/icons';
 import { TrendLine } from '../components/charts';
 import { useGo } from '../nav/navigate';
 import { PLAY_BUILD } from '../data/store';
+import { useAppUpdate } from '../data/appUpdate';
+import { useAuth } from '../data/AuthContext';
 import { QuickSheet } from '../components/Quick';
 import { useDueReminders, ReminderRow, RemindSheet } from '../components/Reminders';
 import { FAB, useHideOnScroll, FAB_COLORS } from '../components/ui';
@@ -104,10 +106,10 @@ function MoneyTile({ label, value, icon, tone, note, onPress }: {
   const bg = tone === 'good' ? colors.goodSoft : colors.warnSoft;
   return (
     <Pressable onPress={onPress} style={{ flex: 1 }}>
-      <Card style={{ paddingHorizontal: 14, paddingVertical: 14, gap: 9, borderRadius: 16 }}>
+      <Card style={{ paddingHorizontal: 14, paddingVertical: 14, gap: 9, borderRadius: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{
-            width: 26, height: 26, borderRadius: 9, backgroundColor: bg,
+            width: 26, height: 26, borderRadius: 4, backgroundColor: bg,
             alignItems: 'center', justifyContent: 'center',
           }}>
             <Icon name={icon} size={14} color={fg} />
@@ -202,6 +204,8 @@ export function trendPoints(period: Period, now = Date.now()): { from: number; t
 export default function DashboardScreen() {
   const { colors } = useTheme();
   const go = useGo();
+  const { account } = useAuth();
+  const update = useAppUpdate(account?.localOnly ? undefined : account?.refresh);
   const {
     db, money, me, stockOf, party, partyBalance, accountBalance, dueRecurring,
   } = useAppData();
@@ -348,7 +352,7 @@ export default function DashboardScreen() {
           banner must not be.
         */}
         {plan === 'trialOver' || plan === 'lapsed' ? (
-          <Pressable onPress={() => go('Licence')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 16, marginBottom: 2, padding: 14, borderRadius: 16, backgroundColor: colors.dangerSoft }}>
+          <Pressable onPress={() => go('Licence')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 16, marginBottom: 2, padding: 14, borderRadius: 4, backgroundColor: colors.dangerSoft }}>
             <Icon name="lock" size={18} color={colors.danger} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.danger }}>{plan === 'trialOver' ? 'Your free trial has ended' : 'Your plan has run out'}</Text>
@@ -357,7 +361,7 @@ export default function DashboardScreen() {
             <Icon name="chev" size={17} color={colors.danger} />
           </Pressable>
         ) : plan === 'trial' && daysLeft !== null && daysLeft <= 3 ? (
-          <Pressable onPress={() => go('Licence')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 16, marginBottom: 2, padding: 14, borderRadius: 16, backgroundColor: colors.accentSoft }}>
+          <Pressable onPress={() => go('Licence')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 16, marginBottom: 2, padding: 14, borderRadius: 4, backgroundColor: colors.accentSoft }}>
             <Icon name="gift" size={18} color={colors.accent} />
             <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>
               {daysLeft <= 0 ? 'Your trial ends today' : plural(daysLeft, 'day') + ' left of your free trial'}.{PLAY_BUILD ? '' : ' Choose a plan to keep adding sales.'}
@@ -370,11 +374,34 @@ export default function DashboardScreen() {
         ) : queued ? (
           <Banner tone="g" icon="cloud" text={plural(queued, 'change') + ' waiting to go up'} />
         ) : null}
+        {update.state.stage === 'none' ? null : (() => {
+          const s = update.state;
+          const mb = s.info.size ? ' (' + Math.round(s.info.size / 1e6) + ' MB)' : '';
+          const title = s.stage === 'ready' ? 'Update ready — tap to install'
+            : s.stage === 'downloading' ? 'Downloading update… ' + Math.round(s.progress * 100) + '%'
+            : s.stage === 'failed' ? 'Update did not finish — tap to try again'
+            : 'Update available — tap to download' + mb;
+          const onPress = s.stage === 'ready' ? update.install
+            : s.stage === 'downloading' ? undefined
+            : () => update.download(s.info);
+          return (
+            <Pressable onPress={onPress} disabled={!onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 16, marginBottom: 2, padding: 14, borderRadius: 4, backgroundColor: colors.accentSoft }}>
+              <Icon name="down" size={18} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>{title}</Text>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent, marginTop: 2 }}>
+                  Genius Pro {s.info.versionName}{s.info.notes ? ' · ' + s.info.notes : ''}
+                </Text>
+              </View>
+              {onPress ? <Icon name="chev" size={17} color={colors.accent} /> : null}
+            </Pressable>
+          );
+        })()}
 
         {/* 1 — how did we do */}
         {see('dashboard.view_total_sales') ? (
         <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-          <Card style={{ paddingHorizontal: 16, paddingTop: 15, paddingBottom: 15, borderRadius: 18 }}>
+          <Card style={{ paddingHorizontal: 16, paddingTop: 15, paddingBottom: 15, borderRadius: 4 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Cap>{picked ? 'Sales · ' + picked.name : 'Sales'}</Cap>
               <PeriodSwitch value={period} onChange={(p) => { setPeriod(p); setDayPick(null); }} />
@@ -435,9 +462,9 @@ export default function DashboardScreen() {
             <Pressable
               key={a.l}
               onPress={() => go(a.r, a.p)}
-              style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 11, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}
+              style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 11, borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}
             >
-              <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name={a.i} size={18} color={colors.accent} />
               </View>
               <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.ink }}>{a.l}</Text>
@@ -447,7 +474,7 @@ export default function DashboardScreen() {
 
         {/* staff waiting on the owner's go-ahead */}
         {can('profiles.manage') && (db.approvals || []).some((x) => x.status === 'pending') ? (
-          <Pressable onPress={() => go('Approvals')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, backgroundColor: colors.accentSoft }}>
+          <Pressable onPress={() => go('Approvals')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 4, backgroundColor: colors.accentSoft }}>
             <Icon name="lock" size={18} color={colors.accent} />
             <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>{(db.approvals || []).filter((x) => x.status === 'pending').length} request(s) waiting for your approval</Text>
             <Icon name="chev" size={15} color={colors.accent} />
@@ -462,7 +489,7 @@ export default function DashboardScreen() {
             if (!open.length) return null;
             const v = open.reduce((n, t) => n + t.lines.reduce((a, l) => a + l.qty * l.price, 0), 0);
             return (
-              <Pressable onPress={() => go('Order')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, backgroundColor: colors.warnSoft }}>
+              <Pressable onPress={() => go('Order')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 4, backgroundColor: colors.warnSoft }}>
                 <Icon name="receipt" size={18} color={colors.warn} />
                 <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.warn }}>{open.length} open ticket{open.length === 1 ? '' : 's'} · {money(v)} not yet paid</Text>
                 <Icon name="chev" size={15} color={colors.warn} />
@@ -475,7 +502,7 @@ export default function DashboardScreen() {
             if (!lots.length) return null;
             const gone = lots.filter((b) => new Date(b.expiry!).getTime() < Date.now()).length;
             return (
-              <Pressable onPress={() => go('Batches')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, backgroundColor: gone ? colors.dangerSoft : colors.warnSoft }}>
+              <Pressable onPress={() => go('Batches')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 4, backgroundColor: gone ? colors.dangerSoft : colors.warnSoft }}>
                 <Icon name="alert" size={18} color={gone ? colors.danger : colors.warn} />
                 <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: gone ? colors.danger : colors.warn }}>
                   {gone ? gone + ' batch' + (gone === 1 ? '' : 'es') + ' expired · ' : ''}{lots.length - gone} expiring within 90 days
@@ -517,7 +544,7 @@ export default function DashboardScreen() {
         {can('reports') && see('dashboard.view_gross_profit') && can('inventory.view_profit') ? (
           <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
             <SectionHead title={'Profit · ' + PERIODS.find((p) => p.v === period)!.l} action="Profit & loss" onAction={() => go('ReportDetail', { id: 'pnl' })} />
-            <Card style={{ borderRadius: 16, paddingHorizontal: 15, paddingVertical: 13, gap: 7 }}>
+            <Card style={{ borderRadius: 4, paddingHorizontal: 15, paddingVertical: 13, gap: 7 }}>
               {[
                 { l: 'Sales (net of tax)', v: d.revenue },
                 { l: 'Cost of goods', v: -d.cogs },
@@ -553,7 +580,7 @@ export default function DashboardScreen() {
               onAction={() => go('Notifications')}
             />
             {d.todo.length ? (
-              <Card style={{ borderRadius: 16, marginBottom: dueList.length ? 10 : 0 }}>
+              <Card style={{ borderRadius: 4, marginBottom: dueList.length ? 10 : 0 }}>
                 {d.todo.slice(0, TODO_SHOWN).map((x, i, a) => (
                   <Row key={x.t} onPress={() => go(x.route)} last={i === a.length - 1}>
                     <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.warn }} />
@@ -565,7 +592,7 @@ export default function DashboardScreen() {
               </Card>
             ) : null}
             {dueList.length ? (
-              <Card style={{ borderRadius: 16 }}>
+              <Card style={{ borderRadius: 4 }}>
                 <Text style={{ paddingHorizontal: 15, paddingTop: 12, fontFamily: fonts.uiBold, fontSize: 11.5, letterSpacing: 0.6, color: colors.faint, textTransform: 'uppercase' }}>
                   Payment reminders
                 </Text>
@@ -588,7 +615,7 @@ export default function DashboardScreen() {
         <View style={{ flexDirection: 'row', gap: 11, paddingHorizontal: 16, paddingTop: 22 }}>
           {see('dashboard.view_sales_types') ? (
           <Pressable onPress={() => go('ReportDetail', { id: 'item-sales' })} style={{ flex: 1.35 }}>
-            <Card style={{ borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13, gap: 8, flex: 1 }}>
+            <Card style={{ borderRadius: 4, paddingHorizontal: 14, paddingVertical: 13, gap: 8, flex: 1 }}>
               <Cap>Best sellers</Cap>
               {d.top.length ? d.top.map((t, i) => (
                 <View key={i + ':' + t.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -606,7 +633,7 @@ export default function DashboardScreen() {
           ) : null}
           {see('dashboard.view_inventory_value') ? (
           <Pressable onPress={() => go('ItemsTab')} style={{ flex: 1 }}>
-            <Card style={{ borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13, gap: 6, flex: 1 }}>
+            <Card style={{ borderRadius: 4, paddingHorizontal: 14, paddingVertical: 13, gap: 6, flex: 1 }}>
               <Cap>Stock</Cap>
               <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(d.stockValue)}</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>at cost · {plural(d.stockedCount, 'item')}</Text>
@@ -625,7 +652,7 @@ export default function DashboardScreen() {
         {can('sales') ? (
           <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
             <SectionHead title="Latest sales" action="See all" onAction={() => go('Sales')} />
-            <Card style={{ borderRadius: 16 }}>
+            <Card style={{ borderRadius: 4 }}>
               {d.recent.length ? d.recent.map((s, i, a) => (
                 <Row key={s.id} onPress={() => go('SaleDetail', { saleId: s.id })} last={i === a.length - 1}>
                   <View style={{ flex: 1, minWidth: 0 }}>

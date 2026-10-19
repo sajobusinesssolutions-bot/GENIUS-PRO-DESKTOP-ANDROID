@@ -174,7 +174,7 @@ export default function BatchPicker({
                         onPress={() => setTake(b, room)}
                         disabled={room <= n}
                         style={{
-                          height: 44, paddingHorizontal: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+                          height: 44, paddingHorizontal: 14, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
                           backgroundColor: room > n ? colors.accent : colors.sunk,
                         }}
                       >
@@ -212,13 +212,13 @@ function BatchRow({ batch, take, onPress, children }: {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: soft, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: soft, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="box" size={18} color={fg} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{batch.no}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-            <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: soft }}>
+            <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4, backgroundColor: soft }}>
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: fg }}>{expiryLabel(batch)}</Text>
             </View>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{batch.qty} on hand</Text>
@@ -241,7 +241,7 @@ function StepBtn({ label, onPress, disabled }: { label: string; onPress: () => v
       onPress={onPress}
       disabled={disabled}
       style={{
-        width: 44, height: 44, borderRadius: 12, borderWidth: 1.4, borderColor: colors.lineHard,
+        width: 44, height: 44, borderRadius: 4, borderWidth: 1.4, borderColor: colors.lineHard,
         alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, opacity: disabled ? 0.4 : 1,
       }}
     >

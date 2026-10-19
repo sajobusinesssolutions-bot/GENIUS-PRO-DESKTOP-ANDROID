@@ -12,6 +12,7 @@
  *     owner set. Asked for every time the app opens after that.
  */
 import React, { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react';
+import { forgetAccess } from './authApi';
 import {
   Account, loadAccount, saveAccount, clearAccount, newAccount, SignInMethod,
 } from './account';
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    forgetAccess();
     setAccount(null);
     await clearAccount();
   }, []);

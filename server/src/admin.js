@@ -86,6 +86,54 @@ function percentile(values, p) {
   return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))];
 }
 
+/** "As many as the developer allows": the business limit a licence can be given at most. */
+const UNLIMITED = 9999;
+
+/** What a subscription costs, with VAT worked out, from a licence row. */
+function feesOf(r) {
+  const renewal = r.renewal_fee == null ? null : Number(r.renewal_fee);
+  const install = r.installation_fee == null ? null : Number(r.installation_fee);
+  if (renewal == null && install == null) return null;
+  const rate = r.vat_rate == null ? 18 : Number(r.vat_rate);
+  const net = (renewal || 0) + (install || 0);
+  const vat = Math.round(net * rate / 100);
+  return { renewal, installation: install, vatRate: rate, vat, total: net + vat, currency: r.currency || 'UGX' };
+}
+
+/*
+ * What this file needs in the database, made here so a server restored from an
+ * older backup works without anyone running a migration by hand
+ * (sql/010, 011 and 012 are the record of it).
+ */
+let migrated = false;
+async function migrate() {
+  if (migrated) return;
+  await q(`alter table licences add column if not exists edition text default 'retail'`);
+  await q('alter table licences add column if not exists max_businesses int');
+  await q('alter table licences add column if not exists renewal_fee numeric');
+  await q('alter table licences add column if not exists installation_fee numeric');
+  await q('alter table licences add column if not exists vat_rate numeric default 18');
+  await q(`alter table licences add column if not exists currency text default 'UGX'`);
+  await q(`create table if not exists adverts (
+    id serial primary key,
+    title text not null,
+    body text,
+    image_url text,
+    link_url text,
+    cta text,
+    audience text not null default 'all',
+    edition text,
+    starts_at timestamptz not null default now(),
+    ends_at timestamptz,
+    active boolean not null default true,
+    impressions int not null default 0,
+    clicks int not null default 0,
+    created_by text,
+    created_at timestamptz not null default now()
+  )`);
+  migrated = true;
+}
+
 /* ================================================================
    Owners
    ================================================================ */
@@ -95,6 +143,7 @@ async function owners() {
     select a.id, a.email, a.name, a.status, a.blocked_reason, a.created_at,
            a.last_login_at, a.last_seen_at,
            l.plan, l.edition, l.max_businesses, l.term, l.seats, l.status as lic_status, l.expires_at, l.started_at as licensed_at,
+           l.renewal_fee, l.installation_fee, l.vat_rate, l.currency,
            (select count(*)::int from devices d where d.account_id = a.id and d.revoked_at is null) as devices,
            (select coalesce(json_agg(json_build_object('id', b.id, 'name', b.name, 'created', b.created_at)
                     order by b.created_at), '[]'::json)
@@ -128,6 +177,7 @@ async function owners() {
         plan: r.plan, edition: r.edition || 'retail', term: r.term, seats: r.seats, status,
         maxBusinesses: r.max_businesses ? Number(r.max_businesses) : (r.plan === 'pro' || r.plan === 'lifetime' ? 5 : 1),
         expiresAt: r.expires_at, daysLeft, since: r.licensed_at,
+        fees: feesOf(r),
       } : null,
       devices: r.devices,
       businesses: r.businesses,
@@ -195,12 +245,22 @@ function licenceTerms(body, reply) {
   }
   const seats = Math.max(1, Math.min(100, Number(body?.seats) || 1));
   // which edition of the app the licence is for; Retail when not said
-  const edition = ['retail', 'restaurant', 'pharmacy'].includes(body?.edition) ? body.edition : 'retail';
+  /* One edition or several ("retail,restaurant"): a shop with a café and a
+     shop can hold one licence for both. Stored as a comma list; the first is
+     the one a new business starts as. */
+  const wanted = (Array.isArray(body?.edition) ? body.edition : String(body?.edition || 'retail').split(','))
+    .map((e) => String(e).trim()).filter((e) => ['retail', 'restaurant', 'pharmacy'].includes(e));
+  const edition = [...new Set(wanted)].join(',') || 'retail';
   const term = days === null ? 'lifetime' : days >= 360 ? 'yearly' : days >= 28 ? 'monthly' : 'days';
   // how many businesses; empty keeps the plan's own number (Starter 1, Pro 5)
   const max = body?.businesses === null || body?.businesses === undefined || body?.businesses === '' ? null
-    : Math.max(1, Math.min(99, Number(body.businesses) || 1));
-  return { plan, days, seats, term, edition, maxBusinesses: max };
+    : Math.max(1, Math.min(UNLIMITED, Number(body.businesses) || 1));
+  // what the subscription costs: the renewal each period, a one-off installation, and VAT on both
+  const money = (v) => (v === null || v === undefined || v === '' ? null : Math.max(0, Math.round(Number(v) || 0)));
+  const vat = body?.vatRate === undefined || body?.vatRate === null || body?.vatRate === '' ? 18 : Math.max(0, Math.min(100, Number(body.vatRate) || 0));
+  return { plan, days, seats, term, edition, maxBusinesses: max,
+    renewalFee: money(body?.renewalFee), installationFee: money(body?.installationFee), vatRate: vat,
+    currency: String(body?.currency || 'UGX').slice(0, 8).toUpperCase() };
 }
 
 /**
@@ -211,16 +271,19 @@ function licenceTerms(body, reply) {
 async function grant(accountId, t, by) {
   const status = t.plan === 'trial' ? 'trial' : 'active';
   const { rows } = await q(
-    `insert into licences (account_id, plan, term, seats, status, expires_at, issued_by, edition, max_businesses)
+    `insert into licences (account_id, plan, term, seats, status, expires_at, issued_by, edition, max_businesses,
+                           renewal_fee, installation_fee, vat_rate, currency)
      values ($1, $2, $3, $4, $5,
-             case when $6::int is null then null else now() + ($6::int * interval '1 day') end, $7, $8, $9)
+             case when $6::int is null then null else now() + ($6::int * interval '1 day') end, $7, $8, $9, $10, $11, $12, $13)
      returning expires_at`,
-    [accountId, t.plan, t.term, t.seats, status, t.days, by, t.edition || 'retail', t.maxBusinesses ?? null],
+    [accountId, t.plan, t.term, t.seats, status, t.days, by, t.edition || 'retail', t.maxBusinesses ?? null,
+     t.renewalFee ?? null, t.installationFee ?? null, t.vatRate ?? 18, t.currency || 'UGX'],
   );
   return rows[0]?.expires_at || null;
 }
 
 export default async function adminRoutes(app) {
+  try { await migrate(); } catch (e) { app.log.error({ err: e.message }, "admin migrate failed"); }
   /** Whether the signed-in account may use the console. Safe for anyone to ask. */
   app.get('/v1/admin/me', async (req) => {
     const h = String(req.headers.authorization || '');
@@ -237,31 +300,158 @@ export default async function adminRoutes(app) {
     return { owners: await owners() };
   });
 
-  /** The three lists that need acting on. */
+  /**
+   * The reports: who pays, who is on trial, who runs out soon, who has lapsed,
+   * and what the subscriptions bring in — renewals, installations and the VAT
+   * on them — this month, this year and in all.
+   */
   app.get('/v1/admin/reports', async (req, reply) => {
     if (!(await developer(req, reply))) return;
+    await migrate();
     const all = await owners();
-    const expired = all.filter((o) => o.licence && o.licence.status === 'expired');
-    const soon = all.filter((o) => o.licence
-      && (o.licence.status === 'active' || o.licence.status === 'trial')
-      && o.licence.daysLeft !== null && o.licence.daysLeft <= SOON_DAYS);
-    const trial = all.filter((o) => o.licence && o.licence.status === 'trial');
+    const has = (o, ...st) => o.licence && st.includes(o.licence.status);
+    const expired = all.filter((o) => has(o, 'expired'));
+    const soon = all.filter((o) => has(o, 'active', 'trial') && o.licence.daysLeft !== null && o.licence.daysLeft <= SOON_DAYS);
+    const trial = all.filter((o) => has(o, 'trial'));
     const blocked = all.filter((o) => o.blocked);
-    const paying = all.filter((o) => o.licence && o.licence.status === 'active');
+    const paying = all.filter((o) => has(o, 'active'));
+    const lifetime = paying.filter((o) => !o.licence.expiresAt);
+    const neverLicensed = all.filter((o) => !o.licence);
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    const newThisMonth = all.filter((o) => new Date(o.createdAt) >= monthStart);
+    const quiet = paying.filter((o) => !o.lastSeenAt || Date.now() - new Date(o.lastSeenAt).getTime() > 14 * 86400000);
+
+    /* Revenue: every subscription granted, from the licence history, not only the current one. */
+    const { rows: money } = await q(`
+      select date_trunc('month', started_at) as month, plan, coalesce(edition, 'retail') as edition, coalesce(currency, 'UGX') as currency,
+             count(*)::int as n,
+             coalesce(sum(renewal_fee), 0)::numeric as renewal,
+             coalesce(sum(installation_fee), 0)::numeric as installation,
+             coalesce(sum((coalesce(renewal_fee, 0) + coalesce(installation_fee, 0)) * coalesce(vat_rate, 18) / 100), 0)::numeric as vat
+        from licences
+       where plan <> 'trial' and (renewal_fee is not null or installation_fee is not null)
+       group by 1, 2, 3, 4
+       order by 1 desc`);
+    const sum = (rows) => {
+      const t = { subscriptions: 0, renewal: 0, installation: 0, vat: 0, total: 0 };
+      for (const r of rows) {
+        t.subscriptions += r.n; t.renewal += Number(r.renewal); t.installation += Number(r.installation); t.vat += Math.round(Number(r.vat));
+      }
+      t.total = t.renewal + t.installation + t.vat;
+      return t;
+    };
+    const now = new Date();
+    const inMonth = money.filter((r) => new Date(r.month).getTime() === monthStart.getTime());
+    const inYear = money.filter((r) => new Date(r.month).getFullYear() === now.getFullYear());
+    const byMonth = {};
+    for (const r of money) { const k = new Date(r.month).toISOString().slice(0, 7); (byMonth[k] = byMonth[k] || []).push(r); }
+    const group = (key) => { const g = {}; for (const r of money) (g[r[key]] = g[r[key]] || []).push(r); return Object.entries(g).map(([k, v]) => ({ [key]: k, ...sum(v) })); };
+
     return {
       totals: {
         owners: all.length,
         businesses: all.reduce((s, o) => s + o.businesses.length, 0),
         paying: paying.length,
+        lifetime: lifetime.length,
         trial: trial.length,
         expired: expired.length,
         expiringSoon: soon.length,
         blocked: blocked.length,
+        neverLicensed: neverLicensed.length,
+        newThisMonth: newThisMonth.length,
+        quiet: quiet.length,
         bytes: all.reduce((s, o) => s + o.bytes, 0),
       },
-      expired, expiringSoon: soon, trial, blocked,
+      revenue: {
+        currency: (money[0] && money[0].currency) || 'UGX',
+        thisMonth: sum(inMonth), thisYear: sum(inYear), allTime: sum(money),
+        byMonth: Object.entries(byMonth).slice(0, 12).map(([month, rows]) => ({ month, ...sum(rows) })),
+        byPlan: group('plan'), byEdition: group('edition'),
+      },
+      paying, expired, expiringSoon: soon, trial, blocked, newThisMonth, quiet,
       soonDays: SOON_DAYS,
     };
+  });
+
+  /* ---------------------------------------------------------------- adverts */
+  /*
+   * Adverts shown at the foot of the sidebar in the apps: a title, a line, an
+   * optional picture and link, for everyone or only trial, paying or lapsed
+   * owners, or one edition, between two dates. Views and taps are counted.
+   */
+  const advertFields = (b) => ({
+    title: String(b?.title || '').trim().slice(0, 80),
+    body: String(b?.body || '').trim().slice(0, 240) || null,
+    image_url: /^https:\/\//.test(String(b?.imageUrl || '')) ? String(b.imageUrl).slice(0, 500) : null,
+    link_url: /^(https:\/\/|mailto:|tel:)/.test(String(b?.linkUrl || '')) ? String(b.linkUrl).slice(0, 500) : null,
+    cta: String(b?.cta || '').trim().slice(0, 30) || null,
+    audience: ['all', 'trial', 'paying', 'expired'].includes(b?.audience) ? b.audience : 'all',
+    edition: ['retail', 'restaurant', 'pharmacy'].includes(b?.edition) ? b.edition : null,
+    starts_at: b?.startsAt ? new Date(b.startsAt) : new Date(),
+    ends_at: b?.endsAt ? new Date(b.endsAt) : null,
+    active: b?.active !== false,
+  });
+
+  app.get('/v1/admin/adverts', async (req, reply) => {
+    if (!(await developer(req, reply))) return;
+    await migrate();
+    const { rows } = await q('select * from adverts order by created_at desc');
+    return { adverts: rows };
+  });
+  app.post('/v1/admin/adverts', async (req, reply) => {
+    const dev = await developer(req, reply);
+    if (!dev) return;
+    await migrate();
+    const a = advertFields(req.body);
+    if (!a.title) return fail(reply, 400, 'malformed', 'Give the advert a title.');
+    const { rows } = await q(
+      `insert into adverts (title, body, image_url, link_url, cta, audience, edition, starts_at, ends_at, active, created_by)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
+      [a.title, a.body, a.image_url, a.link_url, a.cta, a.audience, a.edition, a.starts_at, a.ends_at, a.active, dev.email]);
+    return { advert: rows[0] };
+  });
+  app.put('/v1/admin/adverts/:id', async (req, reply) => {
+    if (!(await developer(req, reply))) return;
+    await migrate();
+    const a = advertFields(req.body);
+    if (!a.title) return fail(reply, 400, 'malformed', 'Give the advert a title.');
+    const { rows } = await q(
+      `update adverts set title=$2, body=$3, image_url=$4, link_url=$5, cta=$6, audience=$7, edition=$8, starts_at=$9, ends_at=$10, active=$11
+        where id = $1 returning *`,
+      [req.params.id, a.title, a.body, a.image_url, a.link_url, a.cta, a.audience, a.edition, a.starts_at, a.ends_at, a.active]);
+    if (!rows[0]) return fail(reply, 404, 'server', 'No such advert.');
+    return { advert: rows[0] };
+  });
+  app.delete('/v1/admin/adverts/:id', async (req, reply) => {
+    if (!(await developer(req, reply))) return;
+    await migrate();
+    await q('delete from adverts where id = $1', [req.params.id]);
+    return { ok: true };
+  });
+
+  /** The adverts for the signed-in owner, by their licence. One view counted for each. */
+  app.get('/v1/adverts', async (req) => {
+    const h = String(req.headers.authorization || '');
+    let claims;
+    try { claims = await readAccess(h.slice(7)); } catch { return { adverts: [] }; }
+    await migrate();
+    const { rows: lic } = await q('select plan, status, expires_at, edition from licences where account_id = $1 order by started_at desc limit 1', [claims.sub]);
+    const l = lic[0];
+    const lapsed = l && l.expires_at && new Date(l.expires_at) < new Date();
+    const who = !l ? 'trial' : lapsed ? 'expired' : l.plan === 'trial' ? 'trial' : 'paying';
+    const edition = (l && l.edition) || 'retail';
+    const { rows } = await q(
+      `select id, title, body, image_url, link_url, cta from adverts
+        where active and starts_at <= now() and (ends_at is null or ends_at > now())
+          and (audience = 'all' or audience = $1) and (edition is null or edition = $2)
+        order by created_at desc limit 3`, [who, edition]);
+    if (rows.length) await q('update adverts set impressions = impressions + 1 where id = any($1::int[])', [rows.map((r) => r.id)]);
+    return { adverts: rows };
+  });
+  app.post('/v1/adverts/:id/click', async (req) => {
+    await migrate();
+    await q('update adverts set clicks = clicks + 1 where id = $1', [Number(req.params.id) || 0]);
+    return { ok: true };
   });
 
   /** Grants an existing owner a licence (see grant). */

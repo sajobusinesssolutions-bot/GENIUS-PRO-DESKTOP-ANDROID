@@ -91,14 +91,14 @@ export default function TablePlanEditor() {
 
   const stepper = (v: number, set: (n: number) => void) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Pressable onPress={() => set(Math.max(0, v - 1))} style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20, color: colors.ink }}>−</Text></Pressable>
+      <Pressable onPress={() => set(Math.max(0, v - 1))} style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20, color: colors.ink }}>−</Text></Pressable>
       <Text style={{ minWidth: 30, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{v || '—'}</Text>
-      <Pressable onPress={() => set(Math.min(40, v + 1))} style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20, color: colors.ink }}>+</Text></Pressable>
+      <Pressable onPress={() => set(Math.min(40, v + 1))} style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20, color: colors.ink }}>+</Text></Pressable>
     </View>
   );
 
   return (
-    <View style={{ borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, marginBottom: 12, overflow: 'hidden' }}>
+    <View style={{ borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, marginBottom: 12, overflow: 'hidden' }}>
       <View style={{ padding: 14, gap: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Icon name="chair" size={18} color={colors.ink} />
@@ -131,7 +131,7 @@ export default function TablePlanEditor() {
                 <Pressable
                   key={t}
                   onPress={() => setDraft({ mode: 'edit', was: t, name: t, area: areaOf(t), newArea: '', seats: info[t]?.seats || 0, count: '', prefix: '', from: '' })}
-                  style={({ pressed }) => ({ minWidth: 88, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1.4, borderColor: busy(t) ? colors.warn : colors.line, backgroundColor: pressed ? colors.sunk : colors.bg })}
+                  style={({ pressed }) => ({ minWidth: 88, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 4, borderWidth: 1.4, borderColor: busy(t) ? colors.warn : colors.line, backgroundColor: pressed ? colors.sunk : colors.bg })}
                 >
                   <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{t}</Text>
                   <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: busy(t) ? colors.warn : colors.faint, marginTop: 2 }}>

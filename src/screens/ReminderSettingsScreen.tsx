@@ -104,7 +104,7 @@ export default function ReminderSettingsScreen({ navigation }: any) {
                 <Pressable
                   key={fl.key}
                   onPress={() => set({ [ch]: (text.endsWith(' ') || text.endsWith('\n') || !text ? text : text + ' ') + fl.key } as any)}
-                  style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.accentSoft }}
+                  style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 4, backgroundColor: colors.accentSoft }}
                 >
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.accent }}>+ {fl.label}</Text>
                 </Pressable>

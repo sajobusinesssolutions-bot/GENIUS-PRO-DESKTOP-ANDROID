@@ -9,19 +9,191 @@ import { ensureRoles } from './perms';
 import { ensureCoa } from './coa';
 import { reconcileBatches } from './batches';
 import { hashPin, isPinHashed } from './pinHash';
+import { hasBook, loadBook, writeBook, clearBook, storeSet, noteChanges, COLLS, sqliteAvailable, readFullBook, faultIn, olderRows, countOlder, storeGet } from './store/bookstore';
+import { tracked } from './store/track';
 
 export const KEY = 'genius.pos.v1';
 export const PIN_UNLOCK_KEY = 'genius.pos.session.unlocked';
 
-export async function loadDB(): Promise<DB | null> {
+/* ------------------------------------------------------------------
+   Where the book lives.
+
+   The book used to be one JSON string under `genius.pos.v1` in AsyncStorage.
+   Android cannot read a value back past ~2 MB and holds 6 MB in all by
+   default, which a busy shop reached within days. It now lives in SQLite,
+   one row per record (store/bookstore.ts), and a save writes what changed.
+
+   The first launch after this update moves the old book across once, reads
+   it back and compares every part before trusting it. If anything differs
+   the phone stays on the old storage, exactly as before — nothing is lost.
+   The old key is left in place as a rollback copy and is no longer written.
+   ------------------------------------------------------------------ */
+
+/** 'sqlite' once the book is in SQLite; 'legacy' if moving it failed and the old storage is still in use. */
+let engine: 'sqlite' | 'legacy' = 'sqlite';
+/** The old book exists but Android could not read it back (too large). */
+let legacyUnreadable = false;
+
+export function storageEngine(): 'sqlite' | 'legacy' { return engine; }
+
+/* Phase 2 (docs/STORAGE_SQLITE_PLAN.md): how many days of sales, purchases,
+   payments, cash entries, journal and stock moves to hold in memory. 0 holds
+   everything, as before. It stays 0 until every screen that reaches further
+   back reads from history() instead of the in-memory book. */
+let windowDays = 0;
+/** For tests; the shop's choice is saved with saveMemoryWindowDays. Takes effect on the next load. */
+export function setMemoryWindowDays(days: number): void { windowDays = Math.max(0, Math.floor(days || 0)); }
+const WINDOW_KEY = 'memoryWindowDays';
+/** The shop's choice, kept with the books; 0 = everything in memory. Takes effect on the next start. */
+export async function saveMemoryWindowDays(days: number): Promise<void> {
+  setMemoryWindowDays(days);
+  await storeSet(WINDOW_KEY, String(windowDays));
+}
+export async function savedMemoryWindowDays(): Promise<number> {
+  try { return Math.max(0, Number(await storeGet(WINDOW_KEY)) || 0); } catch { return 0; }
+}
+const sinceDay = (): string | undefined => {
+  if (!windowDays) return undefined;
+  const d = new Date(Date.now() - windowDays * 86400000);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
+/** yyyy-mm-dd in local time, as the store files records. */
+const dayOfMs = (ms: number): string => {
+  const d = new Date(ms);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
+/** Whether a report starting at `fromMs` (0 = all time) reaches before what the book holds in memory. */
+export function needsOlder(d: DB | null, fromMs: number): boolean {
+  const w = d && (d as { __window?: { sinceDay?: string } }).__window;
+  if (!w || !w.sinceDay) return false;
+  return !fromMs || dayOfMs(fromMs) < w.sinceDay;
+}
+
+/**
+ * The book a report from `fromMs` needs. Usually the one in memory. When the
+ * range starts before the window, a separate book is read from disk starting
+ * that day, with everything earlier brought forward the same way — exact, and
+ * only as large as the range asked for. Nothing in it is ever saved.
+ */
+export async function bookForRange(d: DB, fromMs: number): Promise<DB> {
+  if (!needsOlder(d, fromMs)) return d;
+  await flushSave();
+  const b = await loadBook({ sinceDay: fromMs ? dayOfMs(fromMs) : undefined, detached: true });
+  if (!b) return d;
+  return migrate(b) as DB;
+}
+
+/**
+ * Makes sure these records are in the live book before a screen opens one or a
+ * change is made to it. With the whole book in memory this does nothing.
+ * Returns how many had to be read from disk.
+ */
+export async function ensureLoaded(d: DB, coll: string, ids: string[]): Promise<number> {
+  if (!isPartialBook(d) || engine !== 'sqlite') return 0;
+  return faultIn(d as unknown as Record<string, unknown>, coll, ids);
+}
+
+const windowDay = (d: unknown): string | undefined => (d as { __window?: { sinceDay?: string } } | null)?.__window?.sinceDay;
+/** Records of `coll` a windowed book left on disk (none when the whole book is in memory). */
+export async function rowsOnDisk<T>(d: DB | null, coll: string, q: { item?: string; eq?: Record<string, string> } = {}): Promise<T[]> {
+  const since = windowDay(d);
+  return since && engine === 'sqlite' ? olderRows<T>(coll, since, q) : [];
+}
+/** How many of those, without reading them. */
+export async function countOnDisk(d: DB | null, coll: string, q: { eq?: Record<string, string>; notEq?: Record<string, string> } = {}): Promise<number> {
+  const since = windowDay(d);
+  return since && engine === 'sqlite' ? countOlder(coll, since, q) : 0;
+}
+
+/** True for a book loaded with a window: it is not the whole book. */
+export function isPartialBook(d: unknown): boolean { return !!(d && (d as { __window?: unknown }).__window); }
+
+/**
+ * The whole book, for a backup or a cloud snapshot. With no window it is the
+ * book in memory; with one, it is read from disk after the pending save lands.
+ */
+export async function wholeBook(d: DB): Promise<DB> {
+  if (!isPartialBook(d)) return d;
+  await flushSave();
+  const full = await readFullBook();
+  if (!full) throw new Error('The books could not be read for a backup.');
+  return migrate(full) as DB;
+}
+export function oldBookUnreadable(): boolean { return legacyUnreadable; }
+
+/**
+ * Runs a change on the book with record tracking on, so the next save writes
+ * only what this change touched. AppDataContext's commit() calls this.
+ */
+export function trackedChange<T extends object>(d: T, mut: (d: T) => void): void {
+  tracked(d, COLLS, mut, noteChanges);
+}
+
+const sameParts = (a: Record<string, unknown>, b: Record<string, unknown>): string | null => {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (a[k] === undefined && b[k] === undefined) continue;
+    if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) return k;
+  }
+  return null;
+};
+
+async function readLegacy(): Promise<{ raw: string | null; unreadable: boolean }> {
   try {
-    const raw = await AsyncStorage.getItem(KEY);
-    if (!raw) return null;
-    const d = JSON.parse(raw);
-    if (d && d.v === 1 && d.products) return migrate(d) as DB;
-    return null;
+    return { raw: await AsyncStorage.getItem(KEY), unreadable: false };
   } catch {
-    return null;
+    /* "Row too big to fit into CursorWindow": the book is there but too big to read. */
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      return { raw: null, unreadable: keys.includes(KEY) };
+    } catch {
+      return { raw: null, unreadable: false };
+    }
+  }
+}
+
+export async function loadDB(): Promise<DB | null> {
+  /* Every load decides afresh; a previous failure must not stick. */
+  engine = 'sqlite';
+  legacyUnreadable = false;
+  try {
+    if (await hasBook()) {
+      engine = 'sqlite';
+      const saved = await storeGet(WINDOW_KEY);
+      if (saved !== null) setMemoryWindowDays(Number(saved));
+      const b = await loadBook({ sinceDay: sinceDay() });
+      if (b && b.v === 1 && b.products) return migrate(b) as DB;
+      return null;
+    }
+  } catch {
+    /* SQLite would not open at all: carry on with the old storage. */
+    engine = 'legacy';
+  }
+  const { raw, unreadable } = await readLegacy();
+  legacyUnreadable = unreadable;
+  if (!raw) return null;
+  let d: DB | null = null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.v === 1 && parsed.products) d = migrate(parsed) as DB;
+  } catch { d = null; }
+  if (!d) return null;
+  if (engine === 'legacy') return d;
+  /* Move it across once, then prove it arrived. */
+  try {
+    await writeBook(d as unknown as Record<string, unknown>, { full: true });
+    const back = await loadBook();
+    const bad = back ? sameParts(d as unknown as Record<string, unknown>, migrate(back) as unknown as Record<string, unknown>) : 'everything';
+    if (bad) throw new Error('moved book differs at "' + bad + '"');
+    await storeSet('movedFromAsyncStorage', new Date().toISOString());
+    engine = 'sqlite';
+    return migrate(back!) as DB;
+  } catch {
+    try { await clearBook(); } catch { /* nothing to undo */ }
+    engine = 'legacy';
+    return d;
   }
 }
 
@@ -179,7 +351,11 @@ export function currentSaveStatus(): SaveStatus {
 
 export async function saveDB(db: DB): Promise<boolean> {
   try {
-    await AsyncStorage.setItem(KEY, JSON.stringify(db));
+    /* A device with no working SQLite at all keeps the old storage. A write
+       that fails on a working SQLite is a real failure and is reported. */
+    if (engine === 'sqlite' && !(await sqliteAvailable())) engine = 'legacy';
+    if (engine === 'sqlite') await writeBook(db as unknown as Record<string, unknown>);
+    else await AsyncStorage.setItem(KEY, JSON.stringify(db));
     consecutiveFailures = 0;
     setSaveStatus('ok');
     return true;
@@ -263,7 +439,10 @@ export function saveIsPending(): boolean {
 
 export async function clearDB(): Promise<boolean> {
   try {
+    /* Both: an old copy left behind would be moved across again on the next start. */
+    if (engine === 'sqlite') await clearBook();
     await AsyncStorage.removeItem(KEY);
+    legacyUnreadable = false;
     return true;
   } catch {
     return false;

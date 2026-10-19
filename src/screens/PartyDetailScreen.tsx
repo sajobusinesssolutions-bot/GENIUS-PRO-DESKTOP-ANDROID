@@ -176,11 +176,11 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
                 : { fg: colors.accent, bg: colors.accentSoft };
           return (
             <View style={{
-              marginHorizontal: 16, marginBottom: 10, borderRadius: 16, backgroundColor: colors.surface,
+              marginHorizontal: 16, marginBottom: 10, borderRadius: 4, backgroundColor: colors.surface,
               borderWidth: 1, borderColor: colors.line, opacity: item.void ? 0.6 : 1,
             }}>
               <Pressable onPress={item.open} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 10 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: tint.bg, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 38, height: 38, borderRadius: 4, backgroundColor: tint.bg, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name={KIND_ICON[item.kind]} size={18} color={tint.fg} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>

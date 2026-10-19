@@ -131,7 +131,7 @@ export default function DocEntry({
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 170 }} keyboardShouldPersistTaps="handled">
         <Panel style={{ marginBottom: 20 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-            <View style={{ width: 48, height: 48, borderRadius: 15, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 48, height: 48, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name={icon} size={22} color={fg} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>

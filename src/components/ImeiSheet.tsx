@@ -126,7 +126,7 @@ export default function ImeiSheet({ visible, product, qty, value, taken, onClose
                   const on = s?.condition === c;
                   return (
                     <Pressable key={c} onPress={() => patch(i, { condition: c })} style={{
-                      flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12, borderWidth: 1.4,
+                      flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 4, borderWidth: 1.4,
                       borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
                     }}>
                       <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>{conditionLabel(c)}</Text>

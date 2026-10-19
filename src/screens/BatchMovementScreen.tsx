@@ -11,6 +11,8 @@ import { View, Text, FlatList } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useOlderRows, withOlder } from '../data/useOnDisk';
+import type { Movement } from '../data/types';
 import {
   Panel, Badge, StatGrid, SectionLabel, EmptyBlock, Search, InfoBanner, SelectField, FilterChips,
 } from '../components/ui';
@@ -47,16 +49,19 @@ export default function BatchMovementScreen() {
   const batches = product?.batches || [];
   const batch = batchNo ? batches.find((b) => b.no === batchNo) : undefined;
 
+  /* with only recent trade in memory, the lot's older movements come from disk */
+  const older = useOlderRows<Movement>(db, 'movements', product?.id);
+
   /** Movements for this lot, oldest first, with the balance carried down. */
   const rows = useMemo(() => {
     if (!db || !product || !batch) return [];
-    const ms = db.movements
+    const ms = withOlder(db.movements, older)
       .filter((m) => m.productId === product.id && m.batchNo === batch.no)
       .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
     let run = 0;
     const out = ms.map((m) => { run += m.qty; return { ...m, balance: run }; });
     return out.reverse();
-  }, [db, product, batch]);
+  }, [db, older, product, batch]);
 
   const shown = dir === 'all' ? rows : rows.filter((r) => (dir === 'in' ? r.qty > 0 : r.qty < 0));
 
@@ -144,7 +149,7 @@ export default function BatchMovementScreen() {
                 <Panel>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}>
                     <View style={{
-                      width: 44, height: 44, borderRadius: 14,
+                      width: 44, height: 44, borderRadius: 4,
                       backgroundColor: expiryState(batch) === 'expired' || expiryState(batch) === 'critical'
                         ? colors.dangerSoft : expiryState(batch) === 'soon' ? colors.warnSoft : colors.goodSoft,
                       alignItems: 'center', justifyContent: 'center',
@@ -217,12 +222,12 @@ export default function BatchMovementScreen() {
           return (
             <View
               style={{
-                backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 13,
+                backgroundColor: colors.surface, borderRadius: 4, paddingHorizontal: 15, paddingVertical: 13,
                 marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12,
                 shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
               }}
             >
-              <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name={MOVE_ICON[item.type] || 'swap'} size={19} color={fg} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>

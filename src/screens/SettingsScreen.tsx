@@ -89,7 +89,7 @@ export default function SettingsScreen() {
                     {[db.firm.tin ? 'TIN ' + db.firm.tin : '', db.firm.phone].filter(Boolean).join(' · ') || 'Add your phone, address and logo'}
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 32, paddingHorizontal: 11, borderRadius: 10, backgroundColor: colors.accentSoft }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 32, paddingHorizontal: 11, borderRadius: 4, backgroundColor: colors.accentSoft }}>
                   <Icon name="pencil" size={13} color={colors.accent} />
                   <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Edit</Text>
                 </View>

@@ -11,6 +11,7 @@
  * that has never held a shop's books can fetch them.
  */
 import { useCallback, useRef } from 'react';
+import { wholeBook, isPartialBook } from './storage';
 import { useAppData } from './AppDataContext';
 import { useAuth } from './AuthContext';
 import { refreshSession } from './authApi';
@@ -120,7 +121,7 @@ export function useSyncRun() {
       const snapDue = how === 'manual' || !!(dbRef.current || d).sync.snapshotDue || Date.now() - lastSnapshotAt > SNAPSHOT_EVERY_MS;
       const keptVersion = (dbRef.current || d).sync.snapshotVersion || 0;
       let snap = snapDue
-        ? await uploadSnapshot(dbRef.current || d, token, wiring.value, cursor)
+        ? await uploadSnapshot((isPartialBook(dbRef.current || d) ? await wholeBook(dbRef.current || d) : dbRef.current || d), token, wiring.value, cursor)
         : { ok: true as const, value: { bytes: 0, version: keptVersion } };
       // Another phone sent a newer copy. This phone's changes already went up
       // and everyone else's came down, so the sync itself worked: the copy is

@@ -276,7 +276,7 @@ export default function PriceListsScreen({ navigation }: any) {
             {iq && !products.length ? (
               <Text style={{ paddingVertical: 32, textAlign: 'center', fontSize: 14, color: C.muted, fontFamily: fonts.ui }}>Nothing on this list matches “{itemQuery.trim()}”.</Text>
             ) : products.length > 0 ? (
-              <View style={{ backgroundColor: C.surface, borderRadius: 16, overflow: 'hidden' }}>
+              <View style={{ backgroundColor: C.surface, borderRadius: 4, overflow: 'hidden' }}>
                 {products.map((p) => {
                   const key = current.id + p.id;
                   const changed = pending[current.id]?.[p.id] !== undefined;
@@ -379,7 +379,7 @@ export default function PriceListsScreen({ navigation }: any) {
                             <Text style={{ color: C.muted }}>▾</Text>
                           </Pressable>
                           {copyOpen ? (
-                            <View style={{ borderWidth: 1, borderColor: C.outlineSoft, borderRadius: 6, overflow: 'hidden' }}>
+                            <View style={{ borderWidth: 1, borderColor: C.outlineSoft, borderRadius: 4, overflow: 'hidden' }}>
                               {lists.map((l) => (
                                 <Pressable key={l.id} onPress={() => { patchForm({ copyFrom: l.id }); setCopyOpen(false); }} style={{ paddingVertical: 12, paddingHorizontal: 12, backgroundColor: l.id === form.copyFrom ? C.chipOn : C.surface }}>
                                   <Text style={{ fontSize: 15, color: C.ink, fontFamily: fonts.ui }}>{l.name}</Text>
@@ -410,7 +410,7 @@ export default function PriceListsScreen({ navigation }: any) {
                         style={[st.switchTrack, { borderColor: form.active ? C.primary : C.outline, backgroundColor: form.active ? C.primary : C.fill }]}
                       >
                         <View style={{
-                          position: 'absolute', top: '50%', borderRadius: 12,
+                          position: 'absolute', top: '50%', borderRadius: 4,
                           left: form.active ? 22 : 6, width: form.active ? 24 : 16, height: form.active ? 24 : 16,
                           marginTop: form.active ? -12 : -8, backgroundColor: form.active ? C.thumb : C.outline,
                         }} />
@@ -496,28 +496,28 @@ export default function PriceListsScreen({ navigation }: any) {
 const makeStyles = (C: Palette) => ({
   search: { height: 52, borderRadius: 26, backgroundColor: C.fill, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18 } as const,
   searchInput: { flex: 1, fontSize: 16, minWidth: 0, color: C.ink, fontFamily: fonts.ui, padding: 0 } as const,
-  chip: { height: 32, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' } as const,
+  chip: { height: 32, paddingHorizontal: 16, borderRadius: 4, borderWidth: 1, alignItems: 'center', justifyContent: 'center' } as const,
   listRow: { width: '100%', padding: 16, borderRadius: 16, backgroundColor: C.surface, flexDirection: 'row', alignItems: 'center', gap: 14 } as const,
-  badge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8 } as const,
-  fab: { position: 'absolute', right: 16, height: 56, paddingLeft: 16, paddingRight: 20, borderRadius: 16, backgroundColor: C.fab, flexDirection: 'row', alignItems: 'center', gap: 12, elevation: 4, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } } as const,
+  badge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 4 } as const,
+  fab: { position: 'absolute', right: 16, height: 56, paddingLeft: 16, paddingRight: 20, borderRadius: 4, backgroundColor: C.fab, flexDirection: 'row', alignItems: 'center', gap: 12, elevation: 4, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } } as const,
   iconBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' } as const,
   textBtn: { height: 40, paddingHorizontal: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center' } as const,
   textBtnText: { color: C.primary, fontSize: 14, fontFamily: fonts.uiSemi } as const,
   filledBtn: { height: 40, paddingHorizontal: 24, borderRadius: 20, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' } as const,
   filledBtnText: { color: C.onPrimary, fontSize: 14, fontFamily: fonts.uiSemi } as const,
-  metaChip: { height: 32, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: C.outlineSoft, alignItems: 'center', justifyContent: 'center' } as const,
+  metaChip: { height: 32, paddingHorizontal: 12, borderRadius: 4, borderWidth: 1, borderColor: C.outlineSoft, alignItems: 'center', justifyContent: 'center' } as const,
   tableHead: { paddingHorizontal: 20, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' } as const,
   tableHeadText: { fontSize: 12, fontFamily: fonts.uiSemi, letterSpacing: 0.5, color: C.muted } as const,
   productRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: C.rule } as const,
-  priceInput: { width: 116, height: 40, paddingHorizontal: 10, borderWidth: 1, borderRadius: 8, textAlign: 'right', fontSize: 15, fontFamily: MONO, color: C.ink } as const,
+  priceInput: { width: 116, height: 40, paddingHorizontal: 10, borderWidth: 1, borderRadius: 4, textAlign: 'right', fontSize: 15, fontFamily: MONO, color: C.ink } as const,
   saveBar: { paddingTop: 12, paddingHorizontal: 16, backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.ruleBar, flexDirection: 'row', alignItems: 'center', gap: 8 } as const,
   scrim: { flex: 1, backgroundColor: C.scrim, justifyContent: 'flex-end' } as const,
   sheet: { backgroundColor: C.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 8, paddingHorizontal: 24, maxHeight: '92%' } as const,
-  nameInput: { width: '100%', height: 56, paddingHorizontal: 16, borderRadius: 6, borderWidth: 2, fontSize: 16, color: C.ink, fontFamily: fonts.ui } as const,
-  radioRow: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 10, paddingHorizontal: 4, borderRadius: 12 } as const,
+  nameInput: { width: '100%', height: 56, paddingHorizontal: 16, borderRadius: 4, borderWidth: 2, fontSize: 16, color: C.ink, fontFamily: fonts.ui } as const,
+  radioRow: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 10, paddingHorizontal: 4, borderRadius: 4 } as const,
   radioRing: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center' } as const,
-  select: { height: 48, paddingHorizontal: 12, borderWidth: 1, borderColor: C.outline, borderRadius: 6, flexDirection: 'row', alignItems: 'center' } as const,
+  select: { height: 48, paddingHorizontal: 12, borderWidth: 1, borderColor: C.outline, borderRadius: 4, flexDirection: 'row', alignItems: 'center' } as const,
   stepBtn: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: C.outlineSoft, alignItems: 'center', justifyContent: 'center' } as const,
   switchTrack: { width: 52, height: 32, borderRadius: 16, borderWidth: 2 } as const,
-  snack: { position: 'absolute', left: 16, right: 16, minHeight: 48, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 6, backgroundColor: C.snack, justifyContent: 'center', elevation: 6 } as const,
+  snack: { position: 'absolute', left: 16, right: 16, minHeight: 48, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 4, backgroundColor: C.snack, justifyContent: 'center', elevation: 6 } as const,
 });

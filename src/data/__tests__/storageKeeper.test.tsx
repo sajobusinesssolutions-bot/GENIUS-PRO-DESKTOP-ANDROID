@@ -8,8 +8,10 @@ import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
 let listener: ((status: 'ok' | 'failing') => void) | null = null;
+let mockUnreadable = false;
 jest.mock('../storage', () => ({
   currentSaveStatus: () => 'ok',
+  oldBookUnreadable: () => mockUnreadable,
   onSaveStatus: (cb: (status: 'ok' | 'failing') => void) => {
     listener = cb;
     return () => { listener = null; };
@@ -27,10 +29,16 @@ function setup() {
   );
 }
 
-beforeEach(() => { listener = null; jest.useFakeTimers(); });
+beforeEach(() => { listener = null; mockUnreadable = false; jest.useFakeTimers(); });
 afterEach(() => { jest.useRealTimers(); });
 
 describe('StorageKeeper', () => {
+  it('says plainly when the books saved the old way are too large to open', () => {
+    mockUnreadable = true;
+    setup();
+    expect(screen.getByText(/too large to open/)).toBeTruthy();
+  });
+
   it('says nothing while writes are landing', () => {
     setup();
     expect(screen.queryByText(/not being saved/)).toBeNull();

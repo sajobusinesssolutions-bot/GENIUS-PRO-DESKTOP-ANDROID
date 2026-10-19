@@ -112,8 +112,11 @@ decrypt "$WORK/genius-db.dump.gpg" "$WORK/genius.dump"
 
 say "5/9  Web server and HTTPS"
 # installed before its settings go back, so the package does not ask about them
-if tar -tzf "$WORK/config.tar.gz" | grep -q '^etc/caddy/'; then apt-get install -y -qq caddy >/dev/null; echo "caddy"; fi
-if tar -tzf "$WORK/config.tar.gz" | grep -q '^etc/nginx/'; then apt-get install -y -qq nginx certbot python3-certbot-nginx >/dev/null; echo "nginx + certbot"; fi
+# listed once into a variable: `tar | grep -q` under pipefail fails whenever
+# grep finds its match early and tar is cut off — and then nothing installs
+CONFIG_LIST=$(tar -tzf "$WORK/config.tar.gz")
+if grep -q '^etc/caddy/' <<<"$CONFIG_LIST"; then apt-get install -y -qq caddy >/dev/null; echo "caddy"; fi
+if grep -q '^etc/nginx/' <<<"$CONFIG_LIST"; then apt-get install -y -qq nginx certbot python3-certbot-nginx >/dev/null; echo "nginx + certbot"; fi
 tar -C / -xzpf "$WORK/config.tar.gz"
 
 say "6/9  Secrets and licence key"
@@ -138,7 +141,12 @@ re='^postgres(ql)?://([^:]+):([^@]*)@[^/]+/([^?]+)'
 [[ "${DATABASE_URL:-}" =~ $re ]] || die "could not read DATABASE_URL from $SECRETS_DIR"
 DB_USER=${BASH_REMATCH[2]}; DB_PASS=${BASH_REMATCH[3]}; DB_NAME=${BASH_REMATCH[4]}
 if sudo -u postgres psql -tAc "select 1 from pg_database where datname = '$DB_NAME'" | grep -q 1; then
-  die "database '$DB_NAME' already exists here — this script is for an empty server"
+  # a database with accounts in it is somebody's books: never touched. One left
+  # empty by a restore that stopped part-way is dropped and made again.
+  if sudo -u postgres psql -d "$DB_NAME" -tAc "select 1 from information_schema.tables where table_schema = 'public' and table_name = 'accounts'" | grep -q 1; then
+    die "database '$DB_NAME' already holds the books — this script is for an empty server"
+  fi
+  sudo -u postgres psql -q -c "drop database \"$DB_NAME\""
 fi
 sudo -u postgres psql -v ON_ERROR_STOP=1 -q <<SQL
 do \$\$ begin
@@ -152,7 +160,12 @@ create database "$DB_NAME" owner "$DB_USER";
 SQL
 sudo -u postgres psql -d "$DB_NAME" -v ON_ERROR_STOP=1 -q -c "create extension if not exists citext; create extension if not exists pgcrypto;"
 install -m 644 "$WORK/genius.dump" /tmp/genius-install.dump
-sudo -u postgres pg_restore --no-owner --role="$DB_USER" --exit-on-error -d "$DB_NAME" /tmp/genius-install.dump
+# The extensions are made above by the superuser; their comments in the dump
+# belong to the old owner and cannot be set by the API's role, so they are
+# left out — everything else must restore, or the script stops.
+sudo -u postgres pg_restore -l /tmp/genius-install.dump | grep -vE "COMMENT - EXTENSION|^[0-9;]+ [0-9]+ [0-9]+ EXTENSION " > /tmp/genius-install.list
+sudo -u postgres pg_restore --no-owner --role="$DB_USER" --exit-on-error -L /tmp/genius-install.list -d "$DB_NAME" /tmp/genius-install.dump
+rm -f /tmp/genius-install.list
 rm -f /tmp/genius-install.dump
 sudo -u postgres psql -d "$DB_NAME" -tAc "select 'accounts: ' || count(*) from accounts union all select 'businesses: ' || count(*) from businesses union all select 'ops: ' || count(*) from ops"
 

@@ -7,6 +7,7 @@
  * readable in the documents folder, is removed the first time this opens.
  */
 import React, { useCallback, useEffect, useState } from 'react';
+import { wholeBook, isPartialBook, storageEngine, saveMemoryWindowDays, savedMemoryWindowDays } from '../data/storage';
 import { View, Text, ScrollView, Alert, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuthSafe } from '../data/AuthContext';
@@ -45,6 +46,9 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
   const { colors } = useTheme();
   const { db, startFinancialYear, restoreBackup, addProduct, setSetting } = useAppData();
   const { success, error } = useToast();
+  /* how much of the books is held in memory (storage.ts); the old storage always holds everything */
+  const [windowDays, setWindowDays] = useState(0);
+  useEffect(() => { savedMemoryWindowDays().then(setWindowDays).catch(() => undefined); }, []);
   const [backups, setBackups] = useState<DeviceBackup[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -119,7 +123,7 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
     if (!t) { error('Sign in to your Genius Pro account first.'); return; }
     setBusy('driveUp');
     try {
-      const b = existing || writeBackup(db, false);
+      const b = existing || writeBackup((isPartialBook(db) ? await wholeBook(db) : db), false);
       if (!existing) { setSetting({ lastBackupAt: new Date().toISOString() }); reload(); }
       const r = await uploadDriveBackup(t, b.name, await backupBase64(b.uri));
       if (!r.ok) { error(r.error.message); return; }
@@ -159,11 +163,11 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
     writeNow();
   }
 
-  function writeNow() {
+  async function writeNow() {
     if (!db) return;
     setBusy('backup');
     try {
-      const b = writeBackup(db, false);
+      const b = writeBackup((isPartialBook(db) ? await wholeBook(db) : db), false);
       setSetting({ lastBackupAt: new Date().toISOString() });
       reload();
       success('Encrypted backup saved' + (b.outside ? ' to ' + (chosenFolderText() || 'Downloads') : '') + ' · ' + sizeText(b.size));
@@ -196,7 +200,7 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
             setBusy('restore');
             try {
               const next = await load();
-              writeBackup(db, false);
+              writeBackup((isPartialBook(db) ? await wholeBook(db) : db), false);
               restoreBackup(next);
               reload();
               success('Backup restored');
@@ -358,7 +362,7 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
             <Pressable hitSlop={8} accessibilityLabel={'Delete ' + b.name} onPress={() => remove(b)}><Icon name="trash" size={18} color={colors.danger} /></Pressable>
           </View>
         )) : (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.sunk, borderRadius: 12, padding: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.sunk, borderRadius: 4, padding: 16 }}>
             <Icon name="box" size={20} color={colors.faint} />
             <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint }}>No device backups found.</Text>
           </View>
@@ -392,6 +396,19 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
           </>
         )}
       </ToolCard>
+
+      {storageEngine() === 'sqlite' ? (
+      <ToolCard icon="clock" tone="accent" title="Records in memory" sub={windowDays ? 'Last ' + windowDays + ' days, plus every unpaid bill' : 'Everything'}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>
+          For busy shops. Older records stay on the phone and open when you need them. Applies from the next start.
+        </Text>
+        <ChoiceChips
+          value={String(windowDays)}
+          options={[{ v: '0', l: 'Everything' }, { v: '365', l: '1 year' }, { v: '180', l: '6 months' }, { v: '90', l: '90 days' }]}
+          onChange={(v) => { const n = Number(v); setWindowDays(n); saveMemoryWindowDays(n).then(() => success('Saved. Restart the app to apply.')).catch(() => undefined); }}
+        />
+      </ToolCard>
+      ) : null}
 
       <ToolCard icon="swap" tone="accent" title="Import and export" sub="Items in and out as spreadsheet files.">
         {row('swap', 'Move from Vyapar (.vyb backup)', () => navigation?.navigate('VyaparImport'))}

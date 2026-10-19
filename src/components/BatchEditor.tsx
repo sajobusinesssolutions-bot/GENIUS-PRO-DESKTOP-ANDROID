@@ -112,7 +112,7 @@ export default function BatchEditor({ batches, onChange, unit = 'pcs', suggestNo
                 decimal
                 style={{ flex: 1, marginBottom: 0, marginTop: 4 }}
               />
-              <Pressable onPress={() => remove(i)} hitSlop={8} accessibilityLabel="Remove batch" style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.dangerSoft, marginTop: 4 }}>
+              <Pressable onPress={() => remove(i)} hitSlop={8} accessibilityLabel="Remove batch" style={{ width: 34, height: 34, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.dangerSoft, marginTop: 4 }}>
                 <Icon name="trash" size={15} color={colors.danger} />
               </Pressable>
             </View>
@@ -122,7 +122,7 @@ export default function BatchEditor({ batches, onChange, unit = 'pcs', suggestNo
               onPress={() => setPicking(i)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 8, height: 40,
-                borderRadius: 10, backgroundColor: soft, paddingHorizontal: 11,
+                borderRadius: 4, backgroundColor: soft, paddingHorizontal: 11,
               }}
             >
               <Icon name="calendar" size={15} color={fg} />

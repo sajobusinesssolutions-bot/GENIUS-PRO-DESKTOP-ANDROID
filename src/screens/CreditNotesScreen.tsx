@@ -4,6 +4,7 @@ import { View, Text, FlatList, ScrollView, TextInput } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useBookFrom } from '../data/useBookFrom';
 import {
   Empty, Button, Cap, Chip, DocCard, Panel, Badge, SectionLabel, EmptyBlock, InfoBanner,
   Search, Field, OptionTiles, StickyBar, DetailRow,
@@ -22,6 +23,8 @@ export default function CreditNotesScreen({ navigation }: Props) {
   const { db, money, party } = useAppData();
   const [period, setPeriod] = useState(listPeriod('month'));
   const [q, setQ] = useState('');
+  /* older returns point at sales no longer in memory; read the period from disk */
+  const { book } = useBookFrom(db, period.from);
   const inRange = [...(db?.creditNotes || [])].filter((c) => inPeriod(c.ts, period)).reverse();
   const nameOf = (id: string | null) => (id ? party(id)?.name || 'Walk-in' : 'Walk-in');
   const needle = q.trim().toLowerCase();
@@ -44,7 +47,7 @@ export default function CreditNotesScreen({ navigation }: Props) {
       empty={{ text: 'No returns in this period. Take one back against a past sale with Add return.' }}
       add={{ label: 'Add return', onPress: () => navigation.navigate('CreditNoteNew', {}) }}
       renderItem={({ item: c }) => {
-        const sale = c.saleId ? db?.sales.find((x) => x.id === c.saleId) : undefined;
+        const sale = c.saleId ? (book || db)?.sales.find((x) => x.id === c.saleId) : undefined;
         return (
           <DocRow
             title={nameOf(c.partyId)}
@@ -185,12 +188,12 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
               <Pressable
                 onPress={() => { setSaleId(item.id); setQty({}); }}
                 style={{
-                  backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 14,
+                  backgroundColor: colors.surface, borderRadius: 4, paddingHorizontal: 15, paddingVertical: 14,
                   marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12,
                   shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
                 }}
               >
-                <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name="receipt" size={20} color={colors.accent} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -221,7 +224,7 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 190 }} keyboardShouldPersistTaps="handled">
         <Panel>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-            <View style={{ width: 46, height: 46, borderRadius: 15, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 46, height: 46, borderRadius: 4, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="arrow" size={21} color={colors.danger} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -272,7 +275,7 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
                 </Pressable>
                 <Pressable
                   onPress={() => setQty((prev) => ({ ...prev, [r.l.productId]: String(r.left) }))}
-                  style={{ paddingHorizontal: 14, paddingVertical: 11, borderRadius: 12, borderWidth: 1.4, borderColor: colors.line }}
+                  style={{ paddingHorizontal: 14, paddingVertical: 11, borderRadius: 4, borderWidth: 1.4, borderColor: colors.line }}
                 >
                   <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>All</Text>
                 </Pressable>
@@ -354,7 +357,7 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
 
 function stepper(colors: any) {
   return {
-    width: 40, height: 40, borderRadius: 13, borderWidth: 1.4, borderColor: colors.line,
+    width: 40, height: 40, borderRadius: 4, borderWidth: 1.4, borderColor: colors.line,
     alignItems: 'center' as const, justifyContent: 'center' as const,
   };
 }

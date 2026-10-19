@@ -80,7 +80,7 @@ export default function ReceiptScreen({ route, navigation }: Props) {
           </View>
         </Panel>
 
-        <View style={{ backgroundColor: colors.surface, borderRadius: 18, padding: 20, shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2 }}>
+        <View style={{ backgroundColor: colors.surface, borderRadius: 4, padding: 20, shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2 }}>
           <Text style={{ textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: 0.4 }}>{db?.firm.name}</Text>
           <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 8 }}>{db?.firm.address}</Text>
           <Text style={{ textAlign: 'center', fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 12 }}>TIN {db?.firm.tin}</Text>

@@ -45,12 +45,12 @@ export default function AuditLogScreen() {
         renderItem={({ item }) => (
           <View
             style={{
-              backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13,
+              backgroundColor: colors.surface, borderRadius: 4, paddingHorizontal: 14, paddingVertical: 13,
               marginBottom: 10, flexDirection: 'row', gap: 12,
               shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
             }}
           >
-            <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="shield" size={19} color={colors.ink} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>

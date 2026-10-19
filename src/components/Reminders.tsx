@@ -61,7 +61,7 @@ export function ReminderRow({ r, onRemind, onOpen, last }: { r: DueParty; onRemi
       </Pressable>
       <Pressable
         onPress={onRemind}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.accentSoft }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingHorizontal: 12, borderRadius: 4, backgroundColor: colors.accentSoft }}
       >
         <Icon name="share" size={14} color={colors.accent} />
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Remind</Text>
@@ -113,11 +113,11 @@ export function RemindSheet({ target, onClose }: { target: DueParty | null; onCl
           disabled={w.off}
           onPress={() => void send(w.ch)}
           style={{
-            flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, marginBottom: 8, borderRadius: 14,
+            flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, marginBottom: 8, borderRadius: 4,
             borderWidth: 1.2, borderColor: colors.line, backgroundColor: colors.surface, opacity: w.off ? 0.45 : 1,
           }}
         >
-          <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: w.tint + '22', alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 38, height: 38, borderRadius: 4, backgroundColor: w.tint + '22', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name={w.i} size={18} color={w.tint} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>

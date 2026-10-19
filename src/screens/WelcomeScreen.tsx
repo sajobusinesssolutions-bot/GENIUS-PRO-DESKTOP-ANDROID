@@ -16,10 +16,10 @@ export default function WelcomeScreen({ navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{
-        flex: 1, margin: 12, borderRadius: 26, padding: 26, justifyContent: 'flex-end', gap: 12,
+        flex: 1, margin: 12, borderRadius: 4, padding: 26, justifyContent: 'flex-end', gap: 12,
         backgroundColor: colors.rail, overflow: 'hidden',
       }}>
-        <View style={{ width: 60, height: 60, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', alignItems: 'center', justifyContent: 'center', marginBottom: 'auto' }}>
+        <View style={{ width: 60, height: 60, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', alignItems: 'center', justifyContent: 'center', marginBottom: 'auto' }}>
           <Icon name="till" size={30} color="#fff" />
         </View>
         <Text style={{ color: '#fff', fontFamily: fonts.uiExtra, fontSize: 34, letterSpacing: -0.8 }}>Genius POS</Text>
@@ -32,7 +32,7 @@ export default function WelcomeScreen({ navigation }: Props) {
             { n: db?.parties.length ?? 0, l: 'Contacts' },
             { n: db?.sales.length ?? 0, l: 'Sales' },
           ].map((s) => (
-            <View key={s.l} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 12 }}>
+            <View key={s.l} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 4, paddingVertical: 12, paddingHorizontal: 12 }}>
               <Text style={{ color: '#fff', fontFamily: fonts.uiExtra, fontSize: 20 }}>{s.n}</Text>
               <Text style={{ color: 'rgba(255,255,255,0.76)', fontFamily: fonts.uiSemi, fontSize: 12.5, marginTop: 3 }}>{s.l}</Text>
             </View>

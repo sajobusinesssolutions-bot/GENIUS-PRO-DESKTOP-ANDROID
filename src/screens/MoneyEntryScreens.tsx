@@ -27,7 +27,7 @@ const num = (v: string) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
 function Effect({ rows }: { rows: { l: string; v: string; tone?: string; bold?: boolean }[] }) {
   const { colors } = useTheme();
   return (
-    <View style={{ borderRadius: 14, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
+    <View style={{ borderRadius: 4, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
       {rows.map((r) => (
         <View key={r.l} style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text numberOfLines={1} style={{ flex: 1, fontFamily: r.bold ? fonts.uiBold : fonts.ui, fontSize: 13.5, color: r.bold ? colors.ink : colors.soft }}>{r.l}</Text>
@@ -233,7 +233,7 @@ export function TransferScreen({ navigation }: any) {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
         <Field big label="Amount to move" value={amount} onChangeText={setAmount} numeric decimal style={{ marginBottom: 10 }} />
 
-        <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 12, marginBottom: 12 }}>
+        <View style={{ borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 12, marginBottom: 12 }}>
           <SelectField icon="up" label="From" value={from} options={options} onChange={setFrom} style={{ marginBottom: 6 }} />
           <View style={{ alignItems: 'center', marginVertical: -4, zIndex: 1 }}>
             <Pressable
@@ -252,7 +252,7 @@ export function TransferScreen({ navigation }: any) {
         {from === to ? (
           <InfoBanner tone="warn" icon="alert" text="Pick two different accounts." />
         ) : (
-          <View style={{ borderRadius: 14, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
+          <View style={{ borderRadius: 4, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
             <View style={{ flexDirection: 'row' }}>
               <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft }}>{fromAcc?.name} after</Text>
               <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: short ? colors.danger : colors.ink }}>{money(accountBalance(from) - n)}</Text>

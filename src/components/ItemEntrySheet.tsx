@@ -370,7 +370,7 @@ export default function ItemEntrySheet({
           {searching ? (
             <View style={{ flex: 1, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: colors.bg }}>
               <View style={{
-                flexShrink: 1, marginTop: 4, backgroundColor: colors.surface, borderRadius: 12,
+                flexShrink: 1, marginTop: 4, backgroundColor: colors.surface, borderRadius: 4,
                 borderWidth: 1.4, borderColor: colors.accent, overflow: 'hidden',
                 shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 8,
               }}>
@@ -412,7 +412,7 @@ export default function ItemEntrySheet({
                           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Service</Text>
                         ) : (
                           <View style={{
-                            flexDirection: 'row', alignItems: 'baseline', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8,
+                            flexDirection: 'row', alignItems: 'baseline', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 4,
                             backgroundColor: low ? colors.dangerSoft : colors.sunk,
                           }}>
                             <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: low ? colors.danger : colors.ink }}>{plain(st)}</Text>
@@ -495,7 +495,7 @@ export default function ItemEntrySheet({
                             key={b.no}
                             onPress={() => (dead ? setErr('Batch ' + b.no + ' expired. It cannot be sold — take it off the shelf.') : setBatchNo(b.no))}
                             style={{
-                              paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1.4,
+                              paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4, borderWidth: 1.4,
                               borderColor: dead ? colors.danger : on ? colors.accent : colors.line,
                               backgroundColor: dead ? colors.dangerSoft : on ? colors.accentSoft : colors.surface,
                               opacity: dead ? 0.7 : 1,
@@ -517,7 +517,7 @@ export default function ItemEntrySheet({
                 {wantsImei ? (
                   <Pressable
                     onPress={() => { Keyboard.dismiss(); setSaveAfterImei(null); setImeiOpen(true); }}
-                    style={{ marginBottom: 14, borderRadius: 10, backgroundColor: colors.accentSoft, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', gap: 4 }}
+                    style={{ marginBottom: 14, borderRadius: 4, backgroundColor: colors.accentSoft, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', gap: 4 }}
                   >
                     <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent }}>
                       {serials.filter((s) => s.imei).length ? 'IMEI / Serial No. · ' + serials.filter((s) => s.imei).length + ' of ' + Math.max(1, Math.floor(qtyNum)) : 'Select IMEI / Serial No.'}
@@ -578,7 +578,7 @@ export default function ItemEntrySheet({
 
               {/* what the line comes to */}
               {qtyNum > 0 ? (
-                <View style={{ margin: 16, padding: 14, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, gap: 7 }}>
+                <View style={{ margin: 16, padding: 14, borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, gap: 7 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>Subtotal</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>{plain(qtyNum)} {unit} x {plain(rateNum)} = {money(qtyNum * rateNum)}</Text>
@@ -669,7 +669,7 @@ function UnitChips({ value, options, onChange }: { value: string; options: strin
               key={u}
               onPress={() => onChange(u)}
               style={{
-                paddingHorizontal: 12, height: 40, justifyContent: 'center', borderRadius: 10, borderWidth: 1.4,
+                paddingHorizontal: 12, height: 40, justifyContent: 'center', borderRadius: 4, borderWidth: 1.4,
                 borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
               }}
             >

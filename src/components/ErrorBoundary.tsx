@@ -13,7 +13,7 @@ function Fallback({ onRetry }: { onRetry: () => void }) {
   const { colors } = useTheme();
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
-      <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 64, height: 64, borderRadius: 4, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name="alert" size={28} color={colors.danger} />
       </View>
       <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 16, textAlign: 'center' }}>Something went wrong</Text>
@@ -22,7 +22,7 @@ function Fallback({ onRetry }: { onRetry: () => void }) {
       </Text>
       <Pressable
         onPress={onRetry}
-        style={({ pressed }) => ({ marginTop: 22, paddingVertical: 13, paddingHorizontal: 26, borderRadius: 14, backgroundColor: pressed ? colors.accentSoft : colors.accent })}
+        style={({ pressed }) => ({ marginTop: 22, paddingVertical: 13, paddingHorizontal: 26, borderRadius: 4, backgroundColor: pressed ? colors.accentSoft : colors.accent })}
       >
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>Try again</Text>
       </Pressable>

@@ -161,7 +161,7 @@ export default function CheckoutSheet({
               onPress={() => onMethodChange(o.v === 'credit' ? 'credit' : (method === 'credit' ? 'cash' : method))}
               style={{
                 flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-                height: 48, borderRadius: 12, borderWidth: 1.4,
+                height: 48, borderRadius: 4, borderWidth: 1.4,
                 borderColor: on ? colors.accent : colors.line,
                 backgroundColor: on ? colors.accent : colors.surface,
               }}
@@ -200,7 +200,7 @@ export default function CheckoutSheet({
                 key={q.l}
                 onPress={() => onReceivedChange(q.v)}
                 style={{
-                  flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 12,
+                  flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 4,
                   borderWidth: 1.4,
                   borderColor: received === q.v ? colors.accent : colors.line,
                   backgroundColor: received === q.v ? colors.accentSoft : colors.surface,
@@ -232,7 +232,7 @@ export default function CheckoutSheet({
                     key={m}
                     onPress={() => onReceivedViaChange(m)}
                     style={{
-                      flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 12, borderWidth: 1.4,
+                      flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 4, borderWidth: 1.4,
                       borderColor: receivedVia === m ? colors.accent : colors.line,
                       backgroundColor: receivedVia === m ? colors.accentSoft : colors.surface,
                     }}
@@ -278,7 +278,7 @@ export default function CheckoutSheet({
                   style={{
                     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                     minWidth: 96, paddingVertical: 11, paddingHorizontal: 14,
-                    borderRadius: 14,
+                    borderRadius: 4,
                     borderWidth: 1.4,
                     borderColor: active ? colors.accent : colors.line,
                     backgroundColor: active ? colors.accentSoft : colors.surface,
@@ -304,7 +304,7 @@ export default function CheckoutSheet({
                       onPress={() => onMomoNetworkChange(net.value)}
                       style={{
                         flex: 1, alignItems: 'center', paddingVertical: 10,
-                        borderRadius: 12, borderWidth: 1.4,
+                        borderRadius: 4, borderWidth: 1.4,
                         borderColor: momoNetwork === net.value ? colors.accent : colors.line,
                         backgroundColor: momoNetwork === net.value ? colors.accentSoft : colors.surface,
                       }}
@@ -359,7 +359,7 @@ export default function CheckoutSheet({
                       setSplitMethods(next);
                       onMethodsChange?.(next);
                     }}
-                    style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}
+                    style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}
                   >
                     <Text style={{ fontFamily: fonts.uiBold, color: colors.danger }}>−</Text>
                   </Pressable>

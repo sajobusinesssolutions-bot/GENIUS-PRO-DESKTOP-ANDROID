@@ -200,7 +200,7 @@ export default function ShiftScreen({ route }: any) {
     if (!shift) {
       return (
         <Panel style={{ alignItems: 'center', paddingVertical: 28 }}>
-          <View style={{ width: 64, height: 64, borderRadius: 22, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 64, height: 64, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="till" size={30} color={colors.faint} />
           </View>
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 14 }}>Your till is closed</Text>
@@ -218,7 +218,7 @@ export default function ShiftScreen({ route }: any) {
     const z = shiftTotals(shift);
     return (
       <>
-        <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: colors.line }}>
+        <View style={{ backgroundColor: colors.surface, borderRadius: 4, padding: 18, borderWidth: 1, borderColor: colors.line }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.good }} />
             <Text style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>Till open</Text>
@@ -310,7 +310,7 @@ export default function ShiftScreen({ route }: any) {
     return (
       <>
         {closedAt ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: colors.sunk, marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 4, backgroundColor: colors.sunk, marginBottom: 14 }}>
             <Icon name="lock" size={17} color={colors.ink} />
             <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>
               Closed through {fmtDate(closedAt)}. Everything before it is frozen.
@@ -362,7 +362,7 @@ export default function ShiftScreen({ route }: any) {
           })}
         </View>
 
-        <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: colors.line }}>
+        <View style={{ backgroundColor: colors.surface, borderRadius: 4, padding: 18, borderWidth: 1, borderColor: colors.line }}>
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
             {allOn ? 'All staff' : pickedStaff.length + ' of ' + staff.length + ' staff'} · {all.count} sale{all.count === 1 ? '' : 's'} · sold {money(all.total)}
           </Text>
@@ -527,7 +527,7 @@ export default function ShiftScreen({ route }: any) {
           const counted = num(counts[s.id] || '0');
           const v = shiftVariance(z.expected, counted);
           return (
-            <View key={s.id} style={{ marginBottom: 16, padding: 14, borderRadius: 16, backgroundColor: colors.sunk }}>
+            <View key={s.id} style={{ marginBottom: 16, padding: 14, borderRadius: 4, backgroundColor: colors.sunk }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{user(s.userId)?.name || 'Staff'}</Text>
               {money4(z)}
               {received(z)}

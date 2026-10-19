@@ -282,14 +282,14 @@ function PriceTagScreenBody() {
                 onPress={() => setPicked((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
                 style={{
                   backgroundColor: on ? colors.accentSoft : colors.surface,
-                  borderRadius: 16, paddingHorizontal: 15, paddingVertical: 14, marginBottom: 10,
+                  borderRadius: 4, paddingHorizontal: 15, paddingVertical: 14, marginBottom: 10,
                   flexDirection: 'row', alignItems: 'center', gap: 12,
                   borderWidth: on ? 1.5 : 0, borderColor: colors.accent,
                   shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2,
                 }}
               >
                 <View style={{
-                  width: 26, height: 26, borderRadius: 8, borderWidth: 1.8,
+                  width: 26, height: 26, borderRadius: 4, borderWidth: 1.8,
                   borderColor: on ? colors.accent : colors.lineHard,
                   backgroundColor: on ? colors.accent : 'transparent',
                   alignItems: 'center', justifyContent: 'center',
@@ -307,7 +307,7 @@ function PriceTagScreenBody() {
                     <Pressable
                       hitSlop={6}
                       onPress={() => setCopies((c) => ({ ...c, [p.id]: Math.max(1, countOf(p.id) - 1) }))}
-                      style={{ width: 32, height: 32, borderRadius: 10, borderWidth: 1.4, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }}
+                      style={{ width: 32, height: 32, borderRadius: 4, borderWidth: 1.4, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }}
                     >
                       <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>−</Text>
                     </Pressable>
@@ -316,7 +316,7 @@ function PriceTagScreenBody() {
                       hitSlop={6}
                       onPress={() => setCopies((c) => ({ ...c, [p.id]: Math.min(500, countOf(p.id) + 1) }))}
                       onLongPress={() => setCopies((c) => ({ ...c, [p.id]: Math.min(500, countOf(p.id) + 10) }))}
-                      style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}
+                      style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}
                     >
                       <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>+</Text>
                     </Pressable>
@@ -390,7 +390,7 @@ function PriceTagScreenBody() {
             {sample ? (
               <View
                 style={{
-                  width: 200, borderRadius: 10, borderWidth: 1.4, borderColor: colors.lineHard,
+                  width: 200, borderRadius: 4, borderWidth: 1.4, borderColor: colors.lineHard,
                   borderStyle: 'dashed', paddingVertical: 14, paddingHorizontal: 12, alignItems: 'center',
                   backgroundColor: '#fff',
                 }}

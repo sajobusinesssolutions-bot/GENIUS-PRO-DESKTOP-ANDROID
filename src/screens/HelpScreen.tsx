@@ -81,7 +81,7 @@ export function FaqScreen() {
             onPress={() => setOpen(on ? null : i)}
             accessibilityRole="button"
             accessibilityState={{ expanded: on }}
-            style={{ backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: on ? colors.accent : colors.line, padding: 14, marginBottom: 10 }}
+            style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: on ? colors.accent : colors.line, padding: 14, marginBottom: 10 }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{f.q}</Text>

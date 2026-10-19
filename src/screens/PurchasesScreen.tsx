@@ -5,6 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useBookFrom } from '../data/useBookFrom';
 import { useDocBuilder } from '../components/DocActions';
 import { ListPage, DocRow, StatusChips, SummaryTiles, PeriodBar, listPeriod, inPeriod, useQuickDoc } from '../components/DocList';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -21,11 +22,13 @@ export default function PurchasesScreen({ navigation }: Props) {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<Status>('all');
   const [period, setPeriod] = useState(listPeriod('month'));
+  /* the period read from disk when it starts before what is in memory */
+  const { book, reading } = useBookFrom(db, period.from);
 
   const inRange = useMemo(
-    () => [...(db?.purchases || [])].filter((p) => inPeriod(p.ts, period))
+    () => [...(book?.purchases || [])].filter((p) => inPeriod(p.ts, period))
       .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()),
-    [db?.purchases, period],
+    [book?.purchases, period],
   );
   const needle = q.trim().toLowerCase();
   const list = inRange.filter((p) => {
@@ -49,7 +52,7 @@ export default function PurchasesScreen({ navigation }: Props) {
       search={{ value: q, onChange: setQ, placeholder: 'Search bill no. or supplier' }}
       data={list}
       keyExtractor={(p) => p.id}
-      empty={{ text: 'No supplier bills in this period. Try a wider date range, or add a purchase.' }}
+      empty={{ text: reading ? 'Reading older records…' : 'No supplier bills in this period. Try a wider date range, or add a purchase.' }}
       add={{ label: 'Add purchase', onPress: () => navigation.navigate('PurchaseNew') }}
       renderItem={({ item: p }) => {
         const owed = p.due > 0.01;

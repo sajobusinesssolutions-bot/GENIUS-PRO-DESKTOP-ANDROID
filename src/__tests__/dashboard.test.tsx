@@ -36,6 +36,7 @@ const mockState: any = {
 
 const mockGo = jest.fn();
 jest.mock('../nav/navigate', () => ({ useGo: () => mockGo }));
+jest.mock('../data/AuthContext', () => ({ useAuth: () => ({ account: null }) }));
 
 jest.mock('../data/AppDataContext', () => {
   const db = {

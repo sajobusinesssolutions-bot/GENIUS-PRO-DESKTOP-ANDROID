@@ -29,6 +29,7 @@ import { LIC_GRACE } from '../data/defaults';
 import { access, accessDaysLeft, TRIAL_DAYS } from '../data/logic';
 import { EDITIONS, EDITION_LIST, Edition, editionOf, businessAllowance } from '../data/editions';
 import { lastAccountLicence } from '../data/syncClient';
+import { emailUrl, whatsappUrl, open as openLink } from '../data/support';
 
 type Term = 'month' | 'quarter' | 'year';
 const TERM_WORD: Record<Term, string> = { month: '/ month', quarter: '/ 3 months', year: '/ year' };
@@ -84,6 +85,20 @@ export default function LicenceScreen() {
   const span = trialing ? TRIAL_DAYS : lic?.term === 'yearly' ? 365 : lic?.term === 'monthly' ? 30 : 30;
   const pctLeft = lifetime ? 100 : left === null ? 0 : Math.max(0, Math.min(100, (left / span) * 100));
 
+  // Restaurant and Pharmacy are priced per shop: setup, data migration and
+  // training vary, so they are quoted by sales rather than listed.
+  const quoted = (e: Edition) => e === 'restaurant' || e === 'pharmacy';
+  const contactSales = (planName?: string) => {
+    const what = ed.name + ' edition' + (planName ? ', ' + planName + ' plan' : '');
+    const text = 'Hello, I would like pricing for Genius Pro POS ' + what
+      + ', including setup fees and data migration.' + (account?.email ? ' My account: ' + account.email : '');
+    Alert.alert('Contact sales', 'Ask about pricing, setup fees and moving your data across.', [
+      { text: 'WhatsApp', onPress: () => void openLink(whatsappUrl(text)) },
+      { text: 'Email', onPress: () => void openLink(emailUrl('Pricing: ' + what, text)) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const choose = (id: 'starter' | 'pro') => Alert.alert(
     ed.plans[id].name + ' · ' + money(ed.plans[id].prices[term]) + ' ' + TERM_WORD[term],
     'Pay Genius Pro for ' + ed.plans[id].name + ' and it is switched on for ' + (account?.email || 'your account')
@@ -100,7 +115,7 @@ export default function LicenceScreen() {
     </View>
   );
   const tile = (icon: IconName, label: string, value: string, note: string, tone?: string) => (
-    <View style={{ width: '48.5%', borderRadius: 18, padding: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
+    <View style={{ width: '48.5%', borderRadius: 4, padding: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
       <Icon name={icon} size={18} color={tone || colors.ink} />
       <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: tone || colors.ink, marginTop: 10 }}>{value}</Text>
       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, marginTop: 2 }}>{label}</Text>
@@ -145,9 +160,9 @@ export default function LicenceScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 36 }}>
       {/* ---------- the licence ---------- */}
-      <View style={{ borderRadius: 24, padding: 20, backgroundColor: '#14161B' }}>
+      <View style={{ borderRadius: 4, padding: 20, backgroundColor: '#14161B' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name={ed.icon} size={20} color={ink} />
           </View>
           <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: soft }}>{ed.name} edition</Text>
@@ -174,7 +189,7 @@ export default function LicenceScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)' }}>
             <Icon name="user" size={15} color={soft} />
             <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: soft }}>{account.email}</Text>
-            {lic?.no ? <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, color: soft }}>{lic.no.slice(0, 8).toUpperCase()}</Text> : null}
+            {lic?.no ? <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, color: soft }}>{lic.no}</Text> : null}
           </View>
         ) : null}
       </View>
@@ -189,7 +204,7 @@ export default function LicenceScreen() {
 
       {/* ---------- what works ---------- */}
       {cap(open ? 'Working now' : 'Paused until you renew')}
-      <View style={{ borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
+      <View style={{ borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
         {works.map(([icon, title, on, sub], i) => (
           <View key={title} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderTopWidth: i ? 1 : 0, borderTopColor: colors.line }}>
             <Icon name={icon} size={18} color={on ? colors.ink : colors.faint} />
@@ -206,10 +221,10 @@ export default function LicenceScreen() {
 
       {/* ---------- the plans ---------- */}
       {cap(ed.name + ' plans')}
-      {PLAY_BUILD ? null : (
-        <View style={{ flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: colors.sunk, marginBottom: 12 }}>
+      {PLAY_BUILD || quoted(edition) ? null : (
+        <View style={{ flexDirection: 'row', padding: 4, borderRadius: 4, backgroundColor: colors.sunk, marginBottom: 12 }}>
           {(['month', 'quarter', 'year'] as const).map((t) => (
-            <Pressable key={t} onPress={() => setTerm(t)} style={{ flex: 1, paddingVertical: 10, borderRadius: 11, alignItems: 'center', backgroundColor: term === t ? colors.surface : 'transparent' }}>
+            <Pressable key={t} onPress={() => setTerm(t)} style={{ flex: 1, paddingVertical: 10, borderRadius: 4, alignItems: 'center', backgroundColor: term === t ? colors.surface : 'transparent' }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: term === t ? colors.ink : colors.faint }}>
                 {t === 'month' ? 'Monthly' : t === 'quarter' ? '3 months' : 'Yearly'}
               </Text>
@@ -224,7 +239,7 @@ export default function LicenceScreen() {
         const off = saving(p.prices);
         return (
           <View key={id} style={{
-            borderRadius: 20, padding: 18, marginBottom: 12,
+            borderRadius: 4, padding: 18, marginBottom: 12,
             backgroundColor: pro ? colors.ink : colors.surface,
             borderWidth: mine ? 2 : 1, borderColor: mine ? colors.good : pro ? colors.ink : colors.line,
           }}>
@@ -241,7 +256,9 @@ export default function LicenceScreen() {
               ) : null}
             </View>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: pro ? colors.line : colors.faint, marginTop: 4 }}>{p.blurb}</Text>
-            {PLAY_BUILD ? null : (
+            {PLAY_BUILD ? null : quoted(edition) ? (
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: pro ? colors.bg : colors.ink, marginTop: 12 }}>Priced for your business</Text>
+            ) : (
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 12 }}>
                 <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: pro ? colors.bg : colors.ink, letterSpacing: -0.5 }}>{money(p.prices[term])}</Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: pro ? colors.line : colors.faint, marginBottom: 5 }}>{TERM_WORD[term]}</Text>
@@ -259,11 +276,11 @@ export default function LicenceScreen() {
             {PLAY_BUILD ? null : (
               <Pressable
                 disabled={mine}
-                onPress={() => choose(id)}
-                style={{ height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: mine ? 'transparent' : pro ? colors.bg : colors.ink, borderWidth: mine ? 1.4 : 0, borderColor: pro ? colors.bg : colors.line }}
+                onPress={() => (quoted(edition) && !mine ? contactSales(p.name) : choose(id))}
+                style={{ height: 48, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: mine ? 'transparent' : pro ? colors.bg : colors.ink, borderWidth: mine ? 1.4 : 0, borderColor: pro ? colors.bg : colors.line }}
               >
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: mine ? (pro ? colors.bg : colors.faint) : pro ? colors.ink : colors.bg }}>
-                  {mine ? 'Your current plan' : (a === 'paid' ? 'Switch to ' : 'Get ') + p.name}
+                  {mine ? 'Your current plan' : quoted(edition) ? 'Contact sales' : (a === 'paid' ? 'Switch to ' : 'Get ') + p.name}
                 </Text>
               </Pressable>
             )}
@@ -273,7 +290,7 @@ export default function LicenceScreen() {
 
       {/* ---------- side by side ---------- */}
       {cap('Starter and Pro compared')}
-      <View style={{ borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
+      <View style={{ borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
         <View style={{ flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.sunk }}>
           <Text style={{ flex: 1.4, fontFamily: fonts.uiBold, fontSize: 12, color: colors.faint }}> </Text>
           <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 12, color: colors.faint }}>STARTER</Text>
@@ -292,7 +309,7 @@ export default function LicenceScreen() {
       {PLAY_BUILD ? null : (
         <>
           {cap('How to pay')}
-          <View style={{ borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 12 }}>
+          <View style={{ borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, padding: 16, gap: 12 }}>
             {[
               ['1', 'Choose the plan and how often you pay'],
               ['2', 'Pay Genius Pro by mobile money or bank'],
@@ -306,11 +323,11 @@ export default function LicenceScreen() {
               </View>
             ))}
             <Pressable
-              onPress={() => Linking.openURL('mailto:sajobusinesssolutions@gmail.com?subject=' + encodeURIComponent(ed.name + ' plan for ' + (account?.email || '')))}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 14, borderWidth: 1.4, borderColor: colors.ink, marginTop: 4 }}
+              onPress={() => (quoted(edition) ? contactSales() : Linking.openURL('mailto:sajobusinesssolutions@gmail.com?subject=' + encodeURIComponent(ed.name + ' plan for ' + (account?.email || ''))))}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 4, borderWidth: 1.4, borderColor: colors.ink, marginTop: 4 }}
             >
               <Icon name="mail" size={16} color={colors.ink} />
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>Contact Genius Pro</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{quoted(edition) ? 'Contact sales' : 'Contact Genius Pro'}</Text>
             </Pressable>
           </View>
         </>
@@ -328,7 +345,7 @@ export default function LicenceScreen() {
         return (
           <View key={e} style={{ borderRadius: 18, padding: 16, marginBottom: 10, backgroundColor: colors.surface, borderWidth: here ? 2 : 1, borderColor: here ? colors.ink : colors.line }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name={d.icon} size={18} color={colors.ink} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -347,7 +364,7 @@ export default function LicenceScreen() {
             </View>
             {PLAY_BUILD ? null : (
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, marginTop: 10 }}>
-                From {money(d.plans.starter.prices.month)} a month
+                {quoted(e) ? 'Priced for your business · contact sales' : 'From ' + money(d.plans.starter.prices.month) + ' a month'}
               </Text>
             )}
           </View>
@@ -358,7 +375,7 @@ export default function LicenceScreen() {
       <Pressable
         disabled={busy || !account?.refresh}
         onPress={() => void checkAccount(false)}
-        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 16, backgroundColor: colors.sunk, marginTop: 14, opacity: busy || !account?.refresh ? 0.5 : 1 }}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 4, backgroundColor: colors.sunk, marginTop: 14, opacity: busy || !account?.refresh ? 0.5 : 1 }}
       >
         {busy ? <ActivityIndicator color={colors.ink} /> : <Icon name="cloud" size={17} color={colors.ink} />}
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{busy ? 'Checking…' : 'Check my plan now'}</Text>

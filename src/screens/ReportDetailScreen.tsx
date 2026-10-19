@@ -12,11 +12,13 @@ import { Pressable } from '../components/Press';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { bookForRange, needsOlder } from '../data/storage';
+import type { DB } from '../data/types';
 import { useGo } from '../nav/navigate';
 import { PLAY_BUILD } from '../data/store';
 import { canFor } from '../data/perms';
 import { mayCreate } from '../data/logic';
-import { isPremiumReport, groupOf, reportPermission } from '../data/reports';
+import { isPremiumReport, groupOf, reportPermission, earliestRead } from '../data/reports';
 import { PeriodBar, listPeriod, ListPeriod } from '../components/DocList';
 import {
   runReport, reportById, sortRows, cellText, cellTone, stockMovementDrill, inventoryMetricDrill,
@@ -137,7 +139,28 @@ export default function ReportDetailScreen() {
 
   const span = useMemo(() => ({ from: period.from, to: period.to, label: period.label }), [period]);
 
+  /* A range that starts before what the phone holds in memory is read from
+     disk (storage.ts bookForRange). Until it arrives nothing is shown, so a
+     figure is never read off the wrong book. */
+  /* what the report actually reads back to (some sample a fixed span before 'to') */
+  const readFrom = earliestRead(top ? 'drill' : detailed && DETAIL_VIEW[id] ? DETAIL_VIEW[id] : id, span.from, span.to);
+  const needOld = needsOlder(db, readFrom);
+  const [olderBook, setOlderBook] = useState<{ from: number; book: DB } | null>(null);
+  const [olderFailed, setOlderFailed] = useState(false);
+  useEffect(() => {
+    if (!db || !needOld) { setOlderBook(null); return undefined; }
+    let alive = true;
+    setOlderFailed(false);
+    bookForRange(db, readFrom)
+      .then((b) => { if (alive) setOlderBook({ from: readFrom, book: b }); })
+      .catch(() => { if (alive) setOlderFailed(true); });
+    return () => { alive = false; };
+  }, [db, needOld, readFrom]);
+  const book = needOld ? (olderBook && olderBook.from === readFrom ? olderBook.book : null) : db;
+  const readingOlder = needOld && !book && !olderFailed;
+
   const raw = useMemo<ReportResult | null>(() => {
+    const db = book;
     if (!db || !allowed) return null;
     if (top) {
       return top.kind === 'ledger' ? ledgerDrill(db, top.id, span.from, span.to)
@@ -152,7 +175,7 @@ export default function ReportDetailScreen() {
       return inventoryMetricDrill(db, id as InventoryMetricReport, drillProductId, span.from, span.to, drillMonthKey || undefined);
     }
     return runReport(db, detailed && DETAIL_VIEW[id] ? DETAIL_VIEW[id] : id, span.from, span.to, money);
-  }, [db, allowed, id, span.from, span.to, money, drillProductId, drillMonthKey, top, detailed]);
+  }, [book, allowed, id, span.from, span.to, money, drillProductId, drillMonthKey, top, detailed]);
 
   /* the columns as the owner set them for this report — on screen and in every export */
   const colKey = top ? 'drill:' + top.kind : detailed && DETAIL_VIEW[id] ? DETAIL_VIEW[id] : id;
@@ -386,7 +409,7 @@ export default function ReportDetailScreen() {
       {viewChips}
       <View style={{ flex: 1, padding: 24, justifyContent: 'center' }}>
         <View style={{ alignItems: 'center' }}>
-          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 64, height: 64, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="lock" size={28} color={colors.accent} />
           </View>
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 16, textAlign: 'center' }}>{def?.name || 'This report'} is a premium report</Text>
@@ -405,6 +428,24 @@ export default function ReportDetailScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <EmptyState icon="lock" title="This report is not open to you" subtitle={extra === 'inventory.view_profit' ? 'It shows profit, and your role cannot see profit. Ask the owner.' : extra === 'reports.money' ? 'It is a money report, and your role cannot see those. Ask the owner.' : 'Ask the owner to give your role report access.'} />
+      </View>
+    );
+  }
+
+  if (readingOlder || (needOld && olderFailed)) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }}>
+        {olderFailed ? (
+          <>
+            <EmptyState icon="alert" title="Older records could not be read" subtitle="Try again, or look at a more recent period." />
+            <Button label="Show this month" onPress={() => setPeriod(listPeriod('month'))} />
+          </>
+        ) : (
+          <>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>Reading older records…</Text>
+          </>
+        )}
       </View>
     );
   }
@@ -456,7 +497,7 @@ export default function ReportDetailScreen() {
                 accessibilityRole="switch"
                 accessibilityState={{ checked: detailed }}
                 style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 12, borderRadius: 10,
+                  flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 12, borderRadius: 4,
                   borderWidth: 1.2, borderColor: detailed ? colors.accent : colors.line, backgroundColor: detailed ? colors.accent : colors.surface,
                 }}
               >
@@ -473,8 +514,8 @@ export default function ReportDetailScreen() {
           </View>
 
           {top ? (
-            <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12, backgroundColor: colors.accentSoft }}>
-              <Pressable onPress={() => setDrill((d) => d.slice(0, -1))} hitSlop={8} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 4, backgroundColor: colors.accentSoft }}>
+              <Pressable onPress={() => setDrill((d) => d.slice(0, -1))} hitSlop={8} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="back" size={16} color={colors.accent} />
               </Pressable>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -501,7 +542,7 @@ export default function ReportDetailScreen() {
           ) : null}
 
           {isInventoryDrill ? (
-            <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 12, backgroundColor: colors.accentSoft }}>
+            <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 4, backgroundColor: colors.accentSoft }}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }} numberOfLines={1}>{drillProduct?.name}</Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.soft, marginTop: 1 }}>
@@ -685,7 +726,7 @@ export default function ReportDetailScreen() {
               accessibilityState={{ checked: c.on }}
               style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }}
             >
-              <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: c.on ? colors.ink : colors.lineHard, backgroundColor: c.on ? colors.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 1.5, borderColor: c.on ? colors.ink : colors.lineHard, backgroundColor: c.on ? colors.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                 {c.on ? <Icon name="check" size={14} color={colors.bg} /> : null}
               </View>
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: c.on ? colors.ink : colors.faint }}>{c.h}</Text>
@@ -713,7 +754,7 @@ export default function ReportDetailScreen() {
         )}
       >
         {ask !== 'preview' ? (
-          <View style={{ backgroundColor: colors.sunk, borderRadius: 10, paddingHorizontal: 12, paddingVertical: editingName ? 8 : 12, marginBottom: 6 }}>
+          <View style={{ backgroundColor: colors.sunk, borderRadius: 4, paddingHorizontal: 12, paddingVertical: editingName ? 8 : 12, marginBottom: 6 }}>
             {editingName ? (
               <Field
                 label="File name"
@@ -779,7 +820,7 @@ function DropBtn({ icon, label, onPress }: { icon: 'doc' | 'calendar' | 'filter'
       onPress={onPress}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 12,
-        borderRadius: 10, borderWidth: 1.2, borderColor: colors.line, backgroundColor: colors.surface, maxWidth: '100%',
+        borderRadius: 4, borderWidth: 1.2, borderColor: colors.line, backgroundColor: colors.surface, maxWidth: '100%',
       }}
     >
       <Icon name={icon} size={14} color={colors.accent} />
@@ -822,7 +863,7 @@ function Statement({ result, refs, onOpen }: { result: ReportResult; refs?: (Row
         </View>
       ) : null}
       {sections.map((sec, si) => (
-        <View key={si} style={{ borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
+        <View key={si} style={{ borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
           {sec.head ? (
             <Text style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6, fontFamily: fonts.uiBold, fontSize: 11.5, letterSpacing: 0.7, textTransform: 'uppercase', color: colors.accent }}>
               {cellText(sec.head[labelAt])}
@@ -850,7 +891,7 @@ function Statement({ result, refs, onOpen }: { result: ReportResult; refs?: (Row
         </View>
       ))}
       {result.foot ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 16, borderRadius: 16, backgroundColor: colors.accent }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 16, borderRadius: 4, backgroundColor: colors.accent }}>
           <Text style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 16, color: colors.accentInk }}>
             {cellText(result.foot[0])}{labelAt && cellText(result.foot[labelAt]) ? ' · ' + cellText(result.foot[labelAt]) : ''}
           </Text>

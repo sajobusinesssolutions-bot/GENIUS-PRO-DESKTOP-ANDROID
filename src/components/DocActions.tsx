@@ -12,14 +12,16 @@ import { Icon, IconName } from './icons';
 import Sheet from './Sheet';
 import { ListRow } from './kit';
 import { printDoc, shareDoc, docText, DocMeta } from '../data/docPrint';
-import { printOptsFor, docKindOf, defaultPrinter, paperOf, shareOptsFor, purposeOf, printsOf } from '../data/printSetup';
+import { printOptsFor, docKindOf, defaultPrinter, paperOf, shareOptsFor, purposeOf, printsOf, printerFor, placeOf, PHONE_DIALOG } from '../data/printSetup';
 import { printKitchenTicket } from '../data/docPrint';
 import { kitchenOf, orderTypeWord } from '../data/restaurant';
 import { reportError } from '../data/crashReporter';
 import SendSheet from './SendSheet';
 import { docMessage } from '../data/messages';
 import { PrinterError } from '../data/rawPrinter';
-import type { Sale, Purchase, Payment, Printer } from '../data/types';
+import type { Sale, Purchase, Payment, Printer, Paper } from '../data/types';
+import { Seg, ToggleRow } from './form';
+import { Button } from './ui';
 
 /** Builds the printable form of a sale, including batch and expiry per line. */
 export function useDocBuilder() {
@@ -179,7 +181,7 @@ export function DocActions({ doc, more, compact, phone, email }: {
   email?: string;
 }) {
   const { colors } = useTheme();
-  const { money, db } = useAppData();
+  const { money, db, makeDefaultPrinter, can } = useAppData();
   const { error, success } = useToast();
   const [busy, setBusy] = useState<'print' | 'share' | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -188,12 +190,28 @@ export function DocActions({ doc, more, compact, phone, email }: {
   const printers = db?.printers || [];
   const dflt = defaultPrinter(db);
 
-  async function run(what: 'print' | 'share', printer?: Printer) {
+  /* the print box: printer, paper and copies for this one print */
+  const [pick, setPick] = useState<{ id: string; paper: Paper; copies: number; keep: boolean }>({ id: '', paper: '80mm', copies: 1, keep: false });
+  function openChooser() {
+    // the printer set up for this document comes first: the kitchen for an order, the desk for a bill
+    const p = printerFor(db, purposeOf(doc())) || dflt || printers[0];
+    setPick({ id: p?.id || '', paper: p ? paperOf(p) : 'A4', copies: Math.max(1, db?.printer?.copies || 1), keep: false });
+    setChoosing(true);
+  }
+
+  async function run(what: 'print' | 'share', printer?: Printer, extra?: { paper?: Paper; copies?: number }) {
     setBusy(what);
     try {
       const d = doc();
-      const opts = printOptsFor(db, d.docKind || docKindOf(d.kind), printer, purposeOf(d));
-      if (what === 'print') await printDoc(d, money, opts);
+      let opts = printOptsFor(db, d.docKind || docKindOf(d.kind), printer, purposeOf(d));
+      if (extra?.paper) {
+        /* a roll printer cannot print a page: an A4 copy goes through the print dialog */
+        const roll = opts.printer && (opts.printer.kind === 'bluetooth' || opts.printer.kind === 'wifi');
+        opts = { ...opts, paper: extra.paper, printer: extra.paper === 'A4' && roll ? undefined : opts.printer };
+      }
+      const copies = Math.max(1, Math.min(5, extra?.copies || 1));
+      if (what === 'print' && extra?.copies && opts.tpl) opts = { ...opts, tpl: { ...opts.tpl, copies } };
+      if (what === 'print') { for (let i = 0; i < (extra?.copies && !opts.tpl ? copies : 1); i++) await printDoc(d, money, opts); }
       else {
         // a shared copy is A4 unless it is a receipt for a roll
         const ok = await shareDoc(d, money, shareOptsFor(db, d.docKind || docKindOf(d.kind)));
@@ -241,7 +259,8 @@ export function DocActions({ doc, more, compact, phone, email }: {
   return (
     <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        {btn('print', () => run('print'), busy === 'print', colors.accent, 'Print')}
+        {/* Print always asks where, and on what paper, first */}
+        {btn('print', openChooser, busy === 'print', colors.accent, 'Print')}
         {btn('swap', () => run('share'), busy === 'share', colors.good, 'Share')}
         {btn('dots', () => setMoreOpen(true), false, undefined, 'More options')}
       </View>
@@ -260,7 +279,7 @@ export function DocActions({ doc, more, compact, phone, email }: {
           tone="accent"
           title="Print on another printer"
           subtitle={dflt ? 'Now goes to ' + dflt.name + ' · ' + paperOf(dflt) : 'Choose the printer and paper'}
-          onPress={() => { setMoreOpen(false); setChoosing(true); }}
+          onPress={() => { setMoreOpen(false); openChooser(); }}
         />
         {printers.some((p) => printsOf(p).includes('order')) && ['invoice', 'receipt'].includes(doc().docKind || docKindOf(doc().kind)) ? (
           <ListRow
@@ -302,23 +321,54 @@ export function DocActions({ doc, more, compact, phone, email }: {
         text={sending ? docMessage(sending, money) : ''}
       />
 
-      <Sheet visible={choosing} title="Print on" icon="print" onClose={() => setChoosing(false)}>
+      <Sheet visible={choosing} title="Print" icon="print" onClose={() => setChoosing(false)}>
         {printers.map((p) => (
           <ListRow
             key={p.id}
             card
-            icon="print"
-            tone={p.dflt ? 'accent' : 'neutral'}
+            icon={pick.id === p.id ? 'check' : 'print'}
+            tone={pick.id === p.id ? 'accent' : 'neutral'}
             title={p.name + (p.dflt ? ' · default' : '')}
-            subtitle={paperOf(p) + (paperOf(p) === 'A4' ? ' page' : ' roll') + (p.note ? ' · ' + p.note : '')}
-            onPress={() => { setChoosing(false); void run('print', p); }}
+            subtitle={(placeOf(p) ? placeOf(p) + ' · ' : '') + paperOf(p) + (paperOf(p) === 'A4' ? ' page' : ' roll') + (printsOf(p).includes('order') ? ' · kitchen orders' : '') + (p.note ? ' · ' + p.note : '')}
+            onPress={() => setPick((x) => ({ ...x, id: p.id, paper: paperOf(p) }))}
           />
         ))}
+        <ListRow
+          card
+          icon={pick.id === PHONE_DIALOG.id || !printers.length ? 'check' : 'doc'}
+          tone={pick.id === PHONE_DIALOG.id || !printers.length ? 'accent' : 'neutral'}
+          title={PHONE_DIALOG.name}
+          subtitle="Any printer the phone knows, or save the page as a PDF"
+          onPress={() => setPick((x) => ({ ...x, id: PHONE_DIALOG.id, paper: 'A4' }))}
+        />
         {!printers.length ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, paddingVertical: 12 }}>
-            No printers are set up. Add them under Settings, Printing.
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, paddingVertical: 8 }}>
+            No printers are set up yet. Add the cashier desk, kitchen or bar printers under Settings, Printing.
           </Text>
         ) : null}
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft, marginTop: 14, marginBottom: 6 }}>Paper</Text>
+        <Seg<Paper> value={pick.paper} onChange={(v) => setPick((x) => ({ ...x, paper: v }))}
+          options={[{ v: 'A4', l: 'A4 page' }, { v: '80mm', l: '80 mm roll' }, { v: '58mm', l: '58 mm roll' }]} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft }}>Copies</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {btn('down', () => setPick((x) => ({ ...x, copies: Math.max(1, x.copies - 1) })), false, undefined, 'One fewer copy')}
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink, minWidth: 24, textAlign: 'center' }}>{pick.copies}</Text>
+            {btn('plus', () => setPick((x) => ({ ...x, copies: Math.min(5, x.copies + 1) })), false, undefined, 'One more copy')}
+          </View>
+        </View>
+        {printers.length > 1 && can('settings.printing') ? (
+          <ToggleRow bare label="Make this the default printer" on={pick.keep} onChange={(v) => setPick((x) => ({ ...x, keep: v }))} />
+        ) : null}
+        <View style={{ marginTop: 14 }}>
+          <Button variant="pri" label={pick.copies > 1 ? 'Print ' + pick.copies + ' copies' : 'Print'} icon={<Icon name="print" size={17} color={colors.accentInk} />}
+            onPress={() => {
+              const p = pick.id === PHONE_DIALOG.id || !pick.id ? PHONE_DIALOG : printers.find((x) => x.id === pick.id);
+              setChoosing(false);
+              if (pick.keep && p && p !== PHONE_DIALOG && !p.dflt) { try { makeDefaultPrinter(p.id); } catch { /* no right to change it */ } }
+              void run('print', p, { paper: pick.paper, copies: pick.copies });
+            }} />
+        </View>
       </Sheet>
     </>
   );

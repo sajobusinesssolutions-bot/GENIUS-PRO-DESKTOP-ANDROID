@@ -346,7 +346,7 @@ export function BranchesScreen() {
                   borderBottomWidth: i === branches.length - 1 ? 0 : 1, borderColor: colors.line, opacity: off ? 0.6 : 1,
                 }}
               >
-                <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: off ? colors.sunk : here ? colors.goodSoft : colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: off ? colors.sunk : here ? colors.goodSoft : colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name="home" size={20} color={ink} weight="duotone" />
                   <View style={{ position: 'absolute', right: -2, bottom: -2, width: 11, height: 11, borderRadius: 4, backgroundColor: branchColor(i, off), borderWidth: 2, borderColor: colors.surface }} />
                 </View>
@@ -375,7 +375,7 @@ export function BranchesScreen() {
                 const off = b.active === false;
                 return (
                   <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingLeft: 16, paddingRight: 14, borderBottomWidth: i === others.length - 1 ? 0 : 1, borderColor: colors.line, opacity: off ? 0.6 : 1 }}>
-                    <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: off ? colors.sunk : colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: off ? colors.sunk : colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
                       <Icon name="factory" size={20} color={ink} weight="duotone" />
                       <View style={{ position: 'absolute', right: -2, bottom: -2, width: 11, height: 11, borderRadius: 4, backgroundColor: branchColor(branches.length + i, off), borderWidth: 2, borderColor: colors.surface }} />
                     </View>
@@ -385,7 +385,7 @@ export function BranchesScreen() {
                     </View>
                     <Pressable
                       onPress={() => go('Businesses')}
-                      style={{ height: 36, paddingHorizontal: 13, borderRadius: 10, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                      style={{ height: 36, paddingHorizontal: 13, borderRadius: 4, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                     >
                       <Icon name="swap" size={14} color={ink} />
                       <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Open</Text>
@@ -486,7 +486,7 @@ export function BranchDetailScreen() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
         <Panel>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-            <View style={{ width: 46, height: 46, borderRadius: 15, backgroundColor: off ? colors.sunk : here ? colors.goodSoft : colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 46, height: 46, borderRadius: 4, backgroundColor: off ? colors.sunk : here ? colors.goodSoft : colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="home" size={21} color={ink} weight="duotone" />
             </View>
             <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
@@ -760,7 +760,7 @@ export function BranchAnalysisScreen() {
             <Panel flush>
               {insights.map((x, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: i === insights.length - 1 ? 0 : 1, borderColor: colors.line }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: toneColor[x.tone][0], alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: toneColor[x.tone][0], alignItems: 'center', justifyContent: 'center' }}>
                     <Icon name={x.icon} size={18} color={ink} />
                   </View>
                   <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, lineHeight: 19, color: colors.ink }}>{x.text}</Text>

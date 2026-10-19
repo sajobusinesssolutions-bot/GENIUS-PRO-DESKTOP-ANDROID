@@ -9,12 +9,20 @@
  * loss, and tells the operator again once writes recover.
  */
 import { useEffect, useRef } from 'react';
-import { onSaveStatus, currentSaveStatus } from './storage';
+import { onSaveStatus, currentSaveStatus, oldBookUnreadable } from './storage';
 import { useToast } from '../components/Toast';
 
 export default function StorageKeeper() {
   const { error: toastError, success: toastSuccess } = useToast();
   const wasFailing = useRef(currentSaveStatus() === 'failing');
+  /* The books saved the old way were too large for Android to read back.
+     They are not lost from the cloud: say so plainly instead of letting the
+     phone look like a new shop. */
+  useEffect(() => {
+    if (oldBookUnreadable()) {
+      toastError('The books saved on this phone earlier are too large to open. Sign in with the business account to bring them back from the cloud.');
+    }
+  }, [toastError]);
 
   useEffect(() => onSaveStatus((status) => {
     if (status === 'failing' && !wasFailing.current) {

@@ -54,3 +54,6 @@ build*.log
 
 .claude/
 CLAUDE.md
+
+# Release signing key and passwords (copied into android/ by plugins/withReleaseSigning.js)
+credentials/

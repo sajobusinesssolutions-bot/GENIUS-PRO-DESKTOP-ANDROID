@@ -31,11 +31,11 @@ export function ToolCard({ icon, tone = 'accent', title, sub, action, border, ch
   const t = useToneColors(tone);
   return (
     <View style={{
-      backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1.2, borderColor: border || colors.line,
+      backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1.2, borderColor: border || colors.line,
       padding: 18, marginBottom: 16,
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 48, height: 48, borderRadius: 4, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name={icon} size={23} color={t.fg} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>

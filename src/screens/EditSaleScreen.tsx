@@ -91,7 +91,7 @@ export default function EditSaleScreen({ route, navigation }: Props) {
         <View style={{ height: 16 }} />
         <Panel>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-            <View style={{ width: 48, height: 48, borderRadius: 15, backgroundColor: colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 48, height: 48, borderRadius: 4, backgroundColor: colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="pencil" size={22} color={colors.warn} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -116,12 +116,12 @@ export default function EditSaleScreen({ route, navigation }: Props) {
           <View
             key={l.productId + '-' + i}
             style={{
-              backgroundColor: colors.surface, borderRadius: 16, padding: 14, marginBottom: 10,
+              backgroundColor: colors.surface, borderRadius: 4, padding: 14, marginBottom: 10,
               shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 38, height: 38, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>{i + 1}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -149,7 +149,7 @@ export default function EditSaleScreen({ route, navigation }: Props) {
               </Pressable>
               <Pressable
                 onPress={() => setQty(l.productId, 0)}
-                style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}
               >
                 <Icon name="trash" size={17} color={colors.danger} />
               </Pressable>
@@ -243,5 +243,5 @@ function linesChanged(before: SaleLine[], after: SaleLine[]) {
 }
 
 function stepper(colors: any) {
-  return { width: 36, height: 36, borderRadius: 12, borderWidth: 1.4, borderColor: colors.line, alignItems: 'center' as const, justifyContent: 'center' as const };
+  return { width: 36, height: 36, borderRadius: 4, borderWidth: 1.4, borderColor: colors.line, alignItems: 'center' as const, justifyContent: 'center' as const };
 }
