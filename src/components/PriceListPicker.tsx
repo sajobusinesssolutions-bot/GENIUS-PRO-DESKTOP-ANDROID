@@ -30,7 +30,7 @@ export default function PriceListPicker({ value, onChange, style }: {
       <Pressable
         key={id || 'standard'}
         onPress={() => { onChange(id); setOpen(false); }}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 8, borderRadius: 14, borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 8, borderRadius: 4, borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}
       >
         <Icon name="coins" size={18} color={on ? colors.accent : colors.ink} />
         <View style={{ flex: 1, minWidth: 0 }}>

@@ -109,7 +109,7 @@ async function spendCode(email, purpose, code) {
 
 /** Which kind of code is being asked for; anything unknown is a sign-up code. */
 function purposeOf(p) {
-  return p === 'reset' || p === 'pin' || p === 'delete' ? p : 'signup';
+  return p === 'reset' || p === 'pin' || p === 'delete' || p === 'signout' ? p : 'signup';
 }
 
 export default async function authRoutes(app) {
@@ -192,6 +192,29 @@ export default async function authRoutes(app) {
           : 'That code is not right, and there are no attempts left. Ask for a new code.');
     }
     return { ok: true };
+  });
+
+  /* --- sign this device out, with the emailed code ----------------------- */
+  /*
+   * As on the desktop: a phone left at the counter cannot sign the shop out on
+   * its own. The code goes to the account's email; when it is right, this
+   * session ends on the server too, so a copied refresh token stops working.
+   */
+  app.post('/v1/auth/signout', async (req, reply) => {
+    let claims;
+    try {
+      claims = await readAccess(String(req.headers.authorization || '').replace(/^Bearer /, ''));
+    } catch {
+      return fail(reply, 401, 'badCredentials', 'Sign in again.');
+    }
+    const { rows } = await q('select email from accounts where id = $1', [claims.sub]);
+    if (!rows[0]) return fail(reply, 401, 'badCredentials', 'Sign in again.');
+    const why = await spendCode(rows[0].email, 'signout', String(req.body?.code || ''));
+    if (why === 'codeExpired') return fail(reply, 400, why, 'That code has expired. Ask for a new one.');
+    if (why === 'rateLimited') return fail(reply, 429, why, 'Too many attempts. Ask for a new code.');
+    if (why) return fail(reply, 400, 'badCode', 'That code is not right.');
+    if (claims.sid) await q('update sessions set revoked_at = now() where id = $1 and revoked_at is null', [claims.sid]);
+    return { signedOut: true };
   });
 
   /* --- create the account --------------------------------------------- */

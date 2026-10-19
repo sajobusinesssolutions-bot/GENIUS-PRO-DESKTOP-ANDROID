@@ -495,7 +495,7 @@ export function MultiSelectField({ label, value, options, onChange, style, icon,
                   backgroundColor: on ? colors.accentSoft : colors.surface,
                 }}
               >
-                <View style={{ width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: on ? colors.accent : colors.lineHard, backgroundColor: on ? colors.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: on ? colors.accent : colors.lineHard, backgroundColor: on ? colors.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                   {on ? <Icon name="check" size={12} color={colors.accentInk} /> : null}
                 </View>
                 <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{o.l}</Text>
@@ -634,7 +634,7 @@ export function Checkbox({ on, onPress, size = 19 }: { on: boolean; onPress?: ()
       onPress={onPress}
       hitSlop={6}
       style={{
-        width: size, height: size, borderRadius: 6, borderWidth: 1.6,
+        width: size, height: size, borderRadius: 4, borderWidth: 1.6,
         borderColor: on ? colors.accent : colors.lineHard,
         backgroundColor: on ? colors.accent : 'transparent',
         alignItems: 'center', justifyContent: 'center',
@@ -652,7 +652,7 @@ export function Swatch({ color, on, onPress }: { color: string; on: boolean; onP
     <Tap feel="soft"
       onPress={onPress}
       style={{
-        width: 34, height: 34, borderRadius: 10,
+        width: 34, height: 34, borderRadius: 4,
         backgroundColor: color || colors.sunk,
         borderWidth: on ? 2.5 : 1,
         borderColor: on ? colors.ink : colors.line,
@@ -700,7 +700,7 @@ function RowTile({ icon, danger }: { icon?: IconName; danger?: boolean }) {
   if (!icon) return null;
   return (
     <View style={{
-      width: ROW.tile, height: ROW.tile, borderRadius: 11,
+      width: ROW.tile, height: ROW.tile, borderRadius: 4,
       backgroundColor: danger ? colors.dangerSoft : colors.sunk, alignItems: 'center', justifyContent: 'center',
     }}>
       <Icon name={icon} size={18} color={danger ? colors.danger : colors.ink} />

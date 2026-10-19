@@ -16,6 +16,7 @@ import { requestSync } from '../data/SyncKeeper';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useBookFrom } from '../data/useBookFrom';
 import { canFor } from '../data/perms';
 import { Empty, Search, FAB, Button, SelectField, useHideOnScroll, FAB_COLORS } from '../components/ui';
 import { AppBar } from '../components/AppBar';
@@ -131,6 +132,8 @@ export default function SalesListScreen({ navigation }: Props) {
   const [partyFilter, setPartyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [period, setPeriod] = useState('month');
+  /* the period read from disk when it starts before what is in memory */
+  const { book: listBook } = useBookFrom(db, Date.parse(from));
   const [refreshing, setRefreshing] = useState(false);
   const fab = useHideOnScroll();
   async function refresh() {
@@ -163,6 +166,7 @@ export default function SalesListScreen({ navigation }: Props) {
   const phoneOf = (id: string | null | undefined) => (id ? party(id)?.phone : undefined);
 
   const rows = useMemo<Row[]>(() => {
+    const db = listBook;
     if (!db) return [];
     const out: Row[] = [];
 
@@ -379,7 +383,7 @@ export default function SalesListScreen({ navigation }: Props) {
 
     out.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
     return out;
-  }, [db, colors, navigation, saleDoc, paymentDoc]);
+  }, [listBook, colors, navigation, saleDoc, paymentDoc]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -451,7 +455,7 @@ export default function SalesListScreen({ navigation }: Props) {
       {/* the period's takings and what is still owed on them — each only for roles allowed to see it */}
       {showTotals || showBalances ? (
       <View style={{
-        flexDirection: 'row', borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden',
+        flexDirection: 'row', borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden',
       }}>
         {showTotals ? (
         <View style={{ flex: 1, padding: 14, gap: 4 }}>
@@ -484,7 +488,7 @@ export default function SalesListScreen({ navigation }: Props) {
           onPress={() => setFiltersOpen(true)}
           accessibilityLabel="Filters"
           style={{
-            width: 56, height: 56, marginTop: 6, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+            width: 56, height: 56, marginTop: 6, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
             backgroundColor: active.length ? colors.accent : colors.surface, borderWidth: 1.4, borderColor: active.length ? colors.accent : colors.line,
           }}
         >
@@ -603,7 +607,7 @@ export default function SalesListScreen({ navigation }: Props) {
               <Pressable
                 key={w}
                 onPress={() => setDatePick(w)}
-                style={{ flex: 1, height: 48, borderRadius: 12, borderWidth: 1.4, borderColor: colors.line, backgroundColor: colors.surface, paddingHorizontal: 12, justifyContent: 'center' }}
+                style={{ flex: 1, height: 48, borderRadius: 4, borderWidth: 1.4, borderColor: colors.line, backgroundColor: colors.surface, paddingHorizontal: 12, justifyContent: 'center' }}
               >
                 <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{w === 'from' ? 'From' : 'To'}</Text>
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
@@ -661,7 +665,7 @@ export default function SalesListScreen({ navigation }: Props) {
         onClose={closeMenu}
       >
         {menu && confirm && menu.remove ? (
-          <View style={{ backgroundColor: colors.dangerSoft, borderRadius: 14, padding: 14 }}>
+          <View style={{ backgroundColor: colors.dangerSoft, borderRadius: 4, padding: 14 }}>
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.danger }}>{menu.remove.label}?</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft, marginTop: 4 }}>{menu.remove.text}</Text>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
@@ -743,7 +747,7 @@ function TxnRow({ r, money, tone, onPrint, onShare, onMore }: {
       onPress={onPress}
       hitSlop={4}
       accessibilityLabel={label}
-      style={({ pressed }) => ({ width: 38, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : 'transparent' })}
+      style={({ pressed }) => ({ width: 38, height: 36, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : 'transparent' })}
     >
       <Icon name={name} size={19} color={colors.faint} />
     </Pressable>
@@ -753,7 +757,7 @@ function TxnRow({ r, money, tone, onPrint, onShare, onMore }: {
       onPress={r.open}
       disabled={!r.open}
       style={({ pressed }) => ({
-        marginHorizontal: 16, marginBottom: 10, borderRadius: 16,
+        marginHorizontal: 16, marginBottom: 10, borderRadius: 4,
         paddingTop: 14, paddingBottom: 8, paddingHorizontal: 16,
         backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line, opacity: r.dim ? 0.55 : 1,
       })}
@@ -774,7 +778,7 @@ function TxnRow({ r, money, tone, onPrint, onShare, onMore }: {
           <Text style={{ fontFamily: fonts.uiSemi, color: r.labelColor }}>{r.label}</Text>
           {'  ·  #' + r.ref + '  ·  ' + when}
         </Text>
-        <View style={{ paddingVertical: 3, paddingHorizontal: 9, borderRadius: 7, backgroundColor: tone.bg }}>
+        <View style={{ paddingVertical: 3, paddingHorizontal: 9, borderRadius: 4, backgroundColor: tone.bg }}>
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.6, color: tone.fg }}>{r.badge.label.toUpperCase()}</Text>
         </View>
       </View>

@@ -421,17 +421,17 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         borderColor: colors.line, backgroundColor: colors.surface,
       }}>
         {photo ? (
-          <Image source={{ uri: photo }} style={{ width: 44, height: 44, borderRadius: 9 }} />
+          <Image source={{ uri: photo }} style={{ width: 44, height: 44, borderRadius: 4 }} />
         ) : null}
         <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15, color: photo ? colors.ink : colors.faint }}>
           {photo ? 'Photo added' : 'Photo'}
         </Text>
         <Pressable onPress={() => void takePhoto()} accessibilityLabel="Take a photo" hitSlop={4}
-          style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.accentSoft : 'transparent' })}>
+          style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.accentSoft : 'transparent' })}>
           <Icon name="camera" size={20} color={colors.accent} />
         </Pressable>
         <Pressable onPress={() => void pickPhoto()} accessibilityLabel="Choose from the gallery" hitSlop={4}
-          style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.accentSoft : 'transparent' })}>
+          style={({ pressed }) => ({ width: 42, height: 42, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.accentSoft : 'transparent' })}>
           <Icon name="image" size={20} color={colors.accent} />
         </Pressable>
         {photo ? (
@@ -467,7 +467,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
                   onPress={() => addBarcode(makeBarcode())}
                   accessibilityLabel="Create a barcode"
                   style={({ pressed }) => ({
-                    paddingHorizontal: 11, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                    paddingHorizontal: 11, height: 38, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
                     flexDirection: 'row', gap: 5, backgroundColor: pressed ? colors.accent : colors.accentSoft,
                   })}
                 >
@@ -478,7 +478,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
                   onPress={() => setScanOpen(true)}
                   accessibilityLabel="Scan a barcode"
                   style={({ pressed }) => ({
-                    width: 40, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                    width: 40, height: 38, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
                     backgroundColor: pressed ? colors.accentSoft : 'transparent',
                   })}
                 >

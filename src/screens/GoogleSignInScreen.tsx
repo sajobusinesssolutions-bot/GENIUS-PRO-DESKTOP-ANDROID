@@ -161,7 +161,7 @@ export default function GoogleSignInScreen({ navigation }: Props) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
         <View style={{
-          width: 52, height: 52, borderRadius: 17, backgroundColor: colors.rail,
+          width: 52, height: 52, borderRadius: 4, backgroundColor: colors.rail,
           alignItems: 'center', justifyContent: 'center', marginBottom: 16,
         }}>
           <Icon name="cloud" size={26} color="#fff" />

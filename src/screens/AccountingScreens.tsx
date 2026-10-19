@@ -152,13 +152,13 @@ function ChartOfAccountsScreenBody() {
               onPress={() => go('LedgerDetail', { ledgerId: l.id })}
               onLongPress={() => setEditing(l)}
               style={{
-                backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 14,
+                backgroundColor: colors.surface, borderRadius: 4, paddingHorizontal: 15, paddingVertical: 14,
                 marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12,
                 opacity: l.active ? 1 : 0.55,
                 shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
               }}
             >
-              <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 44, height: 44, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name={TYPE_ICON[l.type]} size={20} color={fg} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -357,13 +357,13 @@ function LedgerDetailScreenBody({ route, navigation }: LedgerProps) {
         renderItem={({ item }) => (
           <View
             style={{
-              backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 13,
+              backgroundColor: colors.surface, borderRadius: 4, paddingHorizontal: 15, paddingVertical: 13,
               marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12,
               shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
             }}
           >
             <View style={{
-              width: 40, height: 40, borderRadius: 13,
+              width: 40, height: 40, borderRadius: 4,
               backgroundColor: item.dr ? colors.accentSoft : colors.warnSoft,
               alignItems: 'center', justifyContent: 'center',
             }}>
@@ -504,8 +504,8 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
         {mode === 'simple' ? (
           <>
             {/* the two sides of the entry, both in view and both changeable */}
-            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 12, marginBottom: 10 }}>
-              <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 12, padding: 3, marginBottom: 6 }}>
+            <View style={{ borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 12, marginBottom: 10 }}>
+              <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 4, padding: 3, marginBottom: 6 }}>
                 {([
                   { v: 'debit' as const, l: 'Debit', tint: colors.accent },
                   { v: 'credit' as const, l: 'Credit', tint: colors.warn },
@@ -515,7 +515,7 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
                     <Pressable
                       key={o.v}
                       onPress={() => setSide(o.v)}
-                      style={{ flex: 1, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? colors.surface : 'transparent' }}
+                      style={{ flex: 1, height: 36, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? colors.surface : 'transparent' }}
                     >
                       <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? o.tint : colors.faint }}>{o.l}</Text>
                     </Pressable>
@@ -556,7 +556,7 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
             <Field label="Notes (optional)" value={notes} onChangeText={setNotes} multiline style={{ marginBottom: 10 }} />
 
             {simpleReady ? (
-              <View style={{ borderRadius: 14, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
+              <View style={{ borderRadius: 4, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
                 <PostLine dr label={(side === 'debit' ? chosen : against)?.name || ''} value={money(amt)} />
                 <PostLine label={(side === 'debit' ? against : chosen)?.name || ''} value={money(amt)} />
               </View>
@@ -576,13 +576,13 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
             </SectionLabel>
 
             {lines.map((l, i) => (
-              <View key={i} style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 10, marginBottom: 8 }}>
+              <View key={i} style={{ borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 10, marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <View style={{ flex: 1 }}>
                     <LedgerPicker compact label={'Line ' + (i + 1)} value={l.acc} onChange={(v) => patch(i, { acc: v })} canCreate showBalance style={{ marginBottom: 0 }} />
                   </View>
                   {lines.length > 2 ? (
-                    <Pressable onPress={() => setLines(lines.filter((_, x) => x !== i))} hitSlop={8} style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center', marginTop: 6 }}>
+                    <Pressable onPress={() => setLines(lines.filter((_, x) => x !== i))} hitSlop={8} style={{ width: 34, height: 34, borderRadius: 4, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center', marginTop: 6 }}>
                       <Icon name="trash" size={15} color={colors.danger} />
                     </Pressable>
                   ) : null}
@@ -602,7 +602,7 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>Add a line</Text>
             </Pressable>
 
-            <View style={{ borderRadius: 14, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
+            <View style={{ borderRadius: 4, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
               <View style={{ flexDirection: 'row' }}>
                 <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft }}>Debits · credits</Text>
                 <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: colors.ink }}>{money(totalDr)} · {money(totalCr)}</Text>

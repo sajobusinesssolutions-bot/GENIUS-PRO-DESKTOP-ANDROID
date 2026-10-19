@@ -161,7 +161,9 @@ export function licenceFromToken(
     reason: '',
     offlineSince: '',
     licence: {
-      no: claims.jti,
+      // The account's own number, not the token's: a fresh token comes with every
+      // licence check, so its id changed on screen about once a minute.
+      no: 'GP-' + String(claims.sub || claims.jti).replace(/[^0-9a-zA-Z]/g, '').slice(0, 8).toUpperCase(),
       plan: claims.plan,
       edition: claims.edition || 'retail',
       maxBusinesses: claims.maxBusinesses,

@@ -71,7 +71,7 @@ function StateCard({ tone, cap, headline, note, icon, busy, children }: {
     <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
       <Panel style={{ borderWidth: 1.5, borderColor: bg }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-          <View style={{ width: 52, height: 52, borderRadius: 17, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 52, height: 52, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
             {busy ? <ActivityIndicator color={fg} /> : <Icon name={icon} size={25} color={fg} />}
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -92,7 +92,7 @@ function GuardCard({ tone, title, note }: { tone: Tone; title: string; note: str
   const [bg, fg] = toneColors(colors, tone);
   return (
     <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 11, backgroundColor: bg, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 11, backgroundColor: bg, borderRadius: 4, paddingVertical: 14, paddingHorizontal: 14 }}>
         <Icon name="alert" size={18} color={fg} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>{title}</Text>
@@ -184,7 +184,7 @@ function ProWall({ what, blurb }: { what: string; blurb: string }) {
   const go = useGo();
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingTop: 18 }}>
-      <View style={{ backgroundColor: colors.accentSoft, borderRadius: 13, padding: 18, alignItems: 'center' }}>
+      <View style={{ backgroundColor: colors.accentSoft, borderRadius: 4, padding: 18, alignItems: 'center' }}>
         <Icon name="lock" size={26} color={colors.accent} />
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginTop: 8, textAlign: 'center' }}>{what} is on Pro</Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.soft, marginTop: 4, textAlign: 'center' }}>{blurb}</Text>
@@ -228,7 +228,7 @@ export function LicenceStopScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingTop: 22 }}>
-      <View style={{ backgroundColor: colors.dangerSoft, borderRadius: 13, padding: 20, alignItems: 'center' }}>
+      <View style={{ backgroundColor: colors.dangerSoft, borderRadius: 4, padding: 20, alignItems: 'center' }}>
         <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="lock" size={26} color={colors.danger} />
         </View>
@@ -277,7 +277,7 @@ export function OnlineScreen() {
   if (!licFeature('sync')) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingTop: 18 }}>
-        <View style={{ backgroundColor: colors.accentSoft, borderRadius: 13, padding: 18, alignItems: 'center' }}>
+        <View style={{ backgroundColor: colors.accentSoft, borderRadius: 4, padding: 18, alignItems: 'center' }}>
           <Icon name="cloud" size={26} color={colors.accent} />
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginTop: 8 }}>Online mode needs Pro</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.soft, marginTop: 4, textAlign: 'center' }}>
@@ -526,7 +526,7 @@ export function AboutScreen() {
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>Version {BUILD}</Text>
       </View>
 
-      <View style={{ backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
+      <View style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
         {row('gift', plan.name, plan.left, () => go('Licence'), tone)}
         {row('bulb', 'Help & FAQs', '', () => go('Faq'))}
         {row('doc', 'Terms and conditions', '', () => go('Legal', { doc: 'terms' }))}

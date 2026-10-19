@@ -30,7 +30,7 @@ export function DateRangeButton({ value, onChange }: { value: DateRange; onChang
         onPress={() => { setFrom(value.from); setPicking('from'); }}
         accessibilityLabel={'Dates: ' + value.label}
         style={({ pressed }) => ({
-          flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, paddingHorizontal: 14, borderRadius: 12,
+          flexDirection: 'row', alignItems: 'center', gap: 10, height: 46, paddingHorizontal: 14, borderRadius: 4,
           borderWidth: 1.2, borderColor: colors.line, backgroundColor: pressed ? colors.sunk : colors.surface,
         })}
       >

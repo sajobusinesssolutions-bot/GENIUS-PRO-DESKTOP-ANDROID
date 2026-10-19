@@ -380,7 +380,13 @@ function inventoryMetricSnapshot(
   const historicalOpening = stockOf(product) - all.reduce((sum, m) => sum + m.qty, 0);
   let running = historicalOpening;
   const firstMovement = all[0];
-  const startsUnavailable = running < 0 || (!firstMovement && running === 0) || (running === 0 && firstMovement && firstMovement.qty < 0);
+  /* With only recent trade in memory, an item that moved before the window
+     enters it with history: empty then means a stock-out already running,
+     exactly as the full movement history would show. */
+  const moved = (db as unknown as { __window?: { movedBefore?: string[] } }).__window?.movedBefore;
+  const hadHistory = !!moved && moved.includes(product.id);
+  const startsUnavailable = hadHistory ? running <= 0
+    : running < 0 || (!firstMovement && running === 0) || (running === 0 && firstMovement && firstMovement.qty < 0);
   let stockoutFrom: number | null = startsUnavailable ? periodFrom : null;
   const intervals: StockoutInterval[] = [];
   all.forEach((m) => {
@@ -445,6 +451,19 @@ function aawcSample(from: number, to: number): { from: number; to: number } {
   const sampleTo = to || Date.now();
   const sampleFrom = startOfDay(sampleTo - (56 - 1) * 86400000);
   return { from: sampleFrom, to: sampleTo };
+}
+
+/**
+ * The earliest moment a report reads, which is not always its `from`: the
+ * adjusted consumption reports sample a fixed 90 or 56 days ending at `to`.
+ * The phone uses this to decide whether older records must be read from disk
+ * (storage.ts bookForRange). 0 means it reads from the very beginning.
+ */
+export function earliestRead(id: string, from: number, to: number): number {
+  if (!from) return 0;
+  if (id === 'aamc') return Math.min(from, aamcSample(from, to).from);
+  if (id === 'aawc') return Math.min(from, aawcSample(from, to).from);
+  return from;
 }
 
 export function inventoryMetricDrill(
@@ -819,6 +838,29 @@ function orderedLedgerIds(db: DB): string[] {
 }
 
 /** Reference partyLedgerRows(), 1070. */
+/** Totals of a party's older trade left on disk when the book is loaded with a window (store/bookstore.ts). */
+function windowTotals(db: DB, partyId: string): Record<string, number> | null {
+  const w = (db as unknown as { __window?: { parties?: Record<string, Record<string, number>> } }).__window;
+  return (w && w.parties && w.parties[partyId]) || null;
+}
+function windowStart(db: DB): string {
+  return ((db as unknown as { __window?: { sinceDay?: string } }).__window || {}).sinceDay || '1970-01-01';
+}
+
+/**
+ * A party's older sales, purchases and payments left on disk, as one ledger
+ * line (debit and credit, as the party ledger counts them). `null` when the
+ * whole book is in memory or the party had nothing older.
+ */
+export function broughtForward(db: DB, partyId: string): { ts: string; debit: number; credit: number } | null {
+  const c = windowTotals(db, partyId);
+  if (!c) return null;
+  const debit = (c.salesTotal || 0) + (c.purPaidThen || 0) + (c.payOut || 0);
+  const credit = (c.salesPaidThen || 0) + (c.purTotal || 0) + (c.payIn || 0);
+  if (!debit && !credit) return null;
+  return { ts: new Date(Date.parse(windowStart(db) + 'T00:00:00') - 1).toISOString(), debit, credit };
+}
+
 function partyLedgerRows(db: DB, id: string): LedgerRow[] {
   const rows: LedgerRow[] = [];
   const p = db.parties.find((x) => x.id === id);
@@ -826,6 +868,10 @@ function partyLedgerRows(db: DB, id: string): LedgerRow[] {
   if (p && p.openingBalance) {
     rows.push({ ts: new Date(0).toISOString(), memo: 'Opening balance', debit: Math.max(0, p.openingBalance), credit: Math.max(0, -p.openingBalance), balance: 0 });
   }
+  /* With only recent trade in memory, everything older arrives as one line:
+     the same debits and credits the older sales, purchases and payments add. */
+  const carried = broughtForward(db, id);
+  if (carried) rows.push({ ...carried, memo: 'Brought forward', balance: 0 });
   db.sales.forEach((s) => {
     if (s.partyId === id && s.status !== 'void') {
       rows.push({ ts: s.ts, memo: 'Sale ' + s.no, debit: s.total, credit: 0, balance: 0, ref: { kind: 'sale', id: s.id } });
@@ -1756,7 +1802,8 @@ RPT['quote-details'] = (db, from, to) => {
 RPT['customer-balance-summary'] = (db) => {
   const rows: Cell[][] = db.parties.filter((p) => p.type === 'customer' && p.active)
     .map((p) => {
-      let inv = 0; let paid = 0;
+      const older = windowTotals(db, p.id);
+      let inv = older ? older.salesTotal || 0 : 0; let paid = older ? older.salesPaid || 0 : 0;
       db.sales.forEach((s) => {
         if (s.partyId === p.id && s.status !== 'void') { inv += s.total; paid += s.paid; }
       });
@@ -1819,7 +1866,8 @@ RPT['ap-aging-details'] = (db) => {
 /* --- Supplier balance summary — reference 3912 --- */
 RPT['supplier-balance-summary'] = (db) => {
   const rows: Cell[][] = db.parties.filter((p) => p.type === 'supplier' && p.active).map((p) => {
-    let billed = 0; let paid = 0;
+    const older = windowTotals(db, p.id);
+    let billed = older ? older.purTotalAll || 0 : 0; let paid = older ? older.purPaidAll || 0 : 0;
     db.purchases.forEach((x) => {
       if (x.partyId === p.id) { billed += x.total; paid += x.paid || 0; }
     });

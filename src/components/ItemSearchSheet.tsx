@@ -94,11 +94,11 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                 onPress={() => onCreate(q.trim())}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8,
-                  borderRadius: 14, borderWidth: 1.4, borderStyle: 'dashed', borderColor: colors.accent,
+                  borderRadius: 4, borderWidth: 1.4, borderStyle: 'dashed', borderColor: colors.accent,
                   backgroundColor: colors.accentSoft, paddingHorizontal: 12, paddingVertical: 12,
                 }}
               >
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name="plus" size={18} color={colors.accentInk} />
                 </View>
                 <Text numberOfLines={1} style={{ flex: 1, color: colors.accent, fontFamily: fonts.uiBold, fontSize: 15 }}>
@@ -119,7 +119,7 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                   onPress={out ? undefined : () => onPick(p)}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 12,
-                    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.line,
+                    backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line,
                     paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8, opacity: out ? 0.55 : 1,
                   }}
                 >
@@ -128,7 +128,7 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Service</Text>
                   ) : (
                     <View style={{
-                      minWidth: 64, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+                      minWidth: 64, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 4,
                       backgroundColor: stock <= (p.reorder || 0) ? colors.dangerSoft : colors.sunk,
                     }}>
                       <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: stock <= (p.reorder || 0) ? colors.danger : colors.ink }}>{stock}</Text>

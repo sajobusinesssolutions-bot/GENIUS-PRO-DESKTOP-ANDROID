@@ -91,7 +91,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
           justifyContent: 'center',
           paddingVertical: 8,
           minHeight: 60,
-          borderRadius: 14,
+          borderRadius: 4,
           backgroundColor: on ? colors.accentSoft : 'transparent',
           marginHorizontal: 4,
         }}

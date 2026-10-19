@@ -39,7 +39,10 @@ export function useWho(title = 'Who is recording this?') {
       run({ userId: current?.id || db?.session.userId || '', userName: current?.name || 'Unknown' });
       return;
     }
-    setPending(() => run);
+    // Asked straight after another sheet closes (the owner's PIN, a customer
+    // picker), the slide-in can start while that one is still sliding out, and
+    // Android then never shows it: the save just stops. Wait for it to clear.
+    setTimeout(() => setPending(() => run), 350);
   }
 
   const sheet = (
@@ -204,7 +207,7 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
                 disabled={!k}
                 onPress={() => (k === 'del' ? setPin(pin.slice(0, -1)) : k ? press(k) : undefined)}
                 style={({ pressed }) => ({
-                  width: '29%', height: 58, borderRadius: 16,
+                  width: '29%', height: 58, borderRadius: 4,
                   alignItems: 'center', justifyContent: 'center',
                   backgroundColor: k && k !== 'del' ? (pressed ? colors.accentSoft : colors.sunk) : 'transparent',
                 })}

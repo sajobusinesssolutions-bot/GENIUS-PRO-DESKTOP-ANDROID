@@ -65,7 +65,7 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
             flexDirection: 'row', alignItems: 'center', gap: 12,
           }}>
             {icon ? (
-              <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: tint[0], alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 44, height: 44, borderRadius: 4, backgroundColor: tint[0], alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name={icon} size={21} color={tint[1]} />
               </View>
             ) : null}

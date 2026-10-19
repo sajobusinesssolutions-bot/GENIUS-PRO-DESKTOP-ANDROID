@@ -25,7 +25,7 @@ import { Icon, IconName } from '../components/icons';
 import { useToast } from '../components/Toast';
 import { useGo } from '../nav/navigate';
 import { printDoc, DocMeta } from '../data/docPrint';
-import { printOptsFor, paperOf, defaultPrinter, printsOf } from '../data/printSetup';
+import { printOptsFor, paperOf, defaultPrinter, printsOf, placeOf, PRINTER_PLACES } from '../data/printSetup';
 import {
   FoundDevice, scanBluetooth, stopScan, notAPrinter, testBluetooth, printBluetooth, testNetwork,
   testPage as rawTestPage,
@@ -53,7 +53,7 @@ function Section({ icon, title, hint, children }: { icon: IconName; title: strin
   const { colors } = useTheme();
   return (
     <View style={{
-      backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line,
+      backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line,
       padding: 16, marginBottom: 14,
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -162,11 +162,11 @@ function NavCard({ icon, title, sub, onPress }: { icon: IconName; title: string;
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 16,
+        flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 4,
         backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line, marginBottom: 10,
       })}
     >
-      <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={20} color={colors.ink} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -435,12 +435,12 @@ export default function PrintingScreen() {
           const real = dp && (dp.kind === 'bluetooth' || dp.kind === 'wifi') ? dp : undefined;
           return (
             <View style={{
-              padding: 16, borderRadius: 18, marginTop: 14,
+              padding: 16, borderRadius: 4, marginTop: 14,
               backgroundColor: colors.surface, borderWidth: 1, borderColor: real ? colors.good : colors.line,
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
                 <View style={{
-                  width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+                  width: 42, height: 42, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: real ? colors.goodSoft : colors.sunk,
                 }}>
                   <Icon name={real ? (real.kind === 'bluetooth' ? 'bluetooth' : 'wifi') : 'print'} size={20} color={real ? colors.good : colors.faint} />
@@ -515,12 +515,12 @@ export default function PrintingScreen() {
                               accessibilityRole="button"
                               accessibilityLabel={'Connect to ' + d.name}
                               style={({ pressed }) => ({
-                                flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14,
+                                flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 4,
                                 backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1,
                                 borderColor: inUse ? colors.good : colors.line, opacity: not ? 0.55 : 1,
                               })}
                             >
-                              <View style={{ width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: not ? colors.sunk : colors.accentSoft }}>
+                              <View style={{ width: 36, height: 36, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: not ? colors.sunk : colors.accentSoft }}>
                                 <Icon name={not ? 'bluetooth' : 'print'} size={18} color={not ? colors.faint : colors.accent} />
                               </View>
                               <View style={{ flex: 1, minWidth: 0 }}>
@@ -556,7 +556,7 @@ export default function PrintingScreen() {
         </Text>
         {saved.length ? saved.map((p) => (
           <View key={p.id} style={{
-            flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14,
+            flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 4,
             backgroundColor: colors.surface, borderWidth: 1, borderColor: p.dflt ? colors.good : colors.line, marginBottom: 8,
           }}>
             <Pressable style={{ flex: 1, minWidth: 0 }} onPress={() => { makeDefaultPrinter(p.id); success(p.name + ' is now the printer for this phone'); }}>
@@ -569,6 +569,23 @@ export default function PrintingScreen() {
               </Text>
               <View style={{ marginTop: 8 }}>
                 {purposeChips(printsOf(p), (v) => updatePrinter(p.id, { prints: v }))}
+              </View>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint, marginTop: 10, marginBottom: 6 }}>
+                Where it stands{placeOf(p) ? ': ' + placeOf(p) : ''}
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {PRINTER_PLACES.map((pl) => {
+                  const on = placeOf(p) === pl;
+                  return (
+                    <Pressable
+                      key={pl}
+                      onPress={() => updatePrinter(p.id, { place: on ? '' : pl })}
+                      style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.ink : colors.surface }}
+                    >
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.bg : colors.ink }}>{pl}</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
               {printsOf(p).includes('order') && isRestaurant(db) ? (
                 <View style={{ marginTop: 8 }}>
@@ -645,7 +662,7 @@ function ReceiptPreview({ d }: { d: ReceiptDraft }) {
   const qtyLine = (l: ReturnType<typeof sampleLines>[number]) =>
     l.qty + (d.showUnit ? ' pcs' : '') + (d.showRate ? ' × ' + money(l.price) : '');
   return (
-    <View style={{ backgroundColor: '#fff', borderRadius: 8, padding: 14, width: narrow ? 220 : 290, alignSelf: 'center' }}>
+    <View style={{ backgroundColor: '#fff', borderRadius: 4, padding: 14, width: narrow ? 220 : 290, alignSelf: 'center' }}>
       {d.showLogo && d.logo ? <Image source={{ uri: d.logo }} style={{ height: 34, marginBottom: 4 }} resizeMode="contain" /> : null}
       <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: size + (d.style === 'bold' ? 5 : 3), color: '#111' }}>{db.firm.name}</Text>
       {(compact ? [d.phone] : [d.head1, d.head2, d.address, d.phone, d.whatsapp ? 'WhatsApp ' + d.whatsapp : '']).filter(Boolean).map((x, i) => (
@@ -766,7 +783,7 @@ export function ReceiptSettingsScreen() {
       accessibilityRole="button"
       accessibilityState={{ selected: on }}
       style={{
-        flex: 1, alignItems: 'center', gap: 6, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 14,
+        flex: 1, alignItems: 'center', gap: 6, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 4,
         backgroundColor: on ? colors.accent : colors.sunk, borderWidth: 1, borderColor: on ? colors.accent : colors.line,
       }}
     >
@@ -797,7 +814,7 @@ export function ReceiptSettingsScreen() {
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
                   style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, borderWidth: 1.4,
+                    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 4, borderWidth: 1.4,
                     borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
                   }}
                 >
@@ -813,7 +830,7 @@ export function ReceiptSettingsScreen() {
         </Section>
 
         <Section icon="search" title="Preview">
-          <View style={{ backgroundColor: colors.sunk, borderRadius: 12, paddingVertical: 14 }}>
+          <View style={{ backgroundColor: colors.sunk, borderRadius: 4, paddingVertical: 14 }}>
             <ReceiptPreview d={d} />
           </View>
         </Section>
@@ -1221,7 +1238,7 @@ export function InvoiceSettingsScreen() {
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
                   style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, borderWidth: 1.4,
+                    flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 4, borderWidth: 1.4,
                     borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
                   }}
                 >
@@ -1255,7 +1272,7 @@ export function InvoiceSettingsScreen() {
         </Section>
 
         <Section icon="search" title="Preview">
-          <View style={{ backgroundColor: colors.sunk, borderRadius: 12, padding: 10 }}>
+          <View style={{ backgroundColor: colors.sunk, borderRadius: 4, padding: 10 }}>
             <InvoicePreview d={d} />
           </View>
           <View style={{ height: 10 }} />

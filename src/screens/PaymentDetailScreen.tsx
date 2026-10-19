@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useOnDisk } from '../data/useOnDisk';
 import { Button, Card, Cap, KV } from '../components/ui';
 import { Field, SelectField } from '../components/form';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -21,6 +22,7 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const { db, money, party, account, editPayment, deletePayment, canEditPayment, can, logAudit } = useAppData();
   const pay = db?.payments.find((p) => p.id === route.params.paymentId);
+  useOnDisk('payments', route.params.paymentId, !!pay || !db);
 
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(String(pay?.amount || ''));
@@ -86,7 +88,7 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 8 }}>
-        <View style={{ padding: 16, borderRadius: 14, alignItems: 'center', backgroundColor: inbound ? colors.goodSoft : colors.dangerSoft }}>
+        <View style={{ padding: 16, borderRadius: 4, alignItems: 'center', backgroundColor: inbound ? colors.goodSoft : colors.dangerSoft }}>
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 0.6, color: colors.faint }}>
             {(inbound ? 'RECEIVED FROM' : 'PAID TO')}
           </Text>

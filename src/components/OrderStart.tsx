@@ -90,9 +90,9 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
 
   const stepper = (val: number, set: (n: number) => void) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Pressable onPress={() => set(Math.max(1, val - 1))} style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 22, color: colors.ink }}>−</Text></Pressable>
+      <Pressable onPress={() => set(Math.max(1, val - 1))} style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 22, color: colors.ink }}>−</Text></Pressable>
       <Text style={{ minWidth: 30, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{val}</Text>
-      <Pressable onPress={() => set(Math.min(60, val + 1))} style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 22, color: colors.ink }}>+</Text></Pressable>
+      <Pressable onPress={() => set(Math.min(60, val + 1))} style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 22, color: colors.ink }}>+</Text></Pressable>
     </View>
   );
   const heading = (t: string) => <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: colors.faint, marginBottom: 10, marginTop: 18 }}>{t}</Text>;
@@ -116,9 +116,9 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
                   onPress={() => setV({ ...v, orderType: t.v })}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: on }}
-                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 16, borderWidth: 2, borderColor: on ? colors.ink : colors.line, backgroundColor: pressed ? colors.sunk : colors.surface })}
+                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 4, borderWidth: 2, borderColor: on ? colors.ink : colors.line, backgroundColor: pressed ? colors.sunk : colors.surface })}
                 >
-                  <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 48, height: 48, borderRadius: 4, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
                     <Icon name={t.icon} size={22} color={t.fg} />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -136,7 +136,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
           {v.orderType === 'dine' ? (
             <>
               {heading('Guests')}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
                 <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>People at the table</Text>
                 {stepper(v.guests, (n) => setV({ ...v, guests: n }))}
               </View>
@@ -146,7 +146,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
           {heading(v.orderType === 'delivery' ? 'Deliver to' : 'Customer (optional)')}
           <Pressable
             onPress={() => { setQ(''); setPicking(true); }}
-            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: pressed ? colors.sunk : colors.surface, marginBottom: 10 })}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: pressed ? colors.sunk : colors.surface, marginBottom: 10 })}
           >
             <Icon name="user" size={19} color={colors.ink} />
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -185,7 +185,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
                   setV({ ...v, partyId: c.id, name: v.orderType === 'dine' ? v.name : c.name, phone: v.phone || c.phone || '', address: v.address || c.address || '' });
                   setPicking(false);
                 }}
-                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 6, borderRadius: 12, borderWidth: 1, borderColor: c.id === v.partyId ? colors.ink : colors.line, backgroundColor: pressed ? colors.sunk : colors.surface })}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 6, borderRadius: 4, borderWidth: 1, borderColor: c.id === v.partyId ? colors.ink : colors.line, backgroundColor: pressed ? colors.sunk : colors.surface })}
               >
                 <Icon name="user" size={18} color={colors.ink} />
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -207,7 +207,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <Pressable hitSlop={8} onPress={() => setStep('type')} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+          <Pressable hitSlop={8} onPress={() => setStep('type')} style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="back" size={18} color={colors.ink} />
           </Pressable>
           <View style={{ flex: 1 }}>
@@ -244,7 +244,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
                       seat(tn);
                     }}
                     style={({ pressed }) => ({
-                      width: '31%', minHeight: 92, padding: 10, borderRadius: 14, justifyContent: 'space-between',
+                      width: '31%', minHeight: 92, padding: 10, borderRadius: 4, justifyContent: 'space-between',
                       backgroundColor: t ? (long ? colors.dangerSoft : colors.warnSoft) : colors.goodSoft,
                       opacity: !mine ? 0.5 : small ? 0.6 : pressed ? 0.75 : 1,
                     })}

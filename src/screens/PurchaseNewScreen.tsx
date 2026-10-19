@@ -320,7 +320,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
             <View
               key={l.productId}
               style={{
-                backgroundColor: colors.surface, borderRadius: 16, padding: 14, marginBottom: 10,
+                backgroundColor: colors.surface, borderRadius: 4, padding: 14, marginBottom: 10,
                 shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2,
               }}
             >
@@ -340,7 +340,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                 <Pressable
                   onPress={(event) => { event.stopPropagation(); setQty(l.productId, 0); }}
                   accessibilityLabel="Remove line"
-                  style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}
+                  style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}
                 >
                   <Icon name="trash" size={16} color={colors.danger} />
                 </Pressable>
@@ -422,7 +422,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                               if (selected) return;
                               setAllocations(l, p!, [...allocationsFor(l, p!), { batchNo: batch.no, qty: remaining(l), expiry: batch.expiry }]);
                             }}
-                            style={{ paddingVertical: 7, paddingHorizontal: 9, borderRadius: 8, borderWidth: 1, borderColor: selected ? colors.accent : colors.line, backgroundColor: selected ? colors.accentSoft : colors.surface }}
+                            style={{ paddingVertical: 7, paddingHorizontal: 9, borderRadius: 4, borderWidth: 1, borderColor: selected ? colors.accent : colors.line, backgroundColor: selected ? colors.accentSoft : colors.surface }}
                           >
                             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: selected ? colors.accent : colors.soft }}>{batch.no} · {batch.qty} left</Text>
                           </Pressable>
@@ -442,7 +442,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                               setAllocations(l, p!, nextAllocations);
                             }
                           }}
-                          style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: 10, borderWidth: 1, borderColor: colors.line, borderRadius: 9, backgroundColor: colors.sunk }}
+                          style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: 10, borderWidth: 1, borderColor: colors.line, borderRadius: 4, backgroundColor: colors.sunk }}
                         >
                           <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{allocation.batchNo}</Text>
                           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
@@ -472,7 +472,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                     onPress={() => {
                       setBatchChoice(l.productId);
                     }}
-                    style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accentSoft }}
+                    style={{ alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 12, borderRadius: 4, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accentSoft }}
                   >
                     <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>+ Add batch / lot</Text>
                   </Pressable>
@@ -502,7 +502,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
           icon="calendar"
           onPress={() => setPickerMode('date')}
           right={
-            <Pressable onPress={() => setPickerMode('time')} hitSlop={8} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.sunk }}>
+            <Pressable onPress={() => setPickerMode('time')} hitSlop={8} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 4, backgroundColor: colors.sunk }}>
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>
                 {invoiceAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
               </Text>

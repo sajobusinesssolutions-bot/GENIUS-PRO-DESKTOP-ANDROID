@@ -11,6 +11,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useBookFrom } from '../data/useBookFrom';
+import { broughtForward } from '../data/reports';
 import { Empty } from '../components/ui';
 import { PeriodBar, listPeriod, ListPeriod } from '../components/DocList';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -26,14 +28,20 @@ export default function PartyLedgerScreen({ route, navigation }: Props) {
   const { db, money, party } = useAppData();
   const pt = party(route.params.partyId);
   const [period, setPeriod] = useState<ListPeriod>(() => listPeriod('month'));
+  /* the period's entries read from disk when it starts before what is in memory */
+  const { book: rangeBook, reading } = useBookFrom(db, period.from);
 
   // the party's name is the title, so nothing on the page repeats it
   useEffect(() => { if (pt) navigation.setOptions({ title: pt.name + ' · Ledger' }); }, [navigation, pt?.name]);
 
   /** Every entry for the party, oldest first. */
   const entries = useMemo<Entry[]>(() => {
+    const db = rangeBook;
     if (!db || !pt) return [];
     const out: Entry[] = [];
+    /* everything older than the book in memory, as one line */
+    const older = broughtForward(db, pt.id);
+    if (older) out.push({ ts: older.ts, memo: 'Brought forward', ref: '', debit: older.debit, credit: older.credit });
     db.sales.forEach((s) => {
       if (s.partyId !== pt.id || s.status === 'void') return;
       out.push({ ts: s.ts, memo: 'Sale', ref: s.no, debit: s.total, credit: 0 });
@@ -55,7 +63,7 @@ export default function PartyLedgerScreen({ route, navigation }: Props) {
       });
     });
     return out.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-  }, [db, pt]);
+  }, [rangeBook, pt]);
 
   const view = useMemo(() => {
     const start = pt?.openingBalance || 0;
@@ -103,7 +111,7 @@ export default function PartyLedgerScreen({ route, navigation }: Props) {
         ListHeaderComponent={
           <View>
             {/* the period at a glance */}
-            <View style={{ flexDirection: 'row', marginHorizontal: 16, marginBottom: 12, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
+            <View style={{ flexDirection: 'row', marginHorizontal: 16, marginBottom: 12, borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
               {[
                 { l: 'Opening', v: view.opening },
                 { l: 'Closing', v: view.closing },

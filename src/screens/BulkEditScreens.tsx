@@ -201,7 +201,7 @@ function PriceListScreenBody() {
           return (
             <View
               style={{
-                backgroundColor: colors.surface, borderRadius: 16, padding: 14, marginBottom: 10,
+                backgroundColor: colors.surface, borderRadius: 4, padding: 14, marginBottom: 10,
                 borderWidth: changed ? 1.5 : 0, borderColor: colors.accent,
                 shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2,
               }}
@@ -393,7 +393,7 @@ function NamesEditorScreenBody() {
           return (
             <View
               style={{
-                backgroundColor: colors.surface, borderRadius: 16, padding: 14, marginBottom: 10,
+                backgroundColor: colors.surface, borderRadius: 4, padding: 14, marginBottom: 10,
                 borderWidth: changed ? 1.5 : 0, borderColor: colors.accent,
                 shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2,
               }}
@@ -541,7 +541,7 @@ function ActivateScreenBody() {
               onPress={() => setPicked((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
               style={{
                 backgroundColor: on ? colors.accentSoft : colors.surface,
-                borderRadius: 16, paddingHorizontal: 15, paddingVertical: 14, marginBottom: 10,
+                borderRadius: 4, paddingHorizontal: 15, paddingVertical: 14, marginBottom: 10,
                 flexDirection: 'row', alignItems: 'center', gap: 12,
                 borderWidth: on ? 1.5 : 0, borderColor: colors.accent,
                 opacity: p.active ? 1 : 0.6,
@@ -549,7 +549,7 @@ function ActivateScreenBody() {
               }}
             >
               <View style={{
-                width: 26, height: 26, borderRadius: 8, borderWidth: 1.8,
+                width: 26, height: 26, borderRadius: 4, borderWidth: 1.8,
                 borderColor: on ? colors.accent : colors.lineHard,
                 backgroundColor: on ? colors.accent : 'transparent',
                 alignItems: 'center', justifyContent: 'center',

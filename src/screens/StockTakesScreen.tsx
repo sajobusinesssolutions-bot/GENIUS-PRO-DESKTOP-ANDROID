@@ -115,7 +115,7 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
           return (
             <View
               style={{
-                backgroundColor: colors.surface, borderRadius: 16, padding: 14, marginBottom: 10,
+                backgroundColor: colors.surface, borderRadius: 4, padding: 14, marginBottom: 10,
                 shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2,
               }}
             >
@@ -132,7 +132,7 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
                     onPress={() => setOpenLine(expanded ? null : item.productId)}
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 7,
-                      paddingHorizontal: 13, paddingVertical: 12, borderRadius: 12,
+                      paddingHorizontal: 13, paddingVertical: 12, borderRadius: 4,
                       borderWidth: 1.4, borderColor: expanded ? colors.accent : colors.line,
                       backgroundColor: expanded ? colors.accentSoft : colors.surface,
                     }}
@@ -166,7 +166,7 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
                         key={b.no}
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: 11,
-                          backgroundColor: colors.sunk, borderRadius: 13, padding: 12,
+                          backgroundColor: colors.sunk, borderRadius: 4, padding: 12,
                           borderLeftWidth: 4,
                           borderLeftColor: state === 'expired' || state === 'critical' ? colors.danger : state === 'soon' ? colors.warn : colors.good,
                         }}

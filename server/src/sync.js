@@ -624,6 +624,19 @@ export default async function syncRoutes(app) {
     const kind = String(req.body?.kind || 'sale');
     const size = Math.min(Math.max(Number(req.body?.size || 100), 1), 1000);
 
+    // The device the phone names, if the server knows it; otherwise the one this
+    // sign-in linked. A phone can hold an id the server never saw (it linked
+    // after the last backup was taken), and that used to fail as a 500.
+    const named = /^[0-9a-f-]{36}$/i.test(String(req.body?.device || '')) ? String(req.body.device) : null;
+    const dev = await q(
+      `select id from devices
+        where account_id = $1 and revoked_at is null and (id = $2::uuid or session_id = $3)
+        order by (id = $2::uuid) desc nulls last limit 1`,
+      [me.id, named, me.sid],
+    );
+    const deviceId = dev.rows[0]?.id;
+    if (!deviceId) return fail(reply, 409, 'deviceUnknown', 'This phone is not linked to the account. Sign out and sign in again.');
+
     const block = await tx(async (c) => {
       await c.query('select pg_advisory_xact_lock(hashtext($1))', [biz.id + branch + kind]);
       const { rows } = await c.query(
@@ -636,7 +649,7 @@ export default async function syncRoutes(app) {
       await c.query(
         `insert into number_blocks (business_id, branch_local, kind, lo, hi, device_id)
          values ($1,$2,$3,$4,$5,$6)`,
-        [biz.id, branch, kind, lo, hi, req.body?.device],
+        [biz.id, branch, kind, lo, hi, deviceId],
       );
       return { lo, hi };
     });

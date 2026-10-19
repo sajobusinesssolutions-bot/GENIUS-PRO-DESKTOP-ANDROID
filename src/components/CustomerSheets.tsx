@@ -79,7 +79,7 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
         onPress={() => { onSelect(null); onClose(); }}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line }}
       >
-        <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="user" size={16} color={colors.faint} />
         </View>
         <Text style={{ flex: 1, color: colors.soft, fontFamily: fonts.uiSemi, fontSize: 15 }}>Walk-in customer</Text>
@@ -92,7 +92,7 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
           onPress={() => { onSelect(c.id); onClose(); }}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line }}
         >
-          <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: colors.accent, fontFamily: fonts.uiBold, fontSize: 15 }}>{c.name.charAt(0).toUpperCase()}</Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>

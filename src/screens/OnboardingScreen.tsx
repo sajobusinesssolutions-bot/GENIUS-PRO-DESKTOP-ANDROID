@@ -10,7 +10,7 @@ import { TRIAL_DAYS, accessDaysLeft } from '../data/logic';
 import { fmtDay } from '../data/helpers';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { starterModifiers } from '../data/restaurant';
-import { EDITIONS, Edition, PHARMACY_UNITS, PHARMACY_CLASSES, licensedEdition, editionLockReason } from '../data/editions';
+import { EDITIONS, Edition, PHARMACY_UNITS, PHARMACY_CLASSES, licensedEdition, licensedEditions, editionLockReason } from '../data/editions';
 import { lastAccountLicence } from '../data/syncClient';
 import { explain } from '../data/refusal';
 import type { RootStackParamList } from '../nav/types';
@@ -44,6 +44,7 @@ export default function OnboardingScreen({ navigation }: Props) {
   const [step, setStep] = useState(0);
   // the licence decides the edition: the automatic trial is Retail only
   const allowed = licensedEdition(lastAccountLicence(), db?.licence?.licence);
+  const allowedAll = licensedEditions(lastAccountLicence(), db?.licence?.licence);
   const [businessType, setBusinessType] = useState<Edition>(allowed);
   const [name, setName] = useState(db?.firm.name || '');
   const [phone, setPhone] = useState(db?.firm.phone || '');
@@ -135,11 +136,11 @@ export default function OnboardingScreen({ navigation }: Props) {
           <View style={{ gap: 10 }}>
             {BUSINESS_TYPES.map((t) => {
               const on = businessType === t.id;
-              const locked = t.id !== allowed;
+              const locked = !allowedAll.includes(t.id);
               return (
                 <Pressable
                   key={t.id}
-                  onPress={() => (locked ? Alert.alert(EDITIONS[t.id].name + ' needs its own licence', editionLockReason(allowed, t.id)) : setBusinessType(t.id))}
+                  onPress={() => (locked ? Alert.alert(EDITIONS[t.id].name + ' needs its own licence', editionLockReason(allowedAll, t.id)) : setBusinessType(t.id))}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 13,
                     borderRadius: radius.lg, borderWidth: 1.5, paddingHorizontal: 15, paddingVertical: 14,
@@ -147,7 +148,7 @@ export default function OnboardingScreen({ navigation }: Props) {
                     backgroundColor: on ? colors.accentSoft : colors.surface,
                   }}
                 >
-                  <View style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? colors.surface : colors.sunk }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? colors.surface : colors.sunk }}>
                     <Icon name={t.icon} size={22} color={colors.ink} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -169,7 +170,7 @@ export default function OnboardingScreen({ navigation }: Props) {
                     onPress={() => {
                       try { loadDemo(t.id); navigation.replace('PinLock', {}); } catch (e) { explain(e); }
                     }}
-                    style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.sunk }}
+                    style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 4, backgroundColor: colors.sunk }}
                   >
                     <Icon name={t.icon} size={20} color={colors.ink} />
                     <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.ink }}>{EDITIONS[t.id].name}</Text>
@@ -211,7 +212,7 @@ export default function OnboardingScreen({ navigation }: Props) {
 
         {step === 3 && (
           <>
-            <View style={{ backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
+            <View style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
               <SettingToggle
                 icon="pie"
                 label={'Charge VAT (' + (db?.settings.taxRate ?? 18) + '%)'}
@@ -306,15 +307,15 @@ function TrialWelcome({ ends, left }: { ends: string; left: number | null }) {
   ];
   return (
     <Animated.View style={{ opacity: pop, transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }] }}>
-      <View style={{ borderRadius: 22, padding: 22, backgroundColor: colors.accent, alignItems: 'center' }}>
+      <View style={{ borderRadius: 4, padding: 22, backgroundColor: colors.accent, alignItems: 'center' }}>
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 1, color: 'rgba(255,255,255,0.8)' }}>YOUR FREE TRIAL HAS STARTED</Text>
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 52, color: '#fff', marginTop: 6, letterSpacing: -1 }}>{days} days</Text>
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: 'rgba(255,255,255,0.9)' }}>of Genius Pro, free · until {fmtDay(ends)}</Text>
       </View>
-      <View style={{ backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line, marginTop: 14 }}>
+      <View style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, marginTop: 14 }}>
         {perks.map(([icon, t], i) => (
           <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderTopWidth: i ? 1 : 0, borderTopColor: colors.line }}>
-            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 34, height: 34, borderRadius: 4, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name={icon} size={17} color={colors.good} />
             </View>
             <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{t}</Text>

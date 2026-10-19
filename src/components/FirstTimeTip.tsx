@@ -53,7 +53,7 @@ export default function FirstTimeTip({ id, title, text, when = true, style }: {
 
   if (!show || !when) return null;
   return (
-    <View style={[{ flexDirection: 'row', gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent }, style]}>
+    <View style={[{ flexDirection: 'row', gap: 12, padding: 14, borderRadius: 4, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent }, style]}>
       <Icon name="bulb" size={20} color={colors.accent} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{title}</Text>

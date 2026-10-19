@@ -40,7 +40,7 @@ export default function OffersScreen({ navigation }: Props) {
           </DocCard>
         )}
       />
-      <Pressable onPress={() => navigation.navigate('OfferNew')} style={{ position: 'absolute', right: 18, bottom: 18, width: 52, height: 52, borderRadius: 16, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+      <Pressable onPress={() => navigation.navigate('OfferNew')} style={{ position: 'absolute', right: 18, bottom: 18, width: 52, height: 52, borderRadius: 4, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ color: colors.accentInk, fontSize: 24, fontFamily: fonts.uiBold }}>+</Text>
       </Pressable>
     </View>

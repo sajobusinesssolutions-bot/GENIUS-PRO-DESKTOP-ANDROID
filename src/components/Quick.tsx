@@ -69,11 +69,11 @@ export function QuickBlock() {
               onPress={() => setOpen(on && open !== '__all' ? '' : g.g)}
               style={{
                 backgroundColor: on ? colors.accentSoft : colors.surface,
-                borderWidth: 1, borderColor: on ? colors.accent : colors.line, borderRadius: 12,
+                borderWidth: 1, borderColor: on ? colors.accent : colors.line, borderRadius: 4,
                 paddingTop: 9, paddingBottom: 8, paddingHorizontal: 4, alignItems: 'center', gap: 5,
               }}
             >
-              <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 30, height: 30, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name={g.i} size={17} color={fg} />
               </View>
               <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>{g.g}</Text>
@@ -182,7 +182,7 @@ export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: ()
                     key={it.n}
                     onPress={() => pick(it.route, it.params)}
                     style={({ pressed }) => ({
-                      width: '31.5%', alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 16,
+                      width: '31.5%', alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 4,
                       backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line,
                     })}
                   >
@@ -212,11 +212,11 @@ export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: ()
                       key={it.n}
                       onPress={() => pick(it.route, it.params)}
                       style={({ pressed }) => ({
-                        width: '25%', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 3, borderRadius: 12,
+                        width: '25%', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 3, borderRadius: 4,
                         backgroundColor: pressed ? colors.sunk : 'transparent',
                       })}
                     >
-                      <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+                      <View style={{ width: 46, height: 46, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
                         <Icon name={it.i} size={21} color={colors.ink} />
                       </View>
                       <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, lineHeight: 15, color: colors.soft, textAlign: 'center', marginTop: 6 }}>

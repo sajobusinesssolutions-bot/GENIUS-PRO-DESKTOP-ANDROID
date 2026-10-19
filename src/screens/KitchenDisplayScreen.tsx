@@ -104,7 +104,7 @@ export default function KitchenDisplayScreen({ navigation, route }: any) {
           const warm = k.status !== 'ready' && mins >= 10;
           const tl = typeLook(k.orderType);
           return (
-            <View key={k.id} style={{ width: cardW, borderRadius: 16, overflow: 'hidden', backgroundColor: colors.surface, borderWidth: 2, borderColor: k.status === 'ready' ? colors.good : late ? colors.danger : warm ? colors.warn : colors.line }}>
+            <View key={k.id} style={{ width: cardW, borderRadius: 4, overflow: 'hidden', backgroundColor: colors.surface, borderWidth: 2, borderColor: k.status === 'ready' ? colors.good : late ? colors.danger : warm ? colors.warn : colors.line }}>
               {/* head: table, type, age */}
               <View style={{ padding: 12, backgroundColor: k.status === 'ready' ? colors.goodSoft : late ? colors.dangerSoft : warm ? colors.warnSoft : colors.sunk }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -113,7 +113,7 @@ export default function KitchenDisplayScreen({ navigation, route }: any) {
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
                   {k.orderType ? (
-                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: tl.bg }}>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, backgroundColor: tl.bg }}>
                       <Text style={{ fontFamily: fonts.uiExtra, fontSize: 12, letterSpacing: 1, color: tl.fg }}>{orderTypeWord(k.orderType).toUpperCase()}</Text>
                     </View>
                   ) : null}

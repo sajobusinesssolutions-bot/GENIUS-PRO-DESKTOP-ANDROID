@@ -434,7 +434,7 @@ export default function OrderScreen({ navigation, route }: Props) {
       {/* whose order this is */}
       <Pressable
         onPress={() => setStage('change')}
-        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 10, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 12,
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 10, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 4,
           backgroundColor: pressed ? colors.sunk : orderType === 'takeaway' ? '#111' : orderType === 'delivery' ? colors.danger : colors.surface,
           borderWidth: orderType === 'dine' ? 1 : 0, borderColor: colors.line })}
       >
@@ -469,7 +469,7 @@ export default function OrderScreen({ navigation, route }: Props) {
               onPress={() => (lockedMenu ? error('You sell from the ' + lockedMenu.name + ' menu. The owner can change it in Menu & modifiers.')
                 : !maySwitch ? error('Your role cannot change the menu. Ask the owner to allow it under Staff & roles.') : setMenuPick(true))}
               accessibilityLabel="Choose the menu"
-              style={{ marginTop: 6, height: 56, maxWidth: 150, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1.4, borderColor: colors.ink, backgroundColor: colors.surface }}
+              style={{ marginTop: 6, height: 56, maxWidth: 150, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 4, borderWidth: 1.4, borderColor: colors.ink, backgroundColor: colors.surface }}
             >
               <Icon name={lockedMenu ? 'lock' : 'doc'} size={16} color={colors.ink} />
               <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{activeMenu ? activeMenu.name : 'All menus'}</Text>
@@ -513,14 +513,14 @@ export default function OrderScreen({ navigation, route }: Props) {
             <Pressable
               onPress={() => tap(p)}
               style={({ pressed }) => ({
-                width: tileW, minHeight: 96, borderRadius: 16, overflow: 'hidden', justifyContent: 'space-between',
+                width: tileW, minHeight: 96, borderRadius: 4, overflow: 'hidden', justifyContent: 'space-between',
                 backgroundColor: colorOf(p.category), opacity: p.soldOut ? 0.45 : pressed ? 0.7 : 1,
                 borderWidth: inTicket ? 2 : 0, borderColor: colors.ink,
               })}
             >
               {p.photo ? <Image source={{ uri: p.photo }} style={{ width: '100%', height: tileW * 0.62 }} resizeMode="cover" /> : null}
               {p.soldOut ? (
-                <View style={{ position: 'absolute', top: 8, left: 8, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: '#1B1B1F' }}>
+                <View style={{ position: 'absolute', top: 8, left: 8, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4, backgroundColor: '#1B1B1F' }}>
                   <Text style={{ fontFamily: fonts.uiBold, fontSize: 10.5, color: '#fff' }}>SOLD OUT</Text>
                 </View>
               ) : null}
@@ -545,7 +545,7 @@ export default function OrderScreen({ navigation, route }: Props) {
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 12, paddingBottom: 12 + insets.bottom, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, flexDirection: 'row', gap: 10 }}>
         <Pressable
           onPress={() => setTicketOpen(true)}
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, height: 52, borderRadius: 14, backgroundColor: colors.sunk }}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, height: 52, borderRadius: 4, backgroundColor: colors.sunk }}
         >
           <Icon name="receipt" size={19} color={colors.ink} />
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -556,7 +556,7 @@ export default function OrderScreen({ navigation, route }: Props) {
         <Pressable
           disabled={!lines.length}
           onPress={() => (mayCharge ? setPaying(true) : error('Your role cannot take payment. Save the ticket and the cashier charges it.'))}
-          style={{ minWidth: 120, height: 52, borderRadius: 14, backgroundColor: lines.length ? colors.good : colors.sunk, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}
+          style={{ minWidth: 120, height: 52, borderRadius: 4, backgroundColor: lines.length ? colors.good : colors.sunk, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}
         >
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: lines.length ? '#fff' : colors.faint }}>Charge</Text>
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: lines.length ? '#fff' : colors.faint }}>{money(total)}</Text>
@@ -571,7 +571,7 @@ export default function OrderScreen({ navigation, route }: Props) {
             <Pressable
               key={mn.id}
               onPress={() => { setMenuId(mn.id); setCategory('All'); setMenuPick(false); }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 8, borderRadius: 14, borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.sunk : colors.surface }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 8, borderRadius: 4, borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.sunk : colors.surface }}
             >
               <Icon name="doc" size={18} color={colors.ink} />
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -605,7 +605,7 @@ export default function OrderScreen({ navigation, route }: Props) {
                 <Pressable
                   key={o.id}
                   onPress={() => toggleOption(g.id, o.id, g.multi)}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14, marginBottom: 6, borderRadius: 12, borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.sunk : colors.surface }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14, marginBottom: 6, borderRadius: 4, borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.sunk : colors.surface }}
                 >
                   <View style={{ width: 20, height: 20, borderRadius: g.multi ? 5 : 10, borderWidth: 2, borderColor: on ? colors.ink : colors.lineHard, backgroundColor: on ? colors.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                     {on ? <Icon name="check" size={12} color={colors.bg} /> : null}
@@ -638,7 +638,7 @@ export default function OrderScreen({ navigation, route }: Props) {
       >
         <Pressable
           onPress={() => { setTicketOpen(false); setTimeout(() => setStage('change'), 250); }}
-          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, marginBottom: 12, backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line })}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 4, marginBottom: 12, backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line })}
         >
           <Icon name={orderType === 'dine' ? 'chair' : orderType === 'delivery' ? 'taxi' : 'cart'} size={19} color={colors.ink} />
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -661,11 +661,11 @@ export default function OrderScreen({ navigation, route }: Props) {
                   </Text>
                 </Pressable>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Pressable onPress={() => changeQty(i, -1)} hitSlop={6} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+                  <Pressable onPress={() => changeQty(i, -1)} hitSlop={6} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
                     <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>−</Text>
                   </Pressable>
                   <Text style={{ minWidth: 22, textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{l.qty}</Text>
-                  <Pressable onPress={() => changeQty(i, 1)} hitSlop={6} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+                  <Pressable onPress={() => changeQty(i, 1)} hitSlop={6} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
                     <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>+</Text>
                   </Pressable>
                 </View>
@@ -713,9 +713,9 @@ export default function OrderScreen({ navigation, route }: Props) {
       {/* open tickets */}
       <Sheet visible={openList} title={openView === 'tables' ? 'Tables' : 'Open tickets'} subtitle={open.length + ' waiting to be paid'} icon="receipt" full onClose={() => setOpenList(false)}>
         {(db.settings.tables || []).length ? (
-          <View style={{ flexDirection: 'row', padding: 4, borderRadius: 12, backgroundColor: colors.sunk, marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', padding: 4, borderRadius: 4, backgroundColor: colors.sunk, marginBottom: 12 }}>
             {(['tables', 'list'] as const).map((v) => (
-              <Pressable key={v} onPress={() => setOpenView(v)} style={{ flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center', backgroundColor: openView === v ? colors.surface : 'transparent' }}>
+              <Pressable key={v} onPress={() => setOpenView(v)} style={{ flex: 1, paddingVertical: 9, borderRadius: 4, alignItems: 'center', backgroundColor: openView === v ? colors.surface : 'transparent' }}>
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: openView === v ? colors.ink : colors.faint }}>{v === 'tables' ? 'Table plan' : 'All open tickets'}</Text>
               </Pressable>
             ))}
@@ -741,7 +741,7 @@ export default function OrderScreen({ navigation, route }: Props) {
                     clear(); setName(tn); setOrderType('dine'); setOpenList(false); setStage('menu');
                   }}
                   style={{
-                    width: '31%', minHeight: 84, padding: 10, borderRadius: 14, justifyContent: 'space-between',
+                    width: '31%', minHeight: 84, padding: 10, borderRadius: 4, justifyContent: 'space-between',
                     backgroundColor: t ? (long ? colors.dangerSoft : colors.warnSoft) : colors.goodSoft,
                     borderWidth: ticketId && t?.id === ticketId ? 2 : 0, borderColor: colors.ink, opacity: mine ? 1 : 0.55,
                   }}
@@ -776,9 +776,9 @@ export default function OrderScreen({ navigation, route }: Props) {
                 }
                 load(t);
               }}
-              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 8, borderRadius: 14, borderWidth: 1, borderColor: ticketId === t.id ? colors.ink : colors.line, backgroundColor: pressed ? colors.sunk : colors.surface })}
+              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 8, borderRadius: 4, borderWidth: 1, borderColor: ticketId === t.id ? colors.ink : colors.line, backgroundColor: pressed ? colors.sunk : colors.surface })}
             >
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="chair" size={19} color={colors.ink} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -809,11 +809,11 @@ export default function OrderScreen({ navigation, route }: Props) {
         )}
       >
         {/* evenly: what each pays */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: colors.sunk, marginBottom: 14 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 4, backgroundColor: colors.sunk, marginBottom: 14 }}>
           <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>Split evenly between</Text>
-          <Pressable onPress={() => setPeople(Math.max(2, people - 1))} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>−</Text></Pressable>
+          <Pressable onPress={() => setPeople(Math.max(2, people - 1))} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>−</Text></Pressable>
           <Text style={{ minWidth: 24, textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{people}</Text>
-          <Pressable onPress={() => setPeople(Math.min(30, people + 1))} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>+</Text></Pressable>
+          <Pressable onPress={() => setPeople(Math.min(30, people + 1))} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>+</Text></Pressable>
         </View>
         <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, marginBottom: 14 }}>
           {people} people pay {money(Math.ceil(total / people / 100) * 100)} each (of {money(total)}). To give each their own receipt, pick their dishes below.
@@ -824,9 +824,9 @@ export default function OrderScreen({ navigation, route }: Props) {
               <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{l.name}</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{l.qty} on the ticket · {money(l.price)} each</Text>
             </View>
-            <Pressable onPress={() => setSplit(split.map((q, k) => (k === i ? Math.max(0, q - 1) : q)))} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>−</Text></Pressable>
+            <Pressable onPress={() => setSplit(split.map((q, k) => (k === i ? Math.max(0, q - 1) : q)))} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>−</Text></Pressable>
             <Text style={{ minWidth: 22, textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 15, color: split[i] ? colors.accent : colors.faint }}>{split[i] || 0}</Text>
-            <Pressable onPress={() => setSplit(split.map((q, k) => (k === i ? Math.min(l.qty, q + 1) : q)))} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>+</Text></Pressable>
+            <Pressable onPress={() => setSplit(split.map((q, k) => (k === i ? Math.min(l.qty, q + 1) : q)))} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>+</Text></Pressable>
           </View>
         )) : null}
         {split ? (
@@ -854,7 +854,7 @@ export default function OrderScreen({ navigation, route }: Props) {
         )}
       >
         {/* what is being paid for */}
-        <View style={{ borderRadius: 18, padding: 16, backgroundColor: colors.ink, marginBottom: 14 }}>
+        <View style={{ borderRadius: 4, padding: 16, backgroundColor: colors.ink, marginBottom: 14 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Icon name={orderType === 'dine' ? 'chair' : orderType === 'delivery' ? 'taxi' : 'cart'} size={15} color={colors.bg} />
             <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13, letterSpacing: 0.5, color: colors.bg, opacity: 0.85 }}>
@@ -884,7 +884,7 @@ export default function OrderScreen({ navigation, route }: Props) {
                 onPress={() => { setMethod(v); if (v !== 'cash') setReceived(''); }}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
-                style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 14, borderWidth: 2, borderColor: on ? colors.good : colors.line, backgroundColor: on ? colors.goodSoft : colors.surface }}
+                style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 4, borderWidth: 2, borderColor: on ? colors.good : colors.line, backgroundColor: on ? colors.goodSoft : colors.surface }}
               >
                 <Icon name={i} size={22} color={on ? colors.good : colors.ink} />
                 <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 13, color: on ? colors.good : colors.ink }}>{l}</Text>
@@ -902,7 +902,7 @@ export default function OrderScreen({ navigation, route }: Props) {
                 .filter((v, i, arr) => v > 0 && arr.indexOf(v) === i).slice(0, 6).map((v, i) => {
                   const on = Number(received) === v;
                   return (
-                    <Pressable key={v} onPress={() => setReceived(String(v))} style={{ width: '31.5%', paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.sunk : colors.surface }}>
+                    <Pressable key={v} onPress={() => setReceived(String(v))} style={{ width: '31.5%', paddingVertical: 12, borderRadius: 4, alignItems: 'center', borderWidth: 1.4, borderColor: on ? colors.ink : colors.line, backgroundColor: on ? colors.sunk : colors.surface }}>
                       <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(v)}</Text>
                       {i === 0 ? <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>Exact</Text> : null}
                     </Pressable>
@@ -911,12 +911,12 @@ export default function OrderScreen({ navigation, route }: Props) {
             </View>
             {received ? (
               Number(received) >= due ? (
-                <View style={{ alignItems: 'center', padding: 14, borderRadius: 14, backgroundColor: colors.goodSoft }}>
+                <View style={{ alignItems: 'center', padding: 14, borderRadius: 4, backgroundColor: colors.goodSoft }}>
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.good }}>Change to give</Text>
                   <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: colors.good }}>{money(Number(received) - due)}</Text>
                 </View>
               ) : (
-                <View style={{ alignItems: 'center', padding: 14, borderRadius: 14, backgroundColor: colors.dangerSoft }}>
+                <View style={{ alignItems: 'center', padding: 14, borderRadius: 4, backgroundColor: colors.dangerSoft }}>
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger }}>Still short</Text>
                   <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: colors.danger }}>{money(due - Number(received))}</Text>
                 </View>
@@ -930,7 +930,7 @@ export default function OrderScreen({ navigation, route }: Props) {
         )}
 
         {orderType === 'takeaway' && unsent > 0 && !split ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, padding: 12, borderRadius: 12, backgroundColor: colors.warnSoft }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, padding: 12, borderRadius: 4, backgroundColor: colors.warnSoft }}>
             <Icon name="food" size={16} color={colors.warn} />
             <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.warn }}>{unsent} item{unsent === 1 ? '' : 's'} not sent to the kitchen yet. You will be asked whether to send them.</Text>
           </View>

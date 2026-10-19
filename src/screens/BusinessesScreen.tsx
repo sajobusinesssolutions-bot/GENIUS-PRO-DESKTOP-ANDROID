@@ -23,7 +23,7 @@ import { Logo } from '../components/Logo';
 import { Icon } from '../components/icons';
 import { useGoReset } from '../nav/navigate';
 import { listBusinesses, downloadSnapshot, setBusinessStatus, RemoteBusiness, filterVisibleBusinesses, lastAccountLicence } from '../data/syncClient';
-import { EDITIONS, editionOfType, licensedEdition, editionLockReason, businessAllowance, businessLimitWords } from '../data/editions';
+import { EDITIONS, editionOfType, licensedEdition, licensedEditions, editionLockReason, businessAllowance, businessLimitWords } from '../data/editions';
 import { refreshSession, serverConfigured } from '../data/authApi';
 import { useSyncRun } from '../data/useSyncRun';
 import { fmtDate } from '../data/helpers';
@@ -103,9 +103,9 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
   async function open(b: RemoteBusiness) {
     if (isHere(b)) { goReset('PinLock'); return; }
     // a business of another kind needs that edition's licence
-    const allowed = licensedEdition(lastAccountLicence(), db?.licence?.licence);
+    const allowed = licensedEditions(lastAccountLicence(), db?.licence?.licence);
     const kind = b.business_type ? editionOfType(b.business_type) : null;
-    if (lastAccountLicence()?.plan && kind && kind !== allowed) {
+    if (lastAccountLicence()?.plan && kind && !allowed.includes(kind)) {
       Alert.alert(b.name + ' is a ' + EDITIONS[kind].name.toLowerCase() + ' business', editionLockReason(allowed, kind));
       return;
     }
@@ -203,14 +203,14 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
       onPress={o.onPress}
       accessibilityLabel={'Open ' + o.name}
       style={({ pressed }) => ({
-        flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 18, marginBottom: 10,
+        flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 4, marginBottom: 10,
         backgroundColor: pressed ? colors.sunk : colors.surface,
         borderWidth: o.current ? 1.6 : 1, borderColor: o.current ? colors.accent : colors.line,
         opacity: o.off ? 0.55 : 1,
       })}
     >
       <View style={{
-        width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+        width: 46, height: 46, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
         backgroundColor: o.current ? colors.accent : colors.accentSoft,
       }}>
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: o.current ? colors.accentInk : colors.accent }}>
@@ -251,7 +251,7 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
             </View>
           ) : null}
           {problem ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 14, backgroundColor: colors.dangerSoft, marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 4, backgroundColor: colors.dangerSoft, marginBottom: 16 }}>
               <Icon name="alert" size={17} color={colors.danger} />
               <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger }}>{problem}</Text>
               <Pressable onPress={() => (ended ? void signOut() : void load())} hitSlop={8}>
@@ -290,7 +290,7 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
             onPress={() => void startNew()}
             style={({ pressed }) => ({
               flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8, padding: 16,
-              borderRadius: 18, borderWidth: 1.4, borderStyle: 'dashed', borderColor: colors.lineHard,
+              borderRadius: 4, borderWidth: 1.4, borderStyle: 'dashed', borderColor: colors.lineHard,
               backgroundColor: pressed ? colors.sunk : 'transparent',
             })}
           >
@@ -299,7 +299,7 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
           </Tap>
           {lastAccountLicence() ? (
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', marginTop: 10 }}>
-              {EDITIONS[licensedEdition(lastAccountLicence(), db?.licence?.licence)].name} edition · {businessAllowance(lastAccountLicence(), db).used} of {businessAllowance(lastAccountLicence(), db).max} business{businessAllowance(lastAccountLicence(), db).max === 1 ? '' : 'es'} used
+              {licensedEditions(lastAccountLicence(), db?.licence?.licence).map((e) => EDITIONS[e].name).join(' + ')} edition · {businessAllowance(lastAccountLicence(), db).used} of {businessAllowance(lastAccountLicence(), db).max} business{businessAllowance(lastAccountLicence(), db).max === 1 ? '' : 'es'} used
             </Text>
           ) : null}
         </>

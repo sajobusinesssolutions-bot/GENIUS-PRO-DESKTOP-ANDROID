@@ -40,7 +40,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
     return (
       <Modal visible transparent animationType="slide" onRequestClose={onClose}>
         <View style={{ flex: 1, backgroundColor: '#000000cc', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20, width: '100%', maxWidth: 360 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 4, padding: 20, width: '100%', maxWidth: 360 }}>
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 8 }}>Camera unavailable</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 16 }}>
               Barcode scanning needs a native camera (not available on this platform/build). Enter the code or SKU manually from the product screen instead.
@@ -68,7 +68,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
     return (
       <Modal visible transparent animationType="slide" onRequestClose={onClose}>
         <View style={{ flex: 1, backgroundColor: '#000000cc', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20, width: '100%', maxWidth: 360, gap: 10 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 4, padding: 20, width: '100%', maxWidth: 360, gap: 10 }}>
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Camera permission needed</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
               Allow camera access to scan product barcodes.
@@ -166,12 +166,12 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
           <View
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 12,
-              backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 16, padding: 14,
+              backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 4, padding: 14,
               borderWidth: 1.4, borderColor: info ? edge : 'rgba(255,255,255,0.18)',
             }}
           >
             <View style={{
-              width: 42, height: 42, borderRadius: 13,
+              width: 42, height: 42, borderRadius: 4,
               backgroundColor: info ? (info.ok ? 'rgba(74,222,151,0.18)' : 'rgba(248,122,122,0.18)') : 'rgba(255,255,255,0.12)',
               alignItems: 'center', justifyContent: 'center',
             }}>
@@ -191,7 +191,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
             onPress={() => { if (detected && info?.ok) { const code = detected; setDetected(null); onScan(code); } }}
             disabled={!info || !info.ok}
             style={{
-              height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+              height: 54, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
               flexDirection: 'row', gap: 9,
               backgroundColor: info && info.ok ? '#16976A' : 'rgba(255,255,255,0.12)',
             }}

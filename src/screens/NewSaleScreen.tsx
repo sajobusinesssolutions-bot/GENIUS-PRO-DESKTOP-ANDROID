@@ -374,7 +374,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
             style={{ marginBottom: 8 }}
             onPress={() => setPickerMode('date')}
             right={
-              <Pressable onPress={() => setPickerMode('time')} hitSlop={8} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.sunk }}>
+              <Pressable onPress={() => setPickerMode('time')} hitSlop={8} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 4, backgroundColor: colors.sunk }}>
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>
                   {invoiceAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                 </Text>
@@ -405,7 +405,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         />
 
         {/* the customer */}
-        <View style={{ backgroundColor: colors.surface, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.line }}>
+        <View style={{ backgroundColor: colors.surface, borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: colors.line }}>
           <Pressable
             onPress={() => setPartyPickerVisible(true)}
             style={{ paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}
@@ -440,7 +440,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
             onPress={() => setScanning(true)}
             accessibilityLabel="Scan a barcode"
             style={({ pressed }) => ({
-              width: 56, borderRadius: 14, borderWidth: 1.4, borderColor: colors.line,
+              width: 56, borderRadius: 4, borderWidth: 1.4, borderColor: colors.line,
               alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : colors.surface,
             })}
           >
@@ -459,7 +459,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         />
 
         {cart.length > 0 && (
-          <View style={{ backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, paddingVertical: 12 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, paddingVertical: 12 }}>
           <View style={{ gap: 8 }}>
             <TotalRow label="Subtotal" value={money(subtotal)} colors={colors} />
             {savings > 0 ? <TotalRow label="Item discounts" value={'− ' + money(savings)} tone={colors.good} colors={colors} /> : null}
@@ -705,7 +705,7 @@ function MetaTile({ label, value, onPress, colors }: { label: string; value: str
     <Pressable
       onPress={onPress}
       accessibilityLabel={label + ' ' + value}
-      style={({ pressed }: { pressed: boolean }) => ({ flex: 1, backgroundColor: pressed ? colors.sunk : colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 11, paddingVertical: 9 })}
+      style={({ pressed }: { pressed: boolean }) => ({ flex: 1, backgroundColor: pressed ? colors.sunk : colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 11, paddingVertical: 9 })}
     >
       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{label}</Text>
       <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink, marginTop: 3 }}>{value}</Text>
@@ -717,7 +717,7 @@ function Segment({ label, active, activeBg, activeFg, colors, onPress }: {
   label: string; active: boolean; activeBg: string; activeFg: string; colors: any; onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={{ flex: 1, paddingVertical: 11, borderRadius: 11, alignItems: 'center', backgroundColor: active ? activeBg : 'transparent' }}>
+    <Pressable onPress={onPress} style={{ flex: 1, paddingVertical: 11, borderRadius: 4, alignItems: 'center', backgroundColor: active ? activeBg : 'transparent' }}>
       <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: active ? activeFg : colors.faint }}>{label}</Text>
     </Pressable>
   );

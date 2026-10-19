@@ -18,6 +18,7 @@ import { View, Text, ScrollView, Alert } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useOlderCount } from '../data/useOnDisk';
 import { useAuth } from '../data/AuthContext';
 import {
   Card, Cap, Button, Pill, Avatar, EmptyState, ChipStrip, Grid,
@@ -36,6 +37,7 @@ import {
 } from '../data/syncClient';
 import { refreshSession, serverConfigured } from '../data/authApi';
 import { editionOf } from '../data/editions';
+import { verifyPin } from '../data/pinHash';
 
 type Draft = { id: string | null; name: string; description: string; builtin: boolean; perms: Record<string, boolean> };
 
@@ -549,6 +551,8 @@ function UserSheet({ state, onClose, roles, onSave }: {
   const { colors } = useTheme();
   const { db, user } = useAppData();
   const existing = state?.id ? user(state.id) : undefined;
+  /* bills older than what is in memory, counted on disk */
+  const olderBills = useOlderCount(db, 'sales', existing ? { userId: existing.id } : null, { status: 'void' });
 
   const [name, setName] = useState('');
   const [roleId, setRoleId] = useState('cashier');
@@ -570,7 +574,7 @@ function UserSheet({ state, onClose, roles, onSave }: {
   if (!state) { if (seeded !== null) setSeeded(null); return null; }
   if (!db) return null;
 
-  const bills = existing ? db.sales.filter((s) => s.userId === existing.id && s.status !== 'void').length : 0;
+  const bills = existing ? db.sales.filter((s) => s.userId === existing.id && s.status !== 'void').length + olderBills : 0;
 
   return (
     <Sheet
@@ -587,6 +591,11 @@ function UserSheet({ state, onClose, roles, onSave }: {
             // editing: blank means "keep the current PIN", so it is left out
             // of the patch rather than sent and overwriting it with nothing
             if (!existing || pin) patch.pin = pin;
+            // the lock screen finds the person by PIN alone, so no two may share one
+            if (pin && db.users.some((u) => u.id !== existing?.id && u.active && u.pin && verifyPin(pin, u.pin))) {
+              Alert.alert('PIN in use', 'Someone else already uses that PIN. Pick another.');
+              return;
+            }
             onSave(state.id, patch);
           }}
         />

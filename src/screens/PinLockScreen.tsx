@@ -25,6 +25,7 @@ import { Icon } from '../components/icons';
 import { PinResetSheet } from '../components/PinResetSheet';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { roleName } from '../data/perms';
+import { verifyPin } from '../data/pinHash';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PinLock'>;
@@ -104,6 +105,8 @@ export default function PinLockScreen({ navigation }: Props) {
   const [first, setFirst] = useState(''); // when choosing a PIN, the first entry
   const [err, setErr] = useState('');
   const [resetOpen, setResetOpen] = useState(false);
+  // "Forgot PIN?" with nobody chosen yet: only then are the names shown
+  const [picking, setPicking] = useState(false);
 
   const user = users.find((u) => u.id === selected);
   const choosing = !!user && !user.pin;
@@ -126,7 +129,13 @@ export default function PinLockScreen({ navigation }: Props) {
   }
 
   function enter(next: string) {
-    if (!user) return;
+    if (!user) {
+      // the PIN says who it is, as on the computer
+      const who = users.find((u) => u.pin && verifyPin(next, u.pin));
+      if (who && login(who.id, next)) navigation.replace('Main');
+      else fail('That PIN is not right.');
+      return;
+    }
     if (choosing) {
       if (user.role !== 'owner') return;
       if (!first) { setFirst(next); setPin(''); return; }
@@ -151,6 +160,14 @@ export default function PinLockScreen({ navigation }: Props) {
    * address typed here: for the owner that is their own inbox, and for staff it
    * means the owner reads the code out, so a PIN is never reset without them.
    */
+  function forgotFor(_id: string) {
+    if (!ownerEmail) {
+      Alert.alert('Forgot your PIN?', 'This shop has no owner email on record, so a code cannot be sent. The owner can set a new PIN under Settings, Staff & roles.');
+      return;
+    }
+    setResetOpen(true);
+  }
+
   function forgot() {
     if (!user) return;
     if (!ownerEmail) {
@@ -169,8 +186,8 @@ export default function PinLockScreen({ navigation }: Props) {
 
   /* the shop these books belong to, so nobody unlocks the wrong one */
   const shopHead = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
-      <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
+      <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name="home" size={20} color={colors.ink} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -215,6 +232,44 @@ export default function PinLockScreen({ navigation }: Props) {
     </View>
   ) : null;
 
+  const ownerNoPin = users.find((u) => u.role === 'owner' && !u.pin);
+  if (!user && !picking) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 52 }}>{shopHead}{branchRow}</View>
+        <View style={{ alignItems: 'center', paddingTop: 26 }}>
+          <Logo size={58} />
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 14 }}>Enter your PIN</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 5 }}>Your PIN opens your own profile.</Text>
+        </View>
+        <PinDots filled={pin.length} error={!!err} />
+        <Text style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.danger, minHeight: 18 }}>{err}</Text>
+        <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: 26 }}>
+          <View style={{ alignSelf: 'center', width: '100%', maxWidth: 320, paddingHorizontal: 20 }}>
+            {[['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['', '0', 'del']].map((row, r) => (
+              <View key={r} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 }}>
+                {row.map((k, i) => <PinKey key={i} k={k} onPress={() => (k === 'del' ? setPin(pin.slice(0, -1)) : press(k))} />)}
+              </View>
+            ))}
+          </View>
+          {ownerNoPin ? (
+            <Pressable onPress={() => { setSelected(ownerNoPin.id); setPin(''); setFirst(''); }} hitSlop={8} style={{ alignSelf: 'center', paddingVertical: 6 }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Owner: choose your PIN</Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={() => { setPicking(true); setPin(''); setErr(''); }}
+            hitSlop={10}
+            style={({ pressed }) => ({ alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: pressed ? colors.accentSoft : 'transparent' })}
+          >
+            <Icon name="mail" size={16} color={colors.accent} />
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Forgot PIN? Reset with an email code</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   if (!user) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingTop: 52 }}>
@@ -222,8 +277,8 @@ export default function PinLockScreen({ navigation }: Props) {
         {branchRow}
         <View style={{ alignItems: 'center', paddingVertical: 26 }}>
           <Logo size={64} />
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 16 }}>Who is at the till?</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6 }}>Pick your profile, then enter its PIN.</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 16 }}>Whose PIN?</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6 }}>Pick the profile to reset. The code goes to the owner.</Text>
         </View>
         <SectionLabel>Profiles</SectionLabel>
         <Panel flush>
@@ -233,7 +288,7 @@ export default function PinLockScreen({ navigation }: Props) {
               icon={u.role === 'owner' ? 'owner' : 'user'}
               title={u.name}
               subtitle={roleName(db, u.role) + (u.pin ? '' : ' · no PIN yet')}
-              onPress={() => { setSelected(u.id); setPin(''); setFirst(''); setErr(''); }}
+              onPress={() => { setSelected(u.id); setPin(''); setFirst(''); setErr(''); setPicking(false); if (u.pin) forgotFor(u.id); }}
               last={i === arr.length - 1}
             />
           ))}
@@ -259,8 +314,8 @@ export default function PinLockScreen({ navigation }: Props) {
           {cap(user.role)} · {prompt}
         </Text>
         {users.length > 1 ? (
-          <Pressable onPress={() => { setSelected(''); setPin(''); setFirst(''); }} hitSlop={8} style={({ pressed }) => ({ marginTop: 10, opacity: pressed ? 0.65 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Not you? Switch profile</Text>
+          <Pressable onPress={() => { setSelected(''); setPin(''); setFirst(''); setPicking(false); }} hitSlop={8} style={({ pressed }) => ({ marginTop: 10, opacity: pressed ? 0.65 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] })}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Back to the PIN pad</Text>
           </Pressable>
         ) : null}
       </View>

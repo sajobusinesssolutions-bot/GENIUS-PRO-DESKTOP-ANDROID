@@ -116,7 +116,7 @@ export default function ItemsScreen() {
               <Pressable
                 onPress={() => setFilter('low')}
                 style={{
-                  marginHorizontal: 16, marginBottom: 12, backgroundColor: colors.warnSoft, borderRadius: 13,
+                  marginHorizontal: 16, marginBottom: 12, backgroundColor: colors.warnSoft, borderRadius: 4,
                   paddingVertical: 11, paddingHorizontal: 14, flexDirection: 'row', justifyContent: 'space-between',
                 }}
               >
@@ -187,7 +187,7 @@ function ItemCard({ product: x, stock, money, onPress }: {
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        marginHorizontal: 16, marginBottom: 10, borderRadius: 16, paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14,
+        marginHorizontal: 16, marginBottom: 10, borderRadius: 4, paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14,
         backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line,
       })}
     >

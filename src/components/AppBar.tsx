@@ -54,7 +54,7 @@ export function IconBtn({ name, onPress, color, size = 19, children }: {
       onPress={onPress}
       hitSlop={6}
       style={({ pressed }) => ({
-        padding: 5, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+        padding: 5, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
         backgroundColor: pressed ? colors.sunk : 'transparent',
       })}
     >

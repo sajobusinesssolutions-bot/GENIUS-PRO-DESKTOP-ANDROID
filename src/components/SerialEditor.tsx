@@ -125,7 +125,7 @@ export default function SerialEditor({ serials, onChange, info = {}, onInfoChang
                 key={c}
                 onPress={() => setCondition(c)}
                 style={{
-                  flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 12, borderWidth: 1.4,
+                  flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 4, borderWidth: 1.4,
                   borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
                 }}
               >
@@ -175,7 +175,7 @@ export default function SerialEditor({ serials, onChange, info = {}, onInfoChang
             const x = info[sn] || {};
             return (
               <View key={sn + i} style={{
-                flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1.2,
+                flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 4, borderWidth: 1.2,
                 borderColor: colors.line, backgroundColor: colors.surface, paddingVertical: 10, paddingHorizontal: 12,
               }}>
                 <View style={{ flex: 1, minWidth: 0 }}>

@@ -22,7 +22,7 @@ import { useGo } from '../nav/navigate';
 import { keepPhoto, dropPhoto } from '../data/photos';
 import { SvgXml } from 'react-native-svg';
 import SignaturePad, { svgFromUri } from '../components/SignaturePad';
-import { licensedEdition } from '../data/editions';
+import { licensedEditions } from '../data/editions';
 import { lastAccountLicence } from '../data/syncClient';
 import { canFor } from '../data/perms';
 
@@ -213,7 +213,7 @@ export default function BusinessScreen() {
         <Panel>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
             <View style={{
-              width: 56, height: 56, borderRadius: 17, overflow: 'hidden',
+              width: 56, height: 56, borderRadius: 4, overflow: 'hidden',
               backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center',
             }}>
               {logo
@@ -248,7 +248,7 @@ export default function BusinessScreen() {
           <Field icon="factory" label="Business name" value={name} onChangeText={setName} readOnly={!mayEdit} placeholder="The name on your receipts" />
           <SelectField
             icon="tag" label="What kind of business" value={type}
-            options={TYPES.filter((t) => t.v === licensedEdition(lastAccountLicence(), db?.licence?.licence) || t.v === type)}
+            options={TYPES.filter((t) => licensedEditions(lastAccountLicence(), db?.licence?.licence).includes(t.v as any) || t.v === type)}
             onChange={setType}
           />
           <Field icon="doc" label="What it does" value={description} onChangeText={setDescription} readOnly={!mayEdit} placeholder="One line under the name, if you want one" />

@@ -11,6 +11,7 @@ import { useCan, Denied } from '../components/Gate';
 import { View, Text, ScrollView } from 'react-native';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useBookFrom } from '../data/useBookFrom';
 import {
   Panel, Badge, StatGrid, SectionLabel, FilterChips, EmptyBlock, Avatar, DetailRow, ProgressBar,
 } from '../components/ui';
@@ -28,8 +29,11 @@ function StaffReportScreenBody() {
   const { colors } = useTheme();
   const { db, money, user } = useAppData();
   const [period, setPeriod] = useState('month');
+  /* figures for the chosen period, read from disk when it starts before what is in memory */
+  const { book: rangeBook } = useBookFrom(db, finRange(period).from);
 
   const d = useMemo(() => {
+    const db = rangeBook;
     if (!db) return null;
     const R = finRange(period);
     const sales = db.sales.filter((s) => s.status !== 'void' && inRange(s.ts, R.from, R.to));
@@ -78,7 +82,7 @@ function StaffReportScreenBody() {
       .sort((a, b) => b.total - a.total);
 
     return { R, rows, grand, bills: sales.length, staff: rows.length };
-  }, [db, period, user]);
+  }, [rangeBook, period, user]);
 
   if (!db || !d) return null;
 
@@ -117,7 +121,7 @@ function StaffReportScreenBody() {
               {i === 0 && r.total > 0 ? (
                 <View style={{
                   position: 'absolute', right: -4, bottom: -4,
-                  backgroundColor: colors.good, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2,
+                  backgroundColor: colors.good, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
                 }}>
                   <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accentInk }}>1st</Text>
                 </View>

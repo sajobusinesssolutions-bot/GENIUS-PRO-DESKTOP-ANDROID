@@ -53,6 +53,10 @@ export function backupName(firm: string, auto: boolean, when = new Date()): stri
 
 /** The whole book as encrypted bytes, checked before anything is written. */
 export function sealBook(db: DB): Uint8Array {
+  /* A book loaded with only recent trade in memory is not the whole book.
+     Refuse rather than write a backup that silently lacks old sales; callers
+     pass wholeBook(db) from storage.ts. */
+  if ((db as { __window?: unknown }).__window) throw new Error('This backup would be incomplete. Try again in a moment.');
   const raw = JSON.stringify(db);
   const checked = validateBackup(raw);
   if (!checked.ok) throw new Error(checked.reason);

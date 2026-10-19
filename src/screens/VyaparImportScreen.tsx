@@ -72,7 +72,7 @@ export default function VyaparImportScreen({ navigation }: any) {
         {report ? (
           <>
             <View style={{ alignItems: 'center', paddingVertical: 18, gap: 8 }}>
-              <View style={{ width: 60, height: 60, borderRadius: 20, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 60, height: 60, borderRadius: 4, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="check" size={28} color={colors.good} />
               </View>
               <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{report.firm} is in</Text>
@@ -80,7 +80,7 @@ export default function VyaparImportScreen({ navigation }: any) {
                 Everything below was added to these books{report.skipped ? ', and ' + report.skipped + ' record(s) already here were left alone' : ''}.
               </Text>
             </View>
-            <View style={{ borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 8 }}>
+            <View style={{ borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, padding: 14, gap: 8 }}>
               {([
                 ['Customers & suppliers', report.parties], ['Items', report.items], ['Sales', report.sales],
                 ['Purchases', report.purchases], ['Payments', report.payments], ['Expenses', report.expenses],
@@ -103,7 +103,7 @@ export default function VyaparImportScreen({ navigation }: any) {
           </>
         ) : (
           <>
-            <View style={{ borderRadius: 16, backgroundColor: colors.accentSoft, padding: 14, gap: 6, marginBottom: 14 }}>
+            <View style={{ borderRadius: 4, backgroundColor: colors.accentSoft, padding: 14, gap: 6, marginBottom: 14 }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Move from Vyapar</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, lineHeight: 19, color: colors.soft }}>
                 In Vyapar, take a backup (Settings → Backup), then choose that .vyb file here. Customers, suppliers, items with their
@@ -118,7 +118,7 @@ export default function VyaparImportScreen({ navigation }: any) {
                 borderWidth: 1.4, borderStyle: tables ? 'solid' : 'dashed', borderColor: colors.accent, backgroundColor: colors.surface, marginBottom: 14,
               }}
             >
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                 {busy === 'read' ? <ActivityIndicator color={colors.accent} /> : <Icon name={tables ? 'doc' : 'down'} size={19} color={colors.accent} />}
               </View>
               <View style={{ flex: 1 }}>
@@ -146,7 +146,7 @@ export default function VyaparImportScreen({ navigation }: any) {
                       key={f.id}
                       onPress={() => setFirmId(f.id)}
                       style={{
-                        padding: 14, borderRadius: 16, marginBottom: 10, gap: 4,
+                        padding: 14, borderRadius: 4, marginBottom: 10, gap: 4,
                         borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
                       }}
                     >

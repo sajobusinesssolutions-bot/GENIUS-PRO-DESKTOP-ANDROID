@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useOnDisk } from '../data/useOnDisk';
 import { useToast } from '../components/Toast';
 import { Panel, Badge, DetailRow, ActionGrid, StickyBar, SectionLabel, StatGrid, InfoBanner } from '../components/ui';
 import { Icon } from '../components/icons';
@@ -27,6 +28,9 @@ export default function EstimateDetailScreen({ route, navigation }: Props) {
   const { success, error } = useToast();
   const { saleDoc } = useDocBuilder();
   const est = db?.estimates.find((e) => e.id === route.params.estimateId);
+  const soldAs = est?.convertedSaleId;
+  useOnDisk('sales', soldAs, !soldAs || !db || db.sales.some((s) => s.id === soldAs));
+  useOnDisk('estimates', route.params.estimateId, !!est || !db);
   if (!db || !est) return null;
 
   const open = est.status === 'open';
@@ -74,7 +78,7 @@ export default function EstimateDetailScreen({ route, navigation }: Props) {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 200 }}>
         <Panel>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{ width: 48, height: 48, borderRadius: 15, backgroundColor: open ? colors.accentSoft : colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 48, height: 48, borderRadius: 4, backgroundColor: open ? colors.accentSoft : colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="doc" size={23} color={open ? colors.accent : colors.faint} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>

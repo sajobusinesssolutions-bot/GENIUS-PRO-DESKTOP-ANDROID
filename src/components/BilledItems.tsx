@@ -61,7 +61,7 @@ export default function BilledItems({ lines, money, onPress, title = 'Billed Ite
         accessibilityLabel={open ? 'Fold the items away' : 'Show the items'}
         style={{
           flexDirection: 'row', alignItems: 'center', gap: 10,
-          backgroundColor: colors.accentSoft, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
+          backgroundColor: colors.accentSoft, borderRadius: 4, paddingHorizontal: 14, paddingVertical: 11,
         }}
       >
         <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
@@ -84,12 +84,12 @@ export default function BilledItems({ lines, money, onPress, title = 'Billed Ite
             disabled={!onPress}
             style={({ pressed }) => ({
               backgroundColor: pressed ? colors.line : colors.row,
-              borderRadius: 14, borderWidth: 1, borderColor: colors.lineHard,
+              borderRadius: 4, borderWidth: 1, borderColor: colors.lineHard,
               paddingHorizontal: 14, paddingVertical: 12, gap: 7,
             })}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 7, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.surface }}>
+              <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.surface }}>
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.soft }}>#{i + 1}</Text>
               </View>
               <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, Alert, Image } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useOnDisk } from '../data/useOnDisk';
 import { useToast } from '../components/Toast';
 import { useOwnerPin } from '../components/OwnerPin';
 import { Pressable } from '../components/Press';
@@ -30,6 +31,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   // asked before an edit or delete when Settings require a PIN for it
   const ownerPin = useOwnerPin();
   const sale = db?.sales.find((s) => s.id === route.params.saleId);
+  useOnDisk('sales', route.params.saleId, !!sale || !db);
   // History sits in the header as a clock, as on the design
   React.useLayoutEffect(() => {
     navigation.setOptions({
@@ -90,7 +92,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   const statusTone = !live ? colors.danger : sale.due > 0.01 ? colors.warn : colors.good;
   const statusBg = !live ? colors.dangerSoft : sale.due > 0.01 ? colors.warnSoft : colors.goodSoft;
   const statusText = !live ? 'Void' : sale.due > 0.01 ? (sale.paid > 0 ? 'Part paid' : 'Unpaid') : 'Complete';
-  const card = { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line } as const;
+  const card = { backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line } as const;
   const head = (title: string, right?: string) => (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 22, marginBottom: 8, paddingHorizontal: 4 }}>
       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>{title}</Text>
@@ -133,7 +135,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
         <View style={card}>
           {sale.lines.map((l, i) => (
             <View key={`${l.productId}-${i}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderBottomWidth: i === sale.lines.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
-              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 38, height: 38, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="box" size={18} color={colors.faint} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -167,7 +169,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
                 {sale.rx.patient ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>Patient: {sale.rx.patient}</Text> : null}
                 {sale.rx.facility ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>{sale.rx.facility}</Text> : null}
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Seen by {sale.rx.seenBy} · {new Date(sale.rx.seenAt).toLocaleString('en-GB')}</Text>
-                {sale.rx.photo ? <Image source={{ uri: sale.rx.photo }} style={{ width: '100%', height: 180, borderRadius: 12, marginTop: 8 }} resizeMode="contain" /> : null}
+                {sale.rx.photo ? <Image source={{ uri: sale.rx.photo }} style={{ width: '100%', height: 180, borderRadius: 4, marginTop: 8 }} resizeMode="contain" /> : null}
               </View>
             </View>
           </>
@@ -212,7 +214,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Pressable
             onPress={() => navigation.navigate('Receipt', { saleId: sale.id })}
-            style={{ flex: 1, height: 50, borderRadius: 14, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            style={{ flex: 1, height: 50, borderRadius: 4, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <Icon name="print" size={17} color={colors.ink} />
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Receipt</Text>
@@ -220,7 +222,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
           {live ? (
             <Pressable
               onPress={onEdit}
-              style={{ flex: 1, height: 50, borderRadius: 14, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              style={{ flex: 1, height: 50, borderRadius: 4, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
             >
               <Icon name="pencil" size={16} color={colors.accentInk} />
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accentInk }}>Edit sale</Text>

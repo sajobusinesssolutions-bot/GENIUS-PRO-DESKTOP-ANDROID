@@ -53,11 +53,11 @@ export default function SendSheet({ visible, onClose, title, to, phone, email, s
             onPress={() => void send(w.ch)}
             style={{
               width: '48%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12,
-              borderRadius: 14, borderWidth: 1.2, borderColor: colors.line, backgroundColor: colors.surface,
+              borderRadius: 4, borderWidth: 1.2, borderColor: colors.line, backgroundColor: colors.surface,
               opacity: w.ch === 'sms' && !phone ? 0.45 : 1,
             }}
           >
-            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: w.tint + '22', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 34, height: 34, borderRadius: 4, backgroundColor: w.tint + '22', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name={w.i} size={17} color={w.tint} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>

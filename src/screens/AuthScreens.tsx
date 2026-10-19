@@ -113,7 +113,7 @@ function CarouselWord({ word, index, progress }: { word: LaunchWord; index: numb
 
   return (
     <Animated.View style={[{ position: 'absolute', top: 88, left: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }, style]}>
-      <Animated.View style={[{ width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, iconStyle]}>
+      <Animated.View style={[{ width: 40, height: 40, borderRadius: 4, alignItems: 'center', justifyContent: 'center' }, iconStyle]}>
         <AnimatedIcon name={word.icon} size={20} animatedProps={iconProps} />
       </Animated.View>
       <Animated.Text style={[{ fontFamily: fonts.uiExtra, fontSize: 40, letterSpacing: -1.1, lineHeight: 46 }, textStyle]}>
@@ -327,7 +327,7 @@ export function SignInScreen({ navigation }: SignInProps) {
             </Panel>
 
             {noAccount ? (
-              <View style={{ marginTop: 14, padding: 16, borderRadius: 16, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent }}>
+              <View style={{ marginTop: 14, padding: 16, borderRadius: 4, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <Icon name="user" size={18} color={colors.accent} />
                   <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>No account uses this email</Text>

@@ -33,7 +33,7 @@ import { Icon } from '../components/icons';
 import { useGo, useGoReset } from '../nav/navigate';
 import { useToneColor } from '../components/Quick';
 import { useAuth } from '../data/AuthContext';
-import { deleteAccount, refreshSession, requestDeleteCode } from '../data/authApi';
+import { deleteAccount, refreshSession, requestDeleteCode, requestSignOutCode, confirmSignOut } from '../data/authApi';
 import { Field } from '../components/form';
 import { useDeveloper } from '../data/useDeveloper';
 
@@ -78,7 +78,7 @@ export default function MenuScreen() {
 
   const theme = (db.settings.theme as 'light' | 'dark' | 'auto') || 'auto';
   const tiles = groups.filter((g) => g.id !== 'help');
-  const card = { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line } as const;
+  const card = { backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line } as const;
   const initial = (user?.name || '?').trim().charAt(0).toUpperCase();
 
   return (
@@ -115,7 +115,7 @@ export default function MenuScreen() {
               {(branch?.name || 'No branch') + ' · ' + (isOwner ? 'own stock and own books' : roleName(db, role))}
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, height: 34, borderRadius: 10, backgroundColor: colors.accentSoft }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, height: 34, borderRadius: 4, backgroundColor: colors.accentSoft }}>
             <Icon name="swap" size={14} color={colors.accent} />
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>Switch</Text>
           </View>
@@ -155,7 +155,7 @@ export default function MenuScreen() {
                     backgroundColor: pressed ? colors.sunk : colors.surface,
                   })}
                 >
-                  <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                     <Icon name={g.i} size={21} color={colors.accent} />
                   </View>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{rowName(g, db)}</Text>
@@ -172,9 +172,9 @@ export default function MenuScreen() {
             {developer ? (
               <Pressable
                 onPress={() => go('Developer')}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16, backgroundColor: '#1C1F27' }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 4, backgroundColor: '#1C1F27' }}
               >
-                <View style={{ width: 40, height: 40, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.10)', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.10)', alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name="shield" size={19} color="#FFFFFF" />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -189,14 +189,14 @@ export default function MenuScreen() {
             <View style={card}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, paddingLeft: 16, borderBottomWidth: 1, borderBottomColor: colors.line }}>
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Appearance</Text>
-                <View style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 10, padding: 3 }}>
+                <View style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 4, padding: 3 }}>
                   {([['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['auto', 'Auto', 'contrast']] as const).map(([v, l, i]) => {
                     const on = theme === v;
                     return (
                       <Pressable
                         key={v}
                         onPress={() => setSetting({ theme: v })}
-                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 7, borderRadius: 8, backgroundColor: on ? colors.surface : 'transparent' }}
+                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 7, borderRadius: 4, backgroundColor: on ? colors.surface : 'transparent' }}
                       >
                         <Icon name={i} size={13} color={on ? colors.accent : colors.faint} />
                         <Text style={{ fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 12.5, color: on ? colors.accent : colors.soft }}>{l}</Text>
@@ -253,7 +253,22 @@ export default function MenuScreen() {
         till={db?.session.till || ''}
         onClose={() => setSigningOut(false)}
         onLock={() => { setSigningOut(false); go('PinLock'); }}
-        onSignOut={async () => { await signOut(); setSigningOut(false); goReset('AuthGate'); }}
+        needsCode={!!account && !account.localOnly}
+        onSendCode={async () => {
+          const r = await requestSignOutCode(account?.email || '');
+          return r.ok ? null : r.error.message || 'The code could not be sent.';
+        }}
+        onSignOut={async (code) => {
+          if (account && !account.localOnly) {
+            if (!account.refresh) return 'Sign in again first.';
+            const session = await refreshSession(account.refresh);
+            if (!session.ok) return session.error.message || 'Connect to the internet to sign out.';
+            const r = await confirmSignOut(session.value.access, code || '');
+            if (!r.ok) return r.error.message || 'That code is not right.';
+          }
+          await signOut(); setSigningOut(false); goReset('AuthGate');
+          return null;
+        }}
       />
     </View>
   );
@@ -264,17 +279,37 @@ export default function MenuScreen() {
  * the phone to the next person, signing out leaves the account. So the safe
  * choice sits first, and signing out is a clear red action of its own.
  */
-function SignOutSheet({ visible, email, till, onClose, onLock, onSignOut }: {
+function SignOutSheet({ visible, email, till, needsCode, onClose, onLock, onSendCode, onSignOut }: {
   visible: boolean; email: string; till: string;
-  onClose: () => void; onLock: () => void; onSignOut: () => Promise<void>;
+  /** An account kept on the server needs the code emailed to it, as on the desktop. */
+  needsCode: boolean;
+  onClose: () => void; onLock: () => void;
+  /** Each resolves to an error to show, or null when done. */
+  onSendCode: () => Promise<string | null>;
+  onSignOut: (code?: string) => Promise<string | null>;
 }) {
   const { colors } = useTheme();
   const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => { if (visible) setBusy(false); }, [visible]);
+  const [sent, setSent] = React.useState(false);
+  const [code, setCode] = React.useState('');
+  const [err, setErr] = React.useState('');
+  React.useEffect(() => { if (visible) { setBusy(false); setSent(false); setCode(''); setErr(''); } }, [visible]);
   const initial = (email.trim()[0] || '?').toUpperCase();
+
+  async function send() {
+    setBusy(true); setErr('');
+    const e = await onSendCode();
+    setBusy(false);
+    if (e) setErr(e); else setSent(true);
+  }
+  async function out() {
+    setBusy(true); setErr('');
+    try { const e = await onSignOut(code); if (e) { setErr(e); setCode(''); } } finally { setBusy(false); }
+  }
+
   return (
     <Sheet visible={visible} onClose={onClose} title="Sign out?">
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, backgroundColor: colors.sunk }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 4, backgroundColor: colors.sunk }}>
         <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.accentInk }}>{initial}</Text>
         </View>
@@ -289,15 +324,36 @@ function SignOutSheet({ visible, email, till, onClose, onLock, onSignOut }: {
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent }}>Lock the till instead</Text>
       </Pressable>
 
+      {needsCode ? (
+        sent ? (
+          <>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, marginBottom: 8 }}>
+              Enter the 6-digit code sent to {email}. <Text onPress={busy ? undefined : send} style={{ color: colors.accent }}>Send it again</Text>
+            </Text>
+            <Field label="Code from the email" value={code} onChangeText={(v) => { setCode(v.replace(/[^0-9]/g, '').slice(0, 6)); setErr(''); }} numeric maxLength={6} autoFocus />
+          </>
+        ) : (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.soft, marginBottom: 12 }}>
+            Signing out needs the owner's approval. We will email a code to {email || 'the owner'}.
+          </Text>
+        )
+      ) : null}
+      {err ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.danger, marginBottom: 10 }}>{err}</Text> : null}
+
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}><Button label="Cancel" onPress={onClose} disabled={busy} /></View>
         <View style={{ flex: 1 }}>
-          <Button
-            variant="dngr"
-            label={busy ? 'Signing out…' : 'Sign out'}
-            loading={busy}
-            onPress={async () => { setBusy(true); try { await onSignOut(); } finally { setBusy(false); } }}
-          />
+          {needsCode && !sent ? (
+            <Button variant="dngr" label={busy ? 'Sending…' : 'Send code'} loading={busy} onPress={send} />
+          ) : (
+            <Button
+              variant="dngr"
+              label={busy ? 'Signing out…' : 'Sign out'}
+              loading={busy}
+              disabled={needsCode && code.length !== 6}
+              onPress={out}
+            />
+          )}
         </View>
       </View>
     </Sheet>

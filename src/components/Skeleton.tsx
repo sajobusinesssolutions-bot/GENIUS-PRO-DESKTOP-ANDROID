@@ -40,7 +40,7 @@ export function Bone({ w = '100%', h = 14, r = 8, style }: { w?: number | string
 export function ScreenSkeleton({ rows = 6 }: { rows?: number }) {
   const { colors } = useTheme();
   useEffect(() => { startPulse(); return stopPulse; }, []);
-  const card = { backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.line };
+  const card = { backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line };
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: 16 }} accessibilityLabel="Loading">
       <View style={[card, { padding: 16, gap: 12 }]}>

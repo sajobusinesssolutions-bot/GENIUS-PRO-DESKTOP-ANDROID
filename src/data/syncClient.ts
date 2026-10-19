@@ -209,6 +209,10 @@ export async function revokeBusinessAccess(access: string, businessId: string, a
  * phone. The queue is left out — it is this phone's unsent work, not the books.
  */
 export async function uploadSnapshot(d: DB, access: string, wiring: Wiring, cursor = d.sync?.cursor || 0): Promise<Result<{ bytes: number; version: number }>> {
+  /* Never upload part of the book as if it were all of it (storage.ts wholeBook). */
+  if ((d as { __window?: unknown }).__window) {
+    return { ok: false, error: { failure: 'partialBook' as AuthError['failure'], message: 'The books on this phone are only partly loaded; the snapshot was not sent.' } };
+  }
   const version = Number(d.sync?.snapshotVersion || 0);
   const data = { ...d, sync: { ...d.sync, pending: [], log: [], snapshotVersion: version } };
   return call<{ bytes: number; version: number }>('/v1/businesses/' + wiring.businessId + '/snapshot', access,

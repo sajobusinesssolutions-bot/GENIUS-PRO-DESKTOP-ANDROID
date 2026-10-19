@@ -30,10 +30,10 @@ export default function ThemePicker() {
       accessibilityLabel={'Theme: ' + look.l + '. Tap for ' + LOOK[NEXT[current]].l}
       style={{
         flexDirection: 'row', alignItems: 'center', gap: 12, height: 56, paddingHorizontal: 14,
-        borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line,
+        borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line,
       }}
     >
-      <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 34, height: 34, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={look.i} size={18} color={colors.accent} />
       </View>
       <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Appearance</Text>

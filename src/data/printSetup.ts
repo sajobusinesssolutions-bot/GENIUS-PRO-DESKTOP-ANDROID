@@ -24,6 +24,22 @@ export function docKindOf(kind: string): DocKind {
   return 'invoice';
 }
 
+/** Where a printer can stand. The restaurant ones lead in a restaurant. */
+export const PRINTER_PLACES = ['Cashier desk', 'Front counter', 'Kitchen', 'Bar', 'Pass / expo', 'Office'];
+
+/** The printer's place, or a sensible one from what it prints. */
+export function placeOf(p: Printer): string {
+  if (p.place) return p.place;
+  const pr = printsOf(p);
+  return pr.length === 1 && pr[0] === 'order' ? 'Kitchen' : '';
+}
+
+/** Not a real printer: the phone's own print dialog, which also saves a PDF. */
+export const PHONE_DIALOG: Printer = {
+  id: '__dialog', name: "Phone's print dialog or PDF", kind: 'pdf', width: 'A4',
+  address: '', port: 0, dflt: false, online: true, note: '',
+};
+
 export function defaultPrinter(db: DB | null | undefined): Printer | undefined {
   return db?.printers?.find((p) => p.dflt) || db?.printers?.[0];
 }

@@ -5,6 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useBookFrom } from '../data/useBookFrom';
 import { ListPage, DocRow, SummaryTiles, PeriodBar, listPeriod, inPeriod } from '../components/DocList';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
@@ -16,14 +17,16 @@ export default function CashEntriesScreen({ route, navigation }: Props) {
   const { db, money } = useAppData();
   const dir = route.params?.direction === 'out' ? 'out' : 'in';
   const [period, setPeriod] = useState(listPeriod('month'));
+  /* the period read from disk when it starts before what is in memory */
+  const { book, reading } = useBookFrom(db, period.from);
   const [q, setQ] = useState('');
 
   React.useEffect(() => { navigation.setOptions({ title: dir === 'in' ? 'Cash in' : 'Cash out' }); }, [dir, navigation]);
 
   const inRange = useMemo(
-    () => (db?.entries || []).filter((e) => e.direction === dir && inPeriod(e.ts, period))
+    () => (book?.entries || []).filter((e) => e.direction === dir && inPeriod(e.ts, period))
       .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()),
-    [db?.entries, dir, period],
+    [book?.entries, dir, period],
   );
   const accName = (id: string) => db?.accounts.find((a) => a.id === id)?.name || 'Account';
   const userName = (id?: string) => (id ? db?.users.find((u) => u.id === id)?.name : undefined);
@@ -47,7 +50,7 @@ export default function CashEntriesScreen({ route, navigation }: Props) {
       search={{ value: q, onChange: setQ, placeholder: 'Search what it was for' }}
       data={list}
       keyExtractor={(e) => e.id}
-      empty={{ text: 'No money ' + (dir === 'in' ? 'in' : 'out') + ' in this period. Record one with Add cash ' + dir + '.' }}
+      empty={{ text: reading ? 'Reading older records…' : 'No money ' + (dir === 'in' ? 'in' : 'out') + ' in this period. Record one with Add cash ' + dir + '.' }}
       add={{ label: 'Add cash ' + dir, onPress: () => navigation.navigate('EntryNew', { direction: dir }) }}
       renderItem={({ item: e }) => (
         <DocRow

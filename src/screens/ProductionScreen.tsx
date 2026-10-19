@@ -31,7 +31,7 @@ export default function ProductionScreen() {
             {assemblies.map((p) => (
               <Panel key={p.id} style={{ marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
                     <Text style={{ fontSize: 20 }}>{p.emoji || '🧩'}</Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -94,12 +94,12 @@ export default function ProductionScreen() {
         renderItem={({ item }) => (
           <View
             style={{
-              backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13,
+              backgroundColor: colors.surface, borderRadius: 4, paddingHorizontal: 14, paddingVertical: 13,
               marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12,
               shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 2,
             }}
           >
-            <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="factory" size={19} color={colors.good} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>

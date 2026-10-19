@@ -112,8 +112,23 @@ export function editionOfType(t: string | null | undefined): Edition {
  * granted by Genius Pro in the developer console.
  */
 export function licensedEdition(server: { edition?: string; plan?: string | null } | null | undefined, onPhone: { edition?: string } | null | undefined): Edition {
-  const e = (server?.plan ? server.edition : undefined) || onPhone?.edition || 'retail';
-  return editionOfType(e);
+  return licensedEditions(server, onPhone)[0];
+}
+
+/**
+ * Every edition this account may set up and open. A licence can cover more
+ * than one ("retail,restaurant", granted in the developer console); the first
+ * is the one a new business starts as.
+ */
+export function licensedEditions(server: { edition?: string; plan?: string | null } | null | undefined, onPhone: { edition?: string } | null | undefined): Edition[] {
+  const raw = (server?.plan ? server.edition : undefined) || onPhone?.edition || 'retail';
+  const list: Edition[] = [];
+  for (const part of String(raw).split(/[\s,]+/)) {
+    if (!part) continue;
+    const e = editionOfType(part);
+    if (!list.includes(e)) list.push(e);
+  }
+  return list.length ? list : ['retail'];
 }
 
 /**
@@ -145,7 +160,12 @@ export function businessLimitWords(a: { max: number; used: number }): string {
 }
 
 /** Why another edition cannot be chosen, in words. */
-export function editionLockReason(allowed: Edition, wanted: Edition): string {
+export function editionLockReason(allowedIn: Edition | Edition[], wanted: Edition): string {
+  const all = Array.isArray(allowedIn) ? allowedIn : [allowedIn];
+  if (all.length > 1) {
+    return 'Your licence covers ' + all.map((e) => EDITIONS[e].name).join(' and ') + '. A ' + EDITIONS[wanted].name + ' business needs that edition added — contact Genius Pro.';
+  }
+  const allowed = all[0];
   if (allowed === 'retail') {
     return 'The free trial is for the Retail edition. A ' + EDITIONS[wanted].name + ' trial or licence is given by Genius Pro — contact us to get one.';
   }

@@ -6,6 +6,7 @@
  * after, and writes an encrypted .sa file when one is due.
  */
 import { useEffect, useRef } from 'react';
+import { wholeBook, isPartialBook } from './storage';
 import { useAppData } from './AppDataContext';
 import { backupDue, loadChosenFolder, writeBackup } from './deviceBackup';
 
@@ -20,11 +21,12 @@ export default function BackupKeeper() {
   setRef.current = setSetting;
 
   useEffect(() => {
-    const check = () => {
+    const check = async () => {
       const d = dbRef.current;
       if (!d || !backupDue(d.settings.backupSchedule, d.settings.lastBackupAt)) return;
       try {
-        writeBackup(d, true);
+        /* the whole book from disk, not just what is in memory */
+        writeBackup((isPartialBook(d) ? await wholeBook(d) : d), true);
         setRef.current({ lastBackupAt: new Date().toISOString() });
       } catch {
         // a backup that fails is retried on the next check; it must never stop the till

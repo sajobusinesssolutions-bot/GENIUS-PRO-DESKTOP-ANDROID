@@ -11,6 +11,7 @@ import { View, Text, ScrollView } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useBookFrom } from '../data/useBookFrom';
 import { Icon, IconName } from '../components/icons';
 import { ListPage, DocRow, SummaryTiles, PeriodBar, listPeriod, ListPeriod } from '../components/DocList';
 import { accountFlow } from '../data/accountFlow';
@@ -27,12 +28,14 @@ export default function MoneyScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { db, money } = useAppData();
   const [period, setPeriod] = useState<ListPeriod>(listPeriod('today'));
+  /* account flows for the period, read from disk when it starts before what is in memory */
+  const { book: rangeBook } = useBookFrom(db, period.from);
 
   // this branch's own accounts, plus any the whole firm shares
   const accounts = useMemo(() => (db ? branchAccounts(db, activeBranchId(db)) : []), [db]);
   const flows = useMemo(
-    () => (db ? accounts.map((a) => ({ a, f: accountFlow(db, a.id, period.from, period.to) })) : []),
-    [db, accounts, period],
+    () => (rangeBook ? accounts.map((a) => ({ a, f: accountFlow(rangeBook, a.id, period.from, period.to) })) : []),
+    [rangeBook, accounts, period],
   );
   const total = flows.reduce((t, x) => ({
     held: t.held + x.f.closing, inflow: t.inflow + x.f.inflow, outflow: t.outflow + x.f.outflow,
@@ -62,7 +65,7 @@ export default function MoneyScreen({ navigation }: Props) {
                 key={a.label}
                 onPress={a.go}
                 style={({ pressed }) => ({
-                  flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 14,
+                  flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 4,
                   backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line,
                 })}
               >

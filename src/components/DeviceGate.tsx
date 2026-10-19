@@ -172,8 +172,8 @@ export default function DeviceGate() {
     // cannot be dismissed: the only ways on are removing a device or signing in
     <Modal visible transparent animationType="fade" onRequestClose={() => {}}>
       <View style={{ flex: 1, backgroundColor: 'rgba(10,12,18,0.6)', justifyContent: 'center', padding: 20, paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }}>
-        <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 20, maxHeight: '100%' }}>
-          <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: removed ? colors.dangerSoft : colors.warnSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+        <View style={{ backgroundColor: colors.surface, borderRadius: 4, padding: 20, maxHeight: '100%' }}>
+          <View style={{ width: 52, height: 52, borderRadius: 4, backgroundColor: removed ? colors.dangerSoft : colors.warnSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
             <Icon name={removed ? 'lock' : 'phone'} size={24} color={removed ? colors.danger : colors.warn} />
           </View>
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>
@@ -202,7 +202,7 @@ export default function DeviceGate() {
                       <Pressable
                         onPress={() => remove(d)}
                         accessibilityLabel={'Remove ' + (d.name || 'device')}
-                        style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.dangerSoft }}
+                        style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4, backgroundColor: colors.dangerSoft }}
                       >
                         <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.danger }}>Remove</Text>
                       </Pressable>

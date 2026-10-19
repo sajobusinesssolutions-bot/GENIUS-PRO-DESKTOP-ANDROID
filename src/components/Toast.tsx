@@ -138,12 +138,12 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
         accessibilityRole="alert"
         accessibilityHint="Tap to dismiss"
         style={{
-          backgroundColor: tone.bg, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14,
+          backgroundColor: tone.bg, borderRadius: 4, paddingVertical: 12, paddingHorizontal: 14,
           flexDirection: 'row', alignItems: 'center', gap: 12,
           shadowColor: '#0B1D2A', shadowOpacity: 0.2, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 12,
         }}
       >
-        <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 30, height: 30, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name={tone.icon} size={17} color={tone.fg} />
         </View>
         <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, lineHeight: 19, color: tone.fg }}>{toast.message}</Text>

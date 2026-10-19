@@ -13,6 +13,7 @@
  * same way under the bundler.
  */
 import React, { useCallback, useEffect, useState } from 'react';
+import { wholeBook, isPartialBook } from '../data/storage';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
@@ -148,11 +149,11 @@ export default function SyncScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Restore', style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             try {
               const checked = validateBackup(JSON.stringify(copy.data));
               if (!checked.ok || !checked.db) throw new Error(checked.reason);
-              writeBackup(db, false);
+              writeBackup((isPartialBook(db) ? await wholeBook(db) : db), false);
               restoreBackup(checked.db);
               setCopy(null);
               success('Cloud backup restored');
@@ -272,17 +273,17 @@ export default function SyncScreen() {
             const me = d.current ?? d.id === s.deviceId;
             return (
               <View key={d.id} style={{
-                flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 18, marginBottom: 10,
+                flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 4, marginBottom: 10,
                 backgroundColor: colors.surface, borderWidth: 1.2, borderColor: me ? colors.good : colors.line,
               }}>
-                <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name="phone" size={20} color={colors.ink} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{d.name || 'Device'}</Text>
                     {me ? (
-                      <View style={{ backgroundColor: colors.goodSoft, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
+                      <View style={{ backgroundColor: colors.goodSoft, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 }}>
                         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.good }}>This device</Text>
                       </View>
                     ) : null}
@@ -323,7 +324,7 @@ export default function SyncScreen() {
         <View style={{ height: 10 }} />
         <Button label="Load cloud backup" loading={busy === 'load'} icon={<Icon name="down" size={17} color={colors.ink} />} onPress={loadCloudCopy} />
         {copy ? (
-          <View style={{ marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: colors.sunk, gap: 4 }}>
+          <View style={{ marginTop: 12, padding: 14, borderRadius: 4, backgroundColor: colors.sunk, gap: 4 }}>
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Latest cloud copy · version {copy.version}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
               {'Saved ' + fmtDate(copy.updatedAt) + ' · ' + plural((copy.data?.sales || []).length, 'sale') + ' · ' + plural((copy.data?.products || []).length, 'item')}

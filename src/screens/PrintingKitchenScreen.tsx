@@ -60,7 +60,7 @@ export default function PrintingKitchenScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
       {/* preview */}
-      <View style={{ backgroundColor: '#fff', borderRadius: 10, padding: 14, width: 260, alignSelf: 'center', marginBottom: 18, borderWidth: 1, borderColor: colors.line }}>
+      <View style={{ backgroundColor: '#fff', borderRadius: 4, padding: 14, width: 260, alignSelf: 'center', marginBottom: 18, borderWidth: 1, borderColor: colors.line }}>
         <Text style={{ textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: '#111' }}>{k.title || 'KITCHEN ORDER'}</Text>
         {k.showTable ? <Text style={{ textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 16, color: '#111' }}>Table 4</Text> : null}
         <Text style={mono}>--------------------------------</Text>
@@ -79,7 +79,7 @@ export default function PrintingKitchenScreen() {
       </View>
 
       <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, letterSpacing: 0.6, color: colors.faint, textTransform: 'uppercase', marginBottom: 8 }}>Kitchen ticket</Text>
-      <View style={{ borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, padding: 14, marginBottom: 18 }}>
+      <View style={{ borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, padding: 14, marginBottom: 18 }}>
         <Field label="Heading" value={k.title} onChangeText={(v) => set({ title: v })} placeholder="KITCHEN ORDER" />
         <ToggleRow bare label="Large print for the dishes" on={k.bigText} onChange={(v) => set({ bigText: v })} />
         <ToggleRow bare label="Table or ticket name" on={k.showTable} onChange={(v) => set({ showTable: v })} />
@@ -94,7 +94,7 @@ export default function PrintingKitchenScreen() {
       </View>
 
       <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, letterSpacing: 0.6, color: colors.faint, textTransform: 'uppercase', marginBottom: 8 }}>Customer receipt and bill</Text>
-      <View style={{ borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, padding: 14, marginBottom: 18 }}>
+      <View style={{ borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, padding: 14, marginBottom: 18 }}>
         <ToggleRow bare label="Show each dish's choices" sub="+ Large, Extra cheese under the dish" on={showMods} onChange={setShowMods} />
         <ToggleRow bare label="Show the table or ticket name" on={showTable} onChange={setShowTable} />
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6 }}>Header, footer, logo and paper are set in Receipt settings.</Text>

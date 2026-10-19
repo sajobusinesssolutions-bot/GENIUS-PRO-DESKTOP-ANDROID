@@ -48,7 +48,7 @@ export default function QtyPicker({ visible, productName, onConfirm, onCancel, m
         <View style={{ flex: 1, justifyContent: 'flex-end' }}>
           <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={cancel} />
           <View style={{
-            backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+            backgroundColor: colors.surface, borderTopLeftRadius: 4, borderTopRightRadius: 4,
             padding: spacing.lg, gap: spacing.lg,
           }}>
         <View>
@@ -78,7 +78,7 @@ export default function QtyPicker({ visible, productName, onConfirm, onCancel, m
                   key={d}
                   onPress={() => addDigit(d)}
                   style={{
-                    flex: 1, height: 44, borderRadius: 10, backgroundColor: colors.sunk,
+                    flex: 1, height: 44, borderRadius: 4, backgroundColor: colors.sunk,
                     alignItems: 'center', justifyContent: 'center',
                   }}
                 >
@@ -89,7 +89,7 @@ export default function QtyPicker({ visible, productName, onConfirm, onCancel, m
                 <Pressable
                   onPress={() => setQty(qty.slice(0, -1))}
                   style={{
-                    flex: 1, height: 44, borderRadius: 10, backgroundColor: colors.lineHard,
+                    flex: 1, height: 44, borderRadius: 4, backgroundColor: colors.lineHard,
                     alignItems: 'center', justifyContent: 'center',
                   }}
                 >

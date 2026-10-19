@@ -9,6 +9,8 @@ import { View, Text, ScrollView, Alert } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useOlderRows, withOlder } from '../data/useOnDisk';
+import type { Movement } from '../data/types';
 import { useToast } from '../components/Toast';
 import {
   Panel, Badge, DetailRow, StatGrid, SectionLabel, InfoBanner, ActionGrid, StickyBar,
@@ -64,21 +66,24 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
     });
   }, [navigation, p?.name, id, colors]);
 
+  /* with only recent trade in memory, the item's older movements come from disk */
+  const older = useOlderRows<Movement>(db, 'movements', id);
+  const allMoves = useMemo(() => withOlder(db?.movements || [], older), [db, older]);
   const moves = useMemo(() => {
-    const rows = (db?.movements || []).filter((m) => m.productId === id);
+    const rows = allMoves.filter((m) => m.productId === id);
     rows.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
     if (filter === 'in') return rows.filter((m) => m.qty > 0);
     if (filter === 'out') return rows.filter((m) => m.qty < 0);
     return rows;
-  }, [db, id, filter]);
+  }, [allMoves, id, filter]);
 
   const totals = useMemo(() => {
-    const rows = (db?.movements || []).filter((m) => m.productId === id);
+    const rows = allMoves.filter((m) => m.productId === id);
     return {
       in: rows.filter((m) => m.qty > 0).reduce((s, m) => s + m.qty, 0),
       out: rows.filter((m) => m.qty < 0).reduce((s, m) => s - m.qty, 0),
     };
-  }, [db, id]);
+  }, [allMoves, id]);
 
   if (!db || !p) return null;
 
@@ -132,7 +137,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   const delta = Number.isFinite(countedNum) ? countedNum - adjustBase : 0;
 
   const stockTone = stock <= 0 ? colors.danger : low ? colors.warn : colors.good;
-  const card = { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' as const };
+  const card = { backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' as const };
   const head = (title: string, right?: string) => (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 22, marginBottom: 8, paddingHorizontal: 4 }}>
       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>{title}</Text>
@@ -152,8 +157,8 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   );
   const biggest = Math.max(1, ...batches.map((b) => b.qty));
   const shown = showAll ? moves : moves.slice(0, 5);
-  const allCount = (db.movements || []).filter((m) => m.productId === id).length;
-  const inCount = (db.movements || []).filter((m) => m.productId === id && m.qty > 0).length;
+  const allCount = allMoves.filter((m) => m.productId === id).length;
+  const inCount = allMoves.filter((m) => m.productId === id && m.qty > 0).length;
   const outCount = allCount - inCount;
 
   return (
@@ -224,14 +229,14 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
 
         {/* every movement, newest first */}
         {head('Stock transactions', allCount + ' entries')}
-        <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 12, padding: 3, marginBottom: 10 }}>
+        <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 4, padding: 3, marginBottom: 10 }}>
           {([['all', 'All', allCount], ['in', 'In', inCount], ['out', 'Out', outCount]] as const).map(([v, l, n]) => {
             const on = filter === v;
             return (
               <Pressable
                 key={v}
                 onPress={() => { setFilter(v); setShowAll(false); }}
-                style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center', backgroundColor: on ? colors.surface : 'transparent', borderWidth: on ? 1 : 0, borderColor: colors.line }}
+                style={{ flex: 1, paddingVertical: 8, borderRadius: 4, alignItems: 'center', backgroundColor: on ? colors.surface : 'transparent', borderWidth: on ? 1 : 0, borderColor: colors.line }}
               >
                 <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13.5, color: on ? colors.ink : colors.soft }}>
                   {l} <Text style={{ fontFamily: fonts.ui, color: colors.faint }}>{n}</Text>
@@ -247,7 +252,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
             const bg = tone === 'good' ? colors.goodSoft : tone === 'warn' ? colors.warnSoft : colors.dangerSoft;
             return (
               <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderBottomWidth: i === shown.length - 1 && !(moves.length > 5) ? 0 : 1, borderBottomColor: colors.line }}>
-                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name={MOVE_ICON[m.type] || 'swap'} size={17} color={fg} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -279,14 +284,14 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Pressable
             onPress={openAdjust}
-            style={{ flex: 1, height: 50, borderRadius: 14, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            style={{ flex: 1, height: 50, borderRadius: 4, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <Icon name="swap" size={17} color={colors.ink} />
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Adjust stock</Text>
           </Pressable>
           <Pressable
             onPress={() => navigation.navigate('ProductDetail', { productId: id })}
-            style={{ flex: 1, height: 50, borderRadius: 14, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            style={{ flex: 1, height: 50, borderRadius: 4, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <Icon name="pencil" size={16} color={colors.accentInk} />
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accentInk }}>Edit item</Text>
