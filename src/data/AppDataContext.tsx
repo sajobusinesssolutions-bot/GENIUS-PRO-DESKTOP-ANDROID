@@ -1522,7 +1522,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             } else if (p?.coll === 'users' && p.doc) {
               // merged, so a profile from a computer that sends no PIN keeps the PIN it has here
               const had = d.users.find((u) => u.id === p.doc.id);
-              put(d.users, had ? { ...had, ...p.doc, pin: p.doc.pin || had.pin } : p.doc);
+              // the computer knows the owner by its own id: fold that into this
+              // phone's owner rather than adding a second owner
+              const owner = !had && p.doc.role === 'owner' ? d.users.find((u) => u.role === 'owner') : undefined;
+              if (owner) { if (p.doc.pin) owner.pin = p.doc.pin; }
+              else put(d.users, had ? { ...had, ...p.doc, pin: p.doc.pin || had.pin } : p.doc);
             } else if (p?.coll === 'roles' && p.doc) {
               ensureRoles(d);
               put(d.roles, p.doc);
