@@ -233,6 +233,24 @@ export function guardCash(d: DB, takes: Array<{ acc: string; amount: number }>) 
   });
 }
 
+/**
+ * The offline allowance. With sync on, every voucher goes up as it is saved;
+ * without a network it waits in the queue. A phone may hold up to this many
+ * before it must get online, so a long outage cannot leave the devices far
+ * apart. Sending them clears the count. (The computer keeps the same rule.)
+ */
+export const OFFLINE_ALLOWANCE = 300;
+export function offlineLeft(d: DB): number | null {
+  if (!d.sync?.on) return null;
+  return Math.max(0, OFFLINE_ALLOWANCE - (d.queue || []).length);
+}
+function mustHaveAllowance(d: DB) {
+  if (offlineLeft(d) === 0) {
+    throw new Refusal('Get online to carry on',
+      'This phone has saved ' + OFFLINE_ALLOWANCE + ' changes without a network. They go up by themselves once it is online, and you can carry on selling.');
+  }
+}
+
 export function enqueue(d: DB, kind: string, ref: string) {
   if (d.session.online && !d.sync?.on) return;
   if (!d.queue) d.queue = [];
@@ -244,6 +262,7 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
   if (!canWith(ensureRoles(d), d.session.role, 'sales.create')) {
     throw new Refusal('Permission denied: sales.create');
   }
+  mustHaveAllowance(d);
   // A dish made to a recipe costs what its ingredients cost, so its profit is real.
   o = { ...o, lines: o.lines.map((l) => {
     const r = d.products.find((p) => p.id === l.productId)?.recipe;
@@ -441,6 +460,7 @@ export function voidSale(d: DB, saleId: string, reason?: string, when = new Date
 }
 
 export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], method: PayMethod, when = new Date(), userId?: string, no?: string): Purchase {
+  mustHaveAllowance(d);
   if (!canWith(ensureRoles(d), d.session.role, 'purchases.create')) {
     throw new Refusal('Permission denied: purchases.create');
   }
@@ -502,6 +522,7 @@ export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], me
 }
 
 export function recordPayment(d: DB, o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; userId?: string; allocations?: Array<{ saleId: string; amount: number }> }, when = new Date()): Payment {
+  mustHaveAllowance(d);
   const party = d.parties.find((p) => p.id === o.partyId);
   if (!party) throw new Refusal('A party is required for payments');
   if (o.direction === 'in' && party.type !== 'customer') throw new Refusal('A customer is required for customer payments');
