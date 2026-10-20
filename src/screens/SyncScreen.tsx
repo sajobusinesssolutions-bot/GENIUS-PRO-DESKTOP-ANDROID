@@ -26,6 +26,7 @@ import { ToolCard, CountPill, SectionCap } from '../components/ToolCard';
 import { useGo } from '../nav/navigate';
 import { plural, fmtDate } from '../data/helpers';
 import { useSyncRun } from '../data/useSyncRun';
+import { vouchersWaiting } from '../data/logic';
 import { listDevices, revokeDevice, refreshSession } from '../data/authApi';
 import { downloadSnapshot } from '../data/syncClient';
 import { writeBackup } from '../data/deviceBackup';
@@ -241,7 +242,7 @@ export default function SyncScreen() {
             {failed && lastFail
               ? 'The last ' + plural(failed, 'attempt') + ' failed: ' + lastFail.note
               : pending || deferred
-                ? plural(pending + deferred, 'change') + ' waiting — sent automatically when the phone is online. ' + Math.max(0, 300 - pending) + ' of 300 left before the phone must get online.'
+                ? plural(pending + deferred, 'change') + ' waiting — sent automatically when the phone is online. ' + Math.max(0, 300 - vouchersWaiting(db)) + ' of 300 vouchers left before the phone must get online.'
                 : 'Queue is healthy. No pending, deferred or failed items.'}
           </Text>
           {/* every till that should see each other's sales must show the same ID here */}

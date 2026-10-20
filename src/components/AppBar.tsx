@@ -11,6 +11,7 @@ import { useTheme, fonts } from '../theme';
 import { useAppDataSafe } from '../data/AppDataContext';
 import { Icon, IconName } from './icons';
 import { Tap } from './Tap';
+import { offlineLeft, vouchersWaiting } from '../data/logic';
 
 function pad(n: number) { return n < 10 ? '0' + n : String(n); }
 
@@ -26,6 +27,10 @@ export function StatusStrip() {
   }, []);
   const online = db?.session.online !== false;
   const queued = db?.queue.length || 0;
+  // the offline allowance: vouchers waiting, and how many more may be saved (logic.ts)
+  const left = db ? offlineLeft(db) : null;
+  const waiting = db ? vouchersWaiting(db) : 0;
+  const low = left != null && left <= 50;
   return (
     <View style={{
       height: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -35,9 +40,9 @@ export function StatusStrip() {
         {pad(now.getHours())}:{pad(now.getMinutes())}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: online ? colors.good : colors.warn }} />
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: low ? colors.danger : online ? colors.good : colors.warn }} />
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
-          {online ? 'online' : 'offline' + (queued ? ' · ' + queued + ' queued' : '')}
+          {(online ? 'online' : 'offline') + (left != null && waiting ? ' · ' + waiting + ' waiting · ' + left + ' left' : !online && queued ? ' · ' + queued + ' queued' : '')}
         </Text>
       </View>
     </View>
