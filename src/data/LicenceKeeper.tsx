@@ -16,8 +16,8 @@ import { useAuth } from './AuthContext';
 import { useAppData } from './AppDataContext';
 import { refreshSession, serverConfigured } from './authApi';
 
-/** Asking more often than this buys nothing: tokens last a month. */
-const MIN_GAP_MS = 6 * 60 * 60 * 1000;
+/** At most this often when the app comes back to the front, so a licence granted in the console shows within minutes. */
+const MIN_GAP_MS = 15 * 60 * 1000;
 
 export default function LicenceKeeper() {
   const { account } = useAuth();

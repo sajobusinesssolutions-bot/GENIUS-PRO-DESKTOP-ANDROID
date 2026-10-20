@@ -1047,7 +1047,7 @@ RPT['daybook'] = (db, from, to) => {
       no: s.no,
       particulars: partyName(db, s.partyId) || 'Walk-in',
       debit: s.total,
-      credit: s.total,
+      credit: 0,
       ref: { kind: 'sale', id: s.id },
     });
   });
@@ -1057,7 +1057,7 @@ RPT['daybook'] = (db, from, to) => {
       type: 'Purchase',
       no: p.no,
       particulars: supplierName(db, p.partyId),
-      debit: p.total,
+      debit: 0,
       credit: p.total,
       ref: { kind: 'purchase', id: p.id },
     });
@@ -1068,11 +1068,11 @@ RPT['daybook'] = (db, from, to) => {
     txns.push({
       ts: x.ts, type: x.direction === 'in' ? 'Receipt' : 'Payment', no: x.id.slice(-6).toUpperCase(),
       particulars: (x.direction === 'in' ? partyName(db, x.partyId) : supplierName(db, x.partyId)) || '—',
-      debit: x.amount, credit: x.amount, ref: { kind: 'payment', id: x.id },
+      debit: x.direction === 'in' ? 0 : x.amount, credit: x.direction === 'in' ? x.amount : 0, ref: { kind: 'payment', id: x.id },
     });
   });
   (db.creditNotes || []).filter((c) => within(c.ts, from, to)).forEach((c) => {
-    txns.push({ ts: c.ts, type: 'Credit note', no: c.no, particulars: partyName(db, c.partyId) || 'Walk-in', debit: c.total, credit: c.total, ref: { kind: 'creditNote', id: c.id } });
+    txns.push({ ts: c.ts, type: 'Credit note', no: c.no, particulars: partyName(db, c.partyId) || 'Walk-in', debit: 0, credit: c.total, ref: { kind: 'creditNote', id: c.id } });
   });
   (db.entries || []).filter((e) => within(e.ts, from, to)).forEach((e) => {
     txns.push({
@@ -1080,8 +1080,8 @@ RPT['daybook'] = (db, from, to) => {
       type: 'Entry',
       no: e.id.slice(0, 8).toUpperCase(),
       particulars: e.note || e.category || 'Entry',
-      debit: e.amount,
-      credit: e.amount,
+      debit: e.direction === 'out' ? e.amount : 0,
+      credit: e.direction === 'in' ? e.amount : 0,
       ref: { kind: 'entry', id: e.id },
     });
   });
@@ -1098,7 +1098,7 @@ RPT['daybook'] = (db, from, to) => {
     rows,
     rowRefs: txns.map((t) => t.ref || null),
     foot: ['Total', '', '', '', m(sumCol(rows, 4)), m(sumCol(rows, 5))],
-    note: 'Every voucher in the range, once. Each debits and credits the same amount, so the two columns agree.',
+    note: 'Every voucher once, as Tally shows it: a sale on the debit side, a receipt on the credit side. A record of the day, so the columns need not agree.',
   };
 };
 
