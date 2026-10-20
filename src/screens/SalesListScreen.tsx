@@ -400,6 +400,8 @@ export default function SalesListScreen({ navigation }: Props) {
       if (userFilter !== 'all' && r.userId !== userFilter) return false;
       if (partyFilter !== 'all' && r.partyId !== partyFilter) return false;
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      // cancelled documents stay out of the list, as on the computer; the Void filter shows them
+      if (statusFilter === 'all' && r.status === 'void') return false;
       if (!needle) return true;
       return r.ref.toLowerCase().includes(needle) || r.title.toLowerCase().includes(needle);
     });

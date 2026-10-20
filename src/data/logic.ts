@@ -240,9 +240,12 @@ export function guardCash(d: DB, takes: Array<{ acc: string; amount: number }>) 
  * apart. Sending them clears the count. (The computer keeps the same rule.)
  */
 export const OFFLINE_ALLOWANCE = 300;
+/** Vouchers only — sales, bills, money, notes, journals — as the computer counts; item and party edits do not use the allowance. */
+const VOUCHER_KINDS = new Set(['sale', 'purchase', 'payment', 'entry', 'creditNote', 'journal', 'movement', 'estimate', 'challan', 'purchaseOrder']);
+export function vouchersWaiting(d: DB): number { return (d.queue || []).filter((q) => VOUCHER_KINDS.has(q.kind)).length; }
 export function offlineLeft(d: DB): number | null {
   if (!d.sync?.on) return null;
-  return Math.max(0, OFFLINE_ALLOWANCE - (d.queue || []).length);
+  return Math.max(0, OFFLINE_ALLOWANCE - vouchersWaiting(d));
 }
 function mustHaveAllowance(d: DB) {
   if (offlineLeft(d) === 0) {
