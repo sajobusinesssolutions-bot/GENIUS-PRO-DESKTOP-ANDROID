@@ -241,7 +241,7 @@ export default function SyncScreen() {
             {failed && lastFail
               ? 'The last ' + plural(failed, 'attempt') + ' failed: ' + lastFail.note
               : pending || deferred
-                ? plural(pending + deferred, 'change') + ' waiting — sent automatically when the phone is online.'
+                ? plural(pending + deferred, 'change') + ' waiting — sent automatically when the phone is online. ' + Math.max(0, 300 - pending) + ' of 300 left before the phone must get online.'
                 : 'Queue is healthy. No pending, deferred or failed items.'}
           </Text>
           {/* every till that should see each other's sales must show the same ID here */}
