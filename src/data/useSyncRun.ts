@@ -18,6 +18,26 @@ import { refreshSession } from './authApi';
 import { ensureWiring, pushQueue, pullOps, uploadSnapshot } from './syncClient';
 import { plural } from './helpers';
 import { needsNewerApp } from './appVersion';
+import { inlineImage } from './docPrint';
+
+/* The logo and signature live in files on this phone; the computer and other
+   phones need the pictures themselves. Made once per picture, under 400 KB
+   (the computer's limit), and the business's full details sent once. */
+async function firmShare(f: import('./types').Firm | undefined): Promise<Partial<import('./types').Firm> | null> {
+  if (!f) return null;
+  const patch: Partial<import('./types').Firm> = {};
+  const pairs: Array<['logo' | 'signature', 'logoData' | 'signatureData', 'logoFor' | 'signatureFor']> = [['logo', 'logoData', 'logoFor'], ['signature', 'signatureData', 'signatureFor']];
+  for (const [k, dk, fk] of pairs) {
+    const u = f[k];
+    if (u && f[fk] !== u) {
+      const data = u.startsWith('data:') ? u : await inlineImage(u);
+      patch[dk] = data && data.length <= 400 * 1024 ? data : '';
+      patch[fk] = u;
+    } else if (!u && f[dk]) { patch[dk] = ''; patch[fk] = ''; }
+  }
+  if (!f.sharedV2) patch.sharedV2 = true;
+  return Object.keys(patch).length ? patch : null;
+}
 
 export interface RunOutcome {
   ok: boolean;
@@ -50,7 +70,7 @@ const SNAPSHOT_EVERY_MS = 30 * 60 * 1000;
 let lastSnapshotAt = 0;
 
 export function useSyncRun() {
-  const { db, setSync, dropQueued, applyRemoteOps, logAudit, licFeature } = useAppData();
+  const { db, setSync, dropQueued, applyRemoteOps, logAudit, licFeature, shareFirm } = useAppData();
   const { account } = useAuth();
   const dbRef = useRef(db);
   dbRef.current = db;
@@ -71,6 +91,7 @@ export function useSyncRun() {
     // pulling other tills' work meanwhile. Wait for the pull to finish instead.
     for (let i = 0; syncRunning && i < 150; i += 1) await new Promise((r) => setTimeout(r, 100));
     if (syncRunning) return { ok: false, busy: true, sent: 0, message: 'A sync is already running.' };
+    if (dbRef.current?.sync?.on) { try { const fp = await firmShare(dbRef.current.firm); if (fp) shareFirm(fp); } catch { /* the pictures go next time */ } }
     const d = dbRef.current;
     if (!d) return { ok: false, sent: 0, message: 'The books are not loaded yet.' };
     if (!licFeature('sync')) return { ok: false, sent: 0, message: 'Cloud sync is part of Pro. The developer switches it on for your account.' };
@@ -95,7 +116,7 @@ export function useSyncRun() {
       // the server refuses an app older than the books: show the Update screen
       const stopIfOld = (e: { failure: string; message: string }) => {
         if (String(e.failure) !== 'updateRequired') return;
-        const need = /Pro ([d.]+)/.exec(e.message)?.[1];
+        const need = /Pro ([\d.]+)/.exec(e.message)?.[1];
         if (need) applyRemoteOps([{ kind: 'record.upsert', payload: { coll: 'firm', doc: { minAppVersion: need } } } as any]);
       };
 
