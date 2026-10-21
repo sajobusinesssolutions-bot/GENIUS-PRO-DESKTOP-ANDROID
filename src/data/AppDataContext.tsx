@@ -93,6 +93,8 @@ export interface Ctx {
   grantBusinessAccess: (userId: string, businessId: string, role?: 'owner' | 'manager' | 'staff') => void;
   revokeBusinessAccess: (userId: string, businessId: string) => void;
   updateFirm: (patch: Partial<Firm>) => void;
+  /** Sync's own update of the shared pictures and the shared-once flag — no permission, it changes nothing the shop sees. */
+  shareFirm: (patch: Partial<Firm>) => void;
   updateUser: (id: string, patch: Partial<User>) => void;
   addUser: (u: Omit<User, 'id'>) => User;
 
@@ -776,6 +778,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     revokeBusinessAccess: (userId, businessId) => commit((d) => {
       d.businessAccess = d.businessAccess.filter((g) => !(g.userId === userId && g.businessId === businessId));
       audit(d, 'Business access revoked', 'User ' + (d.users.find((u) => u.id === userId)?.name || userId) + ' removed from ' + businessId);
+    }),
+    shareFirm: (patch) => commit((d) => {
+      d.firm = { ...d.firm, ...patch };
+      logic.enqueue(d, 'firm', d.firm.id);
     }),
     updateFirm: (patch) => { requirePerm('settings.manage'); commit((d) => {
       d.firm = { ...d.firm, ...patch };
@@ -1536,7 +1542,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               // got a different local id — keeping that id, which the server
               // matches on. The version stamp never goes down.
               const keep = d.firm.minAppVersion;
-              d.firm = { ...d.firm, ...p.doc, id: d.firm.id };
+              /* a logo or signature from elsewhere arrives as a picture: use it as is */
+              const doc = { ...p.doc };
+              if (doc.logoData && !String(doc.logo || '').startsWith('data:')) doc.logo = doc.logoData;
+              if (doc.signatureData && !String(doc.signature || '').startsWith('data:')) doc.signature = doc.signatureData;
+              if (doc.logo && String(doc.logo).startsWith('data:')) doc.logoFor = doc.logo;
+              if (doc.signature && String(doc.signature).startsWith('data:')) doc.signatureFor = doc.signature;
+              d.firm = { ...d.firm, ...doc, id: d.firm.id };
               if (compareVersions(keep, d.firm.minAppVersion) > 0) d.firm.minAppVersion = keep;
               const i = (d.firms || []).findIndex((x) => x.id === d.firm.id);
               if (i >= 0) d.firms[i] = d.firm;

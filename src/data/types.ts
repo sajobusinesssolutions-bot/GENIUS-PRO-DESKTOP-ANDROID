@@ -683,6 +683,15 @@ export interface Firm {
   bankDetails?: string;
   /** Standing terms and conditions printed on invoices without their own. */
   terms?: string;
+  /**
+   * The logo and signature as pictures in the record itself (data: URLs), so
+   * they travel to the computer and other phones — a file path on this phone
+   * means nothing anywhere else. Filled before a sync from logo / signature;
+   * logoFor / signatureFor say which file they were made from.
+   */
+  logoData?: string; signatureData?: string; logoFor?: string; signatureFor?: string;
+  /** The full details have been shared once since the computer learnt to take them. */
+  sharedV2?: boolean;
 }
 
 // --- Estimates / quotations ---
