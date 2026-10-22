@@ -693,6 +693,90 @@ export function transferStock(d: DB, productId: string, from: string, to: string
   return qty;
 }
 
+/* ------------------------------------------------------------------
+   Transfers to and from another business (one the same person runs).
+   The account server holds the transfer and its story (server/src/
+   transfers.core.js); these move this business's own stock and books:
+
+     send      the goods leave this branch at cost — Dr Inter-branch, Cr Inventory
+     receive   what arrived goes on the shelf; what did not is stock lost in
+               transit — Dr Inventory, Dr Stock lost in transit, Cr Inter-branch
+     call back the goods sent come back — Dr Inventory, Cr Inter-branch
+
+   Each is keyed by the transfer's reference, so a step done twice is done once.
+   ------------------------------------------------------------------ */
+export interface BranchSendLine { productId: string; qty: number }
+export interface BranchWireLine { name: string; item_code: string; unit: string; quantity: number; unit_cost: number; sale_price: number; batch_no: string; expiry_date: string | null }
+
+/** Everything that would refuse a send, checked without changing anything. */
+export function branchSendCheck(d: DB, lines: BranchSendLine[], ref: string): void {
+  const wh = activeBranchId(d);
+  const want = lines.filter((l) => l.qty > 0);
+  if (!want.length) throw new Refusal('Add at least one item and quantity.');
+  for (const l of want) {
+    const p = d.products.find((x) => x.id === l.productId);
+    if (!p) throw new Refusal('One of the items is not in this business.');
+    if ((p.stock[wh] || 0) + 1e-9 < l.qty) throw new Refusal('Only ' + (p.stock[wh] || 0) + ' ' + p.unit + ' of ' + p.name + ' in stock.');
+  }
+  if (d.movements.some((m) => m.ref === ref && m.type === 'transfer_out')) throw new Refusal('This transfer has already been sent.');
+}
+
+export function branchSendOut(d: DB, lines: BranchSendLine[], ref: string, toName: string, when = new Date()): { lines: BranchWireLine[]; value: number } {
+  branchSendCheck(d, lines, ref);
+  const wh = activeBranchId(d);
+  const want = lines.filter((l) => l.qty > 0);
+  const out: BranchWireLine[] = [];
+  let value = 0;
+  for (const l of want) {
+    const p = d.products.find((x) => x.id === l.productId)!;
+    move(d, p.id, wh, -l.qty, 'transfer_out', ref, when);
+    value += l.qty * (p.cost || 0);
+    out.push({ name: p.name, item_code: p.sku || '', unit: p.unit || '', quantity: l.qty, unit_cost: p.cost || 0, sale_price: p.price || 0, batch_no: '', expiry_date: null });
+  }
+  value = cents(value);
+  if (value > 0) journal(d, when, 'Stock sent to ' + toName, ref, [{ acc: 'n_interbranch', dr: value }, { acc: 'n_inventory', cr: value }]);
+  audit(d, 'Stock sent to ' + toName, out.map((l) => l.name + ' ×' + l.quantity).join(', '));
+  return { lines: out, value };
+}
+
+export interface BranchReceiveLine { productId: string; received: number; unitCost: number; sent: number }
+export function branchReceiveIn(d: DB, lines: BranchReceiveLine[], ref: string, fromName: string, value: number, when = new Date()): { shortValue: number } {
+  if (d.movements.some((m) => m.ref === ref && m.type === 'transfer_in')) return { shortValue: 0 };   // received already
+  const wh = activeBranchId(d);
+  let shortValue = 0;
+  for (const l of lines) {
+    if (l.received > 0) move(d, l.productId, wh, l.received, 'transfer_in', ref, when);
+    shortValue += Math.max(0, l.sent - l.received) * (l.unitCost || 0);
+  }
+  shortValue = cents(shortValue);
+  const v = cents(value || 0);
+  if (v > 0) {
+    const onShelf = cents(v - shortValue);
+    journal(d, when, 'Stock received from ' + fromName + (shortValue > 0 ? ' (short)' : ''), ref, [
+      ...(onShelf > 0 ? [{ acc: 'n_inventory', dr: onShelf }] : []),
+      ...(shortValue > 0 ? [{ acc: 'n_transitloss', dr: shortValue }] : []),
+      { acc: 'n_interbranch', cr: v },
+    ]);
+  }
+  audit(d, 'Stock received from ' + fromName, lines.map((l) => l.received + '/' + l.sent).join(', '));
+  return { shortValue };
+}
+
+/** The goods of a transfer this business sent come back onto the shelf. */
+export function branchCallBack(d: DB, ref: string, toName: string, when = new Date()): number {
+  if (d.movements.some((m) => m.ref === ref && m.type === 'transfer_cancel')) return 0;
+  const sent = d.movements.filter((m) => m.ref === ref && m.type === 'transfer_out');
+  let value = 0;
+  for (const m of sent) {
+    move(d, m.productId, m.wh, Math.abs(m.qty), 'transfer_cancel', ref, when);
+    value += Math.abs(m.qty) * (d.products.find((p) => p.id === m.productId)?.cost || 0);
+  }
+  value = cents(value);
+  if (value > 0) journal(d, when, 'Transfer to ' + toName + ' called back', ref, [{ acc: 'n_inventory', dr: value }, { acc: 'n_interbranch', cr: value }]);
+  audit(d, 'Transfer called back', toName);
+  return value;
+}
+
 export function postStockTake(d: DB, stockTakeId: string, when = new Date(), userId?: string): number {
   const st = d.stockTakes.find((x) => x.id === stockTakeId);
   if (!st || st.status === 'posted') return 0;

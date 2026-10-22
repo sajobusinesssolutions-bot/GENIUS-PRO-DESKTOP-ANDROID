@@ -86,6 +86,7 @@ import { menuGroup } from '../data/menuGroups';
 import { EntryNewScreen, TransferScreen } from '../screens/MoneyEntryScreens';
 import CashEntriesScreen from '../screens/CashEntriesScreen';
 import { StockAdjustScreen, StockTransferScreen } from '../screens/StockScreens';
+import BranchTransfersScreen from '../screens/BranchTransfersScreen';
 import { AccountingScreen, JournalsScreen, TaxScreen, AccountDetailScreen } from '../screens/BooksScreens';
 import {
   SettingsScreen, DataToolsScreen, LoyaltyScreen, NotificationsScreen,
@@ -254,6 +255,7 @@ export default function RootNavigator() {
         <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ title: 'Product' }} />
         <Stack.Screen name="StockAdjust" component={StockAdjustScreen} options={{ title: 'Adjust stock' }} />
         <Stack.Screen name="StockTransfer" component={StockTransferScreen} options={{ title: 'Move between stores' }} />
+        <Stack.Screen name="BranchTransfers" component={BranchTransfersScreen} options={{ title: 'Between businesses' }} />
         <Stack.Screen name="Batches" component={BatchReportScreen} options={{ title: 'Batches & expiry' }} />
         <Stack.Screen name="StaffReport" component={StaffReportScreen} options={{ title: 'Staff performance' }} />
         <Stack.Screen name="BatchMovement" component={BatchMovementScreen} options={{ title: 'Batch movement' }} />

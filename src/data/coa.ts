@@ -47,6 +47,9 @@ const BUILTIN: Array<Omit<Ledger, 'builtin' | 'active'>> = [
   { id: 'n_expense', code: '6000', name: 'Expenses', type: 'expense' },
   { id: 'n_discount', code: '6100', name: 'Discounts given', type: 'expense' },
   { id: 'n_loyalty', code: '6200', name: 'Loyalty redemptions', type: 'expense' },
+  // stock sent to / received from another business (the computer uses the same codes)
+  { id: 'n_interbranch', code: '1040', name: 'Inter-branch account', type: 'asset' },
+  { id: 'n_transitloss', code: '5950', name: 'Stock lost in transit', type: 'expense' },
 ];
 
 /**

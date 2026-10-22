@@ -53,6 +53,7 @@ export type RootStackParamList = {
   ItemDetail: { productId: string };
   StockAdjust: undefined;
   StockTransfer: undefined;
+  BranchTransfers: undefined;
   Batches: undefined;
   StaffReport: undefined;
   PriceList: undefined;

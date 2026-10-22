@@ -150,6 +150,7 @@ export default function ItemsScreen() {
       >
         <ListRow card icon="swap" tone="accent" title="Adjust stock" subtitle="Correct counts, record damage or loss" onPress={() => open('StockAdjust')} />
         <ListRow card icon="arrow" tone="accent" title="Transfer" subtitle="Move stock between branches" onPress={() => open('StockTransfer')} />
+        <ListRow card icon="arrow" tone="good" title="Send to another business" subtitle="Stock to and from your other businesses — count in what arrives" onPress={() => open('BranchTransfers')} />
         <ListRow card icon="check" tone="good" title="Stock take" subtitle="Count the shelf against the books" onPress={() => open('StockTakes')} />
         <ListRow card icon="calendar" tone="accent" title="Batches" subtitle="Expiry and lot tracking" onPress={() => open('Batches')} />
         <View style={{ height: 10 }} />

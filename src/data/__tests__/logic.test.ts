@@ -7,6 +7,7 @@ import {
   defaultSettings, defaultNumbering, defaultUnits, defaultCategories,
 } from '../defaults';
 import { builtinRoles } from '../perms';
+import { ensureCoa, trialBalance } from '../coa';
 
 // Builds a minimal-but-realistic DB so tests exercise the real mutation
 // functions in src/data/logic.ts (the same code AppDataContext calls)
@@ -962,5 +963,43 @@ describe('money flows, end to end', () => {
     const after = mayRecord(d, true, new Date(Date.now() + 90 * 60000));
     expect(after).not.toBeNull();
     expect(after.code).toBe('licence');
+  });
+});
+
+describe('transfers to and from another business', () => {
+  const tbOf = (d: DB) => { ensureCoa(d); const t = trialBalance(d); return Math.round((t.totalDebit - t.totalCredit) * 100) / 100; };
+  const stock = (d: DB, id: string) => d.products.find((p) => p.id === id)!.stock.w1;
+
+  it('sending takes the goods off the shelf at cost and keeps the books level', () => {
+    const d = makeDb();
+    const out = logic.branchSendOut(d, [{ productId: 'p_a', qty: 4 }, { productId: 'p_b', qty: 10 }], 'ref-1', 'Saljo Tech');
+    expect(stock(d, 'p_a')).toBe(46);
+    expect(out.value).toBe(4 * 100 + 10 * 30);
+    expect(out.lines.map((l) => l.name)).toEqual(['Widget A', 'Component B']);
+    expect(tbOf(d)).toBe(0);
+    expect(() => logic.branchSendOut(d, [{ productId: 'p_a', qty: 1 }], 'ref-1', 'Saljo Tech')).toThrow(/already been sent/);
+    expect(() => logic.branchSendOut(d, [{ productId: 'p_a', qty: 999 }], 'ref-2', 'Saljo Tech')).toThrow(/Only 46/);
+  });
+
+  it('receiving short puts what came on the shelf and books the rest as lost in transit', () => {
+    const d = makeDb();
+    const r = logic.branchReceiveIn(d, [{ productId: 'p_a', received: 3, sent: 5, unitCost: 100 }], 'ref-9', 'Pharmacy', 500);
+    expect(stock(d, 'p_a')).toBe(53);
+    expect(r.shortValue).toBe(200);
+    const j = d.journal[d.journal.length - 1];
+    expect(j.lines).toEqual([{ acc: 'n_inventory', dr: 300 }, { acc: 'n_transitloss', dr: 200 }, { acc: 'n_interbranch', cr: 500 }]);
+    expect(tbOf(d)).toBe(0);
+    logic.branchReceiveIn(d, [{ productId: 'p_a', received: 3, sent: 5, unitCost: 100 }], 'ref-9', 'Pharmacy', 500);
+    expect(stock(d, 'p_a')).toBe(53);          // received once, whatever the retries
+  });
+
+  it('calling back returns exactly what was sent, once', () => {
+    const d = makeDb();
+    logic.branchSendOut(d, [{ productId: 'p_a', qty: 6 }], 'ref-3', 'Saljo Tech');
+    expect(logic.branchCallBack(d, 'ref-3', 'Saljo Tech')).toBe(600);
+    expect(stock(d, 'p_a')).toBe(50);
+    expect(logic.branchCallBack(d, 'ref-3', 'Saljo Tech')).toBe(0);
+    expect(stock(d, 'p_a')).toBe(50);
+    expect(tbOf(d)).toBe(0);
   });
 });
