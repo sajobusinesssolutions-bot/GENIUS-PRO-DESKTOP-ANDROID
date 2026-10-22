@@ -57,3 +57,4 @@ CLAUDE.md
 
 # Release signing key and passwords (copied into android/ by plugins/withReleaseSigning.js)
 credentials/
+latest.json.tmp
