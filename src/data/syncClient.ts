@@ -432,3 +432,29 @@ export async function serverState(access: string): Promise<Result<{ seq: number;
 }
 
 export type { AuthError };
+
+/* ---------------------------------------------------------------- */
+/* Transfers to and from another business (server/src/transfers.core.js) */
+/* ---------------------------------------------------------------- */
+
+export interface RemoteTransferLine { name: string; item_code: string; unit: string; quantity: number; unit_cost: number; sale_price: number; batch_no: string; expiry_date: string | null }
+export interface RemoteTransfer {
+  id: number; transfer_no: string; from_business: string; to_business: string; ref: string;
+  status: 'in_transit' | 'receiving' | 'cancelling' | 'editing' | 'received' | 'short' | 'reconciled' | 'cancelled';
+  lines: RemoteTransferLine[]; value: number; note: string | null; vehicle: string | null;
+  sent_by: string | null; sent_at: string; seen_at: string | null; seen_by: string | null;
+  received_at: string | null; received_by: string | null; received_lines: Array<{ name: string; sent: number; received: number; note?: string }> | null;
+  short_value: number; events: Array<{ at: string; what: string; by: string; branch: string; note: string }>;
+  from_name: string; to_name: string; direction: 'in' | 'out';
+}
+const tq = (business: string) => '?business=' + encodeURIComponent(business);
+export const transfersApi = {
+  list: (access: string, business: string) => call<{ transfers: RemoteTransfer[] }>('/v1/transfers' + tq(business), access, undefined, 'GET'),
+  destinations: (access: string, business: string) => call<{ businesses: Array<{ id: string; name: string }> }>('/v1/transfers/destinations' + tq(business), access, undefined, 'GET'),
+  incoming: (access: string, business: string) => call<{ count: number; unseen: number }>('/v1/transfers/incoming' + tq(business), access, undefined, 'GET'),
+  open: (access: string, business: string, id: number, by: string) => call<{ transfer: RemoteTransfer }>('/v1/transfers/' + id + tq(business) + '&by=' + encodeURIComponent(by), access, undefined, 'GET'),
+  send: (access: string, body: { business: string; to_business: string; ref: string; lines: RemoteTransferLine[]; value: number; note?: string; vehicle?: string; by?: string }) =>
+    call<{ transfer: RemoteTransfer }>('/v1/transfers', access, body),
+  step: (access: string, business: string, id: number, step: 'claim' | 'finish' | 'release' | 'reconcile' | 'note', body: Record<string, unknown> = {}) =>
+    call<{ transfer: RemoteTransfer }>('/v1/transfers/' + id + '/' + step, access, { business, ...body }),
+};

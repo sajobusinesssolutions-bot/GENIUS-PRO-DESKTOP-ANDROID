@@ -69,6 +69,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   ProductDetail: (p) => (p && p.productId ? 'inventory.view' : 'inventory.create'),
   StockAdjust: 'inventory.stock_adjustment',
   StockTransfer: 'inventory.transfer',
+  BranchTransfers: 'inventory.transfer',
   StockTakes: 'inventory.stock_take',
   StockTakeDetail: 'inventory.stock_take',
   Batches: 'inventory.batches',

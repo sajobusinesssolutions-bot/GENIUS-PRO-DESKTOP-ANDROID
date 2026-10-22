@@ -75,6 +75,10 @@ export interface Ctx {
   updateProduct: (id: string, patch: Partial<Product>) => void;
   adjustStock: (productId: string, warehouse: string, count: number, note?: string, batchNo?: string, userId?: string) => void;
   transferStock: (productId: string, from: string, to: string, qty: number, note?: string) => void;
+  /** Transfers to/from another business (logic.ts branchSendOut …): this business's stock and books. */
+  branchSendOut: (lines: logic.BranchSendLine[], ref: string, toName: string) => { lines: logic.BranchWireLine[]; value: number };
+  branchReceiveIn: (lines: logic.BranchReceiveLine[], ref: string, fromName: string, value: number) => { shortValue: number };
+  branchCallBack: (ref: string, toName: string) => number;
   addProduct: (p: Omit<Product, 'id'>) => Product;
   updateParty: (id: string, patch: Partial<Party>) => void;
   addParty: (p: Omit<Party, 'id'>) => Party;
@@ -686,6 +690,27 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       commit((d) => {
         logic.adjustStock(d, productId, warehouse, count, note || 'Stock adjustment', new Date(), batchNo, userId);
       });
+    },
+    branchSendOut: (lines, ref, toName) => {
+      requireRecordable(); requirePerm('inventory.transfer');
+      let out: { lines: logic.BranchWireLine[]; value: number } = { lines: [], value: 0 };
+      /* checked on the current book first, so a refusal reaches the screen */
+      const cur = dbRef.current;
+      if (cur) logic.branchSendCheck(cur, lines, ref);
+      commit((d) => { out = logic.branchSendOut(d, lines, ref, toName); });
+      return out;
+    },
+    branchReceiveIn: (lines, ref, fromName, value) => {
+      requireRecordable(); requirePerm('inventory.transfer');
+      let out = { shortValue: 0 };
+      commit((d) => { out = logic.branchReceiveIn(d, lines, ref, fromName, value); });
+      return out;
+    },
+    branchCallBack: (ref, toName) => {
+      requireRecordable(); requirePerm('inventory.transfer');
+      let v = 0;
+      commit((d) => { v = logic.branchCallBack(d, ref, toName); });
+      return v;
     },
     transferStock: (productId, from, to, qty, note) => {
       requireRecordable(); requirePerm('inventory.transfer');
