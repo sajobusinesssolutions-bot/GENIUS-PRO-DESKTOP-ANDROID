@@ -7,6 +7,7 @@ import { Button, Card, Cap, KV } from '../components/ui';
 import { Field, SelectField } from '../components/form';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
+import { printVoucher, shareVoucher, type Voucher } from '../data/voucherPrint';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PaymentDetail'>;
 
@@ -20,7 +21,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'PaymentDetail'>;
  */
 export default function PaymentDetailScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party, account, editPayment, deletePayment, canEditPayment, can, logAudit } = useAppData();
+  const { db, money, party, account, editPayment, deletePayment, canEditPayment, can, logAudit, partyBalance } = useAppData();
   const pay = db?.payments.find((p) => p.id === route.params.paymentId);
   useOnDisk('payments', route.params.paymentId, !!pay || !db);
 
@@ -35,6 +36,25 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
   const pt = party(pay.partyId);
   /* the matrix has no finance.delete — finance.edit covers changing money (reference PERM_MATRIX, 7543) */
   const mayChange = can('finance.edit');
+
+  /* The printed receipt or payment voucher: who, how much, the account
+     before and after, what it settled, and the signatures (data/voucherPrint.ts). */
+  function voucher(): Voucher {
+    const p = pay!, f = db!.firm, after = partyBalance(p.partyId);
+    const applied = (p.allocations || []).reduce((n, a) => n + a.amount, 0);
+    return {
+      isIn: inbound, no: (inbound ? 'RCT-' : 'PAY-') + p.id.slice(-6).toUpperCase(), date: new Date(p.ts).toLocaleDateString('en-GB'),
+      firm: { name: f.name, address: f.address, phone: [f.phone, f.phone2].filter(Boolean).join(' / '), email: f.email, tin: f.tin, logo: f.logo },
+      party: { name: pt?.name || '', phone: (pt as any)?.phone, address: (pt as any)?.address },
+      amount: p.amount, method: p.method, account: account(p.accountId)?.name, note: p.note,
+      after, before: after + (inbound ? applied : -applied),
+      settles: (p.allocations || []).map((a) => ({ no: a.no, amount: a.amount })),
+      currencyName: db!.settings.currencyName,
+    };
+  }
+  const doPrint = () => printVoucher(voucher(), money).catch((e) => Alert.alert('Did not print', e?.message || 'Try again.'));
+  const doShare = () => shareVoucher(voucher(), money).then((ok) => { if (!ok) Alert.alert('Sharing is not available on this phone'); })
+    .catch((e) => Alert.alert('Could not share', e?.message || 'Try again.'));
 
   function refuse(why: string) { Alert.alert('Cannot change this payment', why); }
 
@@ -157,6 +177,14 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
           </View>
         ) : (
           <>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Button label={inbound ? 'Print receipt' : 'Print voucher'} size="sm" onPress={doPrint} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button label="Share PDF" size="sm" onPress={doShare} />
+              </View>
+            </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Button label="Their account" size="sm" onPress={() => navigation.navigate('PartyLedger', { partyId: pay.partyId })} />

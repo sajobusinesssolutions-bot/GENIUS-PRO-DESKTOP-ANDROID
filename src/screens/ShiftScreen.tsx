@@ -47,6 +47,9 @@ export default function ShiftScreen({ route }: any) {
   const account = useAuthSafe()?.account;
 
   const seeAll = db?.session.role === 'owner' || db?.session.role === 'manager' || can('shifts.view_all');
+  /* A blind till: the drawer's expected figure and the takings split are not
+     shown; the close is a count, and the owner sees how it compares. */
+  const blind = db?.session.role !== 'owner' && !can('shifts.expected');
   const [tab, setTab] = useState<Tab>(route?.params?.close && seeAll ? 'day' : 'mine');
   const shift = activeShift();
   const last = lastClosedShift();
@@ -91,7 +94,7 @@ export default function ShiftScreen({ route }: any) {
   function startClose(list: Shift[]) {
     if (!list.length) return;
     const c: Record<string, string> = {};
-    list.forEach((s) => { c[s.id] = String(shiftTotals(s).expected); });
+    list.forEach((s) => { c[s.id] = blind ? '' : String(shiftTotals(s).expected); });
     setCounts(c);
     setNote('');
     setClosing(list);
@@ -227,12 +230,19 @@ export default function ShiftScreen({ route }: any) {
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6 }}>
             {user(shift.userId)?.name} · since {fmtDate(shift.openedAt)} · {z.count} bill{z.count === 1 ? '' : 's'}
           </Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 16 }}>Drawer should hold</Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, color: colors.ink, letterSpacing: -0.6 }}>{money(z.expected)}</Text>
-          {money4(z)}
-          {received(z)}
+          {blind ? (
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 14, lineHeight: 19 }}>
+              When you close, count the drawer and enter what is there. The owner compares it with the till.
+            </Text>
+          ) : (<>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 16 }}>Drawer should hold</Text>
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, color: colors.ink, letterSpacing: -0.6 }}>{money(z.expected)}</Text>
+            {money4(z)}
+            {received(z)}
+          </>)}
         </View>
 
+        {blind ? null : (<>
         <View style={{ height: 14 }} />
         <Panel>
           <DetailRow label="Opening float" value={money(shift.openingFloat)} />
@@ -241,6 +251,7 @@ export default function ShiftScreen({ route }: any) {
           <DetailRow label="Cash paid out" value={'− ' + money(z.paidOut)} tone={colors.danger} />
           <DetailRow label="Expected in drawer" value={money(z.expected)} bold last />
         </Panel>
+        </>)}
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
           <View style={{ flex: 1 }}>
@@ -529,23 +540,29 @@ export default function ShiftScreen({ route }: any) {
           return (
             <View key={s.id} style={{ marginBottom: 16, padding: 14, borderRadius: 4, backgroundColor: colors.sunk }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{user(s.userId)?.name || 'Staff'}</Text>
-              {money4(z)}
-              {received(z)}
+              {blind ? null : money4(z)}
+              {blind ? null : received(z)}
               <View style={{ height: 12 }} />
               <Field
                 icon="cash"
-                label={'Counted cash · should be ' + money0(z.expected)}
+                label={blind ? 'Cash counted in the drawer' : 'Counted cash · should be ' + money0(z.expected)}
                 value={counts[s.id] || ''}
                 onChangeText={(t) => setCounts((c) => ({ ...c, [s.id]: t }))}
                 numeric decimal
                 style={{ marginBottom: 6 }}
               />
+              {blind ? (
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
+                  {counts[s.id] ? 'Counted — the owner sees how it compares' : 'Not counted yet'}
+                </Text>
+              ) : (
               <Text style={{
                 fontFamily: fonts.uiSemi, fontSize: 12.5,
                 color: v.state === 'balanced' ? colors.good : v.state === 'short' ? colors.danger : colors.warn,
               }}>
                 {v.state === 'balanced' ? 'Balanced' : (v.state === 'short' ? 'Short ' : 'Over ') + money(Math.abs(v.diff))}
               </Text>
+              )}
             </View>
           );
         })}

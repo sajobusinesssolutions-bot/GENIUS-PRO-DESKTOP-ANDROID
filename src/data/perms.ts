@@ -65,6 +65,7 @@ export const PERM_MATRIX: PermGroup[] = [
   ] },
   { k: 'shifts', n: 'Till & shifts', i: 'till', acts: [
     ['open', 'Open a shift'], ['close', 'Close a shift'], ['view_all', "See other staff's shifts"],
+    ['expected', 'See what the drawer should hold'],
   ] },
   { k: 'reports', n: 'Reports', i: 'chart', acts: [['view', 'View'], ['money', 'See money reports']] },
   { k: 'branches', n: 'Branches', i: 'home', acts: [['view', 'View'], ['manage', 'Open and manage']] },
@@ -233,6 +234,7 @@ export function applyEditionRoles(roles: RoleDef[], edition: Ed): RoleDef[] {
  */
 const INHERITS: Record<string, string> = {
   'sales.offers': 'sales.edit', 'sales.recurring': 'sales.create',
+  'shifts.expected': 'reports.money',
   'sales.view_totals': 'dashboard.view_total_sales', 'sales.view_balances': 'sales.view_all',
   'quotes.view': 'sales.view', 'quotes.create': 'sales.create', 'quotes.convert': 'sales.create', 'quotes.delete': 'sales.create',
   'challans.view': 'sales.view', 'challans.create': 'sales.create', 'challans.deliver': 'sales.create',
