@@ -83,7 +83,7 @@ export function useNewItem(rateIs: 'price' | 'cost' = 'price') {
 export default function ItemEntrySheet({
   visible, title, products, money, stockOf, priceOf, rateLabel = 'Rate (Price/Unit)',
   start, startProduct, onSave, onRemove, onClose,
-  maxFor, canCreate, onCreateProduct, units = ['Pcs'],
+  maxFor, canCreate, onCreateProduct, onOpenItemForm, units = ['Pcs'],
   trackBatches = false, trackImei = false, blockExpired = false, discount = true, editRate = true, maxDiscountPct = 100, belowCost = 'allow',
   askSellPrice = false, takenImeis = [],
 }: {
@@ -109,6 +109,8 @@ export default function ItemEntrySheet({
   canCreate?: boolean;
   /** Saves a new item and returns it; may throw with the reason it could not. */
   onCreateProduct?: (draft: NewItemDraft) => Product;
+  /** When given, "Add New Item" opens the full item screen with the typed name instead of the short form here. */
+  onOpenItemForm?: (name: string) => void;
   /** Units offered for a new item. */
   units?: string[];
   trackBatches?: boolean;
@@ -260,6 +262,7 @@ export default function ItemEntrySheet({
   }
 
   function startNew() {
+    if (onOpenItemForm) { onOpenItemForm(name.trim()); return; }
     if (!name.trim()) { setErr('Type the new item\'s name first.'); return; }
     setCreating(true);
     setProduct(null);

@@ -37,6 +37,7 @@ import {
 import { Icon, CAT_ICON, IconName } from '../components/icons';
 import { Sheet } from '../components/Sheet';
 import { Foot } from '../components/AppBar';
+import { itemCreatedForBill } from '../data/newItemBus';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import * as ImagePicker from 'expo-image-picker';
 import { keepPhoto } from '../data/photos';
@@ -149,7 +150,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   const [tab, setTab] = useState<Tab>('basics');
   const [nameErr, setNameErr] = useState(false);
   const [kind, setKind] = useState<ProductKind>(existing?.kind || 'product');
-  const [name, setName] = useState(existing?.name || '');
+  const [name, setName] = useState(existing?.name || route.params?.name || '');
   const [sku, setSku] = useState(existing?.sku || '');
   const [unit, setUnit] = useState(existing?.unit || 'PC');
   // no category is picked for the owner: they choose one, or make their own
@@ -321,7 +322,8 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       const stock: Record<string, number> = {};
       const here = db!.session.warehouse || db!.warehouses[0]?.id;
       db!.warehouses.forEach((w) => { stock[w.id] = !svc && w.id === here ? num(openingQty) : 0; });
-      addProduct({ ...(patch as Omit<Product, 'id'>), stock, bom: null, active });
+      const made = addProduct({ ...(patch as Omit<Product, 'id'>), stock, bom: null, active });
+      if (route.params?.forBill && made) itemCreatedForBill(made);
     }
     navigation.goBack();
   }

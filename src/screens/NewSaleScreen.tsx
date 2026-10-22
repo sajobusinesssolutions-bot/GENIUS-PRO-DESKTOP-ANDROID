@@ -21,6 +21,7 @@ import { useWho } from '../components/WhoSheet';
 import { useOwnerPin } from '../components/OwnerPin';
 import { isRestaurant } from '../data/restaurant';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { onItemCreatedForBill } from '../data/newItemBus';
 import type { RootStackParamList } from '../nav/types';
 import PriceListPicker from '../components/PriceListPicker';
 import { priceFor, repriceLines } from '../data/priceLists';
@@ -127,6 +128,9 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const grandTotal = Math.max(0, priced.total) + Math.max(0, additionalCharges);
 
   /** Opens the item entry: blank, on a scanned item, or on a line to change. */
+  /* an item made on the full item screen from this bill comes straight back as its next line */
+  useEffect(() => onItemCreatedForBill((p) => openEntry(p)), []);   // eslint-disable-line react-hooks/exhaustive-deps
+
   function openEntry(p: Product | null, index: number | null = null) {
     setScanning(false);
     setEntryProduct(p);
@@ -365,35 +369,40 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         {fromQuote ? (
           <InfoBanner tone="accent" icon="doc" text={'From quotation ' + fromQuote.no + '. Change anything you need, then save — the quotation closes only once this sale is saved.'} />
         ) : null}
-        <PriceListPicker value={priceListId} onChange={choosePriceList} style={{ marginBottom: 0 }} />
-        {/* date and time in one box; the number below, blank for the next in sequence */}
-        <View>
-          <FieldShell
-            label="Date"
-            icon="calendar"
-            style={{ marginBottom: 8 }}
-            onPress={() => setPickerMode('date')}
-            right={
-              <Pressable onPress={() => setPickerMode('time')} hitSlop={8} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 4, backgroundColor: colors.sunk }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>
+        {/* the document's details in one row: price list (when the shop has any), date and time, number */}
+        <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
+          {(db?.priceLists || []).some((l) => l.status === 'Active') ? (
+            <>
+              <PriceListPicker compact value={priceListId} onChange={choosePriceList} />
+              <View style={{ width: 1, backgroundColor: colors.line }} />
+            </>
+          ) : null}
+          <Pressable onPress={() => setPickerMode('date')} style={{ flex: 1.15, minWidth: 0, paddingHorizontal: 10, paddingVertical: 8 }} accessibilityLabel="Date">
+            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>Date</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
+                {invoiceAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}
+              </Text>
+              <Pressable onPress={() => setPickerMode('time')} hitSlop={8}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent }}>
                   {invoiceAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </Pressable>
-            }
-          >
-            <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>
-              {invoiceAt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </Text>
-          </FieldShell>
-          <Field
-            icon="tag"
-            label="Invoice Number (optional)"
-            value={invoiceNo}
-            onChangeText={setInvoiceNo}
-            placeholder={defaultInvoiceNo}
-            autoCapitalize="characters"
-            style={{ marginBottom: 0 }}
-          />
+            </View>
+          </Pressable>
+          <View style={{ width: 1, backgroundColor: colors.line }} />
+          <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 10, paddingVertical: 8 }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>Invoice no.</Text>
+            <TextInput
+              value={invoiceNo}
+              onChangeText={setInvoiceNo}
+              placeholder={defaultInvoiceNo}
+              placeholderTextColor={colors.faint}
+              autoCapitalize="characters"
+              accessibilityLabel="Invoice number, blank for the next in sequence"
+              style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink, padding: 0, marginTop: 2 }}
+            />
+          </View>
         </View>
 
         {/* cash or credit */}
@@ -526,6 +535,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         canCreate={newItem.canCreate}
         units={newItem.units}
         onCreateProduct={newItem.create}
+        onOpenItemForm={(typed) => { setEntryOpen(false); navigation.navigate('ProductDetail', { name: typed, forBill: true }); }}
         takenImeis={cart.flatMap((l, i) => (i === entryIndex ? [] : (l.serials || []).flatMap((x) => [x.imei, x.imei2 || ''].filter(Boolean))))}
         onSave={saveEntry}
         onRemove={() => {

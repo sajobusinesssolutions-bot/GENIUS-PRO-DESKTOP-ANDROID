@@ -32,7 +32,7 @@ import {
 } from '../data/rawPrinter';
 import { keepPhoto, dropPhoto } from '../data/photos';
 import { kindLabel, CODE_DATA, POWERED_BY } from '../data/defaults';
-import type { Printer, CodeKind, CodeData, PrintTemplate, ReceiptStyle, PrintPurpose } from '../data/types';
+import type { Printer, CodeKind, CodeData, PrintTemplate, ReceiptStyle, PrintPurpose, DocKind } from '../data/types';
 import { isRestaurant, stationsOf } from '../data/restaurant';
 import FirstTimeTip from '../components/FirstTimeTip';
 import { dmy, numberToWords, InvoiceStyle } from '../data/invoiceLayouts';
@@ -719,7 +719,7 @@ interface ReceiptDraft {
   head1: string; head2: string; phone: string; whatsapp: string; address: string;
   foot: string; taxName: string;
   showTax: boolean; showParty: boolean; showServed: boolean; showBatch: boolean; showExpiry: boolean; tight: boolean;
-  showRate: boolean; showUnit: boolean; showImei: boolean; showPaid: boolean;
+  showRate: boolean; showUnit: boolean; showImei: boolean; showPaid: boolean; showDesc: boolean;
   title: string; style: ReceiptStyle; mode: 'thermal' | 'a4';
   code: CodeKind; codeData: CodeData; autoPrint: boolean; copies: number;
 }
@@ -741,6 +741,7 @@ export function ReceiptSettingsScreen() {
       showTax: tpl?.showTax ?? true, showParty: tpl?.showParty ?? true, showServed: tpl?.showServed ?? true,
       showBatch: tpl?.showBatch ?? false, showExpiry: tpl?.showExpiry ?? false, tight: tpl?.density === 'tight',
       showRate: tpl?.showRate !== false, showUnit: tpl?.showUnit !== false, showImei: tpl?.showImei !== false, showPaid: tpl?.showPaid !== false,
+      showDesc: !!tpl?.showDesc,
       title: tpl?.title || '', style: tpl?.receiptStyle || 'classic', mode: db.printer.receiptMode || 'thermal',
       code: tpl?.code || 'none', codeData: tpl?.codeData || 'no',
       autoPrint: db.printer.autoPrint, copies: db.printer.copies || 1,
@@ -764,7 +765,7 @@ export function ReceiptSettingsScreen() {
         head: [d.head1.trim(), d.head2.trim()].filter(Boolean).join('\n'), foot: d.foot.trim(),
         showTax: d.showTax, showParty: d.showParty, showServed: d.showServed,
         showBatch: d.showBatch, showExpiry: d.showExpiry, density: d.tight ? 'tight' : 'normal',
-        showRate: d.showRate, showUnit: d.showUnit, showImei: d.showImei, showPaid: d.showPaid,
+        showRate: d.showRate, showUnit: d.showUnit, showImei: d.showImei, showPaid: d.showPaid, showDesc: d.showDesc,
         title: d.title.trim(), receiptStyle: d.style,
         code: d.code, codeData: d.codeData, codeCaption: d.code !== 'none',
       });
@@ -874,6 +875,7 @@ export function ReceiptSettingsScreen() {
           <ToggleRow bare label="Show IMEI & condition" sub="The phone's IMEI(s) and New / Used under the item" on={d.showImei} onChange={(v) => set({ showImei: v })} />
           <ToggleRow bare label="Show tax line" sub={'Print the ' + (d.taxName || 'tax') + ' amount in the totals'} on={d.showTax} onChange={(v) => set({ showTax: v })} />
           <ToggleRow bare label="Show paid & change" sub="What the customer handed over and got back" on={d.showPaid} onChange={(v) => set({ showPaid: v })} />
+          <ToggleRow bare label="Item descriptions" sub="Each line's description under the item" on={d.showDesc} onChange={(v) => set({ showDesc: v })} />
           <ToggleRow bare label="Show customer" sub="Print the customer's name and phone if given" on={d.showParty} onChange={(v) => set({ showParty: v })} />
           <ToggleRow bare label="Show who served" sub="Print the cashier's name" on={d.showServed} onChange={(v) => set({ showServed: v })} />
           <ToggleRow bare label="Show batch number" sub="Which lot each item came from" on={d.showBatch} onChange={(v) => set({ showBatch: v })} />
@@ -922,8 +924,21 @@ interface InvoiceDraft {
   bank: string; terms: string;
   foot: string; taxName: string; style: InvoiceStyle; accent: string; title: string;
   showTax: boolean; showParty: boolean; showServed: boolean; showBatch: boolean; showExpiry: boolean;
+  showDesc: boolean;
   code: CodeKind; codeData: CodeData;
+  /** a footer of its own for each kind of document (Firm.docFooters) */
+  footers: Partial<Record<DocKind, string>>;
 }
+
+/* The documents that can carry a footer of their own. */
+const DOC_FOOTERS: [DocKind, string, string][] = [
+  ['invoice', 'Invoice', 'Thank you for your business'],
+  ['receipt', 'Cash receipt', 'Thank you, come again'],
+  ['estimate', 'Quotation', 'Prices hold for 14 days'],
+  ['challan', 'Delivery note', 'Received in good order'],
+  ['ret', 'Credit note', 'Refunds within 7 days'],
+  ['purchase', 'Purchase bill', ''],
+];
 
 /** The items grid shared by the thumbnails — batch and expiry as their own columns. */
 function ItemsMock({ d, head, headInk, ruled, tall }: { d: InvoiceDraft; head: string; headInk: string; ruled: boolean; tall?: number }) {
@@ -1155,7 +1170,9 @@ export function InvoiceSettingsScreen() {
       style, accent: tpl?.accentColor || STYLE_ACCENT[style], title: tpl?.title || '',
       showTax: tpl?.showTax ?? true, showParty: tpl?.showParty ?? true, showServed: tpl?.showServed ?? true,
       showBatch: tpl?.showBatch ?? false, showExpiry: tpl?.showExpiry ?? false,
+      showDesc: !!tpl?.showDesc,
       code: tpl?.code || 'none', codeData: tpl?.codeData || 'verify',
+      footers: { ...(db.firm.docFooters || {}) },
     };
   });
   const [opening, setOpening] = useState(false);
@@ -1169,7 +1186,7 @@ export function InvoiceSettingsScreen() {
       style: d.style, showLogo: d.showLogo, foot: d.foot.trim(), title: d.title.trim(),
       boxed: d.style === 'tally', accentColor: coloured ? d.accent : undefined,
       showTax: d.showTax, showParty: d.showParty, showServed: d.showServed,
-      showBatch: d.showBatch, showExpiry: d.showExpiry,
+      showBatch: d.showBatch, showExpiry: d.showExpiry, showDesc: d.showDesc,
       code: d.code, codeData: d.codeData, codeCaption: d.code !== 'none',
     };
   }
@@ -1179,6 +1196,7 @@ export function InvoiceSettingsScreen() {
     return {
       description: d.tagline.trim(), phone: d.phone.trim(), phone2: d.whatsapp.trim(), email: d.email.trim(),
       website: d.website.trim(), address: d.address.trim(), bankDetails: d.bank.trim(), terms: d.terms.trim(),
+      docFooters: Object.fromEntries(Object.entries(d.footers).map(([k, v]) => [k, String(v || '').trim()]).filter(([, v]) => v)),
     };
   }
 
@@ -1303,6 +1321,13 @@ export function InvoiceSettingsScreen() {
           <Field label="Footer message" placeholder="Thank you for your business!" value={d.foot} onChangeText={(v) => set({ foot: v })} multiline />
         </Section>
 
+        <Section icon="doc" title="Footer on each document" hint="Its own words at the bottom of each kind of document. Left empty, the footer message above is used.">
+          {DOC_FOOTERS.map(([k, label, ph]) => (
+            <Field key={k} label={label} placeholder={ph || 'Same as the footer message'} value={d.footers[k] || ''}
+              onChangeText={(v) => set({ footers: { ...d.footers, [k]: v } })} multiline />
+          ))}
+        </Section>
+
         <Section icon="pie" title="Tax">
           <Field label="Tax label" icon="receipt" value={d.taxName} onChangeText={(v) => set({ taxName: v })} />
         </Section>
@@ -1314,6 +1339,7 @@ export function InvoiceSettingsScreen() {
           <ToggleRow bare label="Show who served" on={d.showServed} onChange={(v) => set({ showServed: v })} />
           <ToggleRow bare label="Batch column" sub="Which lot each item came from" on={d.showBatch} onChange={(v) => set({ showBatch: v })} />
           <ToggleRow bare label="Expiry column" sub="For perishables and pharmacy stock" on={d.showExpiry} onChange={(v) => set({ showExpiry: v })} />
+          <ToggleRow bare label="Item descriptions" sub="Each line's description under the item name" on={d.showDesc} onChange={(v) => set({ showDesc: v })} />
           <View style={{ height: 10 }} />
           <SelectField label="QR / barcode on the invoice" value={d.code} options={CODE_CHOICES} onChange={(v) => set({ code: v })} />
           {d.code !== 'none' ? (

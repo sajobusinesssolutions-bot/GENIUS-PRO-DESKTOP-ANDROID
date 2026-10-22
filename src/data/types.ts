@@ -395,6 +395,9 @@ export interface Shift {
   /** counted − expected, stamped at close so past shifts read back the same. */
   variance?: number | null;
   note?: string;
+  /** What the cashier declared at close besides the drawer's cash: account name → amount
+   *  (mobile money, bank and any other money account). */
+  declared?: Record<string, number>;
 }
 
 export interface Warranty { id: string; saleId: string; saleNo: string; productId: string; partyId: string | null; soldAt: string; months: number; status: 'active' | 'claim' | 'resolved' | 'expired'; }
@@ -448,6 +451,8 @@ export interface PrintTemplate {
   showLogo: boolean; showTax: boolean; showServed: boolean; showParty: boolean; showSaved: boolean;
   showAddress: boolean; showBatch: boolean; showExpiry: boolean; showImei: boolean;
   showWarranty: boolean; showUnit: boolean; showRate: boolean;
+  /** Each line's description (its own note, else the item's) under the item name. Absent means hidden. */
+  showDesc?: boolean;
   /** Paid and change under the total. Absent means shown. */
   showPaid?: boolean;
   /** The heading printed on the document, e.g. "Cash sale". Empty uses the document's own name. */
@@ -678,6 +683,8 @@ export interface Firm {
   signature?: string;
   /** Words printed at the bottom of every document — terms, thanks, a slogan. */
   footer?: string;
+  /** A footer of its own for one kind of document — the quotation's validity, the receipt's thanks. Wins over the rest. */
+  docFooters?: Partial<Record<DocKind, string>>;
   website?: string;
   /** Bank name, account number, branch — printed on the GST-style invoice. */
   bankDetails?: string;
@@ -701,6 +708,8 @@ export interface Estimate {
   /** The last day the quoted prices hold. */
   validUntil?: string;
   convertedSaleId?: string | null;
+  /** Printed on the quotation. */
+  note?: string; terms?: string;
 }
 
 // --- Delivery challans ---
