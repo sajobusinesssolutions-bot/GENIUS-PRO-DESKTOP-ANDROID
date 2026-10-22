@@ -82,6 +82,8 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
   const taxLabel = d.taxLabel || 'Tax';
   const partyOn = c.showParty && !!d.partyName;
   const partyLabel = /purchase/i.test(d.kind) ? 'Supplier' : 'Customer';
+  /* "Invoice No." on an invoice; "Quotation No.", "Delivery note No." on the others */
+  const noun = /invoice/i.test(d.kind) ? 'Invoice' : d.kind;
   const logo = c.showLogo && d.logo ? `<img class="logo" src="${esc(d.logo)}" />` : '';
   const words = [d.currencyName, numberToWords(d.total), 'Only'].filter(Boolean).join(' ');
   const sameUnit = d.lines.length > 0 && d.lines.every((l) => (l.unit || '') === (d.lines[0].unit || ''));
@@ -118,7 +120,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
           </div>
         </td>
         <td class="t-right"><table class="t-grid">
-          <tr>${cell('Invoice No.', d.no)}${cell('Dated', dmy(d.ts))}</tr>
+          <tr>${cell(noun + ' No.', d.no)}${cell('Dated', dmy(d.ts))}</tr>
           <tr>${cell('Delivery Note')}${cell('Mode/Terms of Payment', d.method)}</tr>
           <tr>${cell("Supplier's Ref.")}${cell('Other Reference(s)')}</tr>
           <tr>${cell("Buyer's Order No.")}${cell('Dated')}</tr>
@@ -327,7 +329,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
           </table>
         </td>
         <td class="g-meta"><table>
-          <tr><td class="k">Invoice No.</td><td class="v"><b>${esc(d.no)}</b></td><td class="k">Invoice Date</td><td class="v"><b>${esc(dmy(d.ts))}</b></td></tr>
+          <tr><td class="k">${esc(noun)} No.</td><td class="v"><b>${esc(d.no)}</b></td><td class="k">${esc(noun)} Date</td><td class="v"><b>${esc(dmy(d.ts))}</b></td></tr>
           <tr><td class="k">Challan No</td><td class="v"></td><td class="k">Challan Date</td><td class="v"></td></tr>
           <tr><td class="k">Payment</td><td class="v">${esc(d.method || '')}</td><td class="k">Served by</td><td class="v">${c.showServed ? esc(d.servedBy || '') : ''}</td></tr>
           <tr><td class="k">Transport</td><td class="v"></td><td class="k">Vehicle</td><td class="v"></td></tr>

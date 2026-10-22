@@ -103,13 +103,13 @@ export interface Ctx {
   addUser: (u: Omit<User, 'id'>) => User;
 
   // Estimates
-  createEstimate: (o: { partyId: string | null; lines: SaleLine[]; discount: number; validUntil?: string }) => Estimate;
+  createEstimate: (o: { partyId: string | null; lines: SaleLine[]; discount: number; validUntil?: string; note?: string; terms?: string }) => Estimate;
   convertEstimate: (estimateId: string, method: PayMethod) => Sale | null;
   voidEstimate: (estimateId: string) => void;
   /** After a sale made from a quotation is saved: the quotation is closed and points at it. */
   markEstimateConverted: (estimateId: string, saleId: string) => void;
   /** Changes an open quotation's customer, lines and discount; returns false once it is closed. */
-  updateEstimate: (estimateId: string, o: { partyId: string | null; lines: SaleLine[]; discount: number }) => boolean;
+  updateEstimate: (estimateId: string, o: { partyId: string | null; lines: SaleLine[]; discount: number; note?: string; terms?: string }) => boolean;
 
   // Delivery challans
   createChallan: (o: { saleId: string | null; partyId: string | null; lines: ChallanLine[] }) => Challan;
@@ -151,7 +151,7 @@ export interface Ctx {
 
   // Shifts — reference SHEETS.openShift 7233 / closeShift 7262
   openShift: (openingFloat: number, till?: string) => void;
-  closeShift: (shiftId: string, countedCash: number, note?: string) => void;
+  closeShift: (shiftId: string, countedCash: number, note?: string, declared?: Record<string, number>) => void;
   activeShift: () => DB['shifts'][number] | undefined;
   shiftTotals: (s: Shift) => logic.ShiftTotals;
   lastClosedShift: () => Shift | undefined;
@@ -863,7 +863,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       commit((d) => {
         d.counters.estimate += 1;
         const t = saleTotals(o.lines, o.discount, logic.pricesIncludeTax(d));
-        est = { id: uid('est'), no: 'EST-' + String(100000 + d.counters.estimate).slice(1), ts: iso(new Date()), partyId: o.partyId, lines: o.lines, discount: t.discount, total: t.total, status: 'open', convertedSaleId: null, ...(o.validUntil ? { validUntil: o.validUntil } : {}) };
+        est = { id: uid('est'), no: 'EST-' + String(100000 + d.counters.estimate).slice(1), ts: iso(new Date()), partyId: o.partyId, lines: o.lines, discount: t.discount, total: t.total, status: 'open', convertedSaleId: null, ...(o.validUntil ? { validUntil: o.validUntil } : {}),
+          ...(o.note ? { note: o.note } : {}), ...(o.terms ? { terms: o.terms } : {}) };
         d.estimates.push(est);
         audit(d, 'Estimate created', est.no);
         logic.enqueue(d, 'estimate', est.id);
@@ -908,6 +909,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         if (!e || e.status !== 'open') return;
         const t = saleTotals(o.lines, o.discount, logic.pricesIncludeTax(d));
         e.partyId = o.partyId; e.lines = o.lines; e.discount = t.discount; e.total = t.total;
+        e.note = o.note || undefined; e.terms = o.terms || undefined;
         audit(d, 'Estimate edited', e.no);
         logic.enqueue(d, 'estimate', e.id);
         ok = true;
@@ -1107,13 +1109,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
     // --- Shifts ---
     openShift: (openingFloat, till) => commit((d) => { logic.openShiftFor(d, openingFloat, till); }),
-    closeShift: (shiftId, countedCash, note) => {
+    closeShift: (shiftId, countedCash, note, declared) => {
       const d0 = dbRef.current;
       const sh = d0?.shifts.find((x) => x.id === shiftId);
       // your own shift needs "Close a shift"; somebody else's, "See every shift" as well
       requirePerm('shifts.close');
       if (sh && d0 && sh.userId !== d0.session.userId) requirePerm('shifts.view_all');
-      commit((d) => { logic.closeShift(d, shiftId, countedCash, note || ''); });
+      commit((d) => {
+        const s = logic.closeShift(d, shiftId, countedCash, note || '');
+        const kept = Object.fromEntries(Object.entries(declared || {}).filter(([, v]) => Number(v) > 0));
+        if (s && Object.keys(kept).length) s.declared = kept;
+      });
     },
     activeShift: () => dbRef.current?.shifts.find((s) => !s.closedAt && s.userId === dbRef.current!.session.userId),
     shiftTotals: (s) => {
@@ -1527,8 +1533,28 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           applied++;
           return i < 0;
         };
+        /* Voided on another device (a computer): the record goes. Its money and
+           stock come back as that device's own journal.post and stock.move. */
+        const drop = (list: any[], id: string) => {
+          const i = list.findIndex((x) => x.id === id);
+          if (i < 0) return null;
+          applied++;
+          return list.splice(i, 1)[0];
+        };
         ops.forEach((op) => {
           const p: any = op.payload;
+          if (p?.voided && p.id && (op.kind === 'payment.record' || op.kind === 'entry.record' || op.kind === 'creditnote.create')) {
+            if (op.kind === 'payment.record') {
+              const gone = drop(d.payments, p.id);
+              // what it took off its bills goes back on them, as payment.record put it there
+              (gone?.allocations || []).forEach((a: any) => {
+                const doc: any = d.sales.find((x) => x.id === a.docId) || d.purchases.find((x) => x.id === a.docId);
+                if (doc) { doc.due = (doc.due || 0) + a.amount; doc.paid = Math.max(0, (doc.paid || 0) - a.amount); }
+              });
+            } else if (op.kind === 'entry.record') drop(d.entries, p.id);
+            else drop(d.creditNotes, p.id);
+            return;
+          }
           if (op.kind === 'record.upsert') {
             if (p?.coll === 'products') {
               const current = d.products.find((x) => x.id === p.doc?.id);

@@ -49,7 +49,8 @@ export type RootStackParamList = {
   UsersRoles: undefined;
 
   // Stock
-  ProductDetail: { productId?: string } | undefined;
+  /** name: a new item's name, already typed; forBill: an open bill takes the item once saved */
+  ProductDetail: { productId?: string; name?: string; forBill?: boolean } | undefined;
   ItemDetail: { productId: string };
   StockAdjust: undefined;
   StockTransfer: undefined;

@@ -29,10 +29,12 @@ export function useDocBuilder() {
 
   function saleDoc(sale: Sale, kind = 'Tax Invoice'): DocMeta {
     const pt = sale.partyId ? party(sale.partyId) : undefined;
+    /* A sale paid in full at the counter is a receipt, money still owed makes it an
+       invoice; a quotation or a delivery note printed from it is that, with its own template. */
+    const dk = kind === 'Tax Invoice' ? (sale.due > 0 ? 'invoice' : 'receipt') : docKindOf(kind);
     return {
       kind,
-      // paid in full at the counter it is a receipt; money still owed makes it an invoice
-      docKind: sale.due > 0 ? 'invoice' : 'receipt',
+      docKind: dk,
       no: sale.no,
       ts: sale.ts,
       firmName: db?.firm.name || '',
@@ -49,6 +51,7 @@ export function useDocBuilder() {
       logo: db?.firm.logo,
       signature: db?.firm.signature,
       footer: db?.firm.footer,
+      docFooter: db?.firm.docFooters?.[dk] || undefined,
       partyName: pt?.name,
       partyPhone: pt?.phone,
       partyAddress: pt?.address,
@@ -61,6 +64,7 @@ export function useDocBuilder() {
           batchNo: l.batchNo, expiry: b?.expiry,
           ...(l.modifiers?.length && db?.printer?.showModifiers !== false ? { mods: l.modifiers.map((m) => m.name) } : {}),
           ...(l.note ? { note: l.note } : {}),
+          ...(l.note || p?.note ? { desc: l.note || p?.note } : {}),
           serials: l.serials || (l.serialNo ? [{ imei: l.serialNo }] : undefined),
         };
       }),
@@ -100,6 +104,7 @@ export function useDocBuilder() {
       logo: db?.firm.logo,
       signature: db?.firm.signature,
       footer: db?.firm.footer,
+      docFooter: db?.firm.docFooters?.purchase || undefined,
       partyName: pt?.name,
       partyPhone: pt?.phone,
       currencyName: db?.settings.currencyName,
@@ -138,6 +143,7 @@ export function useDocBuilder() {
       logo: db?.firm.logo,
       signature: db?.firm.signature,
       footer: db?.firm.footer,
+      docFooter: db?.firm.docFooters?.receipt || undefined,
       partyName: pt?.name,
       partyPhone: pt?.phone,
       currencyName: db?.settings.currencyName,

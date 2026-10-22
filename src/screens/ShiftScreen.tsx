@@ -65,12 +65,21 @@ export default function ShiftScreen({ route }: any) {
   const [summary, setSummary] = useState('');
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
+  /* besides the drawer's cash: what was taken on mobile money, the bank and any
+     other money account, declared by the cashier at close */
+  const [decl, setDecl] = useState<Record<string, Record<string, string>>>({});
   const [note, setNote] = useState('');
 
   // day close: who is included
   const [picked, setPicked] = useState<Record<string, boolean> | null>(null);
 
   const branch = db ? activeBranchId(db) : undefined;
+  /* the money accounts other than the drawer, each its own line to declare;
+     mobile money and bank when the shop has named none */
+  const declareIn = useMemo(() => {
+    const named = (db?.accounts || []).filter((a) => a.type !== 'cash' && (!a.branch || a.branch === branch)).map((a) => a.name);
+    return named.length ? named : ['Mobile money', 'Bank / card'];
+  }, [db?.accounts, branch]);
   const openShifts = useMemo(
     () => (db?.shifts || []).filter((s) => !s.closedAt && (!branch || !s.branch || s.branch === branch)),
     [db?.shifts, branch],
@@ -157,7 +166,9 @@ export default function ShiftScreen({ route }: any) {
       .map((s) => ({ s, v: shiftVariance(shiftTotals(s).expected, num(counts[s.id] || '0')) }))
       .filter((x) => x.v.state !== 'balanced');
     const doIt = () => {
-      closing.forEach((s) => closeShift(s.id, num(counts[s.id] || '0'), note));
+      closing.forEach((s) => closeShift(s.id, num(counts[s.id] || '0'), note,
+        Object.fromEntries(Object.entries(decl[s.id] || {}).map(([k, v]) => [k, num(v || '0')]))));
+      setDecl({});
       setClosing(null);
       setPicked(null);
       if (closingDay) finishDay();
@@ -445,6 +456,11 @@ export default function ShiftScreen({ route }: any) {
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }} numberOfLines={1}>
                   {fmtDate(s.openedAt)} → {fmtDate(s.closedAt as string)}
                 </Text>
+                {s.declared && Object.keys(s.declared).length ? (
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 1 }} numberOfLines={2}>
+                    declared {Object.entries(s.declared).map(([k, v]) => k + ' ' + money0(v)).join(' · ')}
+                  </Text>
+                ) : null}
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: colors.ink }}>{money(s.countedCash || 0)}</Text>
@@ -551,6 +567,11 @@ export default function ShiftScreen({ route }: any) {
                 numeric decimal
                 style={{ marginBottom: 6 }}
               />
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.soft, marginTop: 8, marginBottom: 4 }}>Also taken this shift — declare what you have</Text>
+              {declareIn.map((name) => (
+                <Field key={name} label={name} value={(decl[s.id] || {})[name] || ''} numeric decimal style={{ marginBottom: 6 }}
+                  onChangeText={(t) => setDecl((x) => ({ ...x, [s.id]: { ...(x[s.id] || {}), [name]: t } }))} />
+              ))}
               {blind ? (
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                   {counts[s.id] ? 'Counted — the owner sees how it compares' : 'Not counted yet'}

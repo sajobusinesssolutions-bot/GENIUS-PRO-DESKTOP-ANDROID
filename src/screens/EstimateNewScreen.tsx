@@ -21,6 +21,9 @@ export default function EstimateNewScreen({ navigation, route }: Props) {
   })));
   const [discount, setDiscount] = useState(editing?.discount ? String(editing.discount) : '');
   const [validFor, setValidFor] = useState('14');
+  /* printed on the quotation: the shop's standing terms to start with, and a note */
+  const [terms, setTerms] = useState(editing ? editing.terms || '' : db?.firm.terms || '');
+  const [note, setNote] = useState(editing?.note || '');
 
   const total = lines.reduce((s, l) => s + l.qty * l.price, 0);
   const disc = Math.min(Number(discount) || 0, total);
@@ -57,7 +60,7 @@ export default function EstimateNewScreen({ navigation, route }: Props) {
         />
       }
       onSave={() => {
-        const payload = { partyId, lines: toSaleLines(lines, db!.products), discount: disc };
+        const payload = { partyId, lines: toSaleLines(lines, db!.products), discount: disc, note: note.trim() || undefined, terms: terms.trim() || undefined };
         if (editing) {
           if (!updateEstimate(editing.id, payload)) { error('This quotation is closed and can no longer be changed.'); return; }
           success(editing.no + ' updated');
@@ -83,6 +86,8 @@ export default function EstimateNewScreen({ navigation, route }: Props) {
       {Number(validFor) > 0 ? (
         <Field icon="calendar" label="Holds until" value={until} readOnly onChangeText={() => {}} />
       ) : null}
+      <Field icon="doc" label="Terms" value={terms} onChangeText={setTerms} placeholder="Payment and delivery terms" multiline />
+      <Field icon="pencil" label="Note to the customer" value={note} onChangeText={setNote} placeholder="Anything else they should know" multiline />
     </DocEntry>
   );
 }

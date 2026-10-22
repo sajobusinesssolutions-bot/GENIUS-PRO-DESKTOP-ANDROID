@@ -11,6 +11,7 @@ import { File, Paths } from 'expo-file-system';
 import qrcode from 'qrcode-generator';
 import { code128Html } from './code128';
 import { a4Layout, esc, numberToWords } from './invoiceLayouts';
+import { docKindOf } from './printSetup';
 
 export { numberToWords };
 import type { Paper, PrintTemplate, DocKind, Printer, SoldSerial, KitchenSettings } from './types';
@@ -58,6 +59,8 @@ export interface DocLine {
   mods?: string[];
   /** A note on the line, for the kitchen: "well done". */
   note?: string;
+  /** The line's description on paper (its note, else the item's), when the template prints descriptions. */
+  desc?: string;
   unit?: string;
   /** The phones sold on this line: IMEI 1, IMEI 2 and condition. */
   serials?: SoldSerial[];
@@ -112,6 +115,8 @@ export interface DocMeta {
   terms?: string;
   servedBy?: string;
   footer?: string;
+  /** This kind of document's own footer (Firm.docFooters) — wins over the template's and the shop's. */
+  docFooter?: string;
   /** Settings → Tax name, e.g. "VAT" — what the tax line is called on paper. */
   taxLabel?: string;
 }
@@ -243,7 +248,8 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   const sh = shows(tpl);
   const rollStyle = paper === 'A4' ? 'classic' : sh.style;
   // under each item: its IMEIs, and in a restaurant the choices it was ordered with
-  const imeiHtml = (l: DocLine) => (sh.imei ? imeiTexts(l.serials).map((t) => `<div class="sub imei">${esc(t)}</div>`).join('') : '')
+  const imeiHtml = (l: DocLine) => (tpl?.showDesc && l.desc ? `<div class="sub desc">${esc(l.desc).replace(/\n/g, '<br/>')}</div>` : '')
+    + (sh.imei ? imeiTexts(l.serials).map((t) => `<div class="sub imei">${esc(t)}</div>`).join('') : '')
     + (l.mods && l.mods.length ? `<div class="sub">+ ${esc(l.mods.join(', '))}</div>` : '');
   const showLogo = tpl ? tpl.showLogo : true;
   const showTax = tpl ? tpl.showTax : true;
@@ -258,7 +264,7 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   const accent = tpl?.accentColor && paper === 'A4' ? tpl.accentColor : '';
   const tight = tpl?.density === 'tight' || rollStyle === 'compact';
   const head = (tpl?.head || '').trim();
-  const foot = (tpl?.foot || '').trim();
+  const foot = (d.docFooter || tpl?.foot || '').trim();
   const copies = Math.max(1, Math.min(5, tpl?.copies || 1));
   const code = codeBlock(d, tpl, money, paper);
   const date = new Date(d.ts);
@@ -301,7 +307,9 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   if (paper === 'A4') {
     const style = tpl?.style || (boxed ? 'tally' : accent ? 'quickbooks' : 'plain');
     // a page has the room for the IMEIs under each item name; the unit switch blanks the unit column
-    const pageDoc: DocMeta = { ...d, lines: d.lines.map((l) => ({ ...l, unit: sh.unit ? l.unit : '' })) };
+    /* a page has room for the shop's standing terms when the document has none of its own */
+    const pageDoc: DocMeta = { ...d, terms: d.terms || (d.docKind || docKindOf(d.kind)) !== 'receipt' && d.firmTerms || d.terms,
+      lines: d.lines.map((l) => ({ ...l, unit: sh.unit ? l.unit : '' })) };
     const out = a4Layout(style, pageDoc, money, { showLogo, showTax, showServed, showParty, showBatch, showExpiry, head, foot, code, tight, accent, imeiHtml });
     doc = out.body;
     a4Css = out.css;

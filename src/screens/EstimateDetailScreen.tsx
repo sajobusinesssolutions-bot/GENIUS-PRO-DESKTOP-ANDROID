@@ -42,7 +42,8 @@ export default function EstimateDetailScreen({ route, navigation }: Props) {
   function doc() {
     return saleDoc({
       ...(est as any), gross, tax: 0, additionalCharges: 0,
-      paid: 0, due: 0, method: 'cash', userId: db!.session.userId,
+      // nothing is paid on a quotation, so no "Paid" line
+      paid: undefined, due: 0, method: '', userId: db!.session.userId,
     } as any, 'Quotation');
   }
 

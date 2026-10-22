@@ -14,8 +14,10 @@ import { Icon } from './icons';
 import Sheet from './Sheet';
 import { activeLists, adjLabel, listProducts } from '../data/priceLists';
 
-export default function PriceListPicker({ value, onChange, style }: {
+export default function PriceListPicker({ value, onChange, style, compact }: {
   value: string | null; onChange: (id: string | null) => void; style?: object;
+  /** One cell of a row of document details (DocStrip) instead of a full-width field. */
+  compact?: boolean;
 }) {
   const { colors } = useTheme();
   const { db } = useAppData();
@@ -44,6 +46,12 @@ export default function PriceListPicker({ value, onChange, style }: {
 
   return (
     <>
+      {compact ? (
+        <Pressable onPress={() => setOpen(true)} style={[{ flex: 1, minWidth: 0, paddingHorizontal: 10, paddingVertical: 8 }, style as any]} accessibilityLabel="Price list">
+          <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>Price list</Text>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: chosen ? colors.accent : colors.ink, marginTop: 2 }}>{chosen ? chosen.name : 'Standard'}</Text>
+        </Pressable>
+      ) : (
       <FieldShell
         label="Price list"
         icon="coins"
@@ -54,6 +62,7 @@ export default function PriceListPicker({ value, onChange, style }: {
         <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>{chosen ? chosen.name : 'Standard prices'}</Text>
         {chosen ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 1 }}>{adjLabel(chosen.adj)}</Text> : null}
       </FieldShell>
+      )}
       <Sheet visible={open} title="Price list" subtitle="Prices on this document come from it" icon="coins" onClose={() => setOpen(false)}>
         {row(null, 'Standard prices', "Each item's own selling price")}
         {lists.map((l) => row(l.id, l.name, listProducts(db, l).length + ' items · ' + adjLabel(l.adj)))}
