@@ -84,7 +84,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
   const partyLabel = /purchase/i.test(d.kind) ? 'Supplier' : 'Customer';
   /* "Invoice No." on an invoice; "Quotation No.", "Delivery note No." on the others */
   const noun = /invoice/i.test(d.kind) ? 'Invoice' : d.kind;
-  const logo = c.showLogo && d.logo ? `<img class="logo" src="${esc(d.logo)}" />` : '';
+  const logo = c.showLogo && d.logo ? `<img class="logo" style="--logo-k:${d.logoK || 1.5}" src="${esc(d.logo)}" />` : '';
   const words = [d.currencyName, numberToWords(d.total), 'Only'].filter(Boolean).join(' ');
   const sameUnit = d.lines.length > 0 && d.lines.every((l) => (l.unit || '') === (d.lines[0].unit || ''));
   const qtyTotal = sameUnit ? d.lines.reduce((s, l) => s + l.qty, 0) + (d.lines[0].unit ? ' ' + d.lines[0].unit : '') : '';
@@ -169,7 +169,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
       .tally .t-top { border: 1px solid #000; }
       .tally .t-left { width: 50%; vertical-align: top; border-right: 1px solid #000; padding: 0; }
       .tally .t-seller { padding: 5px 6px 10px; line-height: 14px; }
-      .tally .t-seller .logo { max-height: 16mm; max-width: 36mm; display: block; margin-bottom: 3px; }
+      .tally .t-seller .logo { max-height: calc(16mm * var(--logo-k, 1.5)); max-width: calc(36mm * var(--logo-k, 1.5)); display: block; margin-bottom: 3px; }
       .tally .t-buyer { border-top: 1px solid #000; padding: 5px 6px 18px; line-height: 14px; }
       .tally .t-right { width: 50%; vertical-align: top; padding: 0; }
       .tally .t-grid td.k { border-bottom: 1px solid #000; border-left: 1px solid #000; padding: 2px 5px; width: 50%; height: 26px; vertical-align: top; }
@@ -257,7 +257,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
       .qb { font-size: 11px; color: #222; }
       .qb .qb-bar { height: 6px; width: 45%; margin-left: auto; background: var(--accent); }
       .qb .qb-top { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 14px; }
-      .qb .qb-logo .logo { max-height: 22mm; max-width: 50mm; }
+      .qb .qb-logo .logo { max-height: calc(22mm * var(--logo-k, 1.5)); max-width: calc(50mm * var(--logo-k, 1.5)); }
       .qb .qb-name { font-size: 22px; font-weight: 800; }
       .qb .qb-title { font-size: 24px; font-weight: 700; }
       .qb .qb-firm { display: flex; gap: 40px; margin-top: 16px; line-height: 15px; }
@@ -380,7 +380,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
       .gst table { width: 100%; border-collapse: collapse; }
       .gst .g-top { display: flex; justify-content: space-between; align-items: center; }
       .gst .g-name { font-size: 26px; font-weight: 900; color: var(--accent); letter-spacing: .5px; }
-      .gst .g-logo .logo { max-height: 18mm; max-width: 40mm; }
+      .gst .g-logo .logo { max-height: calc(18mm * var(--logo-k, 1.5)); max-width: calc(40mm * var(--logo-k, 1.5)); }
       .gst .g-band { background: #1A9E8F; color: #fff; font-weight: 700; font-size: 12px; padding: 5px 12px; margin-top: 4px; width: 72%; }
       .gst .g-thin { height: 4px; padding: 0; }
       .gst .g-addr { display: flex; justify-content: space-between; gap: 16px; margin: 8px 0 8px; line-height: 14px; }
@@ -467,7 +467,7 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
   const css = `
     .plain .top { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
     .plain .firm { display: flex; gap: 14px; align-items: flex-start; }
-    .plain .firm .logo { max-width: 38mm; max-height: 24mm; }
+    .plain .firm .logo { max-width: calc(38mm * var(--logo-k, 1.5)); max-height: calc(24mm * var(--logo-k, 1.5)); }
     .plain h1 { font-size: 20px; margin: 0 0 4px; }
     .plain .muted { color: #555; font-size: 11px; margin-top: 1px; }
     .plain .title { text-align: right; min-width: 60mm; }

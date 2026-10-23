@@ -11,7 +11,7 @@ import { useToast } from './Toast';
 import { Icon, IconName } from './icons';
 import Sheet from './Sheet';
 import { ListRow } from './kit';
-import { printDoc, shareDoc, docText, DocMeta } from '../data/docPrint';
+import { printDoc, shareDoc, docText, DocMeta, LOGO_K } from '../data/docPrint';
 import { printOptsFor, docKindOf, defaultPrinter, paperOf, shareOptsFor, purposeOf, printsOf, printerFor, placeOf, PHONE_DIALOG } from '../data/printSetup';
 import { printKitchenTicket } from '../data/docPrint';
 import { kitchenOf, orderTypeWord } from '../data/restaurant';
@@ -49,6 +49,8 @@ export function useDocBuilder() {
       taxLabel: db?.settings.taxName,
       firmDescription: db?.firm.description,
       logo: db?.firm.logo,
+      logoK: LOGO_K[db?.printer?.logoSize || 'medium'],
+      mono: !!db?.printer?.mono,
       signature: db?.firm.signature,
       footer: db?.firm.footer,
       docFooter: db?.firm.docFooters?.[dk] || undefined,
@@ -102,6 +104,8 @@ export function useDocBuilder() {
       taxLabel: db?.settings.taxName,
       firmDescription: db?.firm.description,
       logo: db?.firm.logo,
+      logoK: LOGO_K[db?.printer?.logoSize || 'medium'],
+      mono: !!db?.printer?.mono,
       signature: db?.firm.signature,
       footer: db?.firm.footer,
       docFooter: db?.firm.docFooters?.purchase || undefined,
@@ -141,6 +145,8 @@ export function useDocBuilder() {
       taxLabel: db?.settings.taxName,
       firmDescription: db?.firm.description,
       logo: db?.firm.logo,
+      logoK: LOGO_K[db?.printer?.logoSize || 'medium'],
+      mono: !!db?.printer?.mono,
       signature: db?.firm.signature,
       footer: db?.firm.footer,
       docFooter: db?.firm.docFooters?.receipt || undefined,

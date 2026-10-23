@@ -38,7 +38,7 @@ export function effectiveStatus(account, licence, now = new Date()) {
 /** How many businesses a licence allows: what the developer set, else the plan's own number. */
 export function businessLimit(lic) {
   if (lic?.max_businesses) return Number(lic.max_businesses);
-  return lic?.plan === 'pro' || lic?.plan === 'lifetime' ? 5 : 1;
+  return lic?.plan === 'pro' || lic?.plan === 'lifetime' ? 3 : 1;
 }
 
 /** The account's current licence, with what it allows and how much of it is used. */
@@ -423,7 +423,7 @@ export default async function syncRoutes(app) {
     if (lim.owned >= lim.maxBusinesses) {
       return fail(reply, 409, 'businessLimit',
         'Your plan allows ' + lim.maxBusinesses + ' business' + (lim.maxBusinesses === 1 ? '' : 'es')
-        + ' and you have ' + lim.owned + '. Ask Genius Pro to raise the limit, or deactivate one you no longer use.');
+        + ' and you have ' + lim.owned + '. For more, ask Genius Pro for a quote, or deactivate one you no longer use.');
     }
     const { rows } = await q(
       `insert into businesses (account_id, name, tin, local_id)

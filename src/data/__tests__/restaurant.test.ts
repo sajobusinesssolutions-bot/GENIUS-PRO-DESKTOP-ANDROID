@@ -110,7 +110,7 @@ describe('business limits', () => {
     // a developer-raised limit wins over the plan's number
     expect(businessAllowance({ maxBusinesses: 8, owned: 2, plan: 'starter' }, null).left).toBe(6);
     // with no word from the server, the licence on the phone decides
-    expect(businessAllowance(null, { licence: { licence: { plan: 'pro' } } }).max).toBe(5);
+    expect(businessAllowance(null, { licence: { licence: { plan: 'pro' } } }).max).toBe(3);
   });
 });
 

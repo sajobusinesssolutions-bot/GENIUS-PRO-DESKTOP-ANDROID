@@ -477,6 +477,10 @@ export interface PrinterSettings {
   /** How a sales receipt prints by default: on the roll, or as an A4 page. Absent means the roll. */
   receiptMode?: 'thermal' | 'a4';
   autoPrint: boolean; openDrawer: boolean; showLogo: boolean;
+  /** How big the logo prints. Absent means medium. */
+  logoSize?: 'small' | 'medium' | 'large';
+  /** Every printout in shades of grey, with no colour. */
+  mono?: boolean;
   header: string; footer: string;
   /** How the kitchen ticket prints. */
   kitchen?: KitchenSettings;

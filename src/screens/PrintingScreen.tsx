@@ -20,7 +20,7 @@ import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
 import { Button, EmptyState } from '../components/ui';
 import { Badge, InfoBanner } from '../components/kit';
-import { Field, ToggleRow, SelectField } from '../components/form';
+import { Field, ToggleRow, SelectField, Seg } from '../components/form';
 import { Icon, IconName } from '../components/icons';
 import { useToast } from '../components/Toast';
 import { useGo } from '../nav/navigate';
@@ -1154,7 +1154,7 @@ function InvoicePreview({ d }: { d: InvoiceDraft }) {
 export function InvoiceSettingsScreen() {
   const { colors } = useTheme();
   const nav = useNavigation<any>();
-  const { db, money, templateFor, updateTemplate, updateFirm, setSetting } = useAppData();
+  const { db, money, templateFor, updateTemplate, updateFirm, setSetting, setPrinter } = useAppData();
   const { success, error } = useToast();
   const tpl = templateFor('invoice');
   const receiptTpl = templateFor('receipt');
@@ -1228,7 +1228,7 @@ export function InvoiceSettingsScreen() {
       firmEmail: f.email, firmWebsite: f.website, firmDescription: f.description, firmBank: f.bankDetails, firmTerms: f.terms,
       logo: d.logo, taxLabel: d.taxName, currencyName: db.settings.currencyName,
       partyName: 'Taylor & Company', partyPhone: '0700 000 000', partyAddress: 'P.O. Box 45865',
-      lines: sampleLines().map((l) => ({ name: l.name, qty: l.qty, price: l.price, unit: 'pcs', batchNo: l.batch, expiry: '2027-03-31' })),
+      lines: sampleLines().map((l, i) => ({ name: l.name, qty: l.qty, price: l.price, unit: 'pcs', batchNo: l.batch, expiry: '2027-03-31', ...(i === 0 ? { desc: 'Sealed box, one year warranty' } : {}) })),
       subtotal: 20000, tax: Math.round(20000 * (db.settings.taxRate || 0) / 100),
       total: 20000 + Math.round(20000 * (db.settings.taxRate || 0) / 100), method: 'Cash', servedBy: 'Cashier',
     };
@@ -1340,6 +1340,9 @@ export function InvoiceSettingsScreen() {
           <ToggleRow bare label="Batch column" sub="Which lot each item came from" on={d.showBatch} onChange={(v) => set({ showBatch: v })} />
           <ToggleRow bare label="Expiry column" sub="For perishables and pharmacy stock" on={d.showExpiry} onChange={(v) => set({ showExpiry: v })} />
           <ToggleRow bare label="Item descriptions" sub="Each line's description under the item name" on={d.showDesc} onChange={(v) => set({ showDesc: v })} />
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft, marginTop: 10, marginBottom: 6 }}>Logo size on every printout</Text>
+          <Seg value={db.printer.logoSize || 'medium'} options={[{ v: 'small', l: 'Small' }, { v: 'medium', l: 'Medium' }, { v: 'large', l: 'Large' }]} onChange={(v: 'small' | 'medium' | 'large') => setPrinter({ logoSize: v })} />
+          <ToggleRow bare label="Black and white" sub="The whole printout in shades of grey, no colour" on={!!db.printer.mono} onChange={(v) => setPrinter({ mono: v })} />
           <View style={{ height: 10 }} />
           <SelectField label="QR / barcode on the invoice" value={d.code} options={CODE_CHOICES} onChange={(v) => set({ code: v })} />
           {d.code !== 'none' ? (

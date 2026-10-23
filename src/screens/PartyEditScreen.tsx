@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Alert } from 'react-native';
+import { pickContact } from '../data/pickContact';
 import { useTheme } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
@@ -92,6 +93,20 @@ export default function PartyEditScreen({ route, navigation }: Props) {
 
         <View style={{ height: 20 }} />
         <SectionLabel>Details</SectionLabel>
+        {!existing ? (
+          <View style={{ marginBottom: 12 }}>
+            <Button label="Pick from my contacts" icon={<Icon name="user" size={16} color={colors.ink} />} onPress={async () => {
+              try {
+                const c = await pickContact();
+                if (!c) return;
+                if (c.name) setName(c.name);
+                if (c.phone) setPhone(c.phone);
+                if (c.email) setEmail(c.email);
+                if (c.address) setAddress(c.address);
+              } catch (e: any) { Alert.alert('Contacts', e?.message || 'The contacts could not be opened.'); }
+            }} />
+          </View>
+        ) : null}
         <Field icon="user" label="Name" value={name} onChangeText={setName} placeholder="Required" />
         <Field icon="phone" label="Phone" value={phone} onChangeText={setPhone} placeholder="Optional" />
         <Field icon="doc" label="Email" value={email} onChangeText={setEmail} placeholder="Optional" />
