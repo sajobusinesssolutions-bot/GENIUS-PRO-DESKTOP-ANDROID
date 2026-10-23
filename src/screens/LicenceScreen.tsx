@@ -88,22 +88,16 @@ export default function LicenceScreen() {
   // Restaurant and Pharmacy are priced per shop: setup, data migration and
   // training vary, so they are quoted by sales rather than listed.
   const quoted = (e: Edition) => e === 'restaurant' || e === 'pharmacy';
-  const contactSales = (planName?: string) => {
-    const what = ed.name + ' edition' + (planName ? ', ' + planName + ' plan' : '');
-    const text = 'Hello, I would like pricing for Genius Pro POS ' + what
-      + ', including setup fees and data migration.' + (account?.email ? ' My account: ' + account.email : '');
-    Alert.alert('Contact sales', 'Ask about pricing, setup fees and moving your data across.', [
-      { text: 'WhatsApp', onPress: () => void openLink(whatsappUrl(text)) },
-      { text: 'Email', onPress: () => void openLink(emailUrl('Pricing: ' + what, text)) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
+  /* Contact us: straight to WhatsApp, with what they are asking about already written */
+  const contactUs = (about: string) => void openLink(whatsappUrl('Hello, ' + about + (account?.email ? ' My account: ' + account.email : '')));
+  const contactSales = (planName?: string) => contactUs('I would like pricing for Genius Pro POS ' + ed.name + ' edition'
+    + (planName ? ', ' + planName + ' plan' : '') + ', including setup fees and data migration.');
 
   const choose = (id: 'starter' | 'pro') => Alert.alert(
     ed.plans[id].name + ' · ' + money(ed.plans[id].prices[term]) + ' ' + TERM_WORD[term],
     'Pay Genius Pro for ' + ed.plans[id].name + ' and it is switched on for ' + (account?.email || 'your account')
       + '. It reaches every phone by itself — there is nothing to type in.',
-    [{ text: 'OK' }],
+    [{ text: 'Later', style: 'cancel' }, { text: 'Contact us', onPress: () => contactUs('I would like ' + ed.plans[id].name + ', paid ' + TERM_WORD[term] + '.') }],
   );
 
   const ink = '#FFFFFF';
@@ -132,9 +126,10 @@ export default function LicenceScreen() {
 
   // Starter against Pro, line by line
   const compare: [string, string, string][] = [
-    ['Businesses', '1', 'Up to 5'],
+    ['Businesses', '1', 'Up to 3'],
     ['Phones and tills', '1', 'As many as you add'],
-    ['Cloud sync and backup', '—', '✓'],
+    ['POS till', '✓', '✓'],
+    ['Cloud sync and backup', '✓', '✓'],
     ['Branches', '—', '✓'],
     ...(edition === 'restaurant' ? [
       ['Kitchen printers', '1', 'Every station'],
@@ -280,13 +275,27 @@ export default function LicenceScreen() {
                 style={{ height: 48, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: mine ? 'transparent' : pro ? colors.bg : colors.ink, borderWidth: mine ? 1.4 : 0, borderColor: pro ? colors.bg : colors.line }}
               >
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: mine ? (pro ? colors.bg : colors.faint) : pro ? colors.ink : colors.bg }}>
-                  {mine ? 'Your current plan' : quoted(edition) ? 'Contact sales' : (a === 'paid' ? 'Switch to ' : 'Get ') + p.name}
+                  {mine ? 'Your current plan' : quoted(edition) ? 'Contact us' : (a === 'paid' ? 'Switch to ' : 'Get ') + p.name}
                 </Text>
               </Pressable>
             )}
           </View>
         );
       })}
+
+      {/* ---------- more than three businesses ---------- */}
+      {PLAY_BUILD ? null : (
+        <View style={{ borderRadius: 4, borderWidth: 1.4, borderStyle: 'dashed', borderColor: colors.accent, padding: 16, marginTop: 4, gap: 6 }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>More than 3 businesses?</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.soft }}>
+            A plan priced for your group — every business and branch, set up and moved across for you.
+          </Text>
+          <Pressable onPress={() => contactUs('I run more than 3 businesses and would like a quote for Genius Pro POS ' + ed.name + '.')}
+            style={{ height: 46, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, marginTop: 8 }}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>Get a quote</Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* ---------- side by side ---------- */}
       {cap('Starter and Pro compared')}
@@ -323,11 +332,11 @@ export default function LicenceScreen() {
               </View>
             ))}
             <Pressable
-              onPress={() => (quoted(edition) ? contactSales() : Linking.openURL('mailto:sajobusinesssolutions@gmail.com?subject=' + encodeURIComponent(ed.name + ' plan for ' + (account?.email || ''))))}
+              onPress={() => (quoted(edition) ? contactSales() : contactUs('I would like to pay for a Genius Pro POS ' + ed.name + ' plan.'))}
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 4, borderWidth: 1.4, borderColor: colors.ink, marginTop: 4 }}
             >
-              <Icon name="mail" size={16} color={colors.ink} />
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{quoted(edition) ? 'Contact sales' : 'Contact Genius Pro'}</Text>
+              <Icon name="chat" size={16} color={colors.ink} />
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>Contact us</Text>
             </Pressable>
           </View>
         </>

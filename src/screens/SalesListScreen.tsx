@@ -29,7 +29,7 @@ import PartiesScreen from './PartiesScreen';
 import { DocActions, useDocBuilder } from '../components/DocActions';
 import type { DocMeta } from '../data/docPrint';
 import { DocRow, SummaryTiles } from '../components/DocList';
-import { printDoc, shareDoc } from '../data/docPrint';
+import { printDoc, shareDoc, openDocPdf } from '../data/docPrint';
 import { printOptsFor, docKindOf, shareOptsFor } from '../data/printSetup';
 import type { PayMethod } from '../data/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -103,19 +103,37 @@ function dayLabel(ts: string) {
 
 export default function SalesListScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party, deleteSale, deletePayment, deletePurchase, voidEstimate, canEditSale, can } = useAppData();
+  const { db, money, party, deleteSale, deletePayment, deletePurchase, voidEstimate, canEditSale, can, user } = useAppData();
   const { saleDoc, paymentDoc, purchaseDoc } = useDocBuilder();
   /** A document being sent as a message, and to whom. */
   const [sending, setSending] = useState<{ doc: DocMeta; phone?: string; email?: string } | null>(null);
   const { success, error } = useToast();
 
   /** Print or share a row's document straight from the list, with the same printer and template rules as its own screen. */
-  async function quickDoc(r: Row, what: 'print' | 'share') {
+  /* Payment history: what was paid at the till, then each payment taken against the sale later */
+  const [historyOf, setHistoryOf] = useState<string | null>(null);
+  const historySale = historyOf ? db?.sales.find((x) => x.id === historyOf) : undefined;
+  const paymentHistory = (s: NonNullable<typeof historySale>) => {
+    const by = (id?: string) => (id ? user(id)?.name : undefined);
+    const out: { ts: string; amount: number; how: string; by?: string; note?: string }[] = [];
+    if (s.paidAtSale > 0.004) {
+      const split = (s.methods || []).filter((m) => m.amount > 0.004);
+      if (split.length > 1) split.forEach((m) => out.push({ ts: s.ts, amount: m.amount, how: methodWord(m.method) + ' · at the sale', by: by(s.userId) }));
+      else out.push({ ts: s.ts, amount: s.paidAtSale, how: methodWord(s.method === 'credit' ? s.receivedVia : s.method) + ' · at the sale', by: by(s.userId) });
+    }
+    (db?.payments || []).forEach((p) => (p.allocations || []).forEach((a) => {
+      if (a.docId === s.id) out.push({ ts: p.ts, amount: a.amount, how: methodWord(p.method), by: by(p.userId), note: p.note || undefined });
+    }));
+    return out.sort((a, b) => a.ts.localeCompare(b.ts));
+  };
+
+  async function quickDoc(r: Row, what: 'print' | 'share' | 'pdf') {
     if (!r.doc) return;
     try {
       const d = r.doc();
       const opts = printOptsFor(db, d.docKind || docKindOf(d.kind));
       if (what === 'print') await printDoc(d, money, opts);
+      else if (what === 'pdf') await openDocPdf(d, money, shareOptsFor(db, d.docKind || docKindOf(d.kind)));
       else if (!(await shareDoc(d, money, shareOptsFor(db, d.docKind || docKindOf(d.kind))))) error('Sharing is not available on this phone.');
     } catch (e: any) {
       error(e?.message || 'That could not be ' + (what === 'print' ? 'printed' : 'shared') + '.');
@@ -659,6 +677,39 @@ export default function SalesListScreen({ navigation }: Props) {
         />
       </Sheet>
 
+      {/* a sale's payments: how it stands, then each payment — how, when and by whom */}
+      <Sheet visible={!!historyOf} title="Payment history" subtitle={historySale ? historySale.no + ' · ' + nameOf(historySale.partyId) : ''} onClose={() => setHistoryOf(null)}>
+        {historySale ? (
+          <View>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              {[['Total', money(historySale.total), colors.ink], ['Paid', money(historySale.paid), colors.good],
+                ['Still due', money(historySale.status === 'void' ? 0 : historySale.due), historySale.due > 0.01 ? colors.danger : colors.faint]].map(([k, v, c]) => (
+                <View key={k} style={{ flex: 1, padding: 10, borderRadius: 4, backgroundColor: colors.sunk }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{k}</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: c, marginTop: 2 }}>{v}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: historySale.status === 'void' ? colors.faint : historySale.due <= 0.01 ? colors.good : historySale.paid > 0 ? colors.warn : colors.danger, marginBottom: 8 }}>
+              {historySale.status === 'void' ? 'Void' : historySale.due <= 0.01 ? 'Paid in full' : historySale.paid > 0 ? 'Part paid' : 'Not paid yet'}
+            </Text>
+            {paymentHistory(historySale).length ? paymentHistory(historySale).map((p, i) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, borderTopWidth: 1, borderTopColor: colors.line }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{p.how}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
+                    {new Date(p.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}{p.by ? ' · ' + p.by : ''}{p.note ? ' · ' + p.note : ''}
+                  </Text>
+                </View>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.good }}>{money(p.amount)}</Text>
+              </View>
+            )) : (
+              <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, paddingVertical: 10 }}>Nothing has been paid on this sale yet.</Text>
+            )}
+          </View>
+        ) : null}
+      </Sheet>
+
       {/* ⋮ actions sheet */}
       <Sheet
         visible={!!menu}
@@ -680,11 +731,14 @@ export default function SalesListScreen({ navigation }: Props) {
             {menu.edit ? <MenuRow title="Edit" onPress={after(menu.edit)} /> : null}
             {menu.duplicate ? <MenuRow title="Duplicate" onPress={after(menu.duplicate)} /> : null}
             {menu.doc ? <MenuRow title="Send as message" sub="WhatsApp, SMS, email…" onPress={after(() => { const doc = menu.doc!(); setSending({ doc, phone: menu.phone || doc.partyPhone, email: menu.partyId ? party(menu.partyId)?.email : undefined }); })} /> : null}
+            {menu.doc ? <MenuRow title="Open PDF" onPress={after(() => void quickDoc(menu, 'pdf'))} /> : null}
             {menu.doc ? <MenuRow title="Share as PDF" onPress={after(() => void quickDoc(menu, 'share'))} /> : null}
             {menu.doc ? <MenuRow title="Print" onPress={after(() => void quickDoc(menu, 'print'))} /> : null}
             {menu.settle ? <MenuRow title={menu.settle.label} sub={money(menu.due || 0) + ' still due'} onPress={after(menu.settle.run)} /> : null}
             {menu.convert ? <MenuRow title="Convert to sale" onPress={after(menu.convert)} /> : null}
-            {menu.kind === 'sale' ? <MenuRow title="Payment history" onPress={after(menu.open!)} /> : null}
+            {menu.kind === 'sale' && can('sales.create') && menu.status !== 'void' ? <MenuRow title="Make delivery note" sub="its goods going out" onPress={after(() => navigation.navigate('ChallanNew', { saleId: menu.id }))} /> : null}
+            {menu.kind === 'sale' ? <MenuRow title="Payment history" onPress={after(() => setHistoryOf(menu.id))} /> : null}
+            {menu.kind === 'sale' ? <MenuRow title="Open" onPress={after(menu.open!)} /> : null}
             {menu.open && menu.kind !== 'sale' ? <MenuRow title="Open" onPress={after(menu.open)} /> : null}
             {menu.remove ? <MenuRow title={menu.remove.label} danger onPress={() => setConfirm(true)} /> : null}
           </View>

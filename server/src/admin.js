@@ -175,7 +175,7 @@ async function owners() {
       lastSeenAt: r.last_seen_at,
       licence: r.plan ? {
         plan: r.plan, edition: r.edition || 'retail', term: r.term, seats: r.seats, status,
-        maxBusinesses: r.max_businesses ? Number(r.max_businesses) : (r.plan === 'pro' || r.plan === 'lifetime' ? 5 : 1),
+        maxBusinesses: r.max_businesses ? Number(r.max_businesses) : (r.plan === 'pro' || r.plan === 'lifetime' ? 3 : 1),
         expiresAt: r.expires_at, daysLeft, since: r.licensed_at,
         fees: feesOf(r),
       } : null,

@@ -101,7 +101,7 @@ export async function issueLicence({ account, licence, businesses }) {
     // Retail, Restaurant or Pharmacy: the edition the plan was bought for
     edition: licence.edition || 'retail',
     // how many businesses the account may run
-    maxBusinesses: licence.max_businesses ? Number(licence.max_businesses) : (licence.plan === 'pro' || licence.plan === 'lifetime' ? 5 : 1),
+    maxBusinesses: licence.max_businesses ? Number(licence.max_businesses) : (licence.plan === 'pro' || licence.plan === 'lifetime' ? 3 : 1),
     term: licence.term,
     seats: licence.seats,
     // a trial gets the app, not sync: that is for paid plans only

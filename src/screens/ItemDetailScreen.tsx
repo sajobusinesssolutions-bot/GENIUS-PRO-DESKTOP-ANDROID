@@ -69,6 +69,20 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   /* with only recent trade in memory, the item's older movements come from disk */
   const older = useOlderRows<Movement>(db, 'movements', id);
   const allMoves = useMemo(() => withOlder(db?.movements || [], older), [db, older]);
+  /* a movement opens the document it came from: the sale, the purchase, the stock take, the transfer */
+  const openMove = (m: Movement) => {
+    const sale = db?.sales.find((x) => x.no === m.ref || x.id === m.ref);
+    const purchase = db?.purchases.find((x) => x.no === m.ref || x.id === m.ref);
+    if ((m.type === 'sale' || m.type === 'void' || m.type === 'return') && sale) return navigation.navigate('SaleDetail', { saleId: sale.id });
+    if (m.type === 'purchase' && purchase) return navigation.navigate('PurchaseDetail', { purchaseId: purchase.id });
+    if (m.type === 'return' && (db?.creditNotes || []).some((c) => c.no === m.ref)) return navigation.navigate('CreditNotes');
+    if (m.type === 'stocktake') { const st = (db?.stockTakes || []).find((x) => x.id === m.ref || (x as any).no === m.ref); if (st) return navigation.navigate('StockTakeDetail', { stockTakeId: st.id }); }
+    if (m.type === 'transfer') return navigation.navigate(String(m.ref || '').startsWith('trf-') || String(m.ref || '').startsWith('ph-') ? 'BranchTransfers' : 'StockTransfer');
+    if (sale) return navigation.navigate('SaleDetail', { saleId: sale.id });
+    if (purchase) return navigation.navigate('PurchaseDetail', { purchaseId: purchase.id });
+    Alert.alert(m.type.charAt(0).toUpperCase() + m.type.slice(1), (m.ref ? m.ref + ' · ' : '') + (m.qty > 0 ? '+' : '−') + Math.abs(m.qty) + ' on ' + new Date(m.ts).toLocaleString('en-GB')
+      + (m.type === 'adjust' ? '\nA stock adjustment — it has no document of its own.' : ''));
+  };
   const moves = useMemo(() => {
     const rows = allMoves.filter((m) => m.productId === id);
     rows.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
@@ -251,7 +265,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
             const fg = tone === 'good' ? colors.good : tone === 'warn' ? colors.warn : colors.danger;
             const bg = tone === 'good' ? colors.goodSoft : tone === 'warn' ? colors.warnSoft : colors.dangerSoft;
             return (
-              <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderBottomWidth: i === shown.length - 1 && !(moves.length > 5) ? 0 : 1, borderBottomColor: colors.line }}>
+              <Pressable key={m.id} onPress={() => openMove(m)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderBottomWidth: i === shown.length - 1 && !(moves.length > 5) ? 0 : 1, borderBottomColor: colors.line }}>
                 <View style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name={MOVE_ICON[m.type] || 'swap'} size={17} color={fg} />
                 </View>
@@ -265,7 +279,8 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                   </Text>
                 </View>
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>{m.qty > 0 ? '+' : '−'}{Math.abs(m.qty)}</Text>
-              </View>
+                <Icon name="chev" size={15} color={colors.faint} />
+              </Pressable>
             );
           }) : (
             <EmptyBlock icon="clock" title="No movement yet" hint="Sales, purchases and adjustments will show here." />

@@ -50,14 +50,14 @@ export const EDITIONS: Record<Edition, EditionDef> = {
     special: ['Barcode scanning and price tags', 'Stock, reorder and stock takes', 'Serials, IMEI and warranties', 'Quotations, delivery notes and instalments'],
     plans: {
       starter: {
-        name: 'Retail Starter', blurb: 'One shop, one device, works with no network at all.',
+        name: 'Retail Starter', blurb: 'One shop: the till and the books, synced to the cloud.',
         prices: { month: 35000, quarter: 95000, year: 340000 },
-        has: ['Till, invoices and receipts', 'Stock and low-stock alerts', 'Customers and suppliers', 'Quotations and delivery notes', 'Cash, bank and mobile money', 'Every report'],
+        has: ['POS till, invoices and receipts', 'Cloud sync for your one shop', 'Stock and low-stock alerts', 'Customers and suppliers', 'Quotations and delivery notes', 'Cash, bank and mobile money', 'Every report'],
       },
       pro: {
-        name: 'Retail Pro', blurb: 'Every feature, as many shops as you run, synced to the cloud.',
+        name: 'Retail Pro', blurb: 'Every feature, up to three shops, synced to the cloud.',
         prices: { month: 95000, quarter: 260000, year: 940000 },
-        has: ['Everything in Retail Starter', 'As many shops and branches as you need', 'Serial, IMEI and warranty tracking', 'Batches and expiry', 'Recurring sales and instalments', 'Cloud sync and off-device backup'],
+        has: ['Everything in Retail Starter', 'Up to 3 shops and branches', 'Serial, IMEI and warranty tracking', 'Batches and expiry', 'Recurring sales and instalments', 'Cloud sync and off-device backup'],
       },
     },
   },
@@ -75,7 +75,7 @@ export const EDITIONS: Record<Edition, EditionDef> = {
       pro: {
         name: 'Restaurant Pro', blurb: 'Every waiter on their own phone, every station printing.',
         prices: { month: 120000, quarter: 330000, year: 1200000 },
-        has: ['Everything in Restaurant Starter', 'Tickets shared across every phone', 'Kitchen, bar and grill stations', 'Several menus, staff kept to their menu', 'Several branches', 'Cloud sync and off-device backup'],
+        has: ['Everything in Restaurant Starter', 'Tickets shared across every phone', 'Kitchen, bar and grill stations', 'Several menus, staff kept to their menu', 'Up to 3 branches', 'Cloud sync and off-device backup'],
       },
     },
   },
@@ -93,7 +93,7 @@ export const EDITIONS: Record<Edition, EditionDef> = {
       pro: {
         name: 'Pharmacy Pro', blurb: 'Every counter and branch, synced, with expiry control across all of them.',
         prices: { month: 120000, quarter: 330000, year: 1200000 },
-        has: ['Everything in Pharmacy Starter', 'Several branches and counters', 'Stock moved between branches', 'Repeat prescriptions and instalments', 'Audit log and approvals', 'Cloud sync and off-device backup'],
+        has: ['Everything in Pharmacy Starter', 'Up to 3 branches, every counter', 'Stock moved between branches', 'Repeat prescriptions and instalments', 'Audit log and approvals', 'Cloud sync and off-device backup'],
       },
     },
   },
@@ -144,7 +144,7 @@ export function businessAllowance(
   d: { onboarded?: boolean; firms?: unknown[]; sync?: { businessId?: string }; licence?: { licence?: { maxBusinesses?: number; plan?: string } | null } | null } | null | undefined,
 ): { max: number; used: number; left: number } {
   const plan = server?.plan || d?.licence?.licence?.plan || 'trial';
-  const max = server?.maxBusinesses || d?.licence?.licence?.maxBusinesses || (plan === 'pro' || plan === 'lifetime' ? 5 : 1);
+  const max = server?.maxBusinesses || d?.licence?.licence?.maxBusinesses || (plan === 'pro' || plan === 'lifetime' ? 3 : 1);
   const onServer = server?.owned || 0;
   // these books, if they are a business the server has not been told about
   const local = d?.onboarded && !d.sync?.businessId ? 1 : 0;
@@ -156,7 +156,7 @@ export function businessAllowance(
 
 export function businessLimitWords(a: { max: number; used: number }): string {
   return 'Your plan allows ' + a.max + ' business' + (a.max === 1 ? '' : 'es') + ' and ' + a.used + (a.used === 1 ? ' is' : ' are')
-    + ' in use. Starter allows one and Pro up to five. Ask Genius Pro to raise the limit, or deactivate a business you no longer use.';
+    + ' in use. Starter allows one and Pro up to three — for more, ask Genius Pro for a quote (Licence → Get a quote), or deactivate a business you no longer use.';
 }
 
 /** Why another edition cannot be chosen, in words. */

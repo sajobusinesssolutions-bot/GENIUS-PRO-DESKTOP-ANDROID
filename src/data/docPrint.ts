@@ -7,6 +7,8 @@ import { escposDoc, escposKitchen, imeiTexts, shows, qtyText } from './escpos';
 import { printBluetooth, testNetwork } from './rawPrinter';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
+import { Platform } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import qrcode from 'qrcode-generator';
 import { code128Html } from './code128';
@@ -119,7 +121,14 @@ export interface DocMeta {
   docFooter?: string;
   /** Settings → Tax name, e.g. "VAT" — what the tax line is called on paper. */
   taxLabel?: string;
+  /** How much bigger than the small logo it prints (Printing → Logo size). */
+  logoK?: number;
+  /** The whole page in shades of grey (Printing → Black and white). */
+  mono?: boolean;
 }
+
+/** Printing → Logo size, as a scale on the small logo. */
+export const LOGO_K = { small: 1, medium: 1.5, large: 2.2 } as const;
 
 
 function safeName(s: string) {
@@ -382,7 +391,7 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   .foot { text-align: center; color: #222; font-size: ${narrow ? 9 : 10}px; margin-top: 10px; }
   /* thermal paper is monochrome and narrow, so the logo is capped and scaled by height */
   .logo { text-align: center; margin-bottom: 5px; }
-  .logo img { max-width: ${narrow ? 40 : 56}mm; max-height: ${narrow ? 16 : 22}mm; filter: grayscale(1); }
+  .logo img { max-width: min(100%, ${Math.round((narrow ? 40 : 56) * (d.logoK || 1.5))}mm); max-height: ${Math.round((narrow ? 16 : 22) * (d.logoK || 1.5))}mm; filter: grayscale(1); }
   .code { text-align: center; margin-top: 10px; }
   .cap { font-size: 9px; color: #222; margin-top: 2px; }
   .sign { margin-top: 14px; text-align: right; }
@@ -395,7 +404,7 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   return `<!doctype html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <style>
-  body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; color: #000; margin: 0; padding: 0; }
+  body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; color: #000; margin: 0; padding: 0;${d.mono ? ' filter: grayscale(100%); -webkit-print-color-adjust: exact;' : ''} }
   svg { display: inline-block; }
   ${css}
 </style></head><body>${pages}</body></html>`;
@@ -499,6 +508,27 @@ export async function shareDoc(d: DocMeta, money: (n: number) => string, opts: P
     UTI: 'com.adobe.pdf',
   });
   return true;
+}
+
+/**
+ * The document as a PDF in a viewer the person picks: on Android the "Open
+ * with" chooser (a PDF reader, Drive, the browser); elsewhere the share sheet.
+ */
+export async function openDocPdf(d: DocMeta, money: (n: number) => string, opts: PrintOpts = {}): Promise<void> {
+  const paper: Paper = opts.paper || 'A4';
+  const full = await ready(d, opts);
+  const uri = await printPdfToCache({
+    html: docHtml(full, money, { ...opts, paper, tpl: opts.tpl ? { ...opts.tpl, copies: 1 } : undefined }),
+    ...pageSize(paper, d.lines.length),
+  }, safeName(d.kind + '-' + d.no) + '.pdf');
+  if (Platform.OS === 'android') {
+    const file = new File(uri);
+    try {
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', { data: file.contentUri || uri, type: 'application/pdf', flags: 1 });
+      return;
+    } catch { /* no viewer: the share sheet still offers one */ }
+  }
+  await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: d.kind + ' ' + d.no });
 }
 
 /** A plain-text version for WhatsApp and SMS. */

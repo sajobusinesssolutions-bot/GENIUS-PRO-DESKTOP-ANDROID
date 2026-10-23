@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput } from 'react-native';
+import { View, Text, TextInput, Alert } from 'react-native';
+import { pickContact } from '../data/pickContact';
 import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { Button } from './ui';
@@ -156,6 +157,16 @@ export function CustomerFormSheet({ visible, onClose, onSave, kind = 'customer' 
       footer={<Button label={'Save ' + kind} variant="pri" disabled={!name.trim()} onPress={save} />}
     >
       <View style={{ gap: 14 }}>
+        <Button label="Pick from my contacts" onPress={async () => {
+          try {
+            const c = await pickContact();
+            if (!c) return;
+            if (c.name) setName(c.name);
+            if (c.phone) setPhone(c.phone);
+            if (c.email) setEmail(c.email);
+            if (c.address) setAddress(c.address);
+          } catch (e: any) { Alert.alert('Contacts', e?.message || 'The contacts could not be opened.'); }
+        }} />
         <Field label={kind === 'supplier' ? 'Supplier name' : 'Customer name'} value={name} onChangeText={setName} placeholder="Required" />
         <Field label="Phone" value={phone} onChangeText={setPhone} placeholder="Optional" keyboardType="phone-pad" />
         <Field label="Email" value={email} onChangeText={setEmail} placeholder="Optional" keyboardType="email-address" />
