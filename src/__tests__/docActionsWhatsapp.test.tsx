@@ -19,7 +19,7 @@ jest.mock('../data/AppDataContext', () => ({
 
 /* WhatsApp is first sent the PDF itself; here the PDF cannot be made, so the
    link with the text — what these tests check — is what is left. */
-const mockPdf = jest.fn(() => Promise.reject(new Error('no PDF in tests')));
+const mockPdf = jest.fn((..._a: any[]) => Promise.reject(new Error('no PDF in tests')));
 jest.mock('../data/docPrint', () => ({ ...jest.requireActual('../data/docPrint'), docPdfUri: (...a: any[]) => mockPdf(...a) }));
 
 import { ToastProvider } from '../components/Toast';
