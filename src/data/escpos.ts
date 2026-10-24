@@ -231,7 +231,7 @@ export function escposDoc(doc: DocMeta, money: (n: number) => string, opts: Escp
       }
     }
     gap(o);
-    o.align('center').lines(wrap(foot || d.footer || 'Thank you for your business', w)).align('left');
+    o.align('center').lines(wrap(foot || d.footer || 'Thank you for your business', w)).lines(['Powered by Genius POS']).align('left');
     o.feed(4).raw(GS, 0x56, 0x42, 0x00); // feed past the cutter, then cut
   }
   if (opts.openDrawer) o.raw(ESC, 0x70, 0x00, 0x19, 0xfa); // pulse the drawer

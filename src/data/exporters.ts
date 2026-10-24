@@ -196,7 +196,7 @@ export function toHtml(result: ReportResult, meta: ExportMeta = {}): string {
   ${totals}
   ${result.note ? `<div class="note">${esc(result.note)}</div>` : ''}
   ${meta.showGenerated !== false ? `<div class="gen"><span>${esc(generated)}</span><span>${esc(meta.firm || '')}</span></div>` : ''}
-</body></html>`;
+<div style="text-align:center;font:500 9px/1.4 Arial,sans-serif;color:#6b6f76;margin-top:10px;letter-spacing:.03em">Powered by Genius POS</div></body></html>`;
 }
 
 /* ------------------------------------------------------------------ */

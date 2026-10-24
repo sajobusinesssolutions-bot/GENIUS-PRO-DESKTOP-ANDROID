@@ -297,7 +297,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Journals" component={JournalsScreen} options={{ title: 'Journal entries' }} />
         <Stack.Screen name="Reports" component={ReportsScreen} options={{ title: 'Reports' }} />
         <Stack.Screen name="ReportDetail" component={ReportDetailScreen} options={{ title: 'Report' }} />
-        <Stack.Screen name="Tax" component={TaxScreen} options={{ title: 'Tax & URA' }} />
+        <Stack.Screen name="Tax" component={TaxScreen} options={{ title: 'Taxes' }} />
 
         <Stack.Screen name="Shift" component={ShiftScreen} options={{ title: 'Shifts & day close' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />

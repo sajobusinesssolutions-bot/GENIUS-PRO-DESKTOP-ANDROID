@@ -4,7 +4,7 @@
  * name, what it is about, the figures, a line saying to ignore it if it is
  * already settled (where money is owed), and the shop's regards.
  */
-import { Linking, Share } from 'react-native';
+import { Linking, Share, Platform } from 'react-native';
 import type { DocMeta } from './docPrint';
 
 export type Channel = 'whatsapp' | 'sms' | 'email' | 'other';
@@ -98,6 +98,42 @@ export function reminderMessage(o: {
 }
 
 /** Opens the chosen app with the message ready, to this person where the app allows. */
+/**
+ * A file straight into WhatsApp with the message as its caption — on Android,
+ * to the person's chat when their number is known. Falls back to the share
+ * sheet (where WhatsApp can be picked) if WhatsApp is not installed.
+ */
+export async function sendFileVia(channel: Channel, uri: string, o: { text: string; phone?: string; countryCode?: string; subject?: string }): Promise<boolean> {
+  try {
+    if (Platform.OS === 'android') {
+      const { File } = require('expo-file-system');
+      const IntentLauncher = require('expo-intent-launcher');
+      const file = new File(uri);
+      const to = intlPhone(o.phone, o.countryCode);
+      const pkgs = channel === 'whatsapp' ? ['com.whatsapp', 'com.whatsapp.w4b'] : [undefined];
+      for (const pkg of pkgs) {
+        try {
+          await IntentLauncher.startActivityAsync('android.intent.action.SEND', {
+            type: 'application/pdf', flags: 1, ...(pkg ? { packageName: pkg } : {}),
+            extra: {
+              'android.intent.extra.STREAM': file.contentUri || uri,
+              'android.intent.extra.TEXT': o.text,
+              'android.intent.extra.SUBJECT': o.subject || '',
+              ...(pkg && to ? { jid: to + '@s.whatsapp.net' } : {}),
+            },
+          });
+          return true;
+        } catch { /* not this one: the next, then the share sheet */ }
+      }
+    }
+    const Sharing = require('expo-sharing');
+    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: o.subject || 'Send', UTI: 'com.adobe.pdf' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function sendVia(channel: Channel, o: { text: string; phone?: string; email?: string; subject?: string; countryCode?: string }): Promise<boolean> {
   const body = encodeURIComponent(o.text);
   try {

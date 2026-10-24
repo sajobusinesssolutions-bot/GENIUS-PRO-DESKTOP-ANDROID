@@ -11,9 +11,9 @@ import { useToast } from './Toast';
 import Sheet from './Sheet';
 import { Field } from './ui';
 import { Icon, IconName } from './icons';
-import { Channel, sendVia } from '../data/messages';
+import { Channel, sendVia, sendFileVia } from '../data/messages';
 
-export default function SendSheet({ visible, onClose, title, to, phone, email, subject, text }: {
+export default function SendSheet({ visible, onClose, title, to, phone, email, subject, text, pdf }: {
   visible: boolean;
   onClose: () => void;
   title: string;
@@ -24,6 +24,8 @@ export default function SendSheet({ visible, onClose, title, to, phone, email, s
   subject?: string;
   /** The ready-made message; the person can change it before sending. */
   text: string;
+  /** The document as a PDF: WhatsApp, email and other apps get the file with the message. */
+  pdf?: () => Promise<string>;
 }) {
   const { colors } = useTheme();
   const { error } = useToast();
@@ -32,7 +34,11 @@ export default function SendSheet({ visible, onClose, title, to, phone, email, s
 
   async function send(ch: Channel) {
     if (ch === 'sms' && !phone) { error('There is no phone number for ' + (to || 'this contact') + '.'); return; }
-    const ok = await sendVia(ch, { text: msg, phone, email, subject });
+    let ok = false;
+    if (pdf && ch !== 'sms') {
+      try { ok = await sendFileVia(ch, await pdf(), { text: msg, phone, subject }); } catch { ok = false; }
+    }
+    if (!ok) ok = await sendVia(ch, { text: msg, phone, email, subject });
     if (!ok) error(ch === 'whatsapp' ? 'WhatsApp could not be opened.' : 'That app could not be opened.');
     else onClose();
   }

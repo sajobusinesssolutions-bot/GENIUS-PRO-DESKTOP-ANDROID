@@ -259,7 +259,7 @@ export default function BusinessScreen() {
         <SectionLabel>How customers reach you</SectionLabel>
         <Panel>
           <Field icon="phone" label="Phone" value={phone} onChangeText={setPhone} readOnly={!mayEdit} placeholder="The number on your receipts" />
-          <Field icon="phone" label="Second phone" value={phone2} onChangeText={setPhone2} readOnly={!mayEdit} placeholder="Optional" />
+          <Field icon="phone" label="WhatsApp number" value={phone2} onChangeText={setPhone2} readOnly={!mayEdit} placeholder="Optional" />
           <Field icon="doc" label="Email" value={email} onChangeText={setEmail} readOnly={!mayEdit} autoCapitalize="none" placeholder="Optional" />
           <Field icon="home" label="Address" value={address} onChangeText={setAddress} readOnly={!mayEdit} multiline placeholder="Where the shop is" />
         </Panel>

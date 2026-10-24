@@ -24,12 +24,13 @@ export const light: ThemeColors = {
 };
 
 export const dark: ThemeColors = {
-  bg: '#14161C', surface: '#1C1F27', sunk: '#22262F', line: '#2C313C', lineHard: '#3A4150',
-  rail: '#86C5C9', ink: '#E4E7EE', soft: '#E4E7EE', faint: '#A0A8B6',
-  good: '#4ADE97', goodSoft: 'rgba(74,222,151,0.12)',
-  warn: '#E3B25C', warnSoft: 'rgba(227,178,92,0.12)',
-  danger: '#F87A7A', dangerSoft: 'rgba(248,122,122,0.12)',
-  accent: '#5B8DFF', accentSoft: 'rgba(91,141,255,0.14)', accentInk: '#0B1020',
-  page: '#0B0C10', pageInk: '#C3C8D4',
-  row: '#262A34',
+  // plain greys, as a browser's dark mode: colour is kept for what means something
+  bg: '#202124', surface: '#292A2D', sunk: '#35363A', line: '#3C4043', lineHard: '#5F6368',
+  rail: '#BDC1C6', ink: '#E8EAED', soft: '#BDC1C6', faint: '#9AA0A6',
+  good: '#81C995', goodSoft: 'rgba(129,201,149,0.12)',
+  warn: '#FDD663', warnSoft: 'rgba(253,214,99,0.12)',
+  danger: '#F28B82', dangerSoft: 'rgba(242,139,130,0.12)',
+  accent: '#E8EAED', accentSoft: 'rgba(232,234,237,0.10)', accentInk: '#202124',
+  page: '#202124', pageInk: '#BDC1C6',
+  row: '#35363A',
 };

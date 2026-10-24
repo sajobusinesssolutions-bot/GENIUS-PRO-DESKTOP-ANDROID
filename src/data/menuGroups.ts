@@ -157,7 +157,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
       { route: 'CashEntries', i: 'up', n: 'Cash out', b: () => 'Money out of the drawer', params: { direction: 'out' }, alt: 'expense spend' },
       { route: 'Money', i: 'card', n: 'Cash & bank', b: (c) => plural(c.db.accounts.length, 'account'), alt: 'accounts momo wallet balance' },
       { route: 'AccountingHub', i: 'pie', n: 'Accounting', b: (c) => plural((c.db.coa || []).filter((l) => l.active).length, 'ledger') + ' · journals, trial balance', perm: 'accounting', alt: 'ledgers chart of accounts journal entry trial balance postings double entry' },
-      { route: 'Tax', i: 'receipt', n: 'Tax & URA', b: (c) => 'Rate ' + c.db.settings.taxRate + '%', perm: 'accounting', alt: 'vat ura returns', show: (db) => db.settings.taxEnabled !== false },
+      { route: 'Tax', i: 'receipt', n: 'Taxes', b: (c) => 'Rate ' + c.db.settings.taxRate + '%', perm: 'accounting', alt: 'vat ura returns', show: (db) => db.settings.taxEnabled !== false },
     ],
   },
   {

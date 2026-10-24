@@ -72,7 +72,7 @@ export async function voucherHtml(v: Voucher, money: (n: number) => string): Pro
     ${v.settles && v.settles.length ? `<div class="sec">Settles</div>${v.settles.map((s) => `<div class="row"><span>${esc(s.no)}</span><b>${esc(money(s.amount))}</b></div>`).join('')}` : ''}
     <div class="sig">${sigs.map(([k, n]) => `<div><span></span><b>${k}</b>${n ? `<small>${n}</small>` : ''}</div>`).join('')}</div>
     ${v.isIn ? '<div class="stamp">Received with thanks</div>' : ''}
-  </body></html>`;
+  <div style="text-align:center;font:500 9px/1.4 Arial,sans-serif;color:#6b6f76;margin-top:10px;letter-spacing:.03em">Powered by Genius POS</div></body></html>`;
 }
 
 export async function printVoucher(v: Voucher, money: (n: number) => string): Promise<void> {

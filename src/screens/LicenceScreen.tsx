@@ -149,7 +149,9 @@ export default function LicenceScreen() {
   const saving = (p: { month: number; quarter: number; year: number }) => {
     const full = term === 'year' ? p.month * 12 : term === 'quarter' ? p.month * 3 : p.month;
     const pct = full ? Math.round((1 - p[term] / full) * 100) : 0;
-    return pct > 0 ? 'Save ' + pct + '%' : '';
+    /* what a month comes to, and what the longer term saves against paying monthly */
+    const months = term === 'year' ? 12 : term === 'quarter' ? 3 : 1;
+    return pct > 0 ? money(Math.round(p[term] / months)) + ' a month · you save ' + money(full - p[term]) : '';
   };
 
   return (
@@ -183,7 +185,7 @@ export default function LicenceScreen() {
         {account?.email ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)' }}>
             <Icon name="user" size={15} color={soft} />
-            <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: soft }}>{account.email}</Text>
+            <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: soft }}>{String(account.email).replace(/^(.).*(@.*)$/, '$1•••$2')}</Text>
             {lic?.no ? <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, color: soft }}>{lic.no}</Text> : null}
           </View>
         ) : null}

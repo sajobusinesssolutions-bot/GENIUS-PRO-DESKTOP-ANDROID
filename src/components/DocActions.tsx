@@ -11,7 +11,7 @@ import { useToast } from './Toast';
 import { Icon, IconName } from './icons';
 import Sheet from './Sheet';
 import { ListRow } from './kit';
-import { printDoc, shareDoc, docText, DocMeta, LOGO_K } from '../data/docPrint';
+import { printDoc, shareDoc, docText, DocMeta, LOGO_K, docPdfUri } from '../data/docPrint';
 import { printOptsFor, docKindOf, defaultPrinter, paperOf, shareOptsFor, purposeOf, printsOf, printerFor, placeOf, PHONE_DIALOG } from '../data/printSetup';
 import { printKitchenTicket } from '../data/docPrint';
 import { kitchenOf, orderTypeWord } from '../data/restaurant';
@@ -331,6 +331,7 @@ export function DocActions({ doc, more, compact, phone, email }: {
         email={email}
         subject={sending ? sending.kind + ' ' + sending.no + ' from ' + sending.firmName : undefined}
         text={sending ? docMessage(sending, money) : ''}
+        pdf={sending ? () => docPdfUri(sending, money, shareOptsFor(db, sending.docKind || docKindOf(sending.kind))) : undefined}
       />
 
       <Sheet visible={choosing} title="Print" icon="print" onClose={() => setChoosing(false)}>
