@@ -407,7 +407,7 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   .foot { text-align: center; color: #222; font-size: ${narrow ? 9 : 10}px; margin-top: 10px; }
   /* thermal paper is monochrome and narrow, so the logo is capped and scaled by height */
   .logo { text-align: center; margin-bottom: 5px; }
-  .logo img { max-width: min(100%, ${Math.round((narrow ? 40 : 56) * (d.logoK || 1.5))}mm); max-height: ${Math.round((narrow ? 16 : 22) * (d.logoK || 1.5))}mm; filter: grayscale(1); }
+  .logo img { height: ${Math.round((narrow ? 14 : 18) * (d.logoK || 1.5))}mm; max-width: min(100%, ${Math.round((narrow ? 42 : 54) * (d.logoK || 1.5))}mm); object-fit: contain; filter: grayscale(1); }
   .code { text-align: center; margin-top: 10px; }
   .cap { font-size: 9px; color: #222; margin-top: 2px; }
   .sign { margin-top: 14px; text-align: right; }
