@@ -1279,7 +1279,7 @@ export function licFeature(d: DB, f: string, now = new Date()): boolean {
 export function deviceLimit(d: DB): number {
   const l = d.licence;
   if (l && l.key && l.licence && l.licence.limits) return l.licence.limits.devices;
-  return isPro(d) ? 99 : PLANS.starter.limits.devices;
+  return isPro(d) ? PLANS.pro.limits.devices : PLANS.starter.limits.devices;
 }
 
 /* ============================================================

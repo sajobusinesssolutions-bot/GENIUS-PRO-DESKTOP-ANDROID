@@ -22,7 +22,7 @@ import { PLAY_BUILD } from '../data/store';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
-import { refreshSession } from '../data/authApi';
+import { refreshSession, SERVER_URL } from '../data/authApi';
 import { Icon, IconName } from '../components/icons';
 import { plural, fmtDate, fmtDay } from '../data/helpers';
 import { LIC_GRACE } from '../data/defaults';
@@ -41,6 +41,10 @@ export default function LicenceScreen() {
   const [busy, setBusy] = useState(false);
   const [term, setTerm] = useState<Term>('month');
   const [showEditions, setShowEditions] = useState(false);
+  /* A discount run from an advert (Developer → Adverts) comes off the plan prices here too. */
+  const [deal, setDeal] = useState<{ starter: number; pro: number; until: string | null }>({ starter: 0, pro: 0, until: null });
+  const QUOTES = ['More devices', 'More businesses', 'Syncing businesses together', 'A discount for paying ahead'];
+  const [picks, setPicks] = useState<string[]>(['More businesses']);
 
   const checkAccount = useCallback(async (quiet = false) => {
     if (!account?.refresh) return;
@@ -49,6 +53,14 @@ export default function LicenceScreen() {
       const r = await refreshSession(account.refresh);
       if (!r.ok) { if (!quiet) Alert.alert('Licence', r.error.message); return; }
       await refreshLicence(r.value.access, account.id);
+      try {
+        const res = await fetch(SERVER_URL + '/v1/adverts', { headers: { authorization: 'Bearer ' + r.value.access } });
+        const ads: { discount_pct?: number; discount_plan?: string; ends_at?: string | null }[] = res.ok ? ((await res.json()).adverts || []) : [];
+        const best = (plan: string) => ads.filter((x) => (x.discount_plan || 'all') === 'all' || x.discount_plan === plan)
+          .reduce((m, x) => Math.max(m, Number(x.discount_pct) || 0), 0);
+        const ending = ads.filter((x) => Number(x.discount_pct) > 0 && x.ends_at).map((x) => String(x.ends_at)).sort()[0] || null;
+        setDeal({ starter: best('starter'), pro: best('pro'), until: ending });
+      } catch { /* no offer shown */ }
     } finally {
       setBusy(false);
     }
@@ -234,6 +246,8 @@ export default function LicenceScreen() {
         const mine = a === 'paid' && planId === id;
         const pro = id === 'pro';
         const off = saving(p.prices);
+        const pct = deal[id];
+        const price = Math.round(p.prices[term] * (1 - pct / 100));
         return (
           <View key={id} style={{
             borderRadius: 4, padding: 18, marginBottom: 12,
@@ -257,11 +271,17 @@ export default function LicenceScreen() {
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: pro ? colors.bg : colors.ink, marginTop: 12 }}>Priced for your business</Text>
             ) : (
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 12 }}>
-                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: pro ? colors.bg : colors.ink, letterSpacing: -0.5 }}>{money(p.prices[term])}</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: pro ? colors.bg : colors.ink, letterSpacing: -0.5 }}>{money(price)}</Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: pro ? colors.line : colors.faint, marginBottom: 5 }}>{TERM_WORD[term]}</Text>
-                {off ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: colors.good, marginBottom: 6 }}>{off}</Text> : null}
+                {off && !pct ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: colors.good, marginBottom: 6 }}>{off}</Text> : null}
               </View>
             )}
+            {pct && !PLAY_BUILD && !quoted(edition) ? (
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent, marginTop: 4 }}>
+                <Text style={{ textDecorationLine: 'line-through', fontFamily: fonts.ui, color: pro ? colors.line : colors.faint }}>{money(p.prices[term])}</Text>
+                {'  ' + pct + '% off' + (deal.until ? ' until ' + fmtDay(deal.until) : '')}
+              </Text>
+            ) : null}
             <View style={{ gap: 7, marginTop: 12, marginBottom: 16 }}>
               {p.has.map((f) => (
                 <View key={f} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -288,11 +308,22 @@ export default function LicenceScreen() {
       {/* ---------- more than three businesses ---------- */}
       {PLAY_BUILD ? null : (
         <View style={{ borderRadius: 4, borderWidth: 1.4, borderStyle: 'dashed', borderColor: colors.accent, padding: 16, marginTop: 4, gap: 6 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>More than 3 businesses?</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>Need more than Pro gives?</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.soft }}>
-            A plan priced for your group — every business and branch, set up and moved across for you.
+            Tick what you need and get one quote for all of it — set up and moved across for you.
           </Text>
-          <Pressable onPress={() => contactUs('I run more than 3 businesses and would like a quote for Genius Pro POS ' + ed.name + '.')}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            {QUOTES.map((q) => {
+              const on = picks.includes(q);
+              return (
+                <Pressable key={q} onPress={() => setPicks((p) => (on ? p.filter((x) => x !== q) : [...p, q]))}
+                  style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4, borderWidth: 1, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accent : 'transparent' }}>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: on ? colors.accentInk : colors.soft }}>{(on ? '✓ ' : '') + q}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Pressable disabled={!picks.length} onPress={() => contactUs('I would like a quote for Genius Pro POS ' + ed.name + ' for: ' + picks.join(', ') + '.')}
             style={{ height: 46, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, marginTop: 8 }}>
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>Get a quote</Text>
           </Pressable>

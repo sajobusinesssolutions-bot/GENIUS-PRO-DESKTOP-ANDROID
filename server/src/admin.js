@@ -131,6 +131,9 @@ async function migrate() {
     created_by text,
     created_at timestamptz not null default now()
   )`);
+  /* an advert can run a discount on the plans, shown on the apps' price cards */
+  await q('alter table adverts add column if not exists discount_pct int not null default 0');
+  await q(`alter table adverts add column if not exists discount_plan text not null default 'all'`);
   migrated = true;
 }
 
@@ -390,6 +393,8 @@ export default async function adminRoutes(app) {
     starts_at: b?.startsAt ? new Date(b.startsAt) : new Date(),
     ends_at: b?.endsAt ? new Date(b.endsAt) : null,
     active: b?.active !== false,
+    discount_pct: Math.max(0, Math.min(90, Math.round(Number(b?.discountPct) || 0))),
+    discount_plan: ['all', 'starter', 'pro'].includes(b?.discountPlan) ? b.discountPlan : 'all',
   });
 
   app.get('/v1/admin/adverts', async (req, reply) => {
@@ -405,9 +410,9 @@ export default async function adminRoutes(app) {
     const a = advertFields(req.body);
     if (!a.title) return fail(reply, 400, 'malformed', 'Give the advert a title.');
     const { rows } = await q(
-      `insert into adverts (title, body, image_url, link_url, cta, audience, edition, starts_at, ends_at, active, created_by)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
-      [a.title, a.body, a.image_url, a.link_url, a.cta, a.audience, a.edition, a.starts_at, a.ends_at, a.active, dev.email]);
+      `insert into adverts (title, body, image_url, link_url, cta, audience, edition, starts_at, ends_at, active, created_by, discount_pct, discount_plan)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,
+      [a.title, a.body, a.image_url, a.link_url, a.cta, a.audience, a.edition, a.starts_at, a.ends_at, a.active, dev.email, a.discount_pct, a.discount_plan]);
     return { advert: rows[0] };
   });
   app.put('/v1/admin/adverts/:id', async (req, reply) => {
@@ -416,9 +421,9 @@ export default async function adminRoutes(app) {
     const a = advertFields(req.body);
     if (!a.title) return fail(reply, 400, 'malformed', 'Give the advert a title.');
     const { rows } = await q(
-      `update adverts set title=$2, body=$3, image_url=$4, link_url=$5, cta=$6, audience=$7, edition=$8, starts_at=$9, ends_at=$10, active=$11
+      `update adverts set title=$2, body=$3, image_url=$4, link_url=$5, cta=$6, audience=$7, edition=$8, starts_at=$9, ends_at=$10, active=$11, discount_pct=$12, discount_plan=$13
         where id = $1 returning *`,
-      [req.params.id, a.title, a.body, a.image_url, a.link_url, a.cta, a.audience, a.edition, a.starts_at, a.ends_at, a.active]);
+      [req.params.id, a.title, a.body, a.image_url, a.link_url, a.cta, a.audience, a.edition, a.starts_at, a.ends_at, a.active, a.discount_pct, a.discount_plan]);
     if (!rows[0]) return fail(reply, 404, 'server', 'No such advert.');
     return { advert: rows[0] };
   });
@@ -441,7 +446,7 @@ export default async function adminRoutes(app) {
     const who = !l ? 'trial' : lapsed ? 'expired' : l.plan === 'trial' ? 'trial' : 'paying';
     const edition = (l && l.edition) || 'retail';
     const { rows } = await q(
-      `select id, title, body, image_url, link_url, cta from adverts
+      `select id, title, body, image_url, link_url, cta, discount_pct, discount_plan, ends_at from adverts
         where active and starts_at <= now() and (ends_at is null or ends_at > now())
           and (audience = 'all' or audience = $1) and (edition is null or edition = $2)
         order by created_at desc limit 3`, [who, edition]);

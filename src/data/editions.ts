@@ -51,13 +51,13 @@ export const EDITIONS: Record<Edition, EditionDef> = {
     plans: {
       starter: {
         name: 'Retail Starter', blurb: 'One shop: the till and the books, synced to the cloud.',
-        prices: { month: 45000, quarter: 126000, year: 408000 },
-        has: ['POS till, invoices and receipts', 'Cloud sync for your one shop', 'Stock and low-stock alerts', 'Customers and suppliers', 'Quotations and delivery notes', 'Cash, bank and mobile money', 'Every report'],
+        prices: { month: 50000, quarter: 140000, year: 420000 },
+        has: ['2 devices', 'POS till, invoices and receipts', 'Cloud sync for your one shop', 'Stock and low-stock alerts', 'Customers and suppliers', 'Quotations and delivery notes', 'Cash, bank and mobile money', 'Every report'],
       },
       pro: {
         name: 'Retail Pro', blurb: 'Every feature, up to three shops, synced to the cloud.',
-        prices: { month: 105000, quarter: 297000, year: 1080000 },
-        has: ['Everything in Retail Starter', 'Up to 3 shops and branches', 'Serial, IMEI and warranty tracking', 'Batches and expiry', 'Recurring sales and instalments', 'Cloud sync and off-device backup'],
+        prices: { month: 120000, quarter: 330000, year: 1200000 },
+        has: ['Everything in Retail Starter', 'Up to 5 devices', 'Up to 3 shops and branches', 'Serial, IMEI and warranty tracking', 'Batches and expiry', 'Recurring sales and instalments', 'Cloud sync and off-device backup'],
       },
     },
   },
@@ -69,13 +69,13 @@ export const EDITIONS: Record<Edition, EditionDef> = {
     plans: {
       starter: {
         name: 'Restaurant Starter', blurb: 'One restaurant, one till, with kitchen printing.',
-        prices: { month: 45000, quarter: 120000, year: 430000 },
-        has: ['Order screen and open tickets', 'Menu, sections and modifiers', 'One kitchen printer', 'Day close with open-ticket check', 'Restaurant reports'],
+        prices: { month: 50000, quarter: 140000, year: 420000 },
+        has: ['2 devices', 'Order screen and open tickets', 'Menu, sections and modifiers', 'One kitchen printer', 'Day close with open-ticket check', 'Restaurant reports'],
       },
       pro: {
         name: 'Restaurant Pro', blurb: 'Every waiter on their own phone, every station printing.',
         prices: { month: 120000, quarter: 330000, year: 1200000 },
-        has: ['Everything in Restaurant Starter', 'Tickets shared across every phone', 'Kitchen, bar and grill stations', 'Several menus, staff kept to their menu', 'Up to 3 branches', 'Cloud sync and off-device backup'],
+        has: ['Everything in Restaurant Starter', 'Up to 5 devices', 'Tickets shared across every phone', 'Kitchen, bar and grill stations', 'Several menus, staff kept to their menu', 'Up to 3 branches', 'Cloud sync and off-device backup'],
       },
     },
   },
@@ -87,13 +87,13 @@ export const EDITIONS: Record<Edition, EditionDef> = {
     plans: {
       starter: {
         name: 'Pharmacy Starter', blurb: 'One pharmacy, one counter, batches and expiry included.',
-        prices: { month: 45000, quarter: 120000, year: 430000 },
-        has: ['Drugs, batches and expiry', 'Prescription-only warnings', 'Customers and distributors', 'Expiry and low-stock alerts', 'Every report'],
+        prices: { month: 50000, quarter: 140000, year: 420000 },
+        has: ['2 devices', 'Drugs, batches and expiry', 'Prescription-only warnings', 'Customers and distributors', 'Expiry and low-stock alerts', 'Every report'],
       },
       pro: {
         name: 'Pharmacy Pro', blurb: 'Every counter and branch, synced, with expiry control across all of them.',
         prices: { month: 120000, quarter: 330000, year: 1200000 },
-        has: ['Everything in Pharmacy Starter', 'Up to 3 branches, every counter', 'Stock moved between branches', 'Repeat prescriptions and instalments', 'Audit log and approvals', 'Cloud sync and off-device backup'],
+        has: ['Everything in Pharmacy Starter', 'Up to 5 devices', 'Up to 3 branches, every counter', 'Stock moved between branches', 'Repeat prescriptions and instalments', 'Audit log and approvals', 'Cloud sync and off-device backup'],
       },
     },
   },

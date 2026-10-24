@@ -54,7 +54,7 @@ export const VY_TABLES: (keyof VyTables)[] = [
 ];
 
 /** Vyapar's transaction types, as numbered in kb_transactions.txn_type. */
-export const VY = { SALE: 1, PURCHASE: 2, PAYMENT_IN: 3, PAYMENT_OUT: 4, OPENING: 5, EXPENSE: 7, SALE_RETURN: 21, SALE_ORDER: 24, ESTIMATE: 27 } as const;
+export const VY = { SALE: 1, PURCHASE: 2, PAYMENT_IN: 3, PAYMENT_OUT: 4, OPENING: 5, PAYABLE_OPENING: 6, EXPENSE: 7, SALE_RETURN: 21, PURCHASE_RETURN: 23, SALE_ORDER: 24, ESTIMATE: 27, CANCELLED_SALE: 65 } as const;
 
 export interface VyFirm {
   id: number; name: string; phone: string; email: string; address: string;
@@ -75,7 +75,7 @@ export function vyaparFirms(t: VyTables): VyFirm[] {
       phone: f.firm_phone || '', email: f.firm_email || '', address: String(f.firm_address || '').trim(),
       counts: {
         sales: n(VY.SALE), purchases: n(VY.PURCHASE), payments: n(VY.PAYMENT_IN, VY.PAYMENT_OUT),
-        expenses: n(VY.EXPENSE), quotes: n(VY.ESTIMATE, VY.SALE_ORDER), returns: n(VY.SALE_RETURN),
+        expenses: n(VY.EXPENSE), quotes: n(VY.ESTIMATE, VY.SALE_ORDER), returns: n(VY.SALE_RETURN, VY.PURCHASE_RETURN),
       },
     };
   });
@@ -137,8 +137,9 @@ export function importVyapar(d: DB, t: VyTables, firmId: number): ImportReport {
   });
 
   /* ---- parties ---- */
-  const suppliersIds = new Set(txns.filter((r) => num(r.txn_type) === VY.PURCHASE || num(r.txn_type) === VY.PAYMENT_OUT).map((r) => num(r.txn_name_id)));
-  const customerIds = new Set(txns.filter((r) => ![VY.PURCHASE, VY.PAYMENT_OUT, VY.EXPENSE].includes(num(r.txn_type) as any)).map((r) => num(r.txn_name_id)));
+  const SUPPLIER_SIDE: number[] = [VY.PURCHASE, VY.PAYMENT_OUT, VY.PURCHASE_RETURN, VY.PAYABLE_OPENING];
+  const suppliersIds = new Set(txns.filter((r) => SUPPLIER_SIDE.includes(num(r.txn_type))).map((r) => num(r.txn_name_id)));
+  const customerIds = new Set(txns.filter((r) => ![...SUPPLIER_SIDE, VY.EXPENSE, VY.CANCELLED_SALE].includes(num(r.txn_type))).map((r) => num(r.txn_name_id)));
   const nameRow = new Map<number, Row>(t.kb_names.map((n) => [num(n.name_id), n]));
   const partyIds = new Map<string, string>(); // 'c:12' / 's:12' → our id
   function partyFor(vyId: any, type: 'customer' | 'supplier'): string | null {
@@ -317,7 +318,7 @@ export function importVyapar(d: DB, t: VyTables, firmId: number): ImportReport {
         const p = d.parties.find((x) => x.id === partyId)!;
         // what settled an opening balance comes off it
         const offOpening = plan.openingCash + plan.openingDiscount;
-        if (offOpening > 0) p.openingBalance = r2((p.openingBalance || 0) - offOpening);
+        if (offOpening > 0) p.openingBalance = r2((p.openingBalance || 0) + (inbound ? -offOpening : offOpening));
         // the discount: the bills it covered are settled, and it is a cost of selling
         if (discount > 0) {
           plan.discount.forEach((x) => {
@@ -380,9 +381,40 @@ export function importVyapar(d: DB, t: VyTables, firmId: number): ImportReport {
           d.sales.filter((x) => x.partyId === partyId && x.due > 0 && x.status !== 'void')
             .sort((x, y) => new Date(x.ts).getTime() - new Date(y.ts).getTime())
             .forEach((x) => { const c = Math.min(left, x.due); x.due = r2(x.due - c); x.paid = r2(x.paid + c); left -= c; });
+          const p = d.parties.find((x) => x.id === partyId);
+          if (p && left > 0.005) p.openingBalance = r2((p.openingBalance || 0) - left);
         }
         done[mark] = cn.id;
         report.returns += 1;
+      } else if (type === VY.PAYABLE_OPENING) {
+        /* what was owed to a supplier when Vyapar started: below nothing here */
+        const partyId = partyFor(txn.txn_name_id, 'supplier');
+        const p = partyId ? d.parties.find((x) => x.id === partyId) : undefined;
+        if (!p) continue;
+        p.openingBalance = r2((p.openingBalance || 0) - num(txn.txn_balance_amount) - num(txn.txn_cash_amount));
+        openingOf.set(num(txn.txn_id), p.id);
+        done[mark] = p.id;
+        report.openings += 1;
+      } else if (type === VY.PURCHASE_RETURN) {
+        /* goods sent back to a supplier: out of stock, and off what is owed to them */
+        const { lines } = saleLines(txn);
+        const amount = total(txn);
+        const partyId = partyFor(txn.txn_name_id, 'supplier');
+        const no = 'DN-' + (txn.txn_ref_number_char || txn.txn_id);
+        lines.forEach((l) => { if (l.productId) logic.move(d, l.productId, wh, -l.qty, 'return', no, at); });
+        if (amount > 0) logic.journal(d, at, 'Debit note ' + no, no, [{ acc: partyId ? 'n_ap' : cashAcc!, dr: amount }, { acc: 'n_inventory', cr: amount }]);
+        if (partyId && amount > 0) {
+          let left = amount;
+          d.purchases.filter((x) => x.partyId === partyId && x.due > 0 && x.status !== 'void')
+            .sort((x, y) => new Date(x.ts).getTime() - new Date(y.ts).getTime())
+            .forEach((x) => { const c = Math.min(left, x.due); x.due = r2(x.due - c); x.paid = r2(x.paid + c); left -= c; });
+          const p = d.parties.find((x) => x.id === partyId);
+          if (p && left > 0.005) p.openingBalance = r2((p.openingBalance || 0) + left);
+        }
+        done[mark] = partyId || no;
+        report.returns += 1;
+      } else if (type === VY.CANCELLED_SALE) {
+        done[mark] = 'cancelled';
       } else if (type === VY.OPENING) {
         const partyId = partyFor(txn.txn_name_id, 'customer');
         const p = partyId ? d.parties.find((x) => x.id === partyId) : undefined;
@@ -469,6 +501,10 @@ function settlePlan(d: DB, links: PayLink[], partyId: string, inbound: boolean, 
     const r = room.get(b.id) || 0;
     if (r > 0) take(b.id, r);
   });
+  /* What is left (it paid an opening balance Vyapar did not link, or was paid
+     ahead) still lowers what the party owes: it comes off the opening balance,
+     which may go below nothing — an advance, as Vyapar shows it. */
+  if (cashLeft + discLeft > 0) { out.openingCash += cashLeft; out.openingDiscount += discLeft; cashLeft = 0; discLeft = 0; }
   return out;
 }
 

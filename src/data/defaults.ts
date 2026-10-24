@@ -133,18 +133,18 @@ export const PLANS: Record<'starter' | 'pro', PlanDef> = {
   starter: {
     id: 'starter', name: 'Starter', tone: 'good',
     blurb: 'One business: the till, the books, and cloud sync for that one business.',
-    prices: { month: 45000, quarter: 126000, year: 408000 },
-    limits: { businesses: 1, devices: 1, users: 3 },
-    has: ['POS till and invoicing', 'Cloud sync for your one business', 'Stock and low-stock alerts', 'Customers and suppliers',
+    prices: { month: 50000, quarter: 140000, year: 420000 },
+    limits: { businesses: 1, devices: 2, users: 3 },
+    has: ['POS till and invoicing', '2 devices (phones and computers)', 'Cloud sync for your one business', 'Stock and low-stock alerts', 'Customers and suppliers',
       'Quotations and delivery notes', 'Cash, bank and mobile money', 'Every report'],
     hasnt: ['recurring', 'instal', 'batches', 'serials', 'reminders', 'multiFirm', 'secondaryUnit'],
   },
   pro: {
     id: 'pro', name: 'Pro', tone: 'accent',
     blurb: 'Every feature, up to three businesses, synced to the cloud.',
-    prices: { month: 105000, quarter: 297000, year: 1080000 },
-    limits: { businesses: 3, devices: 99, users: 99 },
-    has: ['Everything in Starter', 'Up to 3 businesses', 'Branch panel across all of them',
+    prices: { month: 120000, quarter: 330000, year: 1200000 },
+    limits: { businesses: 3, devices: 5, users: 99 },
+    has: ['Everything in Starter', 'Up to 3 businesses', 'Up to 5 devices (phones and computers)', 'Branch panel across all of them',
       'Recurring sales and instalment plans', 'Batches, expiry and FIFO', 'Serial and IMEI tracking',
       'WhatsApp and SMS reminders', 'Second unit of measure', 'Cloud sync and off-device backup',
       'Audit log and approvals'],
@@ -154,8 +154,8 @@ export const PLANS: Record<'starter' | 'pro', PlanDef> = {
 
 export const PLAN_TERMS: [Subscription['term'], string, string][] = [
   ['month', 'Monthly', 'billed every month'],
-  ['quarter', 'Every 3 months', 'save about 10%'],
-  ['year', 'Yearly', 'save about 20%'],
+  ['quarter', 'Every 3 months', 'save about 7%'],
+  ['year', 'Yearly', 'save about 30%'],
 ];
 
 export const PRO_FEATURES: Record<string, string> = {
