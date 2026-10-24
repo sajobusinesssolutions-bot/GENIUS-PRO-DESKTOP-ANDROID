@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '../data/AuthContext';
+import { refreshSession, serverConfigured } from '../data/authApi';
+import { listBusinesses } from '../data/syncClient';
 import { View, ScrollView } from 'react-native';
 import { useTheme } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -8,6 +11,12 @@ import {
 import { Icon } from '../components/icons';
 
 export default function FirmsScreen() {
+  /* the account's licence as it stands now, so a raised business limit counts at once */
+  const { account } = useAuth();
+  useEffect(() => {
+    if (!account?.refresh || account.localOnly || !serverConfigured()) return;
+    refreshSession(account.refresh).then((r) => (r.ok ? listBusinesses(r.value.access) : null)).catch(() => {});
+  }, [account?.refresh, account?.localOnly]);
   const { colors } = useTheme();
   const { db, switchFirm, addFirm } = useAppData();
   const [name, setName] = useState('');

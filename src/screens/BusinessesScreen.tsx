@@ -148,7 +148,13 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
 
   async function startNew() {
     // only as many businesses as the licence allows; the server refuses more too
-    const room = businessAllowance(lastAccountLicence(), db);
+    let room = businessAllowance(lastAccountLicence(), db);
+    /* At the limit, ask the server again first: a limit raised since the list
+       was read (a quote, Developer → licence) counts at once. */
+    if (room.left <= 0) {
+      const a = await access();
+      if ('token' in a) { await listBusinesses(a.token); room = businessAllowance(lastAccountLicence(), db); }
+    }
     if (room.left <= 0) {
       Alert.alert('Business limit reached', businessLimitWords(room));
       return;
