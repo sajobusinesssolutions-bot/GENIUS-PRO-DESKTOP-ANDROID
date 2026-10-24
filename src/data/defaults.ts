@@ -133,7 +133,7 @@ export const PLANS: Record<'starter' | 'pro', PlanDef> = {
   starter: {
     id: 'starter', name: 'Starter', tone: 'good',
     blurb: 'One business: the till, the books, and cloud sync for that one business.',
-    prices: { month: 35000, quarter: 95000, year: 340000 },
+    prices: { month: 45000, quarter: 126000, year: 408000 },
     limits: { businesses: 1, devices: 1, users: 3 },
     has: ['POS till and invoicing', 'Cloud sync for your one business', 'Stock and low-stock alerts', 'Customers and suppliers',
       'Quotations and delivery notes', 'Cash, bank and mobile money', 'Every report'],
@@ -142,7 +142,7 @@ export const PLANS: Record<'starter' | 'pro', PlanDef> = {
   pro: {
     id: 'pro', name: 'Pro', tone: 'accent',
     blurb: 'Every feature, up to three businesses, synced to the cloud.',
-    prices: { month: 95000, quarter: 260000, year: 940000 },
+    prices: { month: 105000, quarter: 297000, year: 1080000 },
     limits: { businesses: 3, devices: 99, users: 99 },
     has: ['Everything in Starter', 'Up to 3 businesses', 'Branch panel across all of them',
       'Recurring sales and instalment plans', 'Batches, expiry and FIFO', 'Serial and IMEI tracking',
@@ -266,7 +266,7 @@ export const CHANGELOG: [string, string][] = [
 /** Reference SCREENS.settings (6712) — every switch and row it offers. */
 export function defaultSettings(): Settings {
   return {
-    currency: 'Sh', currencyName: 'Ugandan shilling', symbolBefore: true, decimals: 0,
+    currency: 'UGX', currencyName: 'Ugandan shilling', symbolBefore: true, decimals: 0,
     dateFormat: 'd M yyyy', firstDay: 'Mon', language: 'English', timezone: 'Africa/Kampala',
 
     taxName: 'VAT', taxRate: 18, pricesIncludeTax: true, withholding: false, efris: false,

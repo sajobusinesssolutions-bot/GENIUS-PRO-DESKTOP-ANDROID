@@ -51,12 +51,12 @@ export const EDITIONS: Record<Edition, EditionDef> = {
     plans: {
       starter: {
         name: 'Retail Starter', blurb: 'One shop: the till and the books, synced to the cloud.',
-        prices: { month: 35000, quarter: 95000, year: 340000 },
+        prices: { month: 45000, quarter: 126000, year: 408000 },
         has: ['POS till, invoices and receipts', 'Cloud sync for your one shop', 'Stock and low-stock alerts', 'Customers and suppliers', 'Quotations and delivery notes', 'Cash, bank and mobile money', 'Every report'],
       },
       pro: {
         name: 'Retail Pro', blurb: 'Every feature, up to three shops, synced to the cloud.',
-        prices: { month: 95000, quarter: 260000, year: 940000 },
+        prices: { month: 105000, quarter: 297000, year: 1080000 },
         has: ['Everything in Retail Starter', 'Up to 3 shops and branches', 'Serial, IMEI and warranty tracking', 'Batches and expiry', 'Recurring sales and instalments', 'Cloud sync and off-device backup'],
       },
     },

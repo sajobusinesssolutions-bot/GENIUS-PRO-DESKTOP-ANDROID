@@ -131,8 +131,24 @@ export interface DocMeta {
 export const LOGO_K = { small: 1, medium: 1.5, large: 2.2 } as const;
 
 
+/** What the file is called: the document's own name and number — "Receipt INV-0012", "Delivery note DC-0003". */
+export function docFileName(d: DocMeta): string {
+  const kind = /^tax invoice$/i.test(d.kind) ? (d.docKind === 'receipt' ? 'Receipt' : 'Invoice') : d.kind;
+  return safeName(kind + ' ' + d.no) + '.pdf';
+}
+
+/** The document as a PDF in this app's cache, for sending as a file. */
+export async function docPdfUri(d: DocMeta, money: (n: number) => string, opts: PrintOpts = {}): Promise<string> {
+  const paper: Paper = opts.paper || 'A4';
+  const full = await ready(d, opts);
+  return printPdfToCache({
+    html: docHtml(full, money, { ...opts, paper, tpl: opts.tpl ? { ...opts.tpl, copies: 1 } : undefined }),
+    ...pageSize(paper, d.lines.length),
+  }, docFileName(d));
+}
+
 function safeName(s: string) {
-  return s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60) || 'document';
+  return s.replace(/[^A-Za-z0-9._ -]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, 60) || 'document';
 }
 
 
@@ -407,7 +423,7 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; color: #000; margin: 0; padding: 0;${d.mono ? ' filter: grayscale(100%); -webkit-print-color-adjust: exact;' : ''} }
   svg { display: inline-block; }
   ${css}
-</style></head><body>${pages}</body></html>`;
+</style></head><body>${pages}<div style="text-align:center;font:500 9px/1.4 Arial,sans-serif;color:#6b6f76;margin-top:10px;letter-spacing:.03em">Powered by Genius POS</div></body></html>`;
 }
 
 /** Embeds the pictures, so they actually appear on paper. */
@@ -500,7 +516,7 @@ export async function shareDoc(d: DocMeta, money: (n: number) => string, opts: P
   const target = await printPdfToCache({
     html: docHtml(full, money, { ...opts, paper, tpl: opts.tpl ? { ...opts.tpl, copies: 1 } : undefined }),
     ...pageSize(paper, d.lines.length),
-  }, safeName(d.kind + '-' + d.no) + '.pdf');
+  }, docFileName(d));
   if (!(await Sharing.isAvailableAsync())) return false;
   await Sharing.shareAsync(target, {
     mimeType: 'application/pdf',
@@ -520,7 +536,7 @@ export async function openDocPdf(d: DocMeta, money: (n: number) => string, opts:
   const uri = await printPdfToCache({
     html: docHtml(full, money, { ...opts, paper, tpl: opts.tpl ? { ...opts.tpl, copies: 1 } : undefined }),
     ...pageSize(paper, d.lines.length),
-  }, safeName(d.kind + '-' + d.no) + '.pdf');
+  }, docFileName(d));
   if (Platform.OS === 'android') {
     const file = new File(uri);
     try {

@@ -29,7 +29,7 @@ import PartiesScreen from './PartiesScreen';
 import { DocActions, useDocBuilder } from '../components/DocActions';
 import type { DocMeta } from '../data/docPrint';
 import { DocRow, SummaryTiles } from '../components/DocList';
-import { printDoc, shareDoc, openDocPdf } from '../data/docPrint';
+import { printDoc, shareDoc, openDocPdf, docPdfUri } from '../data/docPrint';
 import { printOptsFor, docKindOf, shareOptsFor } from '../data/printSetup';
 import type { PayMethod } from '../data/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -754,6 +754,7 @@ export default function SalesListScreen({ navigation }: Props) {
         email={sending?.email}
         subject={sending ? sending.doc.kind + ' ' + sending.doc.no + ' from ' + sending.doc.firmName : undefined}
         text={sending ? docMessage(sending.doc, money) : ''}
+        pdf={sending ? () => docPdfUri(sending.doc, money, shareOptsFor(db, sending.doc.docKind || docKindOf(sending.doc.kind))) : undefined}
       />
 
       {tab === 'txn' ? (

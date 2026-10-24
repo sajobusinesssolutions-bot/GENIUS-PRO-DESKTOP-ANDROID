@@ -17,6 +17,11 @@ jest.mock('../data/AppDataContext', () => ({
   useAppDataSafe: () => ({ db: mockDb }),
 }));
 
+/* WhatsApp is first sent the PDF itself; here the PDF cannot be made, so the
+   link with the text — what these tests check — is what is left. */
+const mockPdf = jest.fn(() => Promise.reject(new Error('no PDF in tests')));
+jest.mock('../data/docPrint', () => ({ ...jest.requireActual('../data/docPrint'), docPdfUri: (...a: any[]) => mockPdf(...a) }));
+
 import { ToastProvider } from '../components/Toast';
 import { DocActions } from '../components/DocActions';
 import type { DocMeta } from '../data/docPrint';
@@ -90,5 +95,13 @@ describe('"Send on WhatsApp" with no phone number', () => {
     renderIt();
     await openWhatsapp();
     expect(screen.getByText('WhatsApp could not be opened.')).toBeTruthy();
+  });
+});
+
+describe('"Send on WhatsApp" with the PDF', () => {
+  it('asks for the document as a PDF first', async () => {
+    renderIt('+256 700 111 222');
+    await openWhatsapp();
+    expect(mockPdf).toHaveBeenCalled();
   });
 });
