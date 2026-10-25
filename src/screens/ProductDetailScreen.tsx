@@ -618,7 +618,8 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
       </Grid>
 
       <Card style={{ paddingHorizontal: 13, paddingVertical: 2, marginBottom: 10 }}>
-        <ToggleRow label="Track batches and expiry" on={trackBatches} onChange={() => toggleBatches()} bare />
+        {/* batches and expiry: the Pharmacy edition only */}
+        {editionOf(ctx.db) === 'pharmacy' ? <ToggleRow label="Track batches and expiry" on={trackBatches} onChange={() => toggleBatches()} bare /> : null}
         {trackBatches ? (
           <View style={{ paddingBottom: 12 }}>
             <BatchEditor

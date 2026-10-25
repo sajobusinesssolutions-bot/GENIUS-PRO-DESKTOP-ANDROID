@@ -35,6 +35,7 @@ import { Icon } from '../components/icons';
 import { useGo } from '../nav/navigate';
 import { vocab } from '../data/editions';
 import { BULK_ACTIONS } from './BulkScreens';
+import { editionOf } from '../data/editions';
 
 export default function ItemsScreen() {
   const { colors } = useTheme();
@@ -152,7 +153,8 @@ export default function ItemsScreen() {
         <ListRow card icon="arrow" tone="accent" title="Transfer" subtitle="Move stock between branches" onPress={() => open('StockTransfer')} />
         <ListRow card icon="arrow" tone="good" title="Send to another business" subtitle="Stock to and from your other businesses — count in what arrives" onPress={() => open('BranchTransfers')} />
         <ListRow card icon="check" tone="good" title="Stock take" subtitle="Count the shelf against the books" onPress={() => open('StockTakes')} />
-        <ListRow card icon="calendar" tone="accent" title="Batches" subtitle="Expiry and lot tracking" onPress={() => open('Batches')} />
+        {/* batches and expiry: the Pharmacy edition only */}
+        {editionOf(db) === 'pharmacy' ? <ListRow card icon="calendar" tone="accent" title="Batches" subtitle="Expiry and lot tracking" onPress={() => open('Batches')} /> : null}
         <View style={{ height: 10 }} />
         <ListRow card icon="tag" tone="accent" title="Units & categories" subtitle="Manage, create and remove item lists" onPress={() => open('UnitsCategories')} />
         <ListRow card icon="coins" tone="accent" title="Price lists" subtitle={'Wholesale, customer groups and promotions — each with its own prices'} onPress={() => open('PriceLists')} />

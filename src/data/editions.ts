@@ -57,7 +57,7 @@ export const EDITIONS: Record<Edition, EditionDef> = {
       pro: {
         name: 'Retail Pro', blurb: 'Every feature, up to three shops, synced to the cloud.',
         prices: { month: 120000, quarter: 330000, year: 1200000 },
-        has: ['Everything in Retail Starter', 'Up to 5 devices', 'Up to 3 shops and branches', 'Serial, IMEI and warranty tracking', 'Batches and expiry', 'Recurring sales and instalments', 'Cloud sync and off-device backup'],
+        has: ['Everything in Retail Starter', 'Up to 5 devices', 'Up to 3 shops and branches', 'Serial, IMEI and warranty tracking', 'Recurring sales and instalments', 'Cloud sync and off-device backup'],
       },
     },
   },

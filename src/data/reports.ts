@@ -151,7 +151,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
 ];
 
 /** Reports that only mean something to a pharmacy. */
-export const PHARMACY_REPORTS = new Set(['rx-register']);
+export const PHARMACY_REPORTS = new Set(['rx-register', 'expiry', 'batch-movement', 'batch-balances']);
 
 /** Reports that only mean something to a restaurant. */
 export const RESTAURANT_REPORTS = new Set(['rest-menu-mix', 'rest-sections', 'rest-menus', 'rest-modifiers', 'rest-order-types',

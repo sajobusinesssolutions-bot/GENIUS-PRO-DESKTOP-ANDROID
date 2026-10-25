@@ -499,7 +499,8 @@ export default function DashboardScreen() {
           if (ed === 'pharmacy') {
             const soon = Date.now() + 90 * 864e5;
             const lots = db.products.flatMap((p) => (p.batches || []).filter((b) => b.qty > 0 && b.expiry && new Date(b.expiry).getTime() <= soon));
-            if (!lots.length) return null;
+            /* batches and expiry: the Pharmacy edition only */
+            if (!lots.length || editionOf(db) !== 'pharmacy') return null;
             const gone = lots.filter((b) => new Date(b.expiry!).getTime() < Date.now()).length;
             return (
               <Pressable onPress={() => go('Batches')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 4, backgroundColor: gone ? colors.dangerSoft : colors.warnSoft }}>

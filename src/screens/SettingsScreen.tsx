@@ -30,6 +30,7 @@ import { planSummary } from '../data/logic';
 import { NUMBER_LABEL, BUILD } from '../data/defaults';
 import { resetTips } from '../components/FirstTimeTip';
 import type { NumberingKey, Settings, BelowCost, Costing } from '../data/types';
+import { editionOf } from '../data/editions';
 
 const num = (v: string) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
 
@@ -175,7 +176,8 @@ export default function SettingsScreen() {
               <SettingToggle label="Buy and sell in a second unit" on={s.useSecondaryUnit} onChange={(v) => set({ useSecondaryUnit: v })} />
               <SettingToggle label="Warn when stock runs low" on={s.lowStockAlerts} onChange={(v) => set({ lowStockAlerts: v })} />
               <SettingToggle label="Allow selling below zero" on={s.allowNegativeStock} onChange={(v) => set({ allowNegativeStock: v, blockNegativeStock: !v })} />
-              <SettingToggle label="Track batches and expiry" on={s.trackBatches} onChange={(v) => set({ trackBatches: v })} />
+              {/* batches and expiry: the Pharmacy edition only */}
+              {editionOf(db) === 'pharmacy' ? <SettingToggle label="Track batches and expiry" on={s.trackBatches} onChange={(v) => set({ trackBatches: v })} /> : null}
             </SettingGroup>
 
             {/* Document numbers — reference 6817 */}

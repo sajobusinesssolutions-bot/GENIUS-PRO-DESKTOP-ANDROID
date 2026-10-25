@@ -64,7 +64,6 @@ export const QUICK: QuickGroup[] = [
       { n: 'Add product', i: 'plus', route: 'ProductDetail' },
       { n: 'Adjust stock', i: 'box', route: 'StockAdjust' },
       { n: 'Move between stores', i: 'swap', route: 'StockTransfer' },
-      { n: 'Batches & expiry', i: 'calendar', route: 'Batches' },
       { n: 'Start a stock take', i: 'check', route: 'StockTakes' },
       { n: 'New purchase', i: 'box', route: 'PurchaseNew' },
       { n: 'Purchases', i: 'doc', route: 'Purchases' },
