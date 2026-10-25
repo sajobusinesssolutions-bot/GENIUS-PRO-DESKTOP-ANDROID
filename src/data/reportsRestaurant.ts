@@ -7,7 +7,7 @@
  * imports reports.ts at run time.
  */
 import type { DB, Sale, SaleLine } from './types';
-import type { Cell, CellObj, ReportResult, RowRef } from './reports';
+import type { Cell, CellObj, CellTone, ReportResult, ReportStat, RowKind, RowRef } from './reports';
 import { stationOf } from './restaurant';
 
 /** Set when the reports are registered; the module-level helpers below read it. */
@@ -282,6 +282,119 @@ RPT['rest-sold-out'] = (db, from, to) => {
       .sort((a, b) => Number(!!b.soldOut) - Number(!!a.soldOut) || a.name.localeCompare(b.name))
       .map((p) => ({ kind: 'product' as const, id: p.id })),
     searchable: true,
+  };
+};
+
+/* --- Prescriptions (pharmacy): the details typed on a sale — doctor, facility,
+   where, diagnosis — as research. Names are grouped whatever their case or
+   spacing and shown as most often typed. Same figures as Windows rx.routes.js. --- */
+const rxNorm = (v?: string) => String(v || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const rxSales = (db: DB, from: number, to: number) => salesBetween(db, from, to).filter((s) => s.rx && (s.rx.diagnosis || s.rx.prescriber || s.rx.facility));
+function rxTop(list: string[]): { v: string; n: number } {
+  const m = new Map<string, number>(); let v = '', n = 0;
+  for (const x of list) if (x) m.set(x, (m.get(x) || 0) + 1);
+  m.forEach((c, k) => { if (c > n) { v = k; n = c; } });
+  return { v, n };
+}
+function rxSpell(sales: Sale[], pick: (s: Sale) => string | undefined) {
+  const seen = new Map<string, string[]>();
+  sales.forEach((s) => { const raw = String(pick(s) || '').trim().replace(/\s+/g, ' '); const k = rxNorm(raw); if (k) (seen.get(k) || seen.set(k, []).get(k)!).push(raw); });
+  return (k: string) => (k ? rxTop(seen.get(k) || []).v || k : 'Not recorded');
+}
+const rxPatients = (db: DB, list: Sale[]) => new Set(list.map((s) => {
+  const walk = !s.partyId || /^cash sale|walk-?in/i.test(partyName(db, s.partyId) || '');
+  return s.rx?.patient ? 'n' + rxNorm(s.rx.patient) : walk ? 'w' + s.id : 'p' + s.partyId;
+})).size;
+const RX_DIMS = {
+  diagnosis: { label: 'Diagnosis', pick: (s: Sale) => s.rx?.diagnosis },
+  doctor: { label: 'Doctor', pick: (s: Sale) => s.rx?.prescriber },
+  facility: { label: 'Facility', pick: (s: Sale) => s.rx?.facility },
+};
+function rxBy(db: DB, from: number, to: number, by: keyof typeof RX_DIMS): ReportResult {
+  const sales = rxSales(db, from, to);
+  const dim = RX_DIMS[by];
+  const name = rxSpell(sales, dim.pick);
+  const second = by === 'diagnosis' ? RX_DIMS.doctor : RX_DIMS.diagnosis;
+  const secondName = rxSpell(sales, second.pick);
+  const groups = new Map<string, Sale[]>();
+  sales.forEach((s) => { const k = rxNorm(dim.pick(s)); (groups.get(k) || groups.set(k, []).get(k)!).push(s); });
+  const days = sales.map((s) => s.ts.slice(0, 10)).sort();
+  const day = (t: number) => (Number.isFinite(t) && t > 0 && t < 8e15 ? new Date(t).toISOString().slice(0, 10) : '');
+  const lo = day(from) || days[0], hi = day(to) || days[days.length - 1];
+  const mid = lo && hi ? new Date((Date.parse(lo) + Date.parse(hi)) / 2).toISOString().slice(0, 10) : '';
+  const trend = (list: Sale[]): Cell => {
+    if (!mid || list.length < 4) return '';
+    const a = list.filter((s) => s.ts.slice(0, 10) <= mid).length, b = list.length - a;
+    return b > a * 1.25 ? { text: '↑ rising', tone: 'good' } : a > b * 1.25 ? { text: '↓ falling', tone: 'danger' } : '→ steady';
+  };
+  const total = sales.length || 1;
+  const out = [...groups.entries()].map(([k, list]) => {
+    const value = list.reduce((a, s) => a + s.total, 0);
+    const med = rxTop(list.flatMap((s) => [...new Set(s.lines.map((l) => l.name))]));
+    const t2 = rxTop(list.map((s) => rxNorm(second.pick(s))));
+    const extra: Cell[] = by === 'facility'
+      ? [rxTop(list.map((s) => String(s.rx?.location || '').trim())).v || '—', new Set(list.map((s) => rxNorm(s.rx?.prescriber)).filter(Boolean)).size]
+      : [];
+    return { n: list.length, value, row: [k ? name(k) : { text: 'Not recorded', tone: 'muted' as CellTone }, ...extra, list.length,
+      Math.round((list.length / total) * 100) + '%', rxPatients(db, list), value, value / list.length, trend(list),
+      med.v ? med.v + ' (' + med.n + ')' : '—', t2.v ? secondName(t2.v) : '—'] as Cell[] };
+  }).sort((a, b) => b.n - a.n || b.value - a.value);
+  const distinct = (pick: (s: Sale) => string | undefined) => new Set(sales.map((s) => rxNorm(pick(s))).filter(Boolean)).size;
+  const all = salesBetween(db, from, to).length;
+  return {
+    title: 'Prescriptions by ' + dim.label.toLowerCase(),
+    stats: [{ k: 'Prescriptions', v: String(sales.length) }, { k: 'Of all sales', v: all ? Math.round((sales.length / all) * 100) + '%' : '—' },
+      { k: 'Diagnoses', v: String(distinct(RX_DIMS.diagnosis.pick)) }, { k: 'Doctors', v: String(distinct(RX_DIMS.doctor.pick)) },
+      { k: 'Facilities', v: String(distinct(RX_DIMS.facility.pick)) }] as ReportStat[],
+    cols: [{ h: dim.label }, ...(by === 'facility' ? [{ h: 'Location' }, { h: 'Doctors', r: true }] : []), { h: 'Prescriptions', r: true }, { h: 'Share' },
+      { h: 'Patients', r: true }, { h: 'Value', r: true }, { h: 'Average', r: true }, { h: 'Trend' }, { h: 'Most dispensed' },
+      { h: by === 'diagnosis' ? 'Most seen by' : 'Most treated for' }],
+    rows: out.map((x) => x.row),
+    searchable: true,
+    note: sales.length ? 'Trend compares the second half of the period with the first.' : 'No sale in this period carried prescription details. Add them on a pharmacy sale before checkout.',
+  };
+}
+RPT['rx-diagnosis'] = (db, from, to) => rxBy(db, from, to, 'diagnosis');
+RPT['rx-doctor'] = (db, from, to) => rxBy(db, from, to, 'doctor');
+RPT['rx-facility'] = (db, from, to) => rxBy(db, from, to, 'facility');
+RPT['rx-medicines'] = (db, from, to) => {
+  const sales = rxSales(db, from, to).filter((s) => s.rx?.diagnosis);
+  const name = rxSpell(sales, RX_DIMS.diagnosis.pick);
+  const groups = new Map<string, Sale[]>();
+  sales.forEach((s) => { const k = rxNorm(s.rx?.diagnosis); (groups.get(k) || groups.set(k, []).get(k)!).push(s); });
+  const rows: Cell[][] = [];
+  const rowKinds: RowKind[] = [];
+  [...groups.entries()].sort((a, b) => b[1].length - a[1].length).forEach(([k, list]) => {
+    rows.push([name(k), list.length + ' prescription' + (list.length === 1 ? '' : 's'), '', '', '']); rowKinds.push('head');
+    const meds = new Map<string, { scripts: Set<string>; qty: number; value: number }>();
+    list.forEach((s) => s.lines.forEach((l) => {
+      const m = meds.get(l.name) || { scripts: new Set<string>(), qty: 0, value: 0 };
+      m.scripts.add(s.id); m.qty += l.qty; m.value += l.qty * l.price; meds.set(l.name, m);
+    }));
+    [...meds.entries()].sort((a, b) => b[1].scripts.size - a[1].scripts.size).forEach(([med, m]) => {
+      rows.push(['   ' + med, m.scripts.size, Math.round((m.scripts.size / list.length) * 100) + '%', m.qty, m.value]); rowKinds.push('line');
+    });
+  });
+  return {
+    title: 'Medicines by diagnosis',
+    cols: [{ h: 'Diagnosis / medicine' }, { h: 'Prescriptions', r: true }, { h: 'Share of them' }, { h: 'Qty', r: true }, { h: 'Value', r: true }],
+    rows, rowKinds,
+    searchable: true,
+    note: rows.length ? '"Share of them" is how many of that diagnosis\'s prescriptions included the medicine.' : 'No sale in this period carried a diagnosis.',
+  } as ReportResult;
+};
+RPT['rx-list'] = (db, from, to) => {
+  const sales = rxSales(db, from, to).slice().reverse();
+  const rows: Cell[][] = sales.map((s) => [shortDay(s.ts), s.no, s.rx?.patient || partyName(db, s.partyId) || 'Walk-in', s.rx?.diagnosis || '—',
+    s.rx?.prescriber || '—', s.rx?.facility || '—', s.rx?.location || '—', s.lines.map((l) => l.name).join(', '), s.total]);
+  return {
+    title: 'Prescription list',
+    cols: [{ h: 'Date' }, { h: 'Sale' }, { h: 'Patient' }, { h: 'Diagnosis' }, { h: 'Doctor' }, { h: 'Facility' }, { h: 'Location' }, { h: 'Medicines' }, { h: 'Value', r: true }],
+    rows,
+    foot: ['Total', String(rows.length), '', '', '', '', '', '', sumCol(rows, 8)],
+    rowRefs: sales.map((s) => ({ kind: 'sale' as const, id: s.id })),
+    searchable: true,
+    note: rows.length ? 'Tap one to open the sale.' : 'No sale in this period carried prescription details.',
   };
 };
 

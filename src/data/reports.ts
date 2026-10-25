@@ -46,6 +46,11 @@ export const isPremiumReport = (id: string) => PREMIUM_REPORTS.has(id);
  */
 export const REPORTS: ReportDef[] = [
   // Restaurant — the reports a restaurant manager reads (menu engineering, covers, service)
+  { id: 'rx-diagnosis', cat: 'Sales', name: 'Prescriptions by diagnosis', sub: 'Which illnesses come in, how often, rising or falling, and what is dispensed' },
+  { id: 'rx-doctor', cat: 'Sales', name: 'Prescriptions by doctor', sub: 'The doctors who send patients, what they treat and prescribe' },
+  { id: 'rx-facility', cat: 'Sales', name: 'Prescriptions by facility', sub: 'Hospitals and clinics patients come from, where they are and their doctors' },
+  { id: 'rx-medicines', cat: 'Sales', name: 'Medicines by diagnosis', sub: 'For each diagnosis, the medicines dispensed and how often' },
+  { id: 'rx-list', cat: 'Sales', name: 'Prescription list', sub: 'Every sale with prescription details: patient, doctor, diagnosis, medicines' },
   { id: 'rx-register', cat: 'Stock', name: 'Prescription register', sub: 'Every prescription-only sale: drug, prescriber, number and patient' },
   { id: 'rest-menu-mix', cat: 'Restaurant', name: 'Menu mix (dish sales)', sub: 'Every dish: plates sold, revenue, share of sales and rank' },
   { id: 'rest-sections', cat: 'Restaurant', name: 'Sales by section', sub: 'Starters, mains, drinks… ranked by revenue' },
@@ -151,7 +156,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
 ];
 
 /** Reports that only mean something to a pharmacy. */
-export const PHARMACY_REPORTS = new Set(['rx-register', 'expiry', 'batch-movement', 'batch-balances']);
+export const PHARMACY_REPORTS = new Set(['rx-diagnosis', 'rx-doctor', 'rx-facility', 'rx-medicines', 'rx-list', 'rx-register', 'expiry', 'batch-movement', 'batch-balances']);
 
 /** Reports that only mean something to a restaurant. */
 export const RESTAURANT_REPORTS = new Set(['rest-menu-mix', 'rest-sections', 'rest-menus', 'rest-modifiers', 'rest-order-types',
@@ -173,6 +178,9 @@ export const FAVOURITE_REPORTS = ['day-close', 'sale-summary', 'ar-aging-summary
 export interface ReportGroup { key: string; name: string; sub: string; views: { id: string; label: string }[] }
 
 export const REPORT_GROUPS: ReportGroup[] = [
+  { key: 'rx', name: 'Prescriptions', sub: 'Diagnoses, doctors and facilities from pharmacy sales — for research and planning', views: [
+    { id: 'rx-diagnosis', label: 'By diagnosis' }, { id: 'rx-doctor', label: 'By doctor' }, { id: 'rx-facility', label: 'By facility' },
+    { id: 'rx-medicines', label: 'Medicines' }, { id: 'rx-list', label: 'Every prescription' }] },
   { key: 'end-of-day', name: 'End of day', sub: 'Today so far, closing the day, and past closes', views: [
     { id: 'day-close', label: 'Close the day (Z)' }, { id: 'x-report', label: 'So far today (X)' }, { id: 'zreport-summary', label: 'Past closes' }] },
   { key: 'sales-register', name: 'Sales register', sub: 'Every bill: summary, by day, list and settlement', views: [

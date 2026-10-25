@@ -148,6 +148,8 @@ export function escposDoc(doc: DocMeta, money: (n: number) => string, opts: Escp
   const compact = sh.style === 'compact';
   const detailed = sh.style === 'detailed';
   const boldStyle = sh.style === 'bold';
+  /* Genius ticket: name between rules, everything a line carries under it, a boxed total, a paid stamp, a tear line */
+  const genius = sh.style === 'genius';
   const narrow = opts.paper === '58mm';
   const w = lineWidth(opts.paper);
   const showTax = sh.tax;
@@ -167,7 +169,9 @@ export function escposDoc(doc: DocMeta, money: (n: number) => string, opts: Escp
   o.raw(ESC, 0x40); // reset
   for (let copy = 0; copy < copies; copy++) {
     // the shop
-    o.align('center').bold(true).size(narrow ? 1 : 2).lines(wrap(d.firmName, narrow ? w : Math.floor(w / 2))).size(1).bold(false);
+    if (genius) o.align('center').rule(w, '=');
+    o.align('center').bold(true).size(narrow ? 1 : 2).lines(wrap(genius ? d.firmName.toUpperCase() : d.firmName, narrow ? w : Math.floor(w / 2))).size(1).bold(false);
+    if (genius) o.rule(w, '=');
     (compact ? [d.firmPhone] : [d.firmDescription, d.firmAddress, d.firmPhone, d.firmWhatsapp ? 'WhatsApp ' + d.firmWhatsapp : '', d.firmEmail, d.firmTin ? 'TIN ' + d.firmTin : ''])
       .filter(Boolean).forEach((x) => o.lines(wrap(String(x), w)));
     if (head && !compact) o.lines(wrap(head, w));
@@ -191,14 +195,15 @@ export function escposDoc(doc: DocMeta, money: (n: number) => string, opts: Escp
         o.lines(wrap(l.name, w));
         o.lines(lr('  ' + qtyText(l, money, sh), money(l.qty * l.price), w));
       }
-      if (sh.imei) imeiTexts(l.serials).forEach((t) => o.lines(wrap('  ' + t, w)));
+      if (genius && l.desc) o.lines(wrap('  ' + l.desc, w));
+      if (sh.imei || genius) imeiTexts(l.serials).forEach((t) => o.lines(wrap('  ' + t, w)));
       // restaurant choices under the item
       if (l.mods && l.mods.length) o.lines(wrap('  + ' + l.mods.join(', '), w));
-      const b = showBatch && l.batchNo ? 'Batch ' + l.batchNo : '';
-      const e = showExpiry && l.expiry ? 'Exp ' + new Date(l.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+      const b = (showBatch || genius) && l.batchNo ? 'Batch ' + l.batchNo : '';
+      const e = (showExpiry || genius) && l.expiry ? 'Exp ' + new Date(l.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
       if (b || e) o.lines(wrap('  ' + [b, e].filter(Boolean).join(' - '), w));
     });
-    if (detailed) o.lines(lr('Items: ' + d.lines.length, 'Qty: ' + d.lines.reduce((a, l) => a + l.qty, 0), w));
+    if (detailed || genius) o.lines(lr('Items: ' + d.lines.length, 'Qty: ' + d.lines.reduce((a, l) => a + l.qty, 0), w));
     o.rule(w);
 
     // the money
@@ -207,13 +212,15 @@ export function escposDoc(doc: DocMeta, money: (n: number) => string, opts: Escp
     if (d.charges) o.lines(lr('Additional charges', money(d.charges), w));
     if (d.tax && showTax) o.lines(lr(d.taxLabel || 'Tax', money(d.tax), w));
     o.bold(true);
-    if (boldStyle) o.rule(w, '=').align('center').size(2).line('TOTAL').lines(wrap(money(d.total), Math.floor(w / 2))).size(1).align('left').rule(w, '=');
+    if (genius) o.rule(w, '-').lines(lr('TOTAL', money(d.total), w)).rule(w, '-');
+    else if (boldStyle) o.rule(w, '=').align('center').size(2).line('TOTAL').lines(wrap(money(d.total), Math.floor(w / 2))).size(1).align('left').rule(w, '=');
     else if (narrow) o.lines(lr('TOTAL', money(d.total), w));
     else o.size(2).lines(lr('TOTAL', money(d.total), Math.floor(w / 2))).size(1);
     o.bold(false);
     if (sh.paid && d.paid !== undefined) o.lines(lr('Paid', money(d.paid), w));
     if (sh.paid && d.paid !== undefined && d.paid > d.total) o.lines(lr('Change', money(d.paid - d.total), w));
     if (d.due) o.bold(true).lines(lr('Balance due', money(d.due), w)).bold(false);
+    if (genius && d.paid !== undefined) o.align('center').bold(true).line('[ ' + (d.due ? (d.paid ? 'PART PAID' : 'OWING') : 'PAID') + ' ]').bold(false).align('left');
 
     // the end
     if (d.note) { gap(o); o.lines(wrap('Note: ' + d.note, w)); }
@@ -231,6 +238,7 @@ export function escposDoc(doc: DocMeta, money: (n: number) => string, opts: Escp
       }
     }
     gap(o);
+    if (genius) o.align('center').line('- '.repeat(Math.floor(w / 2)).trim());
     o.align('center').lines(wrap(foot || d.footer || 'Thank you for your business', w)).lines(['Powered by Genius POS']).align('left');
     o.feed(4).raw(GS, 0x56, 0x42, 0x00); // feed past the cutter, then cut
   }

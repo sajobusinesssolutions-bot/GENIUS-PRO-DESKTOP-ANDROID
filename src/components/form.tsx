@@ -137,7 +137,9 @@ export function Field({
   const isMoney = !!numeric && !secure && (money ?? isMoneyLabel(label));
   const sym = isMoney ? (app?.db?.settings.currency || '') : '';
   const symBefore = app?.db?.settings.symbolBefore !== false;
-  const bg = readOnly ? colors.sunk : colors.surface;
+  /* the box being typed in is amber, as the line being worked on is on the Windows voucher desk */
+  const amberEdge = "#E8A317", amberFill = colors.bg === "#F2F4F7" ? "#FFFBEA" : "rgba(232,197,71,0.10)";
+  const bg = readOnly ? colors.sunk : focused && !hasError ? amberFill : colors.surface;
   const hasLabel = !!label;
   // a lone zero in a number box is a blank, not a value: it clears on focus
   // so the first key typed replaces it instead of landing after it
@@ -163,7 +165,7 @@ export function Field({
   const padH = compact ? 12 : 15;
   const restLeft = padH + (icon ? 31 : 0) - 4;
   const idle = hasError ? colors.danger : colors.line;
-  const lit = hasError ? colors.danger : colors.accent;
+  const lit = hasError ? colors.danger : amberEdge;
 
   return (
     <View style={[{ marginTop: hasLabel ? 6 : 0, marginBottom: hasError ? 6 : 14 }, style]}>

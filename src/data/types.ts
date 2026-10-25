@@ -48,6 +48,8 @@ export type ServiceRate = 'fixed' | 'hour' | 'day' | 'unit';
 /** A prescription as it was seen at the counter. */
 export interface RxRecord {
   prescriber: string; number?: string; patient?: string; facility?: string;
+  /** Pharmacy: where the facility is, and what the patient was treated for — for the Prescriptions reports. */
+  location?: string; diagnosis?: string;
   /** A photo of the prescription, as a local file. */
   photo?: string;
   seenBy: string; seenAt: string;
@@ -464,13 +466,13 @@ export interface PrintTemplate {
   /** A4/page templates only: visible borders around every field and cell, ledger-style. */
   boxed?: boolean;
   /** A4 layout. Absent on older templates, which fall back to boxed → tally, accentColor → quickbooks. */
-  style?: 'plain' | 'tally' | 'quickbooks' | 'gst';
+  style?: 'plain' | 'tally' | 'quickbooks' | 'gst' | 'genius';
   code: CodeKind; codeData: CodeData; codeCaption: boolean;
   density: 'normal' | 'tight'; head: string; foot: string; copies: number;
 }
 
 /** `DB.printer` — reference ensureExtras() at 5454. */
-export type ReceiptStyle = 'classic' | 'compact' | 'detailed' | 'bold';
+export type ReceiptStyle = 'classic' | 'compact' | 'detailed' | 'bold' | 'genius';
 
 export interface PrinterSettings {
   device: string; width: Paper; copies: number;

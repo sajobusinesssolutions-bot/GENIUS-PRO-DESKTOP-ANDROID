@@ -20,6 +20,7 @@ import { CustomerPickerSheet, CustomerFormSheet, BalanceTag } from '../component
 import { useWho } from '../components/WhoSheet';
 import { useOwnerPin } from '../components/OwnerPin';
 import { isRestaurant } from '../data/restaurant';
+import { editionOf } from '../data/editions';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { onItemCreatedForBill } from '../data/newItemBus';
 import type { RootStackParamList } from '../nav/types';
@@ -97,7 +98,11 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   /** The prescription for the Rx-only drugs on this bill has been seen. */
   const [rxSeen, setRxSeen] = useState(false);
   const [rxOpen, setRxOpen] = useState(false);
-  const [rxForm, setRxForm] = useState({ prescriber: '', number: '', patient: '', facility: '', photo: '' });
+  const [rxForm, setRxForm] = useState({ prescriber: '', number: '', patient: '', facility: '', location: '', diagnosis: '', photo: '' });
+  /* any pharmacy sale may carry the prescription it was filled from — optional,
+     asked once before checkout and skippable; prescription-only drugs still need the prescriber */
+  const rxAsk = editionOf(db) === 'pharmacy';
+  const rxNeeded = cart.some((l) => (db?.products || []).find((x) => x.id === l.productId)?.rxOnly);
   async function rxPhoto() {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) { error('Allow the camera to photograph the prescription.'); return; }
@@ -107,8 +112,13 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       setRxForm((f) => ({ ...f, photo: kept }));
     }
   }
+  function rxSkip() {
+    setRxSeen(true);
+    setRxOpen(false);
+    setTimeout(checkout, 300);
+  }
   function rxConfirm() {
-    if (!rxForm.prescriber.trim()) { error('Write who prescribed it — the doctor or clinician.'); return; }
+    if (rxNeeded && !rxForm.prescriber.trim()) { error('Write who prescribed it — the doctor or clinician.'); return; }
     setRxSeen(true);
     setRxOpen(false);
     setTimeout(checkout, 300);
@@ -230,7 +240,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
 
     // a prescription-only drug: the counter confirms it has seen the prescription
     const rx = cart.filter((l) => productOf(l)?.rxOnly);
-    if (rx.length && !rxSeen) {
+    if ((rx.length || rxAsk) && !rxSeen) {
       // the prescription is recorded: who wrote it, its number, for whom, and a photo if there is one
       setRxOpen(true);
       return;
@@ -314,10 +324,11 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         momoRef: (method === 'momo' || (method === 'credit' && receivedVia === 'momo')) ? momoRef : undefined,
         userId,
         priceListId: priceListId || undefined,
-        ...(rxSeen && rxForm.prescriber.trim() ? {
+        ...(rxSeen && (rxForm.prescriber.trim() || rxForm.diagnosis.trim() || rxForm.facility.trim()) ? {
           rx: {
             prescriber: rxForm.prescriber.trim(), number: rxForm.number.trim() || undefined, patient: rxForm.patient.trim() || undefined,
             facility: rxForm.facility.trim() || undefined, photo: rxForm.photo || undefined,
+            location: rxForm.location.trim() || undefined, diagnosis: rxForm.diagnosis.trim() || undefined,
             seenBy: userName, seenAt: new Date().toISOString(),
           },
         } : {}),
@@ -326,7 +337,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       success((fromQuote ? fromQuote.no + ' became ' : '') + sale.no + ' · saved by ' + userName);
       setCart([]);
       setRxSeen(false);
-      setRxForm({ prescriber: '', number: '', patient: '', facility: '', photo: '' });
+      setRxForm({ prescriber: '', number: '', patient: '', facility: '', location: '', diagnosis: '', photo: '' });
       setMethod((db?.settings.defaultMethod as PayMethod) || 'cash');
       setMethods(undefined);
       setDiscount(0);
@@ -659,19 +670,24 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         <Sheet
           visible={rxOpen}
           title="Prescription"
-          subtitle={cart.filter((l) => productOf(l)?.rxOnly).map((l) => l.name).join(', ') + ' — prescription only'}
+          subtitle={rxNeeded ? cart.filter((l) => productOf(l)?.rxOnly).map((l) => l.name).join(', ') + ' — prescription only' : 'Optional — for the Prescriptions reports'}
           icon="shield"
           iconTone="warn"
           full
           onClose={() => setRxOpen(false)}
-          footer={<Button variant="pri" label="Recorded — continue" onPress={rxConfirm} />}
+          footer={<View style={{ flexDirection: 'row', gap: 10 }}>
+            {!rxNeeded && <View style={{ flex: 1 }}><Button label="Skip" onPress={rxSkip} /></View>}
+            <View style={{ flex: 1 }}><Button variant="pri" label="Recorded — continue" onPress={rxConfirm} /></View>
+          </View>}
         >
-          <InfoBanner tone="warn" icon="alert" text="Check the prescription, then record it. It is kept with the sale and listed in the Prescription register." />
+          <InfoBanner tone={rxNeeded ? 'warn' : 'accent'} icon="alert" text={rxNeeded ? 'Check the prescription, then record it. It is kept with the sale and listed in the Prescription register.' : 'Where the patient was seen, by whom and for what. Nothing here is required — Skip if there is no prescription.'} />
           <View style={{ height: 12 }} />
-          <Field label="Prescribed by (doctor or clinician) *" value={rxForm.prescriber} onChangeText={(v) => setRxForm({ ...rxForm, prescriber: v })} />
+          <Field label={rxNeeded ? 'Prescribed by (doctor or clinician) *' : 'Doctor'} value={rxForm.prescriber} onChangeText={(v) => setRxForm({ ...rxForm, prescriber: v })} />
           <Field label="Prescription number" value={rxForm.number} onChangeText={(v) => setRxForm({ ...rxForm, number: v })} />
           <Field label="Patient" value={rxForm.patient} onChangeText={(v) => setRxForm({ ...rxForm, patient: v })} placeholder={selectedParty?.name || 'Name of the patient'} />
+          <Field label="Diagnosis" value={rxForm.diagnosis} onChangeText={(v) => setRxForm({ ...rxForm, diagnosis: v })} placeholder="What the patient is treated for" />
           <Field label="Hospital or clinic" value={rxForm.facility} onChangeText={(v) => setRxForm({ ...rxForm, facility: v })} />
+          <Field label="Where it is" value={rxForm.location} onChangeText={(v) => setRxForm({ ...rxForm, location: v })} placeholder="Town or area" />
           <Button label={rxForm.photo ? 'Photo taken — take again' : 'Photograph the prescription'} icon={<Icon name="camera" size={16} color={colors.ink} />} onPress={rxPhoto} />
         </Sheet>
 

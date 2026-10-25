@@ -637,6 +637,7 @@ export default function PrintingScreen() {
 
 /** The four looks a roll receipt can take, and the switches each one starts from. */
 const RECEIPT_STYLES: { v: ReceiptStyle; l: string; sub: string; preset: Partial<ReceiptDraft> }[] = [
+  { v: 'genius', l: 'Genius ticket ✦ ours', sub: 'Our own: name between rules, total in a box, paid stamp, batch, expiry and IMEI under items', preset: { tight: false, showRate: true, showUnit: true, showServed: true, showPaid: true } },
   { v: 'classic', l: 'Classic', sub: 'Every item on two lines, the usual till receipt', preset: { tight: false, showRate: true, showUnit: true, showServed: true } },
   { v: 'compact', l: 'Compact', sub: 'One line per item, least paper', preset: { tight: true, showServed: false } },
   { v: 'detailed', l: 'Detailed', sub: 'Everything, with item and quantity counts', preset: { tight: false, showRate: true, showUnit: true, showServed: true, showParty: true, showImei: true, showPaid: true } },
@@ -910,8 +911,9 @@ export function ReceiptSettingsScreen() {
 
 /* ---------------- invoice PDF settings ---------------- */
 
-const STYLE_ACCENT: Record<InvoiceStyle, string> = { plain: '#111827', tally: '#111827', quickbooks: '#2CA01C', gst: '#1E2A78' };
+const STYLE_ACCENT: Record<InvoiceStyle, string> = { plain: '#111827', tally: '#111827', quickbooks: '#2CA01C', gst: '#1E2A78', genius: '#0F766E' };
 const INVOICE_STYLES: { v: InvoiceStyle; l: string; sub: string }[] = [
+  { v: 'genius', l: 'Genius ✦ ours', sub: 'Our own: monogram, Paid stamp, batch, expiry and IMEI under each item' },
   { v: 'tally', l: 'Tally', sub: 'Ruled ledger, amount in words, declaration' },
   { v: 'quickbooks', l: 'QuickBooks', sub: 'Clean, colour bar, Bill to / Ship to band' },
   { v: 'gst', l: 'GST tax invoice', sub: 'Letterhead band, tax summary, bank and QR' },
@@ -1095,6 +1097,34 @@ function InvoicePreview({ d }: { d: InvoiceDraft }) {
           <View style={{ flex: 1, padding: 3, justifyContent: 'flex-end' }}><Text style={bold}>Customer Signature</Text></View>
         </View>
         {footer}
+      </View>
+    );
+  }
+
+  if (d.style === 'genius') {
+    const initials = String(db.firm.name || 'G').trim().split(/\s+/).slice(0, 2).map((w) => (w[0] || '').toUpperCase()).join('');
+    const box = { borderWidth: 1, borderColor: '#e3e6ec', padding: 6, flex: 1 } as const;
+    return (
+      <View style={{ backgroundColor: '#fff', padding: 10 }}>
+        <View style={{ flexDirection: 'row', height: 3 }}><View style={{ flex: 62, backgroundColor: d.accent }} /><View style={{ flex: 38, backgroundColor: '#14181f' }} /></View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', gap: 6, flex: 1 }}>
+            {logo || <View style={{ width: 26, height: 26, backgroundColor: d.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontFamily: fonts.uiExtra, fontSize: 10 }}>{initials}</Text></View>}
+            <View style={{ flex: 1 }}><Text style={[bold, { fontSize: 11 }]}>{db.firm.name}</Text><Text style={small} numberOfLines={1}>{d.address}</Text></View>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}><Text style={{ color: d.accent, fontSize: 15, fontFamily: fonts.ui }}>Invoice</Text><Text style={small}>INV-001</Text></View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+          <View style={box}><Text style={[small, { color: d.accent }]}>BILL TO</Text>{d.showParty ? <Text style={bold}>Taylor & Co</Text> : null}</View>
+          <View style={box}><Text style={[small, { color: d.accent }]}>PAYMENT</Text><Text style={bold}>Cash</Text>
+            <Text style={[small, { position: 'absolute', right: 4, top: 4, borderWidth: 1, borderColor: '#0a7a46', color: '#0a7a46', paddingHorizontal: 3 }]}>PAID</Text></View>
+        </View>
+        <ItemsMock d={d} head="#fff" headInk="#6b7385" ruled={false} />
+        <View style={{ alignSelf: 'flex-end', width: 130, borderWidth: 1, borderColor: '#e3e6ec', marginTop: 6 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 3 }}><Text style={small}>Sub total</Text><Text style={small}>{money(sub)}</Text></View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, backgroundColor: d.accent }}>
+            <Text style={[bold, { color: '#fff' }]}>Total</Text><Text style={[bold, { color: '#fff' }]}>{money(total)}</Text></View>
+        </View>
       </View>
     );
   }

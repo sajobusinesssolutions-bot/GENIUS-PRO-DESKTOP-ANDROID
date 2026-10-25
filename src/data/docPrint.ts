@@ -348,10 +348,39 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
     const count = rollStyle === 'detailed'
       ? `<div class="meta"><div><span>Items: ${d.lines.length}</span><span>Qty: ${d.lines.reduce((a, l) => a + l.qty, 0)}</span></div></div><div class="rule"></div>`
       : '';
+    const g = rollStyle === 'genius';
+    const gDetail = (l: DocLine) => {
+      const tags = [l.batchNo ? 'Batch ' + esc(l.batchNo) : '', l.expiry ? 'Exp ' + esc(new Date(l.expiry).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })) : ''].filter(Boolean).join(' · ');
+      const sn = (l.serials || []).map((s) => [s.imei, s.imei2].filter(Boolean).join(' / ')).filter(Boolean).join(', ');
+      return (l.desc ? `<div class="sub">${esc(l.desc)}</div>` : '') + (tags ? `<div class="sub">${tags}</div>` : '') + (sn ? `<div class="sub">S/N ${esc(sn)}</div>` : '');
+    };
+    if (g) {
+      const gRows = d.lines.map((l) => `<div class="g-it"><div class="g-nm">${esc(l.name)}</div>
+        <div class="g-row"><span>${esc(qtyText(l, money, sh, ' × '))}</span><i></i><b>${esc(money(l.qty * l.price))}</b></div>${gDetail(l)}</div>`).join('');
+      const owing = (d.due || 0) > 0.005;
+      doc = `<div class="doc roll gt">
+        ${showLogo && d.logo ? `<div class="logo"><img src="${esc(d.logo)}" /></div>` : ''}
+        <div class="g-band">${esc(d.firmName)}</div>
+        ${firmLines}
+        <div class="g-doc"><span>${esc(d.kind)}</span><small>No. ${esc(d.no)}</small></div>
+        <div class="muted">${esc(date.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}${showServed && d.servedBy ? ' · ' + esc(d.servedBy) : ''}</div>
+        ${showParty && d.partyName ? `<div class="muted">For ${esc(d.partyName)}</div>` : ''}
+        <div class="g-rule"></div>
+        ${gRows}
+        <div class="g-count">${d.lines.length} item${d.lines.length === 1 ? '' : 's'} · ${d.lines.reduce((a, l) => a + l.qty, 0)} in all</div>
+        <div class="rule"></div>
+        <table>${[totalRow('Subtotal', money(d.subtotal)), d.discount ? totalRow('Discount', '− ' + money(d.discount)) : '', d.tax && showTax ? totalRow(d.taxLabel || 'Tax', money(d.tax)) : ''].join('')}</table>
+        <div class="g-total"><span>TOTAL</span><span>${esc(money(d.total))}</span></div>
+        <table>${[d.paid !== undefined ? totalRow('Paid', money(d.paid)) : '', d.paid !== undefined && d.paid > d.total ? totalRow('Change', money(d.paid - d.total), true) : '', owing ? totalRow('Owing', money(d.due || 0), true) : ''].join('')}</table>
+        ${d.paid !== undefined ? `<div class="g-stamp-w"><span class="g-stamp">${owing ? (d.paid ? 'Part paid' : 'Owing') : 'Paid'}</span></div>` : ''}
+        <div class="g-tear"><i></i>✂<i></i></div>
+        ${endMatter}
+      </div>`;
+    }
     const bigTotal = rollStyle === 'bold'
       ? `<div class="bigtotal"><div>TOTAL</div><strong>${esc(money(d.total))}</strong></div>`
       : '';
-    doc = `<div class="doc roll">
+    if (!g) doc = `<div class="doc roll">
       ${showLogo && d.logo ? `<div class="logo"><img src="${esc(d.logo)}" /></div>` : ''}
       <h1>${esc(d.firmName)}</h1>
       ${rollStyle === 'compact' ? (d.firmPhone ? `<div class="muted">${esc(d.firmPhone)}</div>` : '') : firmLines}
@@ -398,9 +427,30 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   td.l { text-align: left; } td.r { text-align: right; white-space: nowrap; padding-left: 6px; }
   .sub { color: #333; font-size: ${narrow ? 8.5 : 9.5}px; margin-top: 1px; }
   .imei { font-family: monospace; color: #000; }
+  .gt .g-band { border-top: 2px solid #000; border-bottom: 2px solid #000; text-align: center; font-weight: 900; font-size: ${narrow ? 13 : 15}px; letter-spacing: 1.5px; text-transform: uppercase; padding: 4px; }
+  .gt .g-doc { display: flex; justify-content: space-between; align-items: baseline; margin: 8px 0 2px; font-weight: 800; text-transform: uppercase; }
+  .gt .g-doc small { font-weight: 400; text-transform: none; }
+  .gt .g-rule { border-top: 1.5px solid #000; margin: 6px 0; }
+  .gt .g-it { padding: 3px 0; } .gt .g-nm { font-weight: 700; }
+  .gt .g-row { display: flex; align-items: baseline; gap: 4px; } .gt .g-row i { flex: 1; border-bottom: 1px dotted #000; }
+  .gt .g-count { font-size: 10px; text-align: right; }
+  .gt .g-total { border: 2px solid #000; background: #e9e9e9; display: flex; justify-content: space-between; font-size: ${narrow ? 14 : 16}px; font-weight: 900; padding: 5px 6px; margin: 6px 0; }
+  .gt .g-stamp-w { text-align: center; } .gt .g-stamp { display: inline-block; border: 1.5px solid #000; padding: 1px 8px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; font-size: 10.5px; margin-top: 4px; }
+  .gt .g-tear { display: flex; align-items: center; gap: 4px; margin: 10px 0 6px; font-size: 10px; } .gt .g-tear i { flex: 1; border-top: 1px dashed #000; }
   .bigtotal { text-align: center; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 6px 0; margin: 6px 0; }
   .bigtotal div { font-size: ${narrow ? 10 : 12}px; font-weight: 800; letter-spacing: 1px; }
   .bigtotal strong { font-size: ${narrow ? 20 : 26}px; }
+  /* Genius ticket */
+  .gt .g-band { border-top: 2px solid #000; border-bottom: 2px solid #000; text-align: center; font-weight: 900; font-size: ${narrow ? 13 : 15}px; letter-spacing: 1.5px; text-transform: uppercase; padding: 4px; }
+  .gt .g-doc { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; font-weight: 800; text-transform: uppercase; }
+  .gt .g-doc small { font-weight: 400; text-transform: none; }
+  .gt .g-rule { border-top: 1.5px solid #000; margin: 6px 0; }
+  .gt .g-it { padding: 3px 0; } .gt .g-nm { font-weight: 700; }
+  .gt .g-row { display: flex; align-items: baseline; gap: 4px; } .gt .g-row i { flex: 1; border-bottom: 1px dotted #000; transform: translateY(-3px); }
+  .gt .g-count { font-size: 0.85em; text-align: right; }
+  .gt .g-total { border: 2px solid #000; background: #e9e9e9; display: flex; justify-content: space-between; font-size: ${narrow ? 14 : 16}px; font-weight: 900; padding: 5px 6px; margin: 6px 0; }
+  .gt .g-stamp-w { text-align: center; } .gt .g-stamp { display: inline-block; border: 1.5px solid #000; padding: 1px 8px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+  .gt .g-tear { display: flex; align-items: center; gap: 4px; margin: 10px 0 4px; } .gt .g-tear i { flex: 1; border-top: 1px dashed #000; }
   .strong td { font-weight: 800; font-size: ${narrow ? 12 : 14}px; border-top: 1px solid #000; padding-top: 5px; }
   .meta { font-size: ${narrow ? 9 : 10.5}px; }
   .meta div { display: flex; justify-content: space-between; gap: 6px; padding: 1px 0; }

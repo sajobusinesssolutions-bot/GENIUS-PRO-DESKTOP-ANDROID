@@ -11,12 +11,18 @@
  *    invoice detail panels, a tax summary, bank details with a QR code, terms
  *    and two signature boxes.
  *
+ *  - genius: Genius POS's own — a monogram tile (or the logo), the document's
+ *    name set large and light, square Bill to and Payment boxes with a Paid /
+ *    Part paid / Owing stamp, a hairline item table with each item's
+ *    description, batch, expiry and serial / IMEI under it, and a totals box
+ *    whose total sits in the accent colour. Same look as the Windows till.
+ *
  * Batch and expiry get their own columns when switched on and at least one
  * line carries one — an empty column is just wasted width.
  */
 import type { DocLine, DocMeta } from './docPrint';
 
-export type InvoiceStyle = 'plain' | 'tally' | 'quickbooks' | 'gst';
+export type InvoiceStyle = 'plain' | 'tally' | 'quickbooks' | 'gst' | 'genius';
 
 export function esc(s: unknown): string {
   return String(s ?? '')
@@ -194,6 +200,100 @@ export function a4Layout(style: InvoiceStyle, d: DocMeta, money: (n: number) => 
       .tally .t-sign .sig { border-left: 1px solid #000; border-top: 1px solid #000; text-align: right; font-size: 10.5px; }
       .tally .signimg { max-height: 14mm; max-width: 34mm; display: block; margin-left: auto; }
       .tally .foot { text-align: center; font-size: 10.5px; margin-top: 5px; }`;
+    return { body, css };
+  }
+
+  if (style === 'genius') {
+    const a = c.accent && /^#[0-9a-f]{3,8}$/i.test(c.accent) ? c.accent : '#0F766E';
+    const init = String(d.firmName || 'G').trim().split(/\s+/).slice(0, 2).map((w) => (w[0] || '').toUpperCase()).join('') || 'G';
+    const due = d.due || 0, paid = d.paid || 0;
+    const stamp = d.paid === undefined ? '' : due <= 0.005 ? ['ok', 'Paid'] : paid > 0.005 ? ['part', 'Part paid'] : ['due', 'Owing'];
+    const meta = [['No.', d.no], ['Date', dmy(d.ts)], c.showServed && d.servedBy ? ['Served by', d.servedBy] : null].filter(Boolean) as string[][];
+    const qtyAll = d.lines.reduce((s, l) => s + l.qty, 0);
+    const rows = d.lines.map((l, i) => {
+      const tags = [l.batchNo ? 'Batch ' + l.batchNo : '', l.expiry ? 'Exp ' + dmy(l.expiry) : ''].filter(Boolean).join(' · ');
+      const sn = (l.serials || []).map((s) => [s.imei, s.imei2].filter(Boolean).join(' / ')).filter(Boolean).join(', ');
+      return `<tr><td class="gn">${i + 1}</td><td><b>${esc(l.name)}</b>${l.desc ? `<div class="gd">${lines2(l.desc)}</div>` : ''}${tags ? `<div class="gs">${esc(tags)}</div>` : ''}${sn ? `<div class="gs">Serial / IMEI: ${esc(sn)}</div>` : ''}${l.mods && l.mods.length ? `<div class="gs">+ ${esc(l.mods.join(', '))}</div>` : ''}</td>
+        <td class="r">${l.qty}${l.unit ? ` <span class="gu">${esc(l.unit)}</span>` : ''}</td><td class="r">${esc(money(l.price))}</td><td class="r"><b>${esc(money(l.qty * l.price))}</b></td></tr>`;
+    }).join('');
+    const line = (k: string, v: string, cls = '') => `<div class="gl ${cls}"><span>${esc(k)}</span><span>${esc(v)}</span></div>`;
+    const body = `<div class="gx" style="--a:${esc(a)}">
+      <div class="g-rule"></div>
+      <div class="g-top">
+        <div class="g-firm">${logo || `<div class="g-mono">${esc(init)}</div>`}<div>
+          <div class="g-name">${esc(d.firmName)}</div>
+          ${[d.firmDescription, d.firmAddress].filter(Boolean).map((x) => `<div class="g-line">${lines2(x)}</div>`).join('')}
+          ${[d.firmPhone, d.firmEmail, d.firmWebsite].filter(Boolean).length ? `<div class="g-line">${esc([d.firmPhone, d.firmEmail, d.firmWebsite].filter(Boolean).join('  ·  '))}</div>` : ''}
+          ${d.firmTin ? `<div class="g-line">TIN ${esc(d.firmTin)}</div>` : ''}
+        </div></div>
+        <div class="g-doc"><div class="g-title">${esc(d.kind)}</div>
+          <div class="g-meta">${meta.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div></div>
+      </div>
+      <div class="g-cards">
+        <div class="g-card"><div class="g-cap">Bill to</div><div class="g-party">${esc(partyOn ? d.partyName : 'Walk-in customer')}</div>
+          ${partyOn && d.partyPhone ? `<div class="g-line">${esc(d.partyPhone)}</div>` : ''}${partyOn && d.partyAddress ? `<div class="g-line">${lines2(d.partyAddress)}</div>` : ''}</div>
+        <div class="g-card"><div class="g-cap">Payment</div><div class="g-party">${esc(d.method || 'Cash')}</div>
+          ${d.paid !== undefined ? `<div class="g-line">Paid ${esc(money(paid))}${due > 0.005 ? ' · owing ' + esc(money(due)) : ''}</div>` : ''}
+          ${stamp ? `<div class="g-stamp ${stamp[0]}">${stamp[1]}</div>` : ''}</div>
+      </div>
+      ${c.head ? `<div class="g-line" style="margin-bottom:8px">${lines2(c.head)}</div>` : ''}
+      <table class="g-items"><thead><tr><th>#</th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="g-count">${d.lines.length} line${d.lines.length === 1 ? '' : 's'} · ${qtyAll} in all</div>
+      <div class="g-bottom">
+        <div><div class="g-words">${esc(words)}</div>
+          ${d.firmBank ? `<div class="g-cap">Pay to</div><div class="g-note">${lines2(d.firmBank)}</div>` : ''}
+          ${d.terms ? `<div class="g-cap">Terms</div><div class="g-note">${lines2(d.terms)}</div>` : ''}
+          ${d.note ? `<div class="g-cap">Note</div><div class="g-note">${lines2(d.note)}</div>` : ''}</div>
+        <div class="g-tot">
+          ${line('Sub total', money(d.subtotal))}
+          ${d.discount ? line('Discount', '− ' + money(d.discount)) : ''}
+          ${taxOn ? line(taxLabel, money(d.tax || 0)) : ''}
+          ${d.charges ? line('Charges', money(d.charges)) : ''}
+          <div class="g-big"><span>Total</span><span>${esc(money(d.total))}</span></div>
+          ${d.paid !== undefined ? line('Paid', money(paid)) + line(due > 0.005 ? 'Balance owing' : 'Balance', money(Math.abs(due)), due > 0.005 ? 'owe' : '') : ''}
+        </div>
+      </div>
+      <div class="g-foot"><div class="g-thanks">${footLine}</div>
+        <div class="g-sign"><div class="ln">${d.signature ? `<img src="${esc(d.signature)}" />` : ''}</div>For ${esc(d.firmName)}</div></div>
+      ${c.code}
+    </div>`;
+    const css = `
+      .gx { font-size: 11.5px; color: #14181f; }
+      .gx .g-rule { height: 5px; background: linear-gradient(90deg, var(--a) 0 62%, #14181f 62% 100%); }
+      .gx .g-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding: 18px 0 14px; }
+      .gx .g-firm { display: flex; gap: 14px; align-items: flex-start; }
+      .gx .g-mono { width: 54px; height: 54px; background: var(--a); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 21px; font-weight: 800; flex: none; }
+      .gx .logo { height: calc(14mm * var(--logo-k, 1.5)); max-width: calc(48mm * var(--logo-k, 1.5)); object-fit: contain; }
+      .gx .g-name { font-size: 19px; font-weight: 800; }
+      .gx .g-line { color: #4a5262; margin-top: 2px; }
+      .gx .g-doc { text-align: right; }
+      .gx .g-title { font-size: 30px; font-weight: 300; color: var(--a); line-height: 1; }
+      .gx .g-meta { display: grid; grid-template-columns: auto auto; gap: 3px 14px; margin-top: 10px; justify-content: end; }
+      .gx .g-meta span { color: #6b7385; text-align: right; } .gx .g-meta b { text-align: right; }
+      .gx .g-cards { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; margin: 4px 0 16px; }
+      .gx .g-card { border: 1px solid #e3e6ec; padding: 10px 12px; position: relative; }
+      .gx .g-cap { font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--a); font-weight: 700; margin-bottom: 4px; }
+      .gx .g-party { font-size: 14px; font-weight: 700; }
+      .gx .g-stamp { position: absolute; right: 12px; top: 10px; border: 2px solid; padding: 2px 10px; font-weight: 800; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+      .gx .g-stamp.ok { color: #0a7a46; } .gx .g-stamp.part { color: #a15c00; } .gx .g-stamp.due { color: #b42318; }
+      .gx table.g-items { width: 100%; border-collapse: collapse; }
+      .gx .g-items th { font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: #6b7385; text-align: left; padding: 7px 8px; border-bottom: 2px solid var(--a); }
+      .gx .g-items td { padding: ${Math.round(8 * pad)}px 8px; border-bottom: 1px solid #eceef2; vertical-align: top; }
+      .gx .g-items tbody tr:nth-child(even) td { background: #f8f9fb; }
+      .gx .r { text-align: right; white-space: nowrap; } .gx .g-items th.r { text-align: right; } .gx .gn { color: #9aa1b1; width: 26px; }
+      .gx .gd { font-size: 10.5px; color: #4a5262; margin-top: 1px; } .gx .gs { font-size: 10px; color: #6b7385; margin-top: 2px; } .gx .gu { color: #6b7385; font-size: 10px; }
+      .gx .g-count { color: #6b7385; font-size: 10.5px; padding: 6px 8px; }
+      .gx .g-bottom { display: grid; grid-template-columns: 1fr 280px; gap: 22px; margin-top: 14px; align-items: start; }
+      .gx .g-words { font-style: italic; color: #4a5262; margin-bottom: 10px; }
+      .gx .g-note { margin-bottom: 10px; color: #4a5262; }
+      .gx .g-tot { border: 1px solid #e3e6ec; }
+      .gx .gl { display: flex; justify-content: space-between; padding: 6px 12px; } .gx .gl.owe { font-weight: 800; color: #b42318; }
+      .gx .g-big { background: var(--a); color: #fff; font-size: 17px; font-weight: 800; padding: 10px 12px; display: flex; justify-content: space-between; }
+      .gx .g-foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 34px; gap: 20px; }
+      .gx .g-thanks { font-size: 13px; font-weight: 700; color: var(--a); }
+      .gx .g-sign { width: 220px; text-align: center; color: #6b7385; font-size: 10.5px; }
+      .gx .g-sign .ln { border-top: 1px solid #14181f; margin-bottom: 4px; height: 40px; display: flex; align-items: flex-end; justify-content: center; }
+      .gx .g-sign img { max-height: 38px; }`;
     return { body, css };
   }
 
