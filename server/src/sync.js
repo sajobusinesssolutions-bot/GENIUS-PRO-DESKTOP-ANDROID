@@ -344,15 +344,9 @@ export default async function syncRoutes(app) {
    * can open them: the owner signs in, picks a shop from the list, and gets
    * that shop — not an empty book, and not whichever shop was on the phone.
    */
-  app.put('/v1/businesses/:id/snapshot', { bodyLimit: 48 * 1024 * 1024 }, async (req, reply) => {
-    const me = await whoami(req, reply);
-    if (!me) return;
-    const biz = await businessFor(me.id, req.params.id);
-    if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
-    const data = req.body?.data;
-    if (!data || typeof data !== 'object') return fail(reply, 400, 'malformed', 'No books were sent.');
-    if (await refuseOldApp(req, reply, biz.id)) return;
-    const version = Number(req.body?.version || 0);
+  /* Keeping a copy: the same for one request and for one put together from parts. */
+  async function storeSnapshot(reply, biz, data, meta) {
+    const version = Number(meta?.version || 0);
     const current = await q(
       'select version from business_snapshots where business_id = $1',
       [biz.id],
@@ -362,7 +356,7 @@ export default async function syncRoutes(app) {
       // another phone sends one. What matters is whether this phone has every
       // change the server holds: if it has pulled them all, its copy is current.
       const head = await q('select coalesce(max(seq),0)::bigint as seq from ops where business_id = $1', [biz.id]);
-      const cursor = Number(req.body?.cursor);
+      const cursor = Number(meta?.cursor);
       if (!Number.isFinite(cursor) || cursor < Number(head.rows[0].seq)) {
         return reply.code(409).send({
           error: 'staleSnapshot',
@@ -380,13 +374,74 @@ export default async function syncRoutes(app) {
          set data = excluded.data, bytes = excluded.bytes,
              device_id = excluded.device_id, version = excluded.version,
              updated_at = now()`,
-      [biz.id, text, Buffer.byteLength(text), req.body?.device || null, nextVersion],
+      [biz.id, text, Buffer.byteLength(text), meta?.device || null, nextVersion],
     );
     // the name on the list follows the name on the books
     if (data.firm?.name && data.firm.name !== biz.name) {
       await q('update businesses set name = $2 where id = $1', [biz.id, String(data.firm.name).slice(0, 200)]);
     }
     return { ok: true, bytes: Buffer.byteLength(text), version: nextVersion };
+  }
+
+  app.put('/v1/businesses/:id/snapshot', { bodyLimit: 48 * 1024 * 1024 }, async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const biz = await businessFor(me.id, req.params.id);
+    if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    const data = req.body?.data;
+    if (!data || typeof data !== 'object') return fail(reply, 400, 'malformed', 'No books were sent.');
+    if (await refuseOldApp(req, reply, biz.id)) return;
+    return storeSnapshot(reply, biz, data, req.body);
+  });
+
+  /*
+   * A big book in parts: each part a slice of the gzipped copy, in base64, so
+   * no one request is large and the till can show how far it has got. The
+   * commit puts them together, unzips, and keeps the copy as above.
+   */
+  let partsReady = false;
+  const partsTable = async () => {
+    if (partsReady) return;
+    await q(`create table if not exists snapshot_parts (business_id uuid not null, upload_id text not null, idx int not null,
+      chunk bytea not null, created_at timestamptz not null default now(), primary key (business_id, upload_id, idx))`);
+    partsReady = true;
+  };
+  app.post('/v1/businesses/:id/snapshot/parts', { bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const biz = await businessFor(me.id, req.params.id);
+    if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    const upload = String(req.body?.upload || '').slice(0, 80), idx = Number(req.body?.index);
+    if (!upload || !Number.isInteger(idx) || idx < 0 || typeof req.body?.b64 !== 'string') return fail(reply, 400, 'malformed', 'A part was missing.');
+    await partsTable();
+    // old unfinished uploads go after a day
+    if (idx === 0) await q("delete from snapshot_parts where created_at < now() - interval '1 day'");
+    await q(`insert into snapshot_parts (business_id, upload_id, idx, chunk) values ($1, $2, $3, $4)
+             on conflict (business_id, upload_id, idx) do update set chunk = excluded.chunk`,
+      [biz.id, upload, idx, Buffer.from(req.body.b64, 'base64')]);
+    return { ok: true, index: idx };
+  });
+  app.post('/v1/businesses/:id/snapshot/commit', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const biz = await businessFor(me.id, req.params.id);
+    if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    if (await refuseOldApp(req, reply, biz.id)) return;
+    const upload = String(req.body?.upload || '').slice(0, 80), total = Number(req.body?.total);
+    await partsTable();
+    const { rows } = await q('select idx, chunk from snapshot_parts where business_id = $1 and upload_id = $2 order by idx', [biz.id, upload]);
+    if (!rows.length || rows.length !== total || rows.some((r, i) => r.idx !== i)) {
+      return fail(reply, 400, 'partsMissing', `Only ${rows.length} of ${total} parts arrived — send the copy again.`);
+    }
+    let data;
+    try {
+      data = JSON.parse(require('zlib').gunzipSync(Buffer.concat(rows.map((r) => r.chunk))).toString('utf8'));
+    } catch {
+      return fail(reply, 400, 'malformed', 'The parts did not make a whole copy — send it again.');
+    }
+    await q('delete from snapshot_parts where business_id = $1 and upload_id = $2', [biz.id, upload]);
+    if (!data || typeof data !== 'object') return fail(reply, 400, 'malformed', 'No books were sent.');
+    return storeSnapshot(reply, biz, data, req.body);
   });
 
   app.get('/v1/businesses/:id/snapshot', async (req, reply) => {
