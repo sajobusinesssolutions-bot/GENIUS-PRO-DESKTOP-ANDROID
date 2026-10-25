@@ -20,6 +20,7 @@ import crashRoutes from './crash.js';
 import summaryRoutes from './summary.js';
 import updateRoutes from './updates.js';
 import transferRoutes from './transfers.js';
+import snapshotPartRoutes from './snapshotparts.js';
 import businessRemoveRoutes from './businessremove.js';
 
 const app = Fastify({
@@ -89,6 +90,7 @@ await app.register(crashRoutes);
 await app.register(summaryRoutes);
 await app.register(updateRoutes);
 await app.register(transferRoutes);
+await app.register(snapshotPartRoutes);
 await app.register(businessRemoveRoutes);
 
 
