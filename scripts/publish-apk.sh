@@ -25,6 +25,12 @@ CODE=$(node -p "require('./app.json').expo.android.versionCode")
 NAME=$(node -p "require('./app.json').expo.version")
 PLAY=$(node -p "require('./app.json').expo.extra?.playStore === true")
 [ "$PLAY" = "false" ] || { echo "app.json has extra.playStore = true; that build cannot install its own updates. Build with it off."; exit 1; }
+# The app reads its own build number from the app.json packed inside it, so the
+# APK must be built from this app.json, or phones see an update forever
+# (1.7.0 was built with 25 and published as 26).
+GRADLE=$(sed -n 's/^ *versionCode \([0-9]*\).*/\1/p' android/app/build.gradle | head -1)
+[ "$GRADLE" = "$CODE" ] || { echo "app.json versionCode $CODE but android/app/build.gradle says $GRADLE: make them match and build again."; exit 1; }
+[ "$APK" -nt app.json ] || { echo "app.json changed after this APK was built: build again so the app carries the same version."; exit 1; }
 SIZE=$(wc -c < "$APK" | tr -d ' ')
 FILE="genius-pro-$NAME-$CODE.apk"
 

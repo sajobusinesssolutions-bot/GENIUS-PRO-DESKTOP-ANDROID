@@ -44,6 +44,10 @@ let windowDays = 0;
 /** For tests; the shop's choice is saved with saveMemoryWindowDays. Takes effect on the next load. */
 export function setMemoryWindowDays(days: number): void { windowDays = Math.max(0, Math.floor(days || 0)); }
 const WINDOW_KEY = 'memoryWindowDays';
+/** More sales than this and, unless the owner chose otherwise, only the recent months are held in memory. */
+const BIG_BOOK_SALES = 15000;
+/** …or more stock moves than this (a Tally import with batches: 3,000 sales made 43,000 moves). */
+const BIG_BOOK_MOVES = 20000;
 /** The shop's choice, kept with the books; 0 = everything in memory. Takes effect on the next start. */
 export async function saveMemoryWindowDays(days: number): Promise<void> {
   setMemoryWindowDays(days);
@@ -163,6 +167,11 @@ export async function loadDB(): Promise<DB | null> {
       engine = 'sqlite';
       const saved = await storeGet(WINDOW_KEY);
       if (saved !== null) setMemoryWindowDays(Number(saved));
+      /* A big book (a Tally import, years of sales or tens of thousands of stock moves) held whole froze Home, Activity
+         and Items. With no choice made in Data tools → Records in memory, such a
+         book keeps its last 180 days in memory; older records open from disk. */
+      else if (await countOlder('sales', '9999-12-31').catch(() => 0) > BIG_BOOK_SALES
+        || await countOlder('movements', '9999-12-31').catch(() => 0) > BIG_BOOK_MOVES) setMemoryWindowDays(180);
       const b = await loadBook({ sinceDay: sinceDay() });
       if (b && b.v === 1 && b.products) return migrate(b) as DB;
       return null;

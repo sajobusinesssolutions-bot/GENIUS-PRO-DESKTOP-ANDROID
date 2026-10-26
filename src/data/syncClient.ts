@@ -20,6 +20,7 @@ import { SERVER_URL, serverConfigured, Result, authError, AuthError } from './au
 import { APP_VERSION } from './appVersion';
 import { activeBranchId } from './branch';
 import * as Crypto from 'expo-crypto';
+import { sharedSettingsDoc } from './sharedSettings';
 
 /**
  * A version-4 UUID for an operation id.
@@ -271,6 +272,7 @@ const KIND_OF: Record<string, OpKind> = {
   estimate: 'record.upsert',
   ledger: 'record.upsert',
   firm: 'record.upsert',
+  settings: 'record.upsert',
   challan: 'record.upsert',
   purchaseOrder: 'record.upsert',
   recurring: 'record.upsert',
@@ -288,7 +290,7 @@ const KIND_OF: Record<string, OpKind> = {
 
 /** Which collection a record.upsert lands in, by queue kind. */
 const COLL_OF: Record<string, string> = {
-  product: 'products', party: 'parties', estimate: 'estimates', ledger: 'coa', firm: 'firm',
+  product: 'products', party: 'parties', estimate: 'estimates', ledger: 'coa', firm: 'firm', settings: 'settings',
   challan: 'challans', purchaseOrder: 'purchaseOrders', recurring: 'recurringInvoices', plan: 'instalmentPlans',
   user: 'users', role: 'roles', ticket: 'tickets', modifierGroup: 'modifierGroups', menuGroup: 'menuGroups', menu: 'menus', priceList: 'priceLists', kitchenOrder: 'kitchenOrders', approval: 'approvals',
 };
@@ -326,6 +328,8 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
     case 'approval': return (d.approvals || []).find((x) => x.id === ref);
     // the business's own details: name, phones, address, logo, signature…
     case 'firm': return d.firm?.id === ref ? d.firm : undefined;
+    // the shop's rules Windows keeps too (sharedSettings.ts)
+    case 'settings': return sharedSettingsDoc(d);
     default: return undefined;
   }
 }

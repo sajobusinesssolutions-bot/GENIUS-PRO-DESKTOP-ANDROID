@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { SHARED_SETTINGS } from './sharedSettings';
 import { AppState } from 'react-native';
 import {
   DB, Sale, SaleLine, ModifierGroup, Ticket, MenuGroup, OrderType, Menu, PriceList, KitchenOrder, ApprovalRequest, Purchase, PurchaseLine, Payment, Entry, JournalLine, PayMethod, Product, Party,
@@ -777,7 +778,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setSetting: (patch) => {
       // the app's own bookkeeping (when the last backup ran, the look of the app) is not a setting someone changes
       if (Object.keys(patch).some((k) => !PERSONAL_SETTINGS.has(k))) requirePerm('settings.manage');
-      commit((d) => { d.settings = { ...d.settings, ...patch }; });
+      commit((d) => {
+        d.settings = { ...d.settings, ...patch };
+        // a rule the Windows till keeps too goes to it (sharedSettings.ts)
+        if (Object.keys(patch).some((k) => (SHARED_SETTINGS as readonly string[]).includes(k))) logic.enqueue(d, 'settings', 'settings');
+      });
     },
     setLoyalty: (patch) => { requirePerm('customers.manage'); commit((d) => { d.loyaltyRules = { ...d.loyaltyRules, ...patch }; }); },
     setWarehouse: (warehouseId) => {
@@ -1587,6 +1592,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             } else if (p?.coll === 'roles' && p.doc) {
               ensureRoles(d);
               put(d.roles, p.doc);
+            } else if (p?.coll === 'settings' && p.doc) {
+              // the shop's rules, changed on another device: only the shared ones are taken
+              const doc: Record<string, unknown> = {};
+              for (const k of SHARED_SETTINGS) if (p.doc[k] !== undefined) doc[k] = p.doc[k];
+              d.settings = { ...d.settings, ...(doc as Partial<DB['settings']>) };
+              applied++;
             } else if (p?.coll === 'firm' && p.doc) {
               // another phone changed the business's details. Every op here is
               // for this business, so they apply even if this phone's own copy
