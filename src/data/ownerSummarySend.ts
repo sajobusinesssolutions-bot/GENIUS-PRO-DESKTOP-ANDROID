@@ -35,7 +35,7 @@ export async function emailToday(d: DB, money: (n: number) => string, refresh: s
   if (!address) return { ok: false, why: 'Add the owner\'s email address first.' };
   if (!refresh) return { ok: false, why: 'Sign in to your Genius Pro account to send by email.' };
   const s = await refreshSession(refresh);
-  if (!s.ok) return { ok: false, why: 'Could not reach the server. Check the internet connection.' };
+  if (!s.ok) return { ok: false, why: "Can't connect to the internet. Check your connection." };
   const r = await emailSummary(s.value.access, address, summarySubject(d), daySummary(d, money));
   return r.ok ? { ok: true } : { ok: false, why: r.error.message };
 }

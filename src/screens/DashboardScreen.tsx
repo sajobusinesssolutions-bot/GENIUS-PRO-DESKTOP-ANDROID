@@ -370,7 +370,7 @@ export default function DashboardScreen() {
           </Pressable>
         ) : null}
         {!online ? (
-          <Banner tone="w" icon="cloud" text={'Offline — ' + plural(queued, 'change') + ' waiting'} />
+          <Banner tone="w" icon="cloud" text={'Now offline — ' + plural(queued, 'change') + ' waiting to go up'} />
         ) : queued ? (
           <Banner tone="g" icon="cloud" text={plural(queued, 'change') + ' waiting to go up'} />
         ) : null}
