@@ -23,7 +23,6 @@ export default function PriceListPicker({ value, onChange, style, compact }: {
   const { db } = useAppData();
   const [open, setOpen] = useState(false);
   const lists = activeLists(db);
-  if (!lists.length) return null;
   const chosen = lists.find((l) => l.id === value);
 
   const row = (id: string | null, name: string, sub: string) => {
@@ -66,6 +65,7 @@ export default function PriceListPicker({ value, onChange, style, compact }: {
       <Sheet visible={open} title="Price list" subtitle="Prices on this document come from it" icon="coins" onClose={() => setOpen(false)}>
         {row(null, 'Standard prices', "Each item's own selling price")}
         {lists.map((l) => row(l.id, l.name, listProducts(db, l).length + ' items · ' + adjLabel(l.adj)))}
+        {!lists.length ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 4 }}>No active price lists yet. Make one under Items → Price lists (or on the PC) and it shows here.</Text> : null}
       </Sheet>
     </>
   );

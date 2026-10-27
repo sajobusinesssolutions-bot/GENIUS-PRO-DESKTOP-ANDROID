@@ -151,7 +151,9 @@ export function audit(d: DB, action: string, details = '') {
  * permit it, permits it.
  */
 export function mayGoBelowZero(d: { settings?: { allowNegativeStock?: boolean; blockNegativeStock?: boolean } }): boolean {
-  return d.settings?.allowNegativeStock === true || d.settings?.blockNegativeStock === false;
+  /* "Refuse to sell what is not in stock" decides; the older switch only when it was never set */
+  if (d.settings?.blockNegativeStock !== undefined) return d.settings.blockNegativeStock === false;
+  return d.settings?.allowNegativeStock === true;
 }
 
 /** Whether an item has a shelf at all. Services and uncounted items do not. */
@@ -193,7 +195,8 @@ export function saleBlockers(d: DB, lines: SaleLine[]): string[] {
     if (available < required) out.push(prod.name + ': ' + available + ' ' + prod.unit + ' on hand, ' + required + ' needed.');
   });
   const trusted = d.session.role === 'owner' || d.session.role === 'manager';
-  if (d.settings.belowCost === 'block' && !trusted) {
+  void trusted;   // "block" holds for everyone, the owner too (as on the PC)
+  if (d.settings.belowCost === 'block') {
     lines.forEach((l) => {
       const prod = d.products.find((p) => p.id === l.productId);
       const cost = (prod ? prod.cost * (l.unitFactor || 1) : 0) || l.cost;

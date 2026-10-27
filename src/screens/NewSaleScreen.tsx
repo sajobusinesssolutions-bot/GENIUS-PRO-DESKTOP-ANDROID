@@ -57,6 +57,8 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const [method, setMethod] = useState<PayMethod>(seed?.method || (db?.settings.defaultMethod as PayMethod) || 'cash');
   const [methods, setMethods] = useState<Array<{ method: PayMethod; amount: number }> | undefined>(editingSale?.methods);
   const [partyId, setPartyId] = useState<string | null>(seed?.partyId || fromQuote?.partyId || null);
+  /* the customer's balance, worked out once per customer, not on every keystroke */
+  const partyBal = useMemo(() => (partyId ? partyBalance(partyId) : 0), [partyId, db?.sales, db?.purchases]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [discount, setDiscount] = useState(seed?.discount || fromQuote?.discount || 0);
   const [additionalCharges, setAdditionalCharges] = useState(seed?.additionalCharges || 0);
   const [description, setDescription] = useState(editingSale?.note || '');
@@ -256,13 +258,13 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     }
 
     // Settings → "Below cost": warn, block, or allow
-    const under = cart.filter((l) => l.cost > 0 && l.price < l.cost);
+    /* the line's own cost, or the item's when the line carries none (items made on the PC) */
+    const costOf = (l: SaleLine) => l.cost || ((db?.products || []).find((x) => x.id === l.productId)?.cost || 0) * (l.unitFactor || 1);
+    const under = cart.filter((l) => costOf(l) > 0 && l.price < costOf(l));
     const belowCost = (st as any)?.belowCost || 'warn';
-    if (under.length && belowCost === 'block' && !trusted) {
-      ownerPin.ask(
-        'Approve a sale that sells below cost for ' + under[0].name + '.',
-        () => askCustomer(),
-      );
+    /* "Stop selling below cost" stops everyone, the owner too, as on the PC */
+    if (under.length && belowCost === 'block') {
+      error(under[0].name + ' is below its cost of ' + money(costOf(under[0])) + '. Selling below cost is switched off in Settings.');
       return;
     }
 
@@ -279,7 +281,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       go();
     };
 
-    if (under.length && belowCost === 'warn') {
+    if (under.length && belowCost === 'warn' && !trusted) {
       ownerPin.ask(
         'Approve selling below cost for ' + under.map((l) => l.name).slice(0, 3).join(', ') + (under.length > 3 ? ' and others' : '') + '.',
         () => askCustomer(),
@@ -382,12 +384,9 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         ) : null}
         {/* the document's details in one row: price list (when the shop has any), date and time, number */}
         <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
-          {(db?.priceLists || []).some((l) => l.status === 'Active') ? (
-            <>
-              <PriceListPicker compact value={priceListId} onChange={choosePriceList} />
-              <View style={{ width: 1, backgroundColor: colors.line }} />
-            </>
-          ) : null}
+          {/* always there: the shop chooses a price list for this sale, or keeps ordinary prices */}
+          <PriceListPicker compact value={priceListId} onChange={choosePriceList} />
+          <View style={{ width: 1, backgroundColor: colors.line }} />
           <Pressable onPress={() => setPickerMode('date')} style={{ flex: 1.15, minWidth: 0, paddingHorizontal: 10, paddingVertical: 8 }} accessibilityLabel="Date">
             <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>Date</Text>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 2 }}>
@@ -441,7 +440,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{selectedParty.address}</Text>
               ) : null}
             </View>
-            {selectedParty ? <BalanceTag balance={partyBalance(selectedParty.id)} money={money} /> : null}
+            {selectedParty ? <BalanceTag balance={partyBal} money={money} /> : null}
             <Icon name="chev" size={18} color={colors.faint} />
           </Pressable>
           {method === 'credit' && !partyId ? (
@@ -542,7 +541,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         // role first ("Change prices at the till", "Give discounts"), then the till settings
         editRate={trusted || can('sales.price_edit') || db?.settings.allowPriceEdit === true}
         maxDiscountPct={!can('sales.discount') ? 0 : trusted ? 100 : Number(db?.settings.maxDiscountPct ?? 100)}
-        belowCost={trusted ? 'allow' : (db?.settings.belowCost || 'warn')}
+        belowCost={db?.settings.belowCost === 'block' ? 'block' : trusted ? 'allow' : (db?.settings.belowCost || 'warn')}
         canCreate={newItem.canCreate}
         units={newItem.units}
         onCreateProduct={newItem.create}

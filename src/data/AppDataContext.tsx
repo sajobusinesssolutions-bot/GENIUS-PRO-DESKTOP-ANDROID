@@ -25,7 +25,7 @@ import { Refusal } from './refusal';
 import { refusalFor } from '../nav/routePerms';
 import { licenceFromToken, verifyLicenceSignature } from './licenceKey';
 import { hashPin, verifyPin } from './pinHash';
-import { fetchLicence, normaliseLicenceResponse } from './authApi';
+import { fetchLicence, normaliseLicenceResponse, SERVER_URL } from './authApi';
 import type { StoredOp } from './syncProtocol';
 import NetInfo from '@react-native-community/netinfo';
 import { businessAllowance, businessLimitWords } from './editions';
@@ -372,6 +372,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const commitRef = useRef<((mut: (d: DB) => void) => void) | null>(null);
 
   useEffect(() => {
+    /* "Is there internet?" is asked of our own server, not Google's test address, which
+       some mobile networks block or answer slowly, so a working phone was told it had
+       no internet and refused to save. Only a phone with no connection at all, or one
+       our server truly cannot be reached from, counts as offline. */
+    NetInfo.configure({ reachabilityUrl: SERVER_URL + '/health', reachabilityTest: async (r) => r.status === 200,
+      reachabilityShortTimeout: 8000, reachabilityLongTimeout: 60000, reachabilityRequestTimeout: 10000 });
     const sub = NetInfo.addEventListener((state) => {
       const up = state.isConnected !== false && state.isInternetReachable !== false;
       if (up === onlineRef.current) return;

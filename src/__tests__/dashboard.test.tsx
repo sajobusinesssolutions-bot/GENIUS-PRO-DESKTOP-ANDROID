@@ -191,7 +191,7 @@ describe('what the redesign took away', () => {
     mockState.online = false;
     mockState.queue = [{ id: 'q1' }];
     render(<DashboardScreen />);
-    expect(screen.getByText('Offline — 1 change waiting')).toBeTruthy();
+    expect(screen.getByText('Now offline — 1 change waiting to go up')).toBeTruthy();
   });
 
   it('no longer carries the quick-action grid, which the tab bar already holds', () => {
