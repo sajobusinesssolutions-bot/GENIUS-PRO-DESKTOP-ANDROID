@@ -10,6 +10,7 @@
  *      Delete — kept apart, in red, with a confirm step.
  *  - Transactions / Parties switch sits in the header.
  */
+import { DeleteConfirm } from '../components/DeleteConfirm';
 import React, { useMemo, useState } from 'react';
 import { View, FlatList, Text, RefreshControl } from 'react-native';
 import { requestSync } from '../data/SyncKeeper';
@@ -538,24 +539,24 @@ export default function SalesListScreen({ navigation }: Props) {
         flexDirection: 'row', borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden',
       }}>
         {showTotals ? (
-        <View style={{ flex: 1, padding: 14, gap: 4 }}>
+        <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 11, gap: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Icon name="receipt" size={14} color={colors.accent} />
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Total sales</Text>
+            <Icon name="receipt" size={12} color={colors.accent} />
+            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>Total sales</Text>
           </View>
-          <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(totalSales)}</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{sales.length} sale{sales.length === 1 ? '' : 's'} · {periodLabel}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{money(totalSales)}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>{sales.length} sale{sales.length === 1 ? '' : 's'} · {periodLabel}</Text>
         </View>
         ) : null}
         {showTotals && showBalances ? <View style={{ width: 1, backgroundColor: colors.line, marginVertical: 12 }} /> : null}
         {showBalances ? (
-        <View style={{ flex: 1, padding: 14, gap: 4 }}>
+        <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 11, gap: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Icon name="alert" size={14} color={balanceDue ? colors.danger : colors.good} />
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Balance due</Text>
+            <Icon name="alert" size={12} color={balanceDue ? colors.danger : colors.good} />
+            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>Balance due</Text>
           </View>
-          <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: balanceDue ? colors.danger : colors.good }}>{money(balanceDue)}</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{balanceDue ? 'Still to collect' : 'All collected'}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: balanceDue ? colors.danger : colors.good }}>{money(balanceDue)}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>{balanceDue ? 'Still to collect' : 'All collected'}</Text>
         </View>
         ) : null}
       </View>
@@ -773,19 +774,21 @@ export default function SalesListScreen({ navigation }: Props) {
       {/* ⋮ actions sheet */}
       <Sheet
         visible={!!menu}
-        title={menu ? KIND_WORD[menu.kind] + ' #' + menu.ref : ''}
-        subtitle={menu ? menu.title + (menu.amount ? ' · ' + money(menu.amount) : '') : ''}
+        title={menu && confirm && menu.remove ? 'Delete' : menu ? KIND_WORD[menu.kind] + ' #' + menu.ref : ''}
+        subtitle={menu && confirm && menu.remove ? undefined : menu ? menu.title + (menu.amount ? ' · ' + money(menu.amount) : '') : ''}
         onClose={closeMenu}
       >
         {menu && confirm && menu.remove ? (
-          <View style={{ backgroundColor: colors.dangerSoft, borderRadius: 4, padding: 14 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.danger }}>{menu.remove.label}?</Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft, marginTop: 4 }}>{menu.remove.text}</Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-              <View style={{ flex: 1 }}><Button label="Keep it" onPress={() => setConfirm(false)} /></View>
-              <View style={{ flex: 1 }}><Button variant="dngr" label="Delete" onPress={() => { const run = menu.remove!.run; closeMenu(); run(); }} /></View>
-            </View>
-          </View>
+          <DeleteConfirm
+            title={menu.remove.label}
+            what={KIND_WORD[menu.kind] + ' #' + menu.ref}
+            who={menu.title}
+            amount={menu.amount ? money(menu.amount) : undefined}
+            when={dayTime(menu.ts)}
+            text={menu.remove.text}
+            onKeep={() => setConfirm(false)}
+            onDelete={() => { const run = menu.remove!.run; closeMenu(); run(); }}
+          />
         ) : menu ? (
           <View>
             {menu.edit ? <MenuRow title="Edit" onPress={after(menu.edit)} /> : null}
@@ -874,30 +877,37 @@ function TxnRow({ r, money, tone, onPrint, onShare, onMore }: {
       onPress={r.tapMenu || !r.open ? onMore : r.open}
       style={({ pressed }) => ({
         marginHorizontal: 16, marginBottom: 6, borderRadius: 4,
-        paddingTop: 9, paddingBottom: 6, paddingHorizontal: 12,
+        paddingTop: 9, paddingBottom: 3, paddingHorizontal: 12,
         backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line, opacity: r.dim ? 0.55 : 1,
       })}
     >
-      {/* who, and how much */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{r.title}</Text>
+      {/* who, with its status beside the name, and how much */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{r.title}</Text>
+          <View style={{ paddingVertical: 1.5, paddingHorizontal: 6, borderRadius: 4, backgroundColor: tone.bg }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 9.5, letterSpacing: 0.4, color: tone.fg }}>{r.badge.label.toUpperCase()}</Text>
+          </View>
+        </View>
         {r.amount ? (
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: r.amountTone || colors.ink }}>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: r.amountTone || colors.ink }}>
             {(r.negative ? '-' : '') + money(r.amount)}
           </Text>
         ) : null}
       </View>
 
-      {/* what it is, its number and when, the fact that matters, its status, and what can be done — one line */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+      {/* what it is, its number and when */}
+      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>
+        <Text style={{ fontFamily: fonts.uiSemi, color: r.labelColor }}>{r.label}</Text>
+        {' · #' + r.ref + ' · ' + when}
+      </Text>
+
+      {/* under the rule: the balance or how it was paid, and what can be done */}
+      <View style={{ height: 1, backgroundColor: colors.line, marginTop: 7, marginBottom: 2 }} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>
-          <Text style={{ fontFamily: fonts.uiSemi, color: r.labelColor }}>{r.label}</Text>
-          {' · #' + r.ref + ' · ' + when}
-          {r.foot ? <Text style={{ color: r.foot.tone || colors.soft }}>{' · ' + r.foot.label + ' ' + r.foot.value}</Text> : null}
+          {r.foot ? <>{r.foot.label + ' '}<Text style={{ fontFamily: fonts.uiSemi, color: r.foot.tone || colors.soft }}>{r.foot.value}</Text></> : null}
         </Text>
-        <View style={{ paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4, backgroundColor: tone.bg }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 9.5, letterSpacing: 0.5, color: tone.fg }}>{r.badge.label.toUpperCase()}</Text>
-        </View>
         {onPrint ? icon('print', 'Print', onPrint) : null}
         {onShare ? icon('share', 'Share', onShare) : null}
         {icon('dots', 'More actions', onMore)}

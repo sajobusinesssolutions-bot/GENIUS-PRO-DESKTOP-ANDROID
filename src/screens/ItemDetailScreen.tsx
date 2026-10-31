@@ -70,7 +70,16 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
 
   /* with only recent trade in memory, the item's older movements come from disk */
   const older = useOlderRows<Movement>(db, 'movements', id);
-  const allMoves = useMemo(() => withOlder(db?.movements || [], older), [db, older]);
+  /* A deleted sale or bill is reversed, not erased: its stock move and the move
+     undoing it both stay in the books. Neither is a transaction of this item any
+     more, so both leave its list (they are in More → Deleted transactions). */
+  const allMoves = useMemo(() => {
+    const gone = new Set<string>();
+    (db?.sales || []).forEach((x) => { if (x.deletedAt) { gone.add(x.no); gone.add(x.id); } });
+    (db?.purchases || []).forEach((x) => { if ((x as any).deletedAt) { gone.add(x.no); gone.add(x.id); } });
+    const all = withOlder(db?.movements || [], older);
+    return gone.size ? all.filter((m) => !(m.ref && gone.has(m.ref))) : all;
+  }, [db, older]);
   /* a movement opens the document it came from: the sale, the purchase, the stock take, the transfer */
   const openMove = (m: Movement) => {
     const sale = db?.sales.find((x) => x.no === m.ref || x.id === m.ref);

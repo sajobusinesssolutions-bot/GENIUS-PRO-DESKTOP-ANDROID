@@ -483,6 +483,7 @@ export function Search({ value, onChange, placeholder, right, error }: {
         onChangeText={onChange}
         autoCorrect={false}
         returnKeyType="search"
+        filled
         error={error ? ' ' : undefined}
         style={{ flex: 1, marginBottom: 0 }}
         trailing={value ? <Tap onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Tap> : null}

@@ -25,7 +25,7 @@ import { useAppData } from '../data/AppDataContext';
 import { useAuth } from '../data/AuthContext';
 import { refreshSession } from '../data/authApi';
 import { transfersApi, type RemoteTransfer } from '../data/syncClient';
-import { Card, Cap, Button, Chip, ChipStrip, EmptyState } from '../components/ui';
+import { Card, Cap, Button, Chip, ChipStrip, EmptyState, FAB, FAB_COLORS } from '../components/ui';
 import { Field } from '../components/form';
 import { uid } from '../data/uid';
 import { activeBranchId } from '../data/branch';
@@ -142,6 +142,8 @@ export default function BranchTransfersScreen() {
           ))}
         </ScrollView>
       )}
+      {/* a new transfer, from either list */}
+      {tab !== 'new' && can('inventory.transfer') ? <FAB label="Send stock" icon="plus" color={FAB_COLORS.addItem} onPress={() => setTab('new')} /> : null}
     </View>
   );
 }

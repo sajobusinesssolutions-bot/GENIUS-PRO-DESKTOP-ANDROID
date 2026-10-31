@@ -105,7 +105,7 @@ export function FieldNote({ children }: { children: React.ReactNode }) {
 export function Field({
   label, value, onChangeText, placeholder, numeric, decimal, multiline, readOnly, right, style,
   compact, error, icon, secure, maxLength, autoCapitalize, onFocus, onBlur, suffix, autoFocus, inputRef, big, keyboard,
-  trailing, returnKeyType, onSubmitEditing, autoCorrect, keepFocus, money,
+  trailing, returnKeyType, onSubmitEditing, autoCorrect, keepFocus, money, filled,
 }: {
   label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string;
   numeric?: boolean; decimal?: boolean; multiline?: boolean; readOnly?: boolean; right?: React.ReactNode;
@@ -127,8 +127,10 @@ export function Field({
   keepFocus?: boolean;
   /** An amount: shows the currency and groups the digits. On by itself for amount-like labels. */
   money?: boolean;
+  /** A search box: filled grey with no edge, as on Price lists. */
+  filled?: boolean;
 }) {
-  const { colors } = useTheme();
+  const { colors, dark } = useTheme();
   const app = useAppDataSafe();
   const host = useScrollHost();
   const own = React.useRef<TextInput>(null);
@@ -138,8 +140,8 @@ export function Field({
   const sym = isMoney ? (app?.db?.settings.currency || '') : '';
   const symBefore = app?.db?.settings.symbolBefore !== false;
   /* the box being typed in is amber, as the line being worked on is on the Windows voucher desk */
-  const amberEdge = "#E8A317", amberFill = colors.bg === "#F2F4F7" ? "#FFFBEA" : "rgba(232,197,71,0.10)";
-  const bg = readOnly ? colors.sunk : focused && !hasError ? amberFill : colors.surface;
+  const amberEdge = "#E8A317", amberFill = !dark ? "#FFFBEA" : "rgba(232,197,71,0.10)";
+  const bg = readOnly ? colors.sunk : filled ? colors.sunk : focused && !hasError ? amberFill : colors.surface;
   // a lone zero in a number box is a blank, not a value: it clears on focus
   // so the first key typed replaces it instead of landing after it
   const raw = String(value ?? '');
@@ -156,7 +158,7 @@ export function Field({
 
   const rowH = big ? 68 : multiline ? 88 : compact ? 46 : 52;
   const padH = compact ? 10 : 12;
-  const edge = hasError ? colors.danger : focused ? amberEdge : colors.line;
+  const edge = hasError ? colors.danger : filled ? (focused ? colors.accent : 'transparent') : focused ? amberEdge : colors.line;
   const labelLeft = padH + (icon ? 25 : 0);
   const restTop = multiline ? 14 : rowH / 2 - 10;
   const setRef = (r: TextInput | null) => {

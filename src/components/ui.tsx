@@ -290,6 +290,7 @@ export function SearchBar({ value, onChange, placeholder }: {
         onChangeText={onChange}
         autoCorrect={false}
         returnKeyType="search"
+        filled
         style={{ marginBottom: 0 }}
         trailing={value ? <Tap onPress={() => onChange('')} hitSlop={8}><Icon name="x" size={17} color={colors.faint} /></Tap> : null}
       />

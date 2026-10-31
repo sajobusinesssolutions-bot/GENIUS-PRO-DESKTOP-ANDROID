@@ -4,7 +4,7 @@ import { View, Text, FlatList, TextInput, Alert } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
-import { Empty, Button, Cap, DocCard, Badge, StatGrid, SectionLabel, StickyBar } from '../components/ui';
+import { Empty, Button, Cap, DocCard, Badge, StatGrid, SectionLabel, StickyBar, Search } from '../components/ui';
 import { Field } from '../components/form';
 import { Icon } from '../components/icons';
 import { expiryState } from '../data/batches';
@@ -71,6 +71,9 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
   const { db, money, setStockTakeCount, setStockTakeBatchCount, postStockTake } = useAppData();
   const st = db?.stockTakes.find((s) => s.id === route.params.stockTakeId);
   const [openLine, setOpenLine] = React.useState<string | null>(null);
+  /* find the item on the shelf in front of you, and see what is still to count */
+  const [q, setQ] = React.useState('');
+  const [show, setShow] = React.useState<'all' | 'todo' | 'short' | 'over'>('all');
   const who = useWho('Who is posting this count?');
   if (!st) return <Empty title="Not found" />;
 
@@ -86,26 +89,41 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
     return sum + (l.counted - l.expected) * cost;
   }, 0);
 
+  const needle = q.trim().toLowerCase();
+  const prodOf = (id: string) => db?.products.find((p) => p.id === id);
+  const lines = st.lines.filter((l) => {
+    if (show === 'todo' && l.counted != null) return false;
+    if (show === 'short' && !(l.counted != null && l.counted < l.expected)) return false;
+    if (show === 'over' && !(l.counted != null && l.counted > l.expected)) return false;
+    if (!needle) return true;
+    const p = prodOf(l.productId);
+    return (l.name + ' ' + (p?.sku || '') + ' ' + (p?.genericName || '') + ' ' + (p?.barcodes || []).join(' ') + ' ' + (l.batches || []).map((b) => b.no).join(' ')).toLowerCase().includes(needle);
+  });
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {who.sheet}
       <FlatList
-        data={st.lines}
+        data={lines}
         keyExtractor={(l) => l.productId}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: open ? 180 : 130 }}
         ListHeaderComponent={
-          <View style={{ paddingTop: 14, marginBottom: 14 }}>
-            <StatGrid
-              items={[
-                { icon: 'check', label: 'Counted', value: done + ' / ' + st.lines.length, tone: done === st.lines.length ? 'good' : 'warn' },
-                { icon: variance === 0 ? 'check' : 'alert', label: 'Net variance', value: (variance > 0 ? '+' : '') + variance, tone: variance === 0 ? 'good' : variance > 0 ? 'warn' : 'danger' },
-              ]}
-            />
-            <View style={{ height: 16 }} />
-            <SectionLabel right={<Badge label={open ? 'Open' : 'Posted'} tone={open ? 'warn' : 'good'} />}>
-              Count sheet
-            </SectionLabel>
+          <View style={{ paddingTop: 10, marginBottom: 8, gap: 8 }}>
+            <Search value={q} onChange={setQ} placeholder="Find an item: name, code, barcode or batch" />
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {([['all', 'All ' + st.lines.length], ['todo', 'To count ' + (st.lines.length - done)], ['short', 'Short ' + short], ['over', 'Over ' + over]] as const).map(([k, l]) => (
+                <Pressable key={k} onPress={() => setShow(k)} style={{
+                  flex: 1, alignItems: 'center', paddingVertical: 5, borderRadius: 999, borderWidth: 1.2,
+                  borderColor: show === k ? colors.accent : colors.line, backgroundColor: show === k ? colors.accentSoft : colors.surface,
+                }}>
+                  <Text numberOfLines={1} style={{ fontFamily: show === k ? fonts.uiSemi : fonts.ui, fontSize: 12, color: show === k ? colors.accent : colors.ink }}>{l}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 10.5, letterSpacing: 0.5, color: colors.faint }}>
+              {(open ? 'OPEN' : 'POSTED') + ' · ' + lines.length + ' SHOWN'}
+            </Text>
           </View>
         }
         renderItem={({ item }) => {
@@ -115,14 +133,14 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
           return (
             <View
               style={{
-                backgroundColor: colors.surface, borderRadius: 4, padding: 14, marginBottom: 10,
-                shadowColor: '#0B1D2A', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 2,
+                backgroundColor: colors.surface, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 6,
+                borderWidth: 1, borderColor: colors.line,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{item.name}</Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{item.name}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>
                     Expected {item.expected}{batched ? ' · ' + item.batches!.length + ' batches' : ''}
                   </Text>
                 </View>
@@ -132,29 +150,29 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
                     onPress={() => setOpenLine(expanded ? null : item.productId)}
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 7,
-                      paddingHorizontal: 13, paddingVertical: 12, borderRadius: 4,
+                      paddingHorizontal: 10, paddingVertical: 8, borderRadius: 4,
                       borderWidth: 1.4, borderColor: expanded ? colors.accent : colors.line,
                       backgroundColor: expanded ? colors.accentSoft : colors.surface,
                     }}
                   >
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: expanded ? colors.accent : colors.ink }}>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: expanded ? colors.accent : colors.ink }}>
                       {item.counted == null ? 'Count' : String(item.counted)}
                     </Text>
                     <Icon name={expanded ? 'up' : 'down'} size={16} color={expanded ? colors.accent : colors.faint} />
                   </Pressable>
                 ) : (
-                  <CountBox width={104} readOnly={!open} start={item.counted} onDone={(n) => setStockTakeCount(st.id, item.productId, n)} />
+                  <CountBox width={88} readOnly={!open} start={item.counted} onDone={(n) => setStockTakeCount(st.id, item.productId, n)} />
                 )}
 
                 {v != null ? (
-                  <Text style={{ width: 48, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 14, color: v === 0 ? colors.faint : v > 0 ? colors.good : colors.danger }}>
+                  <Text style={{ width: 44, textAlign: 'right', fontFamily: fonts.uiSemi, fontSize: 12.5, color: v === 0 ? colors.faint : v > 0 ? colors.good : colors.danger }}>
                     {v > 0 ? '+' : ''}{v}
                   </Text>
-                ) : <View style={{ width: 48 }} />}
+                ) : <View style={{ width: 44 }} />}
               </View>
 
               {batched && expanded ? (
-                <View style={{ marginTop: 14, gap: 10 }}>
+                <View style={{ marginTop: 8, gap: 6 }}>
                   <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 0.7, color: colors.faint, textTransform: 'uppercase' }}>
                     Count each batch
                   </Text>
@@ -166,14 +184,14 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
                         key={b.no}
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: 11,
-                          backgroundColor: colors.sunk, borderRadius: 4, padding: 12,
+                          backgroundColor: colors.sunk, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 7,
                           borderLeftWidth: 4,
                           borderLeftColor: state === 'expired' || state === 'critical' ? colors.danger : state === 'soon' ? colors.warn : colors.good,
                         }}
                       >
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{b.no}</Text>
-                          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
+                          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{b.no}</Text>
+                          <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 1 }}>
                             Expected {b.expected}
                             {b.expiry ? ' · exp ' + new Date(b.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''}
                           </Text>

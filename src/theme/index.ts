@@ -28,8 +28,9 @@ export const control = { field: 44, button: 46, buttonSm: 36, row: 52 };
 export const fonts = {
   ui: 'Sans_400',
   uiSemi: 'Sans_500',
-  uiBold: 'Sans_600',
-  uiExtra: 'Sans_700',
+  // a step lighter than before, as the Price lists screen: no heavy bold anywhere
+  uiBold: 'Sans_500',
+  uiExtra: 'Sans_600',
   mono: 'Sans_400',
   monoSemi: 'Sans_500',
 };

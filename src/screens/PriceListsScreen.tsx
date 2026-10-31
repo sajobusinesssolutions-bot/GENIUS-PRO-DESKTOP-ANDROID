@@ -19,7 +19,7 @@
  * opens a picker of the shop's items.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, KeyboardAvoidingView, Platform, FlatList } from 'react-native';
 import ScrollView from '../components/KeyScroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppData } from '../data/AppDataContext';
@@ -187,6 +187,10 @@ export default function PriceListsScreen({ navigation }: any) {
   const iq = itemQuery.trim().toLowerCase();
   const products = iq ? onListAll.filter((p) => (p.name + ' ' + p.sku + ' ' + (p.genericName || '')).toLowerCase().includes(iq)) : onListAll;
   const allItems = db.products.filter((p) => p.active !== false);
+  const pq = pickQuery.trim().toLowerCase();
+  const pickList = pq ? allItems.filter((p) => (p.name + ' ' + p.sku + ' ' + (p.genericName || '')).toLowerCase().includes(pq)) : allItems;
+  /* a Set for the ticks: includes() over hundreds of ids for every row was part of the lag */
+  const picked = new Set(picking || []);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top }}>
@@ -273,44 +277,56 @@ export default function PriceListsScreen({ navigation }: any) {
             </Pressable>
             <Text style={st.tableHeadText}>SELLING PRICE ({cur})</Text>
           </View>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-            {iq && !products.length ? (
-              <Text style={{ paddingVertical: 32, textAlign: 'center', fontSize: 14, color: C.muted, fontFamily: fonts.ui }}>Nothing on this list matches “{itemQuery.trim()}”.</Text>
-            ) : products.length > 0 ? (
-              <View style={{ backgroundColor: C.surface, borderRadius: 4, overflow: 'hidden' }}>
-                {products.map((p) => {
-                  const key = current.id + p.id;
-                  const changed = pending[current.id]?.[p.id] !== undefined;
-                  const d = drafts[key];
-                  const value = d !== undefined ? (d ? commas(Number(d)) : '') : commas(priceOf(current, p));
-                  return (
-                    <View key={p.id} style={st.productRow}>
-                      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                        <Text numberOfLines={1} style={{ fontSize: 14, color: C.ink, fontFamily: fonts.ui }}>{p.name}</Text>
-                        <Text numberOfLines={1} style={{ fontSize: 12, color: C.muted, fontFamily: MONO }}>{p.sku} · cost {fmt(p.cost)}</Text>
-                      </View>
-                      <TextInput
-                        value={value}
-                        keyboardType="number-pad"
-                        accessibilityLabel={'Selling price for ' + p.name}
-                        onChangeText={(t) => setPrice(current.id, p.id, t)}
-                        onBlur={() => clearDraft(key)}
-                        style={[st.priceInput, { borderColor: changed ? C.primary : C.outlineSoft, backgroundColor: changed ? C.changed : C.bg }]}
-                      />
+          {/* only the rows on screen are built: a list of 600 items with a price box each froze the screen */}
+          {products.length > 0 ? (
+            <FlatList
+              style={{ flex: 1 }}
+              data={products}
+              keyExtractor={(p) => p.id}
+              keyboardShouldPersistTaps="handled"
+              initialNumToRender={14}
+              maxToRenderPerBatch={14}
+              windowSize={7}
+              removeClippedSubviews
+              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+              renderItem={({ item: p, index }) => {
+                const key = current.id + p.id;
+                const changed = pending[current.id]?.[p.id] !== undefined;
+                const d = drafts[key];
+                const value = d !== undefined ? (d ? commas(Number(d)) : '') : commas(priceOf(current, p));
+                return (
+                  <View style={[st.productRow, { backgroundColor: C.surface }, index === 0 ? { borderTopLeftRadius: 4, borderTopRightRadius: 4 } : null, index === products.length - 1 ? { borderBottomLeftRadius: 4, borderBottomRightRadius: 4 } : null]}>
+                    <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                      <Text numberOfLines={1} style={{ fontSize: 14, color: C.ink, fontFamily: fonts.ui }}>{p.name}</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 12, color: C.muted, fontFamily: MONO }}>{p.sku} · cost {fmt(p.cost)}</Text>
                     </View>
-                  );
-                })}
-              </View>
-            ) : (
-              <View style={{ paddingVertical: 64, paddingHorizontal: 24, alignItems: 'center', gap: 12 }}>
-                <Text style={{ fontSize: 18, color: C.ink, fontFamily: fonts.ui }}>No {V.items.toLowerCase()} yet</Text>
-                <Text style={{ fontSize: 14, color: C.muted, maxWidth: 260, textAlign: 'center', fontFamily: fonts.ui }}>Add {V.items.toLowerCase()} to set prices for this list.</Text>
-                <Pressable onPress={() => { setPickQuery(''); setPicking([]); }} style={[st.filledBtn, { marginTop: 8 }]}>
-                  <Text style={st.filledBtnText}>Add {V.items.toLowerCase()}</Text>
-                </Pressable>
-              </View>
-            )}
-          </ScrollView>
+                    <TextInput
+                      value={value}
+                      keyboardType="number-pad"
+                      accessibilityLabel={'Selling price for ' + p.name}
+                      onChangeText={(t) => setPrice(current.id, p.id, t)}
+                      onBlur={() => clearDraft(key)}
+                      style={[st.priceInput, { borderColor: changed ? C.primary : C.outlineSoft, backgroundColor: changed ? C.changed : C.bg }]}
+                    />
+                  </View>
+                );
+              }}
+            />
+          ) : (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+              {iq ? (
+                <Text style={{ paddingVertical: 32, textAlign: 'center', fontSize: 14, color: C.muted, fontFamily: fonts.ui }}>Nothing on this list matches “{itemQuery.trim()}”.</Text>
+              ) : (
+                <View style={{ paddingVertical: 64, paddingHorizontal: 24, alignItems: 'center', gap: 12 }}>
+                  <Text style={{ fontSize: 18, color: C.ink, fontFamily: fonts.ui }}>No {V.items.toLowerCase()} yet</Text>
+                  <Text style={{ fontSize: 14, color: C.muted, maxWidth: 260, textAlign: 'center', fontFamily: fonts.ui }}>Add {V.items.toLowerCase()} to set prices for this list.</Text>
+                  <Pressable onPress={() => { setPickQuery(''); setPicking([]); }} style={[st.filledBtn, { marginTop: 8 }]}>
+                    <Text style={st.filledBtnText}>Add {V.items.toLowerCase()}</Text>
+                  </Pressable>
+                </View>
+              )}
+            </ScrollView>
+          )}
           {pendingCount > 0 && (
             <View style={[st.saveBar, { paddingBottom: 20 + insets.bottom }]}>
               <Text style={{ flex: 1, fontSize: 14, color: C.soft, fontFamily: fonts.ui }}>{pendingCount === 1 ? '1 unsaved change' : pendingCount + ' unsaved changes'}</Text>
@@ -447,9 +463,15 @@ export default function PriceListsScreen({ navigation }: any) {
               <Pressable onPress={() => setPicking([])} style={[st.chip, { borderColor: C.outline }]}><Text style={{ fontSize: 14, color: C.ink, fontFamily: fonts.uiSemi }}>None</Text></Pressable>
               <Text style={{ alignSelf: 'center', fontSize: 13, color: C.muted, fontFamily: fonts.ui }}>{picking?.length || 0} chosen</Text>
             </View>
-            <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
-              {allItems.filter((p) => !pickQuery.trim() || (p.name + ' ' + p.sku).toLowerCase().includes(pickQuery.trim().toLowerCase())).map((p) => {
-                const on = !!picking?.includes(p.id);
+            <FlatList
+              style={{ flexGrow: 0 }}
+              keyboardShouldPersistTaps="handled"
+              data={pickList}
+              keyExtractor={(p) => p.id}
+              initialNumToRender={16}
+              windowSize={7}
+              renderItem={({ item: p }) => {
+                const on = picked.has(p.id);
                 return (
                   <Pressable key={p.id} onPress={() => setPicking((x) => (x ? (on ? x.filter((i) => i !== p.id) : [...x, p.id]) : x))} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.rule }}>
                     <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: on ? C.primary : C.outline, backgroundColor: on ? C.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
@@ -461,8 +483,8 @@ export default function PriceListsScreen({ navigation }: any) {
                     </View>
                   </Pressable>
                 );
-              })}
-            </ScrollView>
+              }}
+            />
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingTop: 16 }}>
               <Pressable onPress={() => setPicking(null)} style={st.textBtn}><Text style={st.textBtnText}>Cancel</Text></Pressable>
               <Pressable

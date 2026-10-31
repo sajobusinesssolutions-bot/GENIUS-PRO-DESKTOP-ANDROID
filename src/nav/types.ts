@@ -76,7 +76,7 @@ export type RootStackParamList = {
   LedgerDetail: { ledgerId: string };
   JournalEntry: undefined;
   TrialBalance: undefined;
-  BatchMovement: undefined;
+  BatchMovement: { batchNo?: string } | undefined;
   StockTakes: undefined;
   StockTakeDetail: { stockTakeId: string };
   Production: undefined;
