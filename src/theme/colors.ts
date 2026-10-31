@@ -11,16 +11,16 @@ export type ThemeColors = {
 };
 
 export const light: ThemeColors = {
-  // The Price lists palette, for every screen: a soft green-grey page, white
-  // cards, a green accent and quiet grey secondary text. Shapes stay each screen's own.
-  bg: '#F7FAF8', surface: '#FFFFFF', sunk: '#E6EBE8', line: '#E2E7E4', lineHard: '#C0C9C3',
-  rail: '#07493B', ink: '#191C1B', soft: '#404944', faint: '#56605B',
-  good: '#0B6B57', goodSoft: '#CDEEE2',
-  warn: '#B5650F', warnSoft: '#FFF0DC',
-  danger: '#BA1A1A', dangerSoft: '#FDEAEA',
-  accent: '#0B6B57', accentSoft: '#CDE8DF', accentInk: '#FFFFFF',
-  page: '#E6EBE8', pageInk: '#404944',
-  row: '#EDF1EE',
+  // The blue palette. The page is a shade darker than the cards sit on, so every
+  // white card stands off it on Home, Activity, Items and Menu.
+  bg: '#E8ECF1', surface: '#FFFFFF', sunk: '#F2F4F7', line: '#E1E5EB', lineHard: '#CDD3DC',
+  rail: '#0F2F46', ink: '#27313C', soft: '#3B4652', faint: '#6F7A87',
+  good: '#16976A', goodSoft: '#E6F7F2',
+  warn: '#D3832B', warnSoft: '#FFF0DC',
+  danger: '#D94C4C', dangerSoft: '#FDEAEA',
+  accent: '#1A7AE6', accentSoft: 'rgba(26,122,230,0.10)', accentInk: '#FFFFFF',
+  page: '#E7ECF4', pageInk: '#405162',
+  row: '#E9ECF1',
 };
 
 export const dark: ThemeColors = {

@@ -65,7 +65,8 @@ export default function PriceListsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { dark, colors } = useTheme();
   // light keeps the design's palette; dark is the app's own dark theme, so it matches every other screen
-  const C = useMemo<Palette>(() => (dark ? fromApp(colors) : LIGHT), [dark, colors]);
+  // the app's own colours in light and dark, so it matches every other screen
+  const C = useMemo<Palette>(() => fromApp(colors), [colors]);
   const st = useMemo(() => makeStyles(C), [C]);
   const { db, savePriceList } = useAppData();
   const V = vocab(db);
