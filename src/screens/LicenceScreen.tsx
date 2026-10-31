@@ -16,7 +16,8 @@
  * on for the account, and it reaches every phone by itself.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, Alert, ActivityIndicator, Linking } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { PLAY_BUILD } from '../data/store';
 import { useTheme, fonts } from '../theme';
@@ -45,6 +46,9 @@ export default function LicenceScreen() {
   const [deal, setDeal] = useState<{ starter: number; pro: number; until: string | null }>({ starter: 0, pro: 0, until: null });
   const QUOTES = ['More devices', 'More businesses', 'Syncing businesses together', 'A discount for paying ahead'];
   const [picks, setPicks] = useState<string[]>(['More businesses']);
+  /** Fees set for this client (Developer → Subscription): shown in place of the standard prices. */
+  const [fees, setFees] = useState<{ licenceFee: number | null; renewalFee: number | null; currency: string; note: string | null } | null>(null);
+  const [paid, setPaid] = useState(0);
 
   const checkAccount = useCallback(async (quiet = false) => {
     if (!account?.refresh) return;
@@ -61,6 +65,10 @@ export default function LicenceScreen() {
         const ending = ads.filter((x) => Number(x.discount_pct) > 0 && x.ends_at).map((x) => String(x.ends_at)).sort()[0] || null;
         setDeal({ starter: best('starter'), pro: best('pro'), until: ending });
       } catch { /* no offer shown */ }
+      try {
+        const res = await fetch(SERVER_URL + '/v1/account/fees', { headers: { authorization: 'Bearer ' + r.value.access } });
+        if (res.ok) { const j = await res.json(); setFees(j.fees || null); setPaid(Number(j.paid) || 0); }
+      } catch { /* the standard prices show */ }
     } finally {
       setBusy(false);
     }
@@ -74,7 +82,10 @@ export default function LicenceScreen() {
   const a = access(db);
   const left = accessDaysLeft(db);
   const lic = db.licence.licence;
-  const edition: Edition = ((lic?.edition as Edition) || editionOf(db));
+  /* a licence can cover several editions ("retail,restaurant"): this business's own when it is one of them,
+     else the first — read as a whole, the list named no edition and the Editions card crashed the page */
+  const licensed = String(lic?.edition || '').split(',').map((x) => x.trim()).filter((x): x is Edition => !!EDITIONS[x as Edition]);
+  const edition: Edition = licensed.includes(editionOf(db)) ? editionOf(db) : licensed[0] || editionOf(db);
   const ed = EDITIONS[edition] || EDITIONS.retail;
   const isPro = lic ? lic.plan === 'pro' || lic.plan === 'lifetime' : db.subscription.plan === 'pro';
   const planId: 'starter' | 'pro' = isPro ? 'pro' : 'starter';
@@ -123,7 +134,7 @@ export default function LicenceScreen() {
   const tile = (icon: IconName, label: string, value: string, note: string, tone?: string) => (
     <View style={{ width: '48.5%', borderRadius: 4, padding: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
       <Icon name={icon} size={18} color={tone || colors.ink} />
-      <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: tone || colors.ink, marginTop: 10 }}>{value}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: tone || colors.ink, marginTop: 10 }}>{value}</Text>
       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink, marginTop: 2 }}>{label}</Text>
       <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{note}</Text>
     </View>
@@ -174,7 +185,7 @@ export default function LicenceScreen() {
           <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name={ed.icon} size={20} color={ink} />
           </View>
-          <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: soft }}>{ed.name} edition</Text>
+          <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: soft }}>{ed.name} edition</Text>
           {busy ? <ActivityIndicator color={ink} /> : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 5, paddingHorizontal: 11, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.12)' }}>
               <Icon name={status.icon} size={13} color={status.tone} />
@@ -184,7 +195,7 @@ export default function LicenceScreen() {
         </View>
 
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 30, color: ink, marginTop: 18, letterSpacing: -0.6 }}>{planName}</Text>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: status.tone, marginTop: 4 }}>{status.line}</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: status.tone, marginTop: 4 }}>{status.line}</Text>
 
         <View style={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.14)', marginTop: 18, overflow: 'hidden' }}>
           <View style={{ width: (pctLeft + '%') as any, height: 6, borderRadius: 3, backgroundColor: status.tone }} />
@@ -218,7 +229,7 @@ export default function LicenceScreen() {
           <View key={title} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderTopWidth: i ? 1 : 0, borderTopColor: colors.line }}>
             <Icon name={icon} size={18} color={on ? colors.ink : colors.faint} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: on ? colors.ink : colors.soft }}>{title}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: on ? colors.ink : colors.soft }}>{title}</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{sub}</Text>
             </View>
             <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? colors.goodSoft : colors.sunk }}>
@@ -228,9 +239,33 @@ export default function LicenceScreen() {
         ))}
       </View>
 
-      {/* ---------- the plans ---------- */}
-      {cap(ed.name + ' plans')}
-      {PLAY_BUILD || quoted(edition) ? null : (
+      {/* ---------- this client's own fees, in place of the standard prices ---------- */}
+      {fees ? (
+        <>
+          {cap('Your fees')}
+          <View style={{ backgroundColor: colors.surface, borderRadius: 6, borderWidth: 1.4, borderColor: colors.accent, padding: 16, gap: 10, marginBottom: 12 }}>
+            {fees.licenceFee != null ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.soft }}>Licence fee</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{fees.currency} {Number(fees.licenceFee).toLocaleString('en-US')}</Text>
+              </View>
+            ) : null}
+            {fees.renewalFee != null ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.soft }}>Renewal fee</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{fees.currency} {Number(fees.renewalFee).toLocaleString('en-US')}</Text>
+              </View>
+            ) : null}
+            {paid > 0 ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.good }}>Received so far: {fees.currency} {paid.toLocaleString('en-US')}</Text> : null}
+            {fees.note ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{fees.note}</Text> : null}
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Agreed for your business. To renew or change, contact us.</Text>
+          </View>
+        </>
+      ) : null}
+
+      {/* ---------- the plans (hidden when this client has fees of their own) ---------- */}
+      {fees ? null : cap(ed.name + ' plans')}
+      {fees || PLAY_BUILD || quoted(edition) ? null : (
         <View style={{ flexDirection: 'row', padding: 4, borderRadius: 4, backgroundColor: colors.sunk, marginBottom: 12 }}>
           {(['month', 'quarter', 'year'] as const).map((t) => (
             <Pressable key={t} onPress={() => setTerm(t)} style={{ flex: 1, paddingVertical: 10, borderRadius: 4, alignItems: 'center', backgroundColor: term === t ? colors.surface : 'transparent' }}>
@@ -241,7 +276,7 @@ export default function LicenceScreen() {
           ))}
         </View>
       )}
-      {(['starter', 'pro'] as const).map((id) => {
+      {(fees ? [] : (['starter', 'pro'] as const)).map((id) => {
         const p = ed.plans[id];
         const mine = a === 'paid' && planId === id;
         const pro = id === 'pro';
@@ -268,7 +303,7 @@ export default function LicenceScreen() {
             </View>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: pro ? colors.line : colors.faint, marginTop: 4 }}>{p.blurb}</Text>
             {PLAY_BUILD ? null : quoted(edition) ? (
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: pro ? colors.bg : colors.ink, marginTop: 12 }}>Priced for your business</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: pro ? colors.bg : colors.ink, marginTop: 12 }}>Priced for your business</Text>
             ) : (
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 12 }}>
                 <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: pro ? colors.bg : colors.ink, letterSpacing: -0.5 }}>{money(price)}</Text>
@@ -296,7 +331,7 @@ export default function LicenceScreen() {
                 onPress={() => (quoted(edition) && !mine ? contactSales(p.name) : choose(id))}
                 style={{ height: 48, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: mine ? 'transparent' : pro ? colors.bg : colors.ink, borderWidth: mine ? 1.4 : 0, borderColor: pro ? colors.bg : colors.line }}
               >
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: mine ? (pro ? colors.bg : colors.faint) : pro ? colors.ink : colors.bg }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: mine ? (pro ? colors.bg : colors.faint) : pro ? colors.ink : colors.bg }}>
                   {mine ? 'Your current plan' : quoted(edition) ? 'Contact us' : (a === 'paid' ? 'Switch to ' : 'Get ') + p.name}
                 </Text>
               </Pressable>
@@ -308,7 +343,7 @@ export default function LicenceScreen() {
       {/* ---------- more than three businesses ---------- */}
       {PLAY_BUILD ? null : (
         <View style={{ borderRadius: 4, borderWidth: 1.4, borderStyle: 'dashed', borderColor: colors.accent, padding: 16, marginTop: 4, gap: 6 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>Need more than Pro gives?</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Need more than Pro gives?</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.soft }}>
             Tick what you need and get one quote for all of it — set up and moved across for you.
           </Text>
@@ -325,7 +360,7 @@ export default function LicenceScreen() {
           </View>
           <Pressable disabled={!picks.length} onPress={() => contactUs('I would like a quote for Genius Pro POS ' + ed.name + ' for: ' + picks.join(', ') + '.')}
             style={{ height: 46, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, marginTop: 8 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>Get a quote</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accentInk }}>Get a quote</Text>
           </Pressable>
         </View>
       )}
@@ -361,7 +396,7 @@ export default function LicenceScreen() {
                 <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.bg }}>{n}</Text>
                 </View>
-                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft }}>{t}</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>{t}</Text>
               </View>
             ))}
             <Pressable
@@ -369,7 +404,7 @@ export default function LicenceScreen() {
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 46, borderRadius: 4, borderWidth: 1.4, borderColor: colors.ink, marginTop: 4 }}
             >
               <Icon name="chat" size={16} color={colors.ink} />
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>Contact us</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Contact us</Text>
             </Pressable>
           </View>
         </>
@@ -391,7 +426,7 @@ export default function LicenceScreen() {
                 <Icon name={d.icon} size={18} color={colors.ink} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{d.name}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{d.name}</Text>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 1 }}>{d.tagline}</Text>
               </View>
               {here ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: colors.good }}>Yours</Text> : null}
@@ -420,7 +455,7 @@ export default function LicenceScreen() {
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 4, backgroundColor: colors.sunk, marginTop: 14, opacity: busy || !account?.refresh ? 0.5 : 1 }}
       >
         {busy ? <ActivityIndicator color={colors.ink} /> : <Icon name="cloud" size={17} color={colors.ink} />}
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{busy ? 'Checking…' : 'Check my plan now'}</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{busy ? 'Checking…' : 'Check my plan now'}</Text>
       </Pressable>
       <Text style={{ fontFamily: fonts.ui, fontSize: 12, lineHeight: 18, color: colors.faint, textAlign: 'center', marginTop: 10, paddingHorizontal: 10 }}>
         {db.licence.checkedAt ? 'Last checked ' + fmtDate(db.licence.checkedAt) + '. ' : ''}

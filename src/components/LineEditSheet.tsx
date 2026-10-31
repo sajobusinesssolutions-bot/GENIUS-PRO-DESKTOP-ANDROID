@@ -105,7 +105,7 @@ export default function LineEditSheet({
           </View>
           <View style={{ flex: 2 }}>
             <Button
-              label={'Save · ' + money(lineTotal)}
+              label="Save"
               variant="pri"
               disabled={qtyNum <= 0 || overStock}
               onPress={() => onSave({
@@ -120,7 +120,7 @@ export default function LineEditSheet({
     >
       <View style={{ gap: 16 }}>
         <View>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{line.name}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{line.name}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
             {line.sku}{batchNo ? ' · Batch ' + batchNo : ''} · {Number.isFinite(availableHere) ? Math.floor(availableHere * 100) / 100 + ' ' + chosen.unit + ' available' : 'No stock limit'}
           </Text>
@@ -142,7 +142,7 @@ export default function LineEditSheet({
                       backgroundColor: on ? colors.accentSoft : colors.surface,
                     }}
                   >
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accent : colors.ink }}>{u.unit}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accent : colors.ink }}>{u.unit}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{money(u.price)}</Text>
                   </Pressable>
                 );
@@ -158,7 +158,7 @@ export default function LineEditSheet({
               onPress={onChooseBatch}
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderRadius: 4, backgroundColor: colors.sunk, borderWidth: 1, borderColor: colors.lineHard, paddingHorizontal: 12, paddingVertical: 12 }}
             >
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: batchNo ? colors.ink : colors.faint }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: batchNo ? colors.ink : colors.faint }}>
                 {batchNo ? 'Batch ' + batchNo : 'Choose batch'}
               </Text>
               <Icon name="box" size={15} color={colors.accent} />
@@ -169,11 +169,11 @@ export default function LineEditSheet({
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Pressable onPress={() => step(-1)} style={{ width: 48, height: 48, borderRadius: 4, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>−</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>−</Text>
             </Pressable>
             <Field style={{ flex: 1, marginBottom: 0 }} label="Quantity" value={qty} onChangeText={setQty} numeric decimal error={overStock ? " " : undefined} />
             <Pressable onPress={() => step(1)} style={{ width: 48, height: 48, borderRadius: 4, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>+</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>+</Text>
             </Pressable>
           </View>
           {overStock ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger }}>Only {Math.floor(availableHere * 100) / 100} {chosen.unit} in stock.</Text> : null}
@@ -200,8 +200,8 @@ export default function LineEditSheet({
           {discNum > 0 ? <Row label="You save" value={'− ' + money(qtyNum * (listNum - netPrice))} colors={colors} tone={colors.good} /> : null}
           <View style={{ height: 1, backgroundColor: colors.line }} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Line total</Text>
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(lineTotal)}</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Line total</Text>
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(lineTotal)}</Text>
           </View>
         </View>
       </View>

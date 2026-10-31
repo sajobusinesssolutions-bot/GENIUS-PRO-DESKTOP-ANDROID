@@ -11,7 +11,8 @@
  * phone are sent up first, so switching never throws away work.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Alert, ActivityIndicator } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -27,13 +28,18 @@ import { EDITIONS, editionOfType, licensedEdition, licensedEditions, editionLock
 import { refreshSession, serverConfigured } from '../data/authApi';
 import { useSyncRun } from '../data/useSyncRun';
 import { fmtDate } from '../data/helpers';
+import { parkBook, listParked, readParked, forgetParked, ParkedBook } from '../data/parkedBooks';
+import { businessExtras, renameBusiness, BusinessExtra } from '../data/businessExtra';
+import Sheet from '../components/Sheet';
+import { Field } from '../components/form';
+import { Button } from '../components/ui';
 
 /** Enough of the unique id to tell two shops with the same name apart. */
 const shortId = (id: string) => 'ID ' + id.replace(/-/g, '').slice(0, 8).toUpperCase();
 
 export default function BusinessesScreen({ route }: { route?: { params?: { stay?: boolean } } } = {}) {
   const { colors } = useTheme();
-  const { db, adoptBook, startFreshBook } = useAppData();
+  const { db, adoptBook, startFreshBook, restoreBackup } = useAppData();
   const { account, signOut } = useAuth();
   const goReset = useGoReset();
   const { run } = useSyncRun();
@@ -44,6 +50,10 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
   const [ended, setEnded] = useState(false);
   const [busy, setBusy] = useState('');
   const [progress, setProgress] = useState(0);
+  /** Businesses whose books were kept on this phone when another was opened. */
+  const [parked, setParked] = useState<ParkedBook[]>(() => listParked());
+  const [extra, setExtra] = useState<Record<string, BusinessExtra>>({});
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
 
   /** A fresh access token, or the reason there is none, in words that say what to do. */
   const access = useCallback(async (): Promise<{ token: string } | { why: string; ended: boolean }> => {
@@ -66,6 +76,8 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
     const r = await listBusinesses(token);
     if (!r.ok) { setProblem(r.error.message); setList([]); return; }
     setList(r.value);
+    setExtra(await businessExtras(token));
+    setParked(listParked());
   }, [access, account]);
 
   useEffect(() => { void load(); }, [load]);
@@ -82,23 +94,29 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
     if (list && list.length === 0 && !problem && !hasBooks && !route?.params?.stay) goReset('Onboarding');
   }, [list, problem, hasBooks, goReset]);
 
-  /** Sends this phone's books up before they are replaced. */
+  /** Puts the open business away in its own book on this phone before another is opened. */
   async function keepCurrent(): Promise<boolean> {
     if (!hasBooks || !db) return true;
-    if (db.sync.on) {
-      const r = await run('manual');
-      if (r.ok) return true;
-    }
+    // send what it has up while there is a connection; the book stays here either way
+    if (db.sync.on) { try { await run('manual'); } catch { /* offline: kept below */ } }
+    let kept = false;
+    try { kept = !!(await parkBook(db)); } catch { kept = false; }
+    if (kept || (db.sync.on && !(db.queue || []).length && db.sync.businessId)) return true;
     return new Promise((resolve) => Alert.alert(
-      'The books on this phone are not on your account',
-      '"' + db.firm.name + '" is a separate business and is not saved to your account' + (db.sync.on ? ' right now' : ', because cloud sync is off')
-      + '. Nothing is merged: if you open the other business, the books of "' + db.firm.name + '" are removed from this phone and cannot be brought back.',
+      '"' + db.firm.name + '" could not be kept on this phone',
+      'It is not on your account either. If you open another business, its books are removed and cannot be brought back.',
       [
-        { text: 'Keep them', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Stay here', style: 'cancel', onPress: () => resolve(false) },
         { text: 'Switch anyway', style: 'destructive', onPress: () => resolve(true) },
       ],
     ));
   }
+
+  /* books on this phone that are on no account list: made here, never synced */
+  const onlyHere = parked.filter((p) => p.id !== (db?.firm.id || '').replace(/[^A-Za-z0-9_-]/g, '_') && !(list || []).some((b) => b.id === p.businessId));
+
+  /** This business's own book on this phone, if it has one. */
+  const bookHere = (b: RemoteBusiness) => listParked().find((p) => p.businessId === b.id);
 
   async function open(b: RemoteBusiness) {
     if (isHere(b)) { goReset('PinLock'); return; }
@@ -112,6 +130,16 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
     setBusy(b.id);
     try {
       if (!(await keepCurrent())) return;
+      // its own book is on this phone: open that, and sync brings it up to date
+      const mine = bookHere(b);
+      if (mine) {
+        try {
+          restoreBackup(await readParked(mine.id));
+          forgetParked(mine.id);
+          goReset('PinLock');
+          return;
+        } catch { /* unreadable: fetch it from the account below */ }
+      }
       const a = await access();
       if (!('token' in a)) { Alert.alert('Could not reach your account', a.why); return; }
       const token = a.token;
@@ -172,9 +200,57 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
   /* An id only earns its place when two businesses share a name. */
   const named = (b: { name: string }) => (list || []).filter((x) => x.name === b.name).length > 1;
 
+  /** Vouchers recorded in the last seven days in the books on this phone. */
+  const localWeek = () => {
+    if (!db) return 0;
+    const since = Date.now() - 7 * 864e5;
+    const n = (xs: Array<{ ts: string }>) => xs.filter((x) => new Date(x.ts).getTime() >= since).length;
+    return n(db.sales) + n(db.purchases) + n(db.payments) + n(db.entries) + n(db.creditNotes || []);
+  };
+
+  function details(b: { name: string; id?: string; created?: string | null; type?: string | null; saved?: string | null; sync?: boolean | null; week?: number }) {
+    Alert.alert(b.name, [
+      b.type ? 'Kind: ' + b.type : '',
+      b.created ? 'Created: ' + fmtDate(b.created) : '',
+      'Vouchers this week: ' + (b.week ?? '—'),
+      b.saved ? 'Last saved to your account: ' + fmtDate(b.saved) : 'Not saved to your account yet',
+      'Cloud sync: ' + (b.sync ? 'on' : 'off'),
+      b.id ? shortId(b.id) : '',
+    ].filter(Boolean).join('\n'));
+  }
+
+  async function saveName() {
+    if (!renaming) return;
+    const name = renaming.name.trim();
+    if (!name) return;
+    const a = await access();
+    if (!('token' in a)) { Alert.alert('Could not reach your account', a.why); return; }
+    const r = await renameBusiness(a.token, renaming.id, name);
+    if (!r.ok) { Alert.alert('Not renamed', r.why); return; }
+    setRenaming(null);
+    await load();
+  }
+
+  async function restoreKept(p: ParkedBook) {
+    setBusy('restore:' + p.id);
+    try {
+      if (!(await keepCurrent())) return;
+      const book = await readParked(p.id);
+      restoreBackup(book);
+      forgetParked(p.id);
+      goReset('PinLock');
+    } catch (e: any) {
+      Alert.alert('Could not restore ' + p.name, e?.message || 'The kept copy could not be read.');
+    } finally {
+      setBusy('');
+    }
+  }
+
   function more(b: RemoteBusiness) {
+    const kind = b.business_type ? EDITIONS[editionOfType(b.business_type)].name : null;
     Alert.alert(b.name, undefined, [
-      { text: 'Open', onPress: () => void open(b) },
+      { text: 'View business details', onPress: () => details({ name: b.name, id: b.id, created: b.created_at, type: kind, saved: b.snapshot_at, sync: b.sync_on ?? !!b.snapshot_at, week: isHere(b) ? localWeek() : extra[b.id]?.vouchersWeek }) },
+      { text: 'Rename', onPress: () => setRenaming({ id: b.id, name: b.name }) },
       {
         text: 'Deactivate', style: 'destructive',
         onPress: () => Alert.alert('Deactivate ' + b.name + '?', 'It will no longer appear on this account or open on another device.', [
@@ -219,12 +295,12 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
         width: 46, height: 46, borderRadius: 4, alignItems: 'center', justifyContent: 'center',
         backgroundColor: o.current ? colors.accent : colors.accentSoft,
       }}>
-        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: o.current ? colors.accentInk : colors.accent }}>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: o.current ? colors.accentInk : colors.accent }}>
           {(o.name.trim()[0] || '?').toUpperCase()}
         </Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{o.name}</Text>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{o.name}</Text>
         <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: o.current ? colors.accent : colors.faint, marginTop: 3 }}>
           {o.sub}{o.idLine ? ' · ' + o.idLine : ''}
         </Text>
@@ -242,7 +318,7 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 64, paddingBottom: 40 }}>
       <View style={{ marginBottom: 18 }}><Logo size={48} /></View>
       <Text style={{ fontFamily: fonts.uiExtra, fontSize: 28, color: colors.ink, letterSpacing: -0.5 }}>Your businesses</Text>
-      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint, marginTop: 6, marginBottom: 24 }}>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint, marginTop: 6, marginBottom: 24 }}>
         {account?.email ? 'Signed in as ' + account.email : 'Choose the one to open'}
       </Text>
 
@@ -268,7 +344,9 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
 
           {hasBooks && db ? card({
             key: 'here', name: here?.name || db.firm.name, current: true,
-            sub: here ? 'On this phone' : 'On this phone · not saved to your account yet',
+            sub: (here ? 'On this phone' : 'On this phone · not saved to your account yet') + ' · ' + localWeek() + ' vouchers this week'
+              + (here?.created_at ? ' · since ' + fmtDate(here.created_at) : ''),
+            onMore: here ? () => more(here) : () => details({ name: db.firm.name, week: localWeek(), sync: !!db.sync?.on }),
             idLine: here && named(here) ? shortId(here.id) : undefined,
             // the books on this phone say for themselves
             sync: !!db.sync?.on,
@@ -279,7 +357,7 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
           {others.map((b) => card({
             key: b.id, name: b.name, off: b.active === false, loading: busy === b.id,
             sub: (b.business_type ? EDITIONS[editionOfType(b.business_type)].name + ' · ' : '')
-              + (b.active === false ? 'Deactivated' : b.snapshot_at ? 'Saved ' + fmtDate(b.snapshot_at) : 'Nothing saved yet'),
+              + (b.active === false ? 'Deactivated' : (parked.some((p) => p.businessId === b.id) ? 'On this phone · ' : '') + (extra[b.id] ? extra[b.id].vouchersWeek + ' vouchers this week · ' : '') + 'created ' + fmtDate(b.created_at)),
             idLine: named(b) ? shortId(b.id) : undefined,
             // The server says, from the last copy of the books. An older server says
             // nothing — then a saved copy is the answer: copies only go up while
@@ -289,6 +367,35 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
             onPress: () => void open(b),
             onMore: b.active === false ? undefined : () => more(b),
           }))}
+
+          {onlyHere.length ? (
+            <View style={{ marginTop: 6, marginBottom: 6 }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, letterSpacing: 0.6, color: colors.faint, marginBottom: 8 }}>ON THIS PHONE ONLY</Text>
+              {onlyHere.map((p) => (
+                <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 4, marginBottom: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{p.name}</Text>
+                    <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, color: p.unsynced ? colors.warn : colors.faint, marginTop: 3 }}>
+                      {p.sales} sales · kept {fmtDate(p.keptAt)}{p.createdAt ? ' · since ' + fmtDate(p.createdAt) : ''}{p.unsynced ? ' · not on your account' : ''}
+                    </Text>
+                  </View>
+                  {busy === 'restore:' + p.id ? <ActivityIndicator color={colors.accent} /> : (
+                    <>
+                      <Pressable onPress={() => void restoreKept(p)} hitSlop={6} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4, backgroundColor: colors.accent }}>
+                        <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accentInk }}>Restore</Text>
+                      </Pressable>
+                      <Pressable onPress={() => Alert.alert('Remove the copy of ' + p.name + '?', p.unsynced ? 'It is not on your account: once removed, its books are gone.' : 'It is on your account too, and can still be opened from there.', [
+                        { text: 'Keep', style: 'cancel' },
+                        { text: 'Remove', style: 'destructive', onPress: () => { forgetParked(p.id); setParked(listParked()); } },
+                      ])} hitSlop={8} style={{ padding: 4 }}>
+                        <Icon name="trash" size={18} color={colors.faint} />
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           <Tap
             feel="soft"
@@ -301,7 +408,7 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
             })}
           >
             {busy === 'new' ? <ActivityIndicator color={colors.accent} /> : <Icon name="plus" size={18} color={colors.accent} />}
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>Start a new business</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>Start a new business</Text>
           </Tap>
           {lastAccountLicence() ? (
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, textAlign: 'center', marginTop: 10 }}>
@@ -310,6 +417,10 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
           ) : null}
         </>
       )}
+      <Sheet visible={!!renaming} title="Rename business" icon="pencil" onClose={() => setRenaming(null)}
+        footer={<Button label="Save" variant="pri" onPress={() => void saveName()} />}>
+        <Field label="Business name" value={renaming?.name || ''} onChangeText={(v) => setRenaming((r) => (r ? { ...r, name: v } : r))} autoFocus />
+      </Sheet>
     </ScrollView>
   );
 }

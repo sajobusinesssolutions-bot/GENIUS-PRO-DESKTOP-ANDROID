@@ -269,7 +269,7 @@ export function defaultSettings(): Settings {
     currency: 'UGX', currencyName: 'Ugandan shilling', symbolBefore: true, decimals: 0,
     dateFormat: 'd M yyyy', firstDay: 'Mon', language: 'English', timezone: 'Africa/Kampala',
 
-    taxName: 'VAT', taxRate: 18, pricesIncludeTax: true, withholding: false, efris: false,
+    taxName: 'VAT', taxRate: 18, pricesIncludeTax: true, withholding: false, whtRate: 6, efris: false,
 
     defaultMethod: 'cash', roundTo: 0, maxDiscountPct: 10, quickItems: 6,
     requireShift: true, askCustomer: false, allowPriceEdit: false,

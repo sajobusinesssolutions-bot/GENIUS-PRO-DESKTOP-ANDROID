@@ -36,7 +36,7 @@ export default function ThemePicker() {
       <View style={{ width: 34, height: 34, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={look.i} size={18} color={colors.accent} />
       </View>
-      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Appearance</Text>
+      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>Appearance</Text>
       <View style={{ flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 999, padding: 3 }}>
         {(['light', 'dark', 'auto'] as Mode[]).map((m) => (
           <View key={m} style={{ width: 32, height: 26, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: m === current ? colors.accent : 'transparent' }}>

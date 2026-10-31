@@ -3,7 +3,8 @@
  * every way to reach the people who make it.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -84,7 +85,7 @@ export function FaqScreen() {
             style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: on ? colors.accent : colors.line, padding: 14, marginBottom: 10 }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{f.q}</Text>
+              <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{f.q}</Text>
               <Icon name={on ? 'up' : 'down'} size={16} color={colors.faint} />
             </View>
             {on ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 20, color: colors.soft, marginTop: 8 }}>{f.a}</Text> : null}

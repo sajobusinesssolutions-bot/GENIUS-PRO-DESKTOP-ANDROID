@@ -11,7 +11,8 @@
  * The screen refreshes its timers every half minute and syncs like the rest.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, useWindowDimensions } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -108,7 +109,7 @@ export default function KitchenDisplayScreen({ navigation, route }: any) {
               {/* head: table, type, age */}
               <View style={{ padding: 12, backgroundColor: k.status === 'ready' ? colors.goodSoft : late ? colors.dangerSoft : warm ? colors.warnSoft : colors.sunk }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{k.table || k.no}</Text>
+                  <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{k.table || k.no}</Text>
                   <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: late ? colors.danger : warm ? colors.warn : colors.ink }}>{mins}′</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
@@ -139,7 +140,7 @@ export default function KitchenDisplayScreen({ navigation, route }: any) {
                 style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, backgroundColor: pressed ? colors.sunk : show === 'served' ? colors.sunk : statusTone(k.status) })}
               >
                 <Icon name={show === 'served' ? 'swap' : k.status === 'cooking' ? 'check' : 'arrow'} size={18} color={show === 'served' ? colors.ink : '#fff'} />
-                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16, color: show === 'served' ? colors.ink : '#fff' }}>{show === 'served' ? 'Recall' : ACTION[k.status]}</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: show === 'served' ? colors.ink : '#fff' }}>{show === 'served' ? 'Recall' : ACTION[k.status]}</Text>
               </Pressable>
             </View>
           );
@@ -148,7 +149,7 @@ export default function KitchenDisplayScreen({ navigation, route }: any) {
           <View style={{ width: '100%', alignItems: 'center', paddingVertical: 60, gap: 10 }}>
             <Icon name="food" size={40} color={colors.faint} />
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: colors.ink }}>{show === 'served' ? 'Nothing served yet today' : 'No orders waiting'}</Text>
-            <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.faint, textAlign: 'center', maxWidth: 320 }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, textAlign: 'center', maxWidth: 320 }}>
               {db.settings.kitchenDisplay ? 'New orders appear here as soon as a ticket is saved or charged.' : 'Switch on "Kitchen display screen" in Menu & modifiers → Settings to send orders here.'}
             </Text>
           </View>

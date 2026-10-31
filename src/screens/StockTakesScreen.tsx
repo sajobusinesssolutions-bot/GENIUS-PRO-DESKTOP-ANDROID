@@ -121,7 +121,7 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{item.name}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{item.name}</Text>
                   <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     Expected {item.expected}{batched ? ' · ' + item.batches!.length + ' batches' : ''}
                   </Text>
@@ -137,7 +137,7 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
                       backgroundColor: expanded ? colors.accentSoft : colors.surface,
                     }}
                   >
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: expanded ? colors.accent : colors.ink }}>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: expanded ? colors.accent : colors.ink }}>
                       {item.counted == null ? 'Count' : String(item.counted)}
                     </Text>
                     <Icon name={expanded ? 'up' : 'down'} size={16} color={expanded ? colors.accent : colors.faint} />
@@ -147,7 +147,7 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
                 )}
 
                 {v != null ? (
-                  <Text style={{ width: 48, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 15, color: v === 0 ? colors.faint : v > 0 ? colors.good : colors.danger }}>
+                  <Text style={{ width: 48, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 14, color: v === 0 ? colors.faint : v > 0 ? colors.good : colors.danger }}>
                     {v > 0 ? '+' : ''}{v}
                   </Text>
                 ) : <View style={{ width: 48 }} />}
@@ -172,7 +172,7 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
                         }}
                       >
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{b.no}</Text>
+                          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{b.no}</Text>
                           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                             Expected {b.expected}
                             {b.expiry ? ' · exp ' + new Date(b.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''}
@@ -206,7 +206,7 @@ export function StockTakeDetailScreen({ route }: NativeStackScreenProps<RootStac
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Net variance</Text>
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: variance === 0 ? colors.good : variance > 0 ? colors.warn : colors.danger }}>
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: variance === 0 ? colors.good : variance > 0 ? colors.warn : colors.danger }}>
               {variance > 0 ? '+' : ''}{variance}
             </Text>
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: varValue === 0 ? colors.faint : varValue > 0 ? colors.warn : colors.danger, marginTop: 2 }}>

@@ -3,7 +3,8 @@
  * (lines 6549-6557) and the Finance "Go to" grid.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useBookFrom } from '../data/useBookFrom';
@@ -194,7 +195,7 @@ export function AccountDetailScreen({ route }: any) {
   const cell = (label: string, value: string, color: string) => (
     <View style={{ flex: 1 }}>
       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{label}</Text>
-      <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color, marginTop: 3 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+      <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color, marginTop: 3 }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
     </View>
   );
 

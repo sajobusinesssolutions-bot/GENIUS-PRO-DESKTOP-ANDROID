@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../data/AuthContext';
 import { refreshSession, serverConfigured } from '../data/authApi';
 import { listBusinesses } from '../data/syncClient';
-import { View, ScrollView } from 'react-native';
+import { View } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {

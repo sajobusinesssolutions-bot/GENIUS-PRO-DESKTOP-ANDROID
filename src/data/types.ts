@@ -204,6 +204,8 @@ export interface Product {
 export interface Party {
   id: string; name: string; type: 'customer' | 'supplier'; phone: string;
   openingBalance: number; creditLimit: number; points: number; active: boolean;
+  /** The day the opening balance was owed from, for reminders and ageing. */
+  openingDate?: string;
   address?: string; email?: string; gstin?: string;
   /** The price list this customer is sold at by default: a wholesale buyer, a café on contract. */
   priceListId?: string;
@@ -253,6 +255,10 @@ export interface SaleLine {
 }
 
 export interface Sale {
+  /** Saved offline with a temporary number (PENDING-…); the server gives it its real one, in order, on the next sync. */
+  numberPending?: boolean;
+  /** Withholding tax the customer kept back on this bill (a tax credit for the shop). */
+  wht?: number;
   /** Restaurant: the table or name of the ticket it was ordered on. */
   ticketName?: string;
   /** The price list the sale was priced from. */
@@ -267,6 +273,10 @@ export interface Sale {
   till: string; warehouse: string; lines: SaleLine[];
   discount: number; redeemed: number; gross: number; tax: number; total: number; cogs: number;
   additionalCharges?: number; terms?: string;
+  /** Whether this invoice prints the shop's payment details (Documents & terms). */
+  showPayment?: boolean;
+  /** How many times it has been printed, here or on the computer: the first print says ORIGINAL, every later one DUPLICATE. */
+  printCount?: number;
   method: PayMethod; paid: number; paidAtSale: number; due: number;
   /** On a credit sale, how the part taken at the counter was paid. */
   receivedVia?: 'cash' | 'momo' | 'bank';
@@ -318,6 +328,9 @@ export interface Payment {
   id: string; ts: string; partyId: string; amount: number;
   direction: 'in' | 'out'; accountId: string; note: string; method: string;
   editedAt?: string;
+  /** Withholding tax kept back: the bills are settled by the money and this together. */
+  taxDeducted?: number;
+
   /** Who recorded it — the basis of the staff performance figures. */
   userId?: string;
   /** The branch whose account took or paid the money. */
@@ -327,7 +340,7 @@ export interface Payment {
    * much of each. Whatever is left over is held on the party's account.
    */
   allocations?: BillAllocation[];
-  /** The part not applied to any bill — an advance. */
+  /** What settled no bill — paid ahead, or more than was owed — held on the party's account (Tally's "On Account"); their balance counts it. */
   unapplied?: number;
 }
 
@@ -370,6 +383,8 @@ export type DeletedPayment = Payment & { deletedAt: string; deletedBy?: string; 
 
 export interface JournalEntry {
   id: string; ts: string; memo: string; ref: string; lines: JournalLine[]; balanced: boolean;
+  /** Set when the entry was deleted: a reversing entry was posted, and it leaves the lists. */
+  reversedAt?: string;
   /**
    * Which branch's books this belongs to. A branch is run as a separate
    * business — its own stock, its own drawer, its own profit — so every
@@ -539,6 +554,9 @@ export interface SyncLogEntry { id: string; ts: string; how: string; up: number;
 export interface SyncCfg {
   /** A full copy of the books should go up on the next run (after an import, or new business details). */
   snapshotDue?: boolean;
+  /** When this phone last sent the full copy, and the sync position it held then. */
+  snapshotAt?: string;
+  snapshotCursor?: number;
   /** Imported records have been queued for sync once (books imported before that was automatic). */
   importsQueued?: boolean;
   on: boolean; freq: SyncFreq; wifiOnly: boolean; conflict: ConflictRule;
@@ -602,6 +620,10 @@ export interface Settings {
   dateFormat: string; firstDay: 'Mon' | 'Sun'; language: string; timezone: string;
   // tax
   taxName: string; taxRate: number; pricesIncludeTax: boolean; withholding: boolean;
+  /** Withholding tax rate, percent (Uganda: 6). */
+  whtRate?: number;
+  /** Warn about batches expiring within this many days. */
+  expiryAlertDays?: number;
   /** Set once the tax-inclusive migration has run; see storage.ts. */
   taxModeFixed?: boolean;
   efris: boolean;
@@ -685,6 +707,8 @@ export interface Firm {
   logo?: string;
   /** The newest app version that has opened these books; older apps must update first. */
   minAppVersion?: string;
+  /** The computer's own totals per day (sales, purchases, expenses: [count, value]), for Check the books. */
+  pcCheck?: { at: string; since: string; days: Record<string, Partial<Record<'sales' | 'purchases' | 'expenses', [number, number]>>> };
   /** Printed above the signature line on an invoice. Same storage rule. */
   signature?: string;
   /** Words printed at the bottom of every document — terms, thanks, a slogan. */
@@ -723,6 +747,8 @@ export interface ChallanLine { productId: string; name: string; qty: number; uni
 export interface Challan {
   id: string; no: string; ts: string; saleId: string | null; partyId: string | null;
   lines: ChallanLine[]; status: 'dispatched' | 'delivered';
+  /** Who carried it and in what. */
+  driver?: string; vehicle?: string;
 }
 
 // --- Credit notes / returns ---
@@ -734,6 +760,12 @@ export interface CreditNote {
   refund?: 'cash' | 'bank' | 'momo' | 'account';
   /** A restocking or handling charge withheld from the refund. */
   charges?: number;
+  /** How much it took off the bill it was raised against, so a delete can put it back. */
+  appliedToSale?: number;
+  /** Credited to the customer's account with no bill named: their balance counts it (it no longer changes the opening balance). */
+  onAccount?: boolean;
+  /** Against a bill that owed less than the return: the rest, held on their account. */
+  held?: number;
   userId?: string;
 }
 

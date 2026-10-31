@@ -15,7 +15,8 @@
  */
 import { ListPage, DocRow, StatusChips, SummaryTiles } from '../components/DocList';
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, Pressable, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useOnDisk } from '../data/useOnDisk';
@@ -156,7 +157,7 @@ export function PlanDetailScreen({ route }: DetailProps) {
               <Icon name="calendar" size={22} color={pct === 100 ? colors.good : overdue.length ? colors.danger : colors.warn} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{pl.no}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{pl.no}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {customer?.name || 'Walk-in'} · started {fmtDay(pl.createdAt)}
               </Text>
@@ -240,15 +241,15 @@ export function PlanDetailScreen({ route }: DetailProps) {
                 <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
                   {x.paidAt
                     ? <Icon name="check" size={19} color={fg} />
-                    : <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>{i + 1}</Text>}
+                    : <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: fg }}>{i + 1}</Text>}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{fmtDay(x.due)}</Text>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{fmtDay(x.due)}</Text>
                   <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: od ? colors.danger : colors.faint, marginTop: 3 }}>
                     {x.paidAt ? 'paid ' + fmtDay(x.paidAt) : od ? 'overdue' : 'scheduled'}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>{money(x.amount)}</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 14, color: colors.ink }}>{money(x.amount)}</Text>
               </View>
 
               {!x.paidAt ? (
@@ -256,7 +257,7 @@ export function PlanDetailScreen({ route }: DetailProps) {
                   <Button
                     size="sm"
                     variant="pri"
-                    label={'Receive ' + money(x.amount)}
+                    label="Receive"
                     icon={<Icon name="cash" size={15} color={colors.accentInk} />}
                     onPress={() => receive(i)}
                   />
@@ -320,7 +321,7 @@ export function PlanNewScreen({ navigation }: NewProps) {
       lines={lines}
       onLinesChange={setLines}
       linesLabel="Goods on the plan"
-      saveLabel={'Create the plan · ' + money(total)}
+      saveLabel="Save"
       askWho="Who arranged this plan?"
       blockedReason={wholeBill ? 'The down payment is the whole sale — lower it, or just sell it outright.' : undefined}
       summary={
@@ -339,12 +340,12 @@ export function PlanNewScreen({ navigation }: NewProps) {
                   <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.warn }}>{i + 1}</Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{fmtDay(x.due)}</Text>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{fmtDay(x.due)}</Text>
                   <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                     {i === 0 && down ? 'after the down payment' : 'due in ' + ((i + 1) * every) + ' days'}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money(x.amount)}</Text>
+                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{money(x.amount)}</Text>
               </View>
             ))}
             <View style={{ height: 12 }} />

@@ -15,7 +15,8 @@
  * a waiter never sends a ticket to the kitchen without a table or a name.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from './KeyScroll';
 import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -90,9 +91,9 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
 
   const stepper = (val: number, set: (n: number) => void) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Pressable onPress={() => set(Math.max(1, val - 1))} style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 22, color: colors.ink }}>−</Text></Pressable>
-      <Text style={{ minWidth: 30, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{val}</Text>
-      <Pressable onPress={() => set(Math.min(60, val + 1))} style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 22, color: colors.ink }}>+</Text></Pressable>
+      <Pressable onPress={() => set(Math.max(1, val - 1))} style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20, color: colors.ink }}>−</Text></Pressable>
+      <Text style={{ minWidth: 30, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{val}</Text>
+      <Pressable onPress={() => set(Math.min(60, val + 1))} style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20, color: colors.ink }}>+</Text></Pressable>
     </View>
   );
   const heading = (t: string) => <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: colors.faint, marginBottom: 10, marginTop: 18 }}>{t}</Text>;
@@ -103,7 +104,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
       <View style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 22, color: colors.ink }}>{onClose ? 'Change the order' : 'New order'}</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{onClose ? 'Change the order' : 'New order'}</Text>
             {onClose ? <Pressable hitSlop={8} onPress={onClose}><Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>Back to the menu</Text></Pressable> : null}
           </View>
           {heading('How is it eaten')}
@@ -137,7 +138,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
             <>
               {heading('Guests')}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
-                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>People at the table</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>People at the table</Text>
                 {stepper(v.guests, (n) => setV({ ...v, guests: n }))}
               </View>
             </>
@@ -150,7 +151,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
           >
             <Icon name="user" size={19} color={colors.ink} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{customer ? customer.name : 'Walk-in customer'}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{customer ? customer.name : 'Walk-in customer'}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                 {customer ? [customer.phone, customer.address].filter(Boolean).join(' · ') || 'From your customers' : 'Tap to choose a customer from your books'}
               </Text>
@@ -189,7 +190,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
               >
                 <Icon name="user" size={18} color={colors.ink} />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{c.name}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{c.name}</Text>
                   {c.phone || c.address ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{[c.phone, c.address].filter(Boolean).join(' · ')}</Text> : null}
                 </View>
               </Pressable>
@@ -211,7 +212,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
             <Icon name="back" size={18} color={colors.ink} />
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: colors.ink }}>Choose the table</Text>
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>Choose the table</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>Party of {v.guests}{customer ? ' · ' + customer.name : ''}</Text>
           </View>
         </View>
@@ -249,7 +250,7 @@ export default function OrderStart({ initial, seeAll, onDone, onOpenTicket, onCl
                       opacity: !mine ? 0.5 : small ? 0.6 : pressed ? 0.75 : 1,
                     })}
                   >
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>{tn}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 14, color: colors.ink }}>{tn}</Text>
                     {t ? (
                       <>
                         {(db.kitchenOrders || []).some((k) => k.ticketId === t.id && k.status === 'ready') ? <Text style={{ fontFamily: fonts.uiExtra, fontSize: 11.5, color: colors.good }}>● READY</Text> : null}

@@ -17,7 +17,8 @@
  * Reference: SCREENS.menu, line 6565, with the firm-switching card from 12515.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -68,6 +69,20 @@ export default function MenuScreen() {
     [q, role],
   );
 
+  /* each card's count and what is inside it, worked out once per change to the book — not on
+     every draw, since a count like "1,204 sales" walks the whole book (slow-screen reports: Menu 2–4 s) */
+  const cardText = useMemo(() => {
+    const out: Record<string, { inside: string[]; sub: string }> = {};
+    if (!db) return out;
+    const c: MenuCtx = { db, dueRecurring, activeShift };
+    for (const g of groups) {
+      let sub = '';
+      try { sub = g.b ? g.b(c) : ''; } catch { sub = ''; }
+      out[g.id] = { sub, inside: g.items.filter((it) => canFor(role, it.perm) && itemShown(it, db)).map((it) => rowName(it, db)) };
+    }
+    return out;
+  }, [db, groups, role]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!db) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
 
   const user = me();
@@ -94,7 +109,7 @@ export default function MenuScreen() {
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 13, height: 34, borderRadius: 999, backgroundColor: colors.ink }}
           >
             <Icon name="lock" size={14} color={colors.surface} />
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.surface }}>Lock</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.surface }}>Lock</Text>
           </Pressable>
         )}
       />
@@ -106,7 +121,7 @@ export default function MenuScreen() {
             <Text style={{ fontFamily: fonts.uiBold, fontSize: 17, color: '#FFFFFF' }}>{initial}</Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{user?.name || '—'}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{user?.name || '—'}</Text>
             <Text
               numberOfLines={1}
               onPress={isOwner ? () => go('Branches') : undefined}
@@ -117,7 +132,7 @@ export default function MenuScreen() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, height: 34, borderRadius: 4, backgroundColor: colors.accentSoft }}>
             <Icon name="swap" size={14} color={colors.accent} />
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>Switch</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent }}>Switch</Text>
           </View>
         </Pressable>
 
@@ -144,23 +159,39 @@ export default function MenuScreen() {
           )
         ) : (
           <>
-            {/* three across: a tinted icon over its name */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              {tiles.map((g) => (
-                <Pressable
-                  key={g.id}
-                  onPress={() => (g.open ? go(g.open) : go('MenuGroup', { groupId: g.id }))}
-                  style={({ pressed }) => ({
-                    ...card, width: '31.4%', aspectRatio: 1.08, alignItems: 'center', justifyContent: 'center', gap: 10,
-                    backgroundColor: pressed ? colors.sunk : colors.surface,
-                  })}
-                >
-                  <View style={{ width: 42, height: 42, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name={g.i} size={21} color={colors.accent} />
-                  </View>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{rowName(g, db)}</Text>
-                </Pressable>
-              ))}
+            {/* one under another, as the Developer card: each in its own colour, with what is inside it */}
+            <View style={{ gap: 10 }}>
+              {tiles.map((g) => {
+                const hue = g.tone === 'good' ? colors.good : g.tone === 'warnc' ? colors.warn : g.tone === 'danger' ? colors.danger : g.tone === 'soft' ? colors.soft : colors.accent;
+                const soft = g.tone === 'good' ? colors.goodSoft : g.tone === 'warnc' ? colors.warnSoft : g.tone === 'danger' ? colors.dangerSoft : g.tone === 'soft' ? colors.sunk : colors.accentSoft;
+                const { inside, sub } = cardText[g.id] || { inside: [], sub: '' };
+                return (
+                  <Pressable
+                    key={g.id}
+                    onPress={() => (g.open ? go(g.open) : go('MenuGroup', { groupId: g.id }))}
+                    style={({ pressed }) => ({
+                      ...card, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, paddingLeft: 16, overflow: 'hidden',
+                      backgroundColor: pressed ? colors.sunk : colors.surface,
+                    })}
+                  >
+                    {/* the group's colour down its edge */}
+                    <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: hue }} />
+                    <View style={{ width: 44, height: 44, borderRadius: 4, backgroundColor: soft, alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name={g.i} size={21} color={hue} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{rowName(g, db)}</Text>
+                        {sub ? <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{sub}</Text> : null}
+                      </View>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft, marginTop: 3 }}>
+                        {inside.slice(0, 4).join(' · ')}{inside.length > 4 ? ' · +' + (inside.length - 4) : ''}
+                      </Text>
+                    </View>
+                    <Icon name="chev" size={16} color={colors.faint} />
+                  </Pressable>
+                );
+              })}
             </View>
 
             {manyFirms ? (
@@ -178,7 +209,7 @@ export default function MenuScreen() {
                   <Icon name="shield" size={19} color="#FFFFFF" />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: '#FFFFFF' }}>Developer console</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: '#FFFFFF' }}>Developer console</Text>
                   <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>Owners, licences, server health and backups</Text>
                 </View>
                 <Icon name="chev" size={16} color="rgba(255,255,255,0.7)" />
@@ -188,7 +219,7 @@ export default function MenuScreen() {
             {/* how it looks, where to get help, and the way out */}
             <View style={card}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, paddingLeft: 16, borderBottomWidth: 1, borderBottomColor: colors.line }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Appearance</Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>Appearance</Text>
                 <View style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.sunk, borderRadius: 4, padding: 3 }}>
                   {([['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['auto', 'Auto', 'contrast']] as const).map(([v, l, i]) => {
                     const on = theme === v;
@@ -207,14 +238,14 @@ export default function MenuScreen() {
               </View>
               <Pressable onPress={() => go('Help')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: isOwner ? 1 : 0, borderBottomColor: colors.line }}>
                 <Icon name="support" size={18} color={colors.soft} />
-                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>Help & Support</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>Help & Support</Text>
                 <Icon name="chev" size={15} color={colors.faint} />
               </Pressable>
               {/* only the owner signs the shop out; staff lock the till instead */}
               {isOwner ? (
                 <Pressable onPress={() => setSigningOut(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 }}>
                   <Icon name="arrow" size={18} color={colors.danger} />
-                  <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.danger }}>Sign out</Text>
+                  <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.danger }}>Sign out</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -311,10 +342,10 @@ function SignOutSheet({ visible, email, till, needsCode, onClose, onLock, onSend
     <Sheet visible={visible} onClose={onClose} title="Sign out?">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 4, backgroundColor: colors.sunk }}>
         <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.accentInk }}>{initial}</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 14, color: colors.accentInk }}>{initial}</Text>
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{email || 'This account'}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{email || 'This account'}</Text>
           <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>{till || 'This phone'}</Text>
         </View>
       </View>

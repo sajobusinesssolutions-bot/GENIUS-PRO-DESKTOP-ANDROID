@@ -4,7 +4,8 @@
  * Reference SCREENS.reports.body, line 5355.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTheme, fonts } from '../theme';
@@ -41,7 +42,7 @@ function ReportRow({ r, last, onPress, icon, isFav, onToggleFav }: {
       })}
     >
       {/* the name says what it is; nothing underneath to read */}
-      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: live ? colors.ink : colors.faint }} numberOfLines={1}>
+      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: live ? colors.ink : colors.faint }} numberOfLines={1}>
         {r.name}
       </Text>
       {!live ? <Badge label="Soon" tone="neutral" /> : locked ? <Icon name="lock" size={16} color={colors.faint} /> : null}
@@ -84,7 +85,9 @@ export default function ReportsScreen() {
     // a tax report means nothing to a shop that charges no tax
     const taxOff = db?.settings.taxEnabled === false;
     // restaurant reports are for restaurants only
-    const may = (id: string) => { if (taxOff && id === 'tax-summary') return false; if (RESTAURANT_REPORTS.has(id) && !isRestaurant(db)) return false; if (PHARMACY_REPORTS.has(id) && editionOf(db) !== 'pharmacy') return false; const p = reportPermission(id); return !p || canFor(role, p); };
+    /* batches and expiry are for any shop that keeps lots, not only a pharmacy */
+    const hasBatches = (db?.products || []).some((p) => p.trackBatches && (p.batches || []).length);
+    const may = (id: string) => { if (taxOff && id === 'tax-summary') return false; if (RESTAURANT_REPORTS.has(id) && !isRestaurant(db)) return false; if (PHARMACY_REPORTS.has(id) && editionOf(db) !== 'pharmacy' && !(/^(expiry|batch-)/.test(id) && hasBatches)) return false; const p = reportPermission(id); return !p || canFor(role, p); };
     const all = reportEntries().filter((e) => (e.group ? e.group.views.some((v) => may(v.id)) : may(e.id)));
     const list = needle ? all.filter((e) => words(e).toLowerCase().includes(needle)) : all;
     return REPORT_CATEGORIES

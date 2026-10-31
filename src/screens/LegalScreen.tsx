@@ -7,7 +7,8 @@
  * Change it when any of that changes.
  */
 import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme, fonts } from '../theme';
 import { Panel, ListRow } from '../components/kit';
@@ -111,20 +112,20 @@ export default function LegalScreen({ route }: Props) {
   const blocks = docKey === 'privacy' ? PRIVACY : TERMS;
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 18, paddingBottom: 40 }}>
-      <Text style={{ fontFamily: fonts.uiExtra, fontSize: 24, color: colors.ink }}>
+      <Text style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: colors.ink }}>
         {docKey === 'privacy' ? 'Privacy policy' : 'Terms and conditions'}
       </Text>
       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>Last updated {LEGAL_UPDATED}</Text>
       {blocks.map((b, i) => (
         <View key={b.h} style={{ marginTop: 20 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{i + 1}. {b.h}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{i + 1}. {b.h}</Text>
           {b.p.map((para, j) => (
-            <Text key={j} style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 21, color: colors.soft, marginTop: 8 }}>{para}</Text>
+            <Text key={j} style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 21, color: colors.soft, marginTop: 8 }}>{para}</Text>
           ))}
         </View>
       ))}
       {LEGAL_CONTACT ? (
-        <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 21, color: colors.soft, marginTop: 24 }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 21, color: colors.soft, marginTop: 24 }}>
           Questions? Write to {LEGAL_CONTACT}.
         </Text>
       ) : null}

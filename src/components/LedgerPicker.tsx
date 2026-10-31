@@ -153,7 +153,7 @@ export default function LedgerPicker({
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 10, borderRadius: radius.md, backgroundColor: colors.accentSoft }}
               >
                 <Icon name="plus" size={16} color={colors.accent} />
-                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.accent }}>Create “{q.trim()}”</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>Create “{q.trim()}”</Text>
               </Pressable>
             ) : null}
             {groups.map((g) => (
@@ -168,7 +168,7 @@ export default function LedgerPicker({
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, borderBottomWidth: 1, borderBottomColor: colors.line }}
                     >
                       <Text style={{ width: 46, fontFamily: fonts.mono, fontSize: 12.5, color: colors.faint }}>{l.code}</Text>
-                      <Text numberOfLines={1} style={{ flex: 1, fontFamily: on ? fonts.uiBold : fonts.ui, fontSize: 15, color: on ? colors.accent : colors.ink }}>{l.name}</Text>
+                      <Text numberOfLines={1} style={{ flex: 1, fontFamily: on ? fonts.uiBold : fonts.ui, fontSize: 14, color: on ? colors.accent : colors.ink }}>{l.name}</Text>
                       {balances ? (
                         <Text style={{ fontFamily: fonts.monoSemi, fontSize: 12.5, color: (balances.get(l.id) || 0) < 0 ? colors.danger : colors.soft }}>{balText(l.id)}</Text>
                       ) : null}

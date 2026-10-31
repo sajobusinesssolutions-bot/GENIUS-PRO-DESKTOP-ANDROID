@@ -16,7 +16,8 @@
  *               sale finds it short.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, Image } from 'react-native';
+import { View, Text, Alert, Image } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import * as ImagePicker from 'expo-image-picker';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
@@ -186,7 +187,7 @@ export default function MenuEditorScreen({ navigation }: any) {
         const yes = on(v);
         return (
           <Pressable key={v} onPress={() => tap(v)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.4, borderColor: yes ? colors.ink : colors.line, backgroundColor: yes ? colors.ink : colors.surface }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: yes ? colors.bg : colors.ink }}>{v}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: yes ? colors.bg : colors.ink }}>{v}</Text>
           </Pressable>
         );
       })}
@@ -223,7 +224,7 @@ export default function MenuEditorScreen({ navigation }: any) {
                 })}
               >
                 <Icon name={o.i} size={16} color={on ? colors.bg : colors.ink} />
-                <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 13.5, color: on ? colors.bg : colors.ink }}>{o.l}</Text>
+                <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 13, color: on ? colors.bg : colors.ink }}>{o.l}</Text>
                 {o.n ? <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: on ? colors.bg : colors.faint, opacity: 0.8 }}>{o.n}</Text> : null}
               </Pressable>
             );
@@ -243,7 +244,7 @@ export default function MenuEditorScreen({ navigation }: any) {
               <Pressable key={mn.id} onPress={() => setMenuDraft({ id: mn.id, name: mn.name, sections: mn.sections })} style={({ pressed }) => ({ ...card, padding: 14, backgroundColor: pressed ? colors.sunk : colors.surface })}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Icon name="doc" size={18} color={colors.ink} />
-                  <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{mn.name}</Text>
+                  <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{mn.name}</Text>
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint }}>
                     {items.filter((p) => mn.sections.includes(p.category || 'Other')).length} dishes
                   </Text>
@@ -260,7 +261,7 @@ export default function MenuEditorScreen({ navigation }: any) {
 
             {menus.length ? (
               <View style={[card, { padding: 14 }]}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 4 }}>Who sells from which menu</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 4 }}>Who sells from which menu</Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 10 }}>
                   Someone kept to a menu sees only its dishes when taking orders. "Any menu" lets them switch.
                 </Text>
@@ -292,7 +293,7 @@ export default function MenuEditorScreen({ navigation }: any) {
                 <View key={s.id} style={[card, { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 }]}>
                   <View style={{ width: 14, height: 40, borderRadius: 4, backgroundColor: s.color, borderWidth: 1, borderColor: colors.line }} />
                   <Pressable style={{ flex: 1, minWidth: 0 }} onPress={() => setSection({ id: s.id, name: s.name, color: s.color, station: s.station || '' })}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{s.name}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{s.name}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                       {n} dish{n === 1 ? '' : 'es'} · {s.station || stations[0]}{real ? '' : ' · not yet a section'}
                     </Text>
@@ -336,7 +337,7 @@ export default function MenuEditorScreen({ navigation }: any) {
                     >
                       {thumb(p, s.color)}
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+                        <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{p.name}</Text>
                         <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
                           {[stationOf(db, p), (p.tags || []).join(', '), p.modifierGroups?.length ? p.modifierGroups.length + ' modifier group(s)' : ''].filter(Boolean).join(' · ')}
                         </Text>
@@ -353,7 +354,7 @@ export default function MenuEditorScreen({ navigation }: any) {
                         ) : null}
                       </View>
                       <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{money(p.price)}</Text>
+                        <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{money(p.price)}</Text>
                         <Pressable hitSlop={6} onPress={() => toggleSoldOut(p)} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: p.soldOut ? colors.dangerSoft : colors.goodSoft }}>
                           <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, color: p.soldOut ? colors.danger : colors.good }}>{p.soldOut ? 'SOLD OUT' : 'AVAILABLE'}</Text>
                         </Pressable>
@@ -381,10 +382,10 @@ export default function MenuEditorScreen({ navigation }: any) {
                 <Pressable key={p.id} onPress={() => setIngredient({ id: p.id, name: p.name, unit: p.unit, cost: String(p.cost || ''), stock: '', reorder: String(p.reorder || '') })}
                   style={({ pressed }) => ({ ...card, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: pressed ? colors.sunk : colors.surface })}>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{p.name}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{money(p.cost)} per {p.unit} · used in {items.filter((d) => d.recipe?.some((x) => x.productId === p.id)).length} dish(es)</Text>
                   </View>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: low ? colors.danger : colors.ink }}>{Math.round(qty * 100) / 100} {p.unit}</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: low ? colors.danger : colors.ink }}>{Math.round(qty * 100) / 100} {p.unit}</Text>
                 </Pressable>
               );
             })}
@@ -401,7 +402,7 @@ export default function MenuEditorScreen({ navigation }: any) {
             {groups.map((g) => (
               <Pressable key={g.id} onPress={() => editGroup(g)} style={({ pressed }) => ({ ...card, padding: 14, backgroundColor: pressed ? colors.sunk : colors.surface })}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{g.name}</Text>
+                  <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{g.name}</Text>
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint }}>{g.required ? 'Required' : 'Optional'} · {g.multi ? 'many' : 'one'}</Text>
                   <Icon name="chev" size={16} color={colors.faint} />
                 </View>
@@ -417,14 +418,14 @@ export default function MenuEditorScreen({ navigation }: any) {
         {tab === 'settings' ? (
           <>
             <View style={[card, { padding: 14 }]}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 4 }}>Stations</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 4 }}>Stations</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 10 }}>
                 Where dishes are made. Each station's dishes print on the printers ticked for it in Printing.
               </Text>
               {stations.map((st) => (
                 <View key={st} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.line }}>
                   <Icon name="food" size={16} color={colors.ink} />
-                  <Text style={{ flex: 1, marginLeft: 10, fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{st}</Text>
+                  <Text style={{ flex: 1, marginLeft: 10, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{st}</Text>
                   {stations.length > 1 ? (
                     <Pressable hitSlop={8} onPress={() => { try { setSetting({ stations: stations.filter((x) => x !== st) }); } catch (e) { explain(e); } }}>
                       <Icon name="x" size={17} color={colors.danger} />
@@ -445,7 +446,7 @@ export default function MenuEditorScreen({ navigation }: any) {
             </View>
 
             <View style={[card, { padding: 14 }]}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 4 }}>Service charge</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 4 }}>Service charge</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 10 }}>Added to dine-in bills only. Leave blank for none.</Text>
               <Field label="Service charge %" numeric decimal money={false} value={service} onChangeText={setService} suffix="%" />
               <Button size="sm" label="Save service charge" onPress={() => {
@@ -469,7 +470,7 @@ export default function MenuEditorScreen({ navigation }: any) {
             <TablePlanEditor />
 
             <View style={[card, { padding: 14 }]}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 10 }}>A new ticket starts as</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 10 }}>A new ticket starts as</Text>
               {chips(ORDER_TYPES.map((o) => o.l), (v) => ORDER_TYPES.find((o) => o.l === v)?.v === (db.settings.defaultOrderType || 'dine'),
                 (v) => { try { setSetting({ defaultOrderType: ORDER_TYPES.find((o) => o.l === v)!.v as OrderType }); } catch (e) { explain(e); } })}
             </View>
@@ -555,7 +556,7 @@ export default function MenuEditorScreen({ navigation }: any) {
                     {on ? <Icon name="check" size={12} color={colors.bg} /> : null}
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{g.name}</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{g.name}</Text>
                     <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{g.options.map((o) => o.name).join(', ')}</Text>
                   </View>
                 </Pressable>
@@ -707,7 +708,7 @@ export default function MenuEditorScreen({ navigation }: any) {
           <Pressable key={p.id} onPress={() => { if (dish) setDish({ ...dish, recipe: [...dish.recipe, { productId: p.id, qty: '' }] }); setRecipePick(false); }}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 6, borderRadius: 4, borderWidth: 1, borderColor: colors.line }}>
             <Icon name="box" size={18} color={colors.ink} />
-            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{p.name}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{money(p.cost)} / {p.unit}</Text>
           </Pressable>
         ))}

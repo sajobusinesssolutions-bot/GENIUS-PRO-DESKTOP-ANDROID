@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import AppLock from './AppLock';
+import { useBackToTab } from './backToTab';
 
 /** Shared so the app lock can send the till back to the PIN from anywhere. */
 export const navRef = createNavigationContainerRef<any>();
@@ -70,6 +71,9 @@ import OrderScreen from '../screens/OrderScreen';
 import PriceListsScreen from '../screens/PriceListsScreen';
 import KitchenDisplayScreen from '../screens/KitchenDisplayScreen';
 import OwnerSummaryScreen from '../screens/OwnerSummaryScreen';
+import DayReportScreen from '../screens/DayReportScreen';
+import BooksCheckScreen from '../screens/BooksCheckScreen';
+import DocTermsScreen from '../screens/DocTermsScreen';
 import ApprovalsScreen from '../screens/ApprovalsScreen';
 import MenuEditorScreen from '../screens/MenuEditorScreen';
 import PrintingKitchenScreen from '../screens/PrintingKitchenScreen';
@@ -123,6 +127,8 @@ export default function RootNavigator() {
   const { ready, db } = useAppData();
   const { ready: authReady, signedIn } = useAuth();
   const { colors, dark } = useTheme();
+  // Back returns to the tab the person came from — see backToTab
+  useBackToTab();
   /* Every screen sits on the app's own background. Without it a fading or
      sliding screen shows the black window behind it for a moment. */
   const navTheme = React.useMemo(() => {
@@ -199,7 +205,9 @@ export default function RootNavigator() {
           // Android: no system animation. Its screen animations fade, and a fading
           // screen draws every card's shadow as a dark block — the black boxes.
           // The screen's content slides into place itself instead (AfterTransition).
-          animation: Platform.OS === 'ios' ? 'ios_from_right' : 'none',
+          /* every screen slides in from the right, and back out to the right on Back. A slide
+             moves the screen without fading it, so no card shadow turns into a dark block. */
+          animation: Platform.OS === 'ios' ? 'ios_from_right' : 'slide_from_right',
           animationDuration: 280,
           gestureEnabled: true,
           fullScreenGestureEnabled: true,
@@ -261,6 +269,9 @@ export default function RootNavigator() {
         <Stack.Screen name="BatchMovement" component={BatchMovementScreen} options={{ title: 'Batch movement' }} />
         <Stack.Screen name="Approvals" component={ApprovalsScreen} options={{ title: 'Approvals' }} />
         <Stack.Screen name="KitchenDisplay" component={KitchenDisplayScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="DocTerms" component={DocTermsScreen} options={{ title: 'Documents & terms' }} />
+        <Stack.Screen name="BooksCheck" component={BooksCheckScreen} options={{ title: 'Check the books' }} />
+        <Stack.Screen name="DayReport" component={DayReportScreen} options={{ title: 'The day' }} />
         <Stack.Screen name="OwnerSummary" component={OwnerSummaryScreen} options={{ title: 'Owner\'s daily summary' }} />
         <Stack.Screen name="PriceLists" component={PriceListsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="PriceList" component={PriceListScreen} options={{ title: 'Bulk price editor' }} />

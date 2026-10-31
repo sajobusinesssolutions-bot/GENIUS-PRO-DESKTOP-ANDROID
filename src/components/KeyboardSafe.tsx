@@ -33,6 +33,8 @@ import { Keyboard, Platform, View, ViewStyle, KeyboardEvent, TextInput, UIManage
 let keyboardTop: number | null = null;
 /** Room left between the field and the keyboard. */
 const MARGIN = 28;
+/** The widest a screen is drawn: past this, lines get too long to read and rows too wide to scan. */
+export const MAX_WIDTH = 760;
 
 /**
  * Scrolls the field being typed in clear of the keyboard, if it is under it.
@@ -78,7 +80,7 @@ export default function KeyboardSafe({ children, style }: { children: React.Reac
         // how far the keyboard reaches up into this screen, if at all
         setLift(Math.max(0, Math.round(y + h - top)));
         // after the screen has shrunk, bring the field being typed in into view
-        revealFocused(120);
+        // the scroll view around the focused field lifts it (KeyScroll)
       });
     };
     const onHide = () => { keyboardTop = null; setLift(0); };
@@ -92,7 +94,8 @@ export default function KeyboardSafe({ children, style }: { children: React.Reac
 
   return (
     <View ref={outer} testID="keyboard-safe" collapsable={false} style={[{ flex: 1, marginBottom: lift }, style]}>
-      <View testID="keyboard-safe-body" style={{ flex: 1 }}>{children}</View>
+      {/* on a tablet or wide phone the screen is a centred column, not stretched edge to edge */}
+      <View testID="keyboard-safe-body" style={{ flex: 1, width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center' }}>{children}</View>
     </View>
   );
 }

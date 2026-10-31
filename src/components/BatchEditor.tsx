@@ -126,7 +126,7 @@ export default function BatchEditor({ batches, onChange, unit = 'pcs', suggestNo
               }}
             >
               <Icon name="calendar" size={15} color={fg} />
-              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: b.expiry ? colors.ink : colors.faint }}>
+              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: b.expiry ? colors.ink : colors.faint }}>
                 {b.expiry ? 'Expires ' + fmt(b.expiry) : 'No expiry — tap to set'}
               </Text>
               {when ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: fg }}>{when}</Text> : null}
@@ -161,7 +161,7 @@ export default function BatchEditor({ batches, onChange, unit = 'pcs', suggestNo
         }}
       >
         <Icon name="plus" size={15} color={colors.accent} />
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.accent }}>Add batch</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>Add batch</Text>
       </Pressable>
       <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 8 }}>
         Sales take from the batch that expires soonest unless another is picked.

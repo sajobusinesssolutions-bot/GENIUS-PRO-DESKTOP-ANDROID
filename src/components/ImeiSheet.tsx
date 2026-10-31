@@ -8,7 +8,8 @@
  * any warranty claim name the exact handset.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, ScrollView } from 'react-native';
+import { View, Text, TextInput } from 'react-native';
+import ScrollView from './KeyScroll';
 import { Pressable } from './Press';
 import { Sheet } from './Sheet';
 import { Button, Field } from './ui';

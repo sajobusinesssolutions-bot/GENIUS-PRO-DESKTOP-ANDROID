@@ -107,7 +107,8 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     items: [
       { route: 'KitchenDisplay', i: 'food', n: 'Kitchen display', b: (c) => plural((c.db.kitchenOrders || []).filter((k) => k.status !== 'served').length, 'order') + ' in the kitchen', show: (d) => isRestaurant(d), alt: 'kds kitchen screen cooks orders ready' },
       { route: 'Order', i: 'food', n: 'Take an order', b: (c) => plural((c.db.tickets || []).filter((t) => t.status === 'open').length, 'open ticket'), show: (d) => isRestaurant(d), alt: 'restaurant table ticket kitchen order' },
-      { route: 'Sales', i: 'doc', n: 'Activity', b: (c) => plural(liveSales(c.db).length, 'sale'), alt: 'sales invoices receipts transactions parties' },
+      { route: 'ReportDetail', i: 'doc', n: 'Day book', b: () => 'Every transaction, with debit and credit', params: { id: 'daybook' }, perm: 'reports', alt: 'daybook all transactions journal register' },
+      { route: 'Loyalty', i: 'gift', n: 'Loyalty', b: (c) => (c.db.loyaltyRules?.enabled ? 'On' : 'Off'), alt: 'points rewards' },
       { route: 'Estimates', i: 'doc', n: 'Quotations', b: (c) => (c.db.estimates || []).filter((e) => e.status === 'open').length + ' open', alt: 'quotes estimates proforma' },
       { route: 'Challans', i: 'box', n: 'Delivery notes', b: (c) => (c.db.challans || []).filter((x) => !x.saleId).length + ' still out', alt: 'challan dispatch' },
       { route: 'CreditNotes', i: 'swap', n: 'Returns', b: (c) => plural((c.db.creditNotes || []).length, 'credit note'), alt: 'credit note refund sale return' },
@@ -127,9 +128,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     b: (c) => plural(c.db.products.filter((p) => p.active).length, editionOf(c.db) === 'pharmacy' ? 'drug' : editionOf(c.db) === 'restaurant' ? 'dish' : 'item', editionOf(c.db) === 'restaurant' ? 'dishes' : undefined),
     items: [
       { route: 'MenuEditor', i: 'food', n: 'Menu & modifiers', b: (c) => plural((c.db.modifierGroups || []).length, 'modifier group'), alt: 'restaurant dishes menu modifiers extras size choices' },
-      { route: 'ItemsTab', i: 'box', n: 'Items', names: { pharmacy: 'Drugs' }, b: (c) => plural(c.db.products.filter((p) => p.active).length, editionOf(c.db) === 'pharmacy' ? 'drug' : 'product or service', editionOf(c.db) === 'pharmacy' ? 'drugs' : 'products & services'), alt: 'products services catalogue' },
-      // one direct way to buy: goods into stock and money out, in a single step
-      { route: 'PurchaseNew', i: 'plus', n: 'New purchase', names: { pharmacy: 'Receive drugs' }, b: () => 'Record goods bought from a supplier', perm: 'purchases', alt: 'buy receive stock in supplier bill' },
+      { route: 'ReportDetail', i: 'box', n: 'Stock at hand', b: (c) => plural(c.db.products.filter((p) => p.active && p.kind !== 'service').length, 'item') + ' · quantity and value', params: { id: 'stock-summary' }, perm: 'reports', alt: 'stock on hand quantity value balance' },
       { route: 'Purchases', i: 'box', n: 'Purchases', b: (c) => plural(c.db.purchases.length, 'supplier bill'), perm: 'purchases', alt: 'supplier bills bought' },
       { route: 'StockTakes', i: 'check', n: 'Stock take', b: (c) => ((c.db.stockTakes || []).some((s) => s.status === 'open') ? 'A count is open' : 'All posted'), alt: 'count stocktake variance' },
       { route: 'Batches', i: 'calendar', n: 'Batches & expiry', names: { pharmacy: 'Batches & expiry dates' }, b: () => 'Lots, expiry dates and what is left', alt: 'lot expiry shelf life' },
@@ -139,22 +138,12 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     ],
   },
   {
-    id: 'people', n: 'Parties', names: { restaurant: 'Customers & suppliers', pharmacy: 'Customers & distributors' }, i: 'user', tone: 'rail', perm: 'parties',
-    b: (c) => plural(c.db.parties.filter((p) => p.active).length, 'party', 'parties'),
-    items: [
-      { route: 'Parties', i: 'user', n: 'Customers & suppliers', b: (c) => plural(c.db.parties.filter((p) => p.active).length, 'on file', 'on file'), alt: 'contacts debtors creditors' },
-      { route: 'Loyalty', i: 'gift', n: 'Loyalty', b: (c) => (c.db.loyaltyRules.enabled ? 'On' : 'Off'), alt: 'points rewards' },
-    ],
-  },
-  {
     // The drawer, the accounts behind it, and the books built on both.
     id: 'money', n: 'Finance', i: 'card', tone: 'warnc', perm: 'money',
     b: (c) => (c.activeShift() ? 'A shift is open' : plural(c.db.accounts.length, 'account')),
     items: [
       { route: 'Shift', i: 'till', n: 'Cash register', b: (c) => (c.activeShift() ? 'Open — count and close' : 'Closed — open a shift'), perm: 'sell', alt: 'drawer shift float' },
-      { route: 'Shift', i: 'lock', n: 'Day close', b: () => 'Count the drawer and reconcile', params: { close: true }, perm: 'sell', alt: 'z report end of day' },
-      { route: 'CashEntries', i: 'down', n: 'Cash in', b: () => 'Money into the drawer', params: { direction: 'in' }, alt: 'income receipt' },
-      { route: 'CashEntries', i: 'up', n: 'Cash out', b: () => 'Money out of the drawer', params: { direction: 'out' }, alt: 'expense spend' },
+      { route: 'ReportDetail', i: 'swap', n: 'Cash flow', b: () => 'Money in and out of cash and bank', params: { id: 'cash-flow' }, perm: 'reports', alt: 'cashflow in out drawer bank' },
       { route: 'Money', i: 'card', n: 'Cash & bank', b: (c) => plural(c.db.accounts.length, 'account'), alt: 'accounts momo wallet balance' },
       { route: 'AccountingHub', i: 'pie', n: 'Accounting', b: (c) => plural((c.db.coa || []).filter((l) => l.active).length, 'ledger') + ' · journals, trial balance', perm: 'accounting', alt: 'ledgers chart of accounts journal entry trial balance postings double entry' },
       { route: 'Tax', i: 'receipt', n: 'Taxes', b: (c) => 'Rate ' + c.db.settings.taxRate + '%', perm: 'accounting', alt: 'vat ura returns', show: (db) => db.settings.taxEnabled !== false },
@@ -167,6 +156,8 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     b: () => plural(REPORT_COUNT, 'report') + ' · sales, stock, money',
     open: 'Reports',
     items: [
+      { route: 'DayReport', i: 'calendar', n: 'The day', b: () => 'Sales, money in and out, cash, owed', alt: 'daily close z report end of day summary' },
+      { route: 'BooksCheck', i: 'check', n: 'Check the books', b: () => 'Phone and computer agree, day by day', alt: 'compare reconcile computer pc difference missing' },
       { route: 'Reports', i: 'chart', n: 'All reports', b: () => plural(REPORT_COUNT, 'report') + ' · sales, stock, money', alt: 'sales stock profit debtors batch movement' },
     ],
   },

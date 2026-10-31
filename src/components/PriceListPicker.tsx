@@ -35,7 +35,7 @@ export default function PriceListPicker({ value, onChange, style, compact }: {
       >
         <Icon name="coins" size={18} color={on ? colors.accent : colors.ink} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{name}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{name}</Text>
           <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{sub}</Text>
         </View>
         {on ? <Icon name="check" size={18} color={colors.accent} /> : null}
@@ -58,7 +58,7 @@ export default function PriceListPicker({ value, onChange, style, compact }: {
         style={style as any}
         right={<Icon name="down" size={16} color={colors.faint} />}
       >
-        <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>{chosen ? chosen.name : 'Standard prices'}</Text>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>{chosen ? chosen.name : 'Standard prices'}</Text>
         {chosen ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 1 }}>{adjLabel(chosen.adj)}</Text> : null}
       </FieldShell>
       )}

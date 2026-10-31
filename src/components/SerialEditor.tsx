@@ -129,7 +129,7 @@ export default function SerialEditor({ serials, onChange, info = {}, onInfoChang
                   borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
                 }}
               >
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accent : colors.soft }}>{conditionLabel(c)}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accent : colors.soft }}>{conditionLabel(c)}</Text>
               </Pressable>
             );
           })}

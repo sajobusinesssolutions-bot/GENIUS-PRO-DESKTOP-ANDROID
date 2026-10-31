@@ -14,7 +14,8 @@
  * editWindow (17935). EFRIS is deliberately left out of this port.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
@@ -85,7 +86,7 @@ export default function SettingsScreen() {
               <Card style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <Avatar name={db.firm.name} id={db.firm.id} size={44} />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{db.firm.name}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{db.firm.name}</Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     {[db.firm.tin ? 'TIN ' + db.firm.tin : '', db.firm.phone].filter(Boolean).join(' · ') || 'Add your phone, address and logo'}
                   </Text>
@@ -117,6 +118,7 @@ export default function SettingsScreen() {
         {tab === 'selling' ? (
           <>
             <SettingGroup title="Payment reminders">
+              <SettingRow label="Documents & terms" value="Terms, copies, due dates, payment details" onPress={() => go('DocTerms')} />
               <SettingRow label="Reminders and their messages" value={s.reminders?.enabled === false ? 'Off' : 'On'} onPress={() => go('ReminderSettings')} />
             </SettingGroup>
 

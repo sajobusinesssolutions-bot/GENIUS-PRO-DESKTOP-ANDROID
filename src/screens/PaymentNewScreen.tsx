@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
@@ -35,7 +36,14 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
   const [accountId, setAccountId] = useState(db?.accounts[0]?.id || 'acc_cash');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  /** Withholding tax the customer kept back, or we keep back from the supplier. */
+  const [wht, setWht] = useState('');
+  const whtOn = !!db?.settings.withholding;
+  const whtRate = Number(db?.settings.whtRate ?? 6) || 0;
+  const whtAmt = whtOn ? Math.max(0, num(wht)) : 0;
   const [showAllocation, setShowAllocation] = useState(false);
+  /** How the money settles: the oldest bills first, bills chosen one by one, or held on account. */
+  const [settle, setSettle] = useState<'auto' | 'choose' | 'account'>('auto');
   const [picking, setPicking] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -59,9 +67,9 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
 
   function save() {
     if (!partyId || !amt) return;
-    if (openBills.length > 0) { setShowAllocation(true); return; }
+    if (settle === 'choose' && openBills.length > 0) { setShowAllocation(true); return; }
     who.ask((server) => {
-      recordPayment({ partyId, amount: amt, direction, accountId, note, userId: server.userId });
+      recordPayment({ partyId, amount: amt, direction, accountId, note, userId: server.userId, taxDeducted: whtAmt, onAccount: settle === 'account' });
       success('Recorded by ' + server.userName);
       setAmount(''); setNote('');
       navigation.goBack();
@@ -69,11 +77,12 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
   }
 
   function handleAllocate(allocations: Array<{ saleId: string; amount: number }>) {
-    const total = allocations.reduce((s, a) => s + a.amount, 0);
+    const total = amt;
     setShowAllocation(false);
     who.ask((server) => {
-      recordPayment({ partyId: partyId!, amount: total, direction, accountId, note, allocations, userId: server.userId });
-      success(money(total) + ' applied by ' + server.userName);
+      recordPayment({ partyId: partyId!, amount: total, direction, accountId, note, allocations, userId: server.userId, taxDeducted: whtAmt });
+      const applied = allocations.reduce((s, a) => s + a.amount, 0);
+      success(money(applied) + ' applied' + (total - applied > 0.5 ? ', ' + money(total - applied) + ' on account' : '') + ' · ' + server.userName);
       setAmount(''); setNote('');
       navigation.goBack();
     });
@@ -117,6 +126,31 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
           </View>
         ) : null}
 
+        {whtOn ? (
+          <View>
+            <Field
+              icon="pie"
+              label={inbound ? 'Tax they withheld' : 'Tax withheld from them'}
+              value={wht}
+              onChangeText={setWht}
+              numeric
+              decimal
+              money
+              placeholder="0 — none withheld"
+              trailing={amt > 0 ? (
+                <Pressable onPress={() => setWht(String(Math.round(amt * whtRate / (100 - whtRate))))} hitSlop={8}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.accent }}>{whtRate}%</Text>
+                </Pressable>
+              ) : undefined}
+            />
+            {whtAmt > 0 ? (
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: -6, paddingHorizontal: 4 }}>
+                Settles {money(amt + whtAmt)} of the {inbound ? 'customer\u2019s' : 'supplier\u2019s'} bills · {money(whtAmt)} {inbound ? 'is a tax credit you can claim' : 'is owed to the tax office'}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft, marginBottom: -4, paddingHorizontal: 4 }}>{inbound ? 'From which customer' : 'To which supplier'}</Text>
         <RowGroup>
           <PickRow
@@ -130,10 +164,31 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
               <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>
                 {pending > 0.01 ? (inbound ? 'They owe you' : 'You owe them') : pending < -0.01 ? (inbound ? 'They are in credit' : 'You have paid ahead') : 'Nothing pending'}
               </Text>
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: pending > 0.01 ? colors.danger : colors.good }}>{money(Math.abs(pending))}</Text>
+              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 14, color: pending > 0.01 ? colors.danger : colors.good }}>{money(Math.abs(pending))}</Text>
             </View>
           ) : null}
         </RowGroup>
+
+        {/* how the money settles what is owed — as Tally: against bills, or on account */}
+        {chosen ? (
+          <View>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft, marginBottom: 6, paddingHorizontal: 4 }}>Settles</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {([['auto', 'Oldest bills first'], ['choose', 'Choose bills'], ['account', 'On account']] as const).map(([v, l]) => (
+                <Pressable key={v} onPress={() => setSettle(v)}
+                  style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 4, borderWidth: 1.4,
+                    borderColor: settle === v ? colors.accent : colors.line, backgroundColor: settle === v ? colors.accentSoft : colors.surface }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: settle === v ? colors.accent : colors.ink }}>{l}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 6, paddingHorizontal: 4 }}>
+              {settle === 'account' ? 'Held on their account without naming a bill — their balance still counts it.'
+                : amt + whtAmt > pending + 0.5 && pending >= 0 ? money(amt + whtAmt - Math.max(0, pending)) + ' more than is owed — it is held on their account as excess.'
+                : settle === 'choose' ? 'You pick which bills it pays when you record it.' : 'Pays the oldest bills first.'}
+            </Text>
+          </View>
+        ) : null}
 
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft, marginBottom: -4, paddingHorizontal: 4 }}>{inbound ? 'Paid into' : 'Paid from'}</Text>
         <AccountTiles accounts={db.accounts || []} value={accountId} onChange={setAccountId} tone={tone} />
@@ -176,7 +231,7 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
       <StickyBar>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
           <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>{inbound ? 'Receiving' : 'Paying out'}</Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: tone }}>{money(amt)}</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: tone }}>{money(amt)}</Text>
         </View>
         <Button
           label={inbound ? 'Record receipt' : 'Record payment'}
@@ -188,6 +243,7 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
       </StickyBar>
 
       {showAllocation && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(8,10,16,0.62)', justifyContent: 'flex-end' }}>
         <PaymentAllocationSheet
           amount={amt}
           money={money}
@@ -195,6 +251,7 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
           onConfirm={handleAllocate}
           onCancel={() => setShowAllocation(false)}
         />
+        </View>
       )}
     </View>
   );

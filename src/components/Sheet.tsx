@@ -1,6 +1,7 @@
 import React from 'react';
 import { ToastHost } from './Toast';
-import { Modal, View, Text, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { Modal, View, Text, KeyboardAvoidingView, Platform } from 'react-native';
+import ScrollView from './KeyScroll';
 import { Pressable } from './Press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts, radius, shadow } from '../theme';
@@ -45,7 +46,7 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(10,12,18,0.45)' }}
         />
         <View style={{
-          width: '100%',
+          width: '100%', maxWidth: 640, alignSelf: 'center',
           height: full ? '92%' : '88%',
           flexShrink: 1,
         }}>
@@ -70,7 +71,7 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
               </View>
             ) : null}
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: -0.3 }}>{title}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, letterSpacing: -0.3 }}>{title}</Text>
               {subtitle ? (
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>{subtitle}</Text>
               ) : null}
@@ -89,7 +90,7 @@ export function Sheet({ visible, title, subtitle, icon, iconTone, onClose, child
             automaticallyAdjustKeyboardInsets
             nestedScrollEnabled
             showsVerticalScrollIndicator
-            contentContainerStyle={{ paddingVertical: 18, paddingHorizontal: 18, paddingBottom: 18 + (footer ? 0 : insets.bottom) }}
+            contentContainerStyle={{ paddingVertical: 14, paddingHorizontal: 14, paddingBottom: 18 + (footer ? 0 : insets.bottom) }}
           >
             {children}
           </ScrollView>

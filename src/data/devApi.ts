@@ -157,3 +157,22 @@ export function duration(sec: number): string {
   const m = Math.floor((sec % 3600) / 60);
   return d ? d + 'd ' + h + 'h' : h ? h + 'h ' + m + 'm' : m + 'm';
 }
+
+/* ── Subscriptions (server licensing.js): money received, a client's own fees, reset and reinstate ── */
+export interface SubLicence {
+  id: number; plan: string; term: string; seats: number; status: string; started_at: string; expires_at: string | null;
+  issued_by: string | null; edition: string; renewal_fee: number | null; installation_fee: number | null; vat_rate: number | null; currency: string;
+  reset_at: string | null; reset_by: string | null; reset_reason: string | null; prev_status: string | null; reinstated_at: string | null;
+}
+export interface SubPayment { id: number; licence_id: number | null; amount: number; currency: string; method: string | null; note: string | null; received_at: string; received_by: string | null }
+export interface SubFees { licence_fee: number | null; renewal_fee: number | null; currency: string; note: string | null; updated_by: string | null; updated_at: string }
+export interface Subscription { licences: SubLicence[]; payments: SubPayment[]; fees: SubFees | null; totals: { due: number; paid: number; balance: number } }
+
+export const subscription = (a: string, ownerId: string) => call<Subscription>('/v1/admin/owners/' + ownerId + '/subscription', a);
+export const addPayment = (a: string, ownerId: string, p: { amount: number; method?: string; note?: string; licenceId?: number }) =>
+  call<{ ok: true }>('/v1/admin/owners/' + ownerId + '/payments', a, p);
+export const removePayment = (a: string, id: number) => call<{ ok: true }>('/v1/admin/payments/' + id, a, undefined, 'DELETE');
+export const setFees = (a: string, ownerId: string, f: { licenceFee: number | null; renewalFee: number | null; currency?: string; note?: string }) =>
+  call<{ ok: true }>('/v1/admin/owners/' + ownerId + '/fees', a, f, 'PUT');
+export const resetLicence = (a: string, licenceId: number, reason?: string) => call<{ ok: true }>('/v1/admin/licences/' + licenceId + '/reset', a, { reason });
+export const reinstateLicence = (a: string, licenceId: number) => call<{ ok: true }>('/v1/admin/licences/' + licenceId + '/reinstate', a, {});

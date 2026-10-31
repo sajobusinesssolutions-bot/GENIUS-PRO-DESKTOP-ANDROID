@@ -8,7 +8,8 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { wholeBook, isPartialBook, storageEngine, saveMemoryWindowDays, savedMemoryWindowDays } from '../data/storage';
-import { View, Text, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, Alert, Platform } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuthSafe } from '../data/AuthContext';
 import { refreshSession } from '../data/authApi';
@@ -293,7 +294,7 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
       })}
     >
       <Icon name={icon} size={18} color={tone || colors.soft} />
-      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: tone || colors.ink }}>{label}</Text>
+      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: tone || colors.ink }}>{label}</Text>
       <Icon name="chev" size={16} color={colors.faint} />
     </Pressable>
   );
@@ -364,7 +365,7 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
         )) : (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.sunk, borderRadius: 4, padding: 16 }}>
             <Icon name="box" size={20} color={colors.faint} />
-            <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint }}>No device backups found.</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint }}>No device backups found.</Text>
           </View>
         )}
 

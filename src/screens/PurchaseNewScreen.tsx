@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Platform, TextInput } from 'react-native';
+import { View, Text, Platform, TextInput } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts, radius } from '../theme';
@@ -17,6 +18,8 @@ import { CustomerPickerSheet, CustomerFormSheet, BalanceTag } from '../component
 import { QuickItemSheet, QuickItem } from '../components/QuickItemSheet';
 import { useToast } from '../components/Toast';
 import Sheet from '../components/Sheet';
+import { SelectField } from '../components/form';
+import { useConfirmLeave } from '../components/useConfirmLeave';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 import { PurchaseLine, PurchaseBatchAllocation, PayMethod, Product } from '../data/types';
@@ -96,7 +99,7 @@ function allocationsFor(line: PurchaseLine, product: Product): PurchaseBatchAllo
  */
 export default function PurchaseNewScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const { db, createPurchase, editPurchase, money, stockOf, addParty, addProduct, can, partyBalance } = useAppData();
+  const { db, createPurchase, editPurchase, recordPayment, money, stockOf, addParty, addProduct, can, partyBalance } = useAppData();
   const newItem = useNewItem('cost');
   /** The item entry: open, and on which line (null for a new one) or scanned item. */
   const [entryOpen, setEntryOpen] = useState(false);
@@ -111,6 +114,11 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
   const suppliers = useMemo(() => (db?.parties || []).filter((p) => p.type === 'supplier' && p.active !== false), [db]);
   const [partyId, setPartyId] = useState<string | null>(seed?.partyId || (suppliers.length === 1 ? suppliers[0].id : null));
   const [method, setMethod] = useState<PayMethod>(seed?.method || 'credit');
+  /** Costs on top of the goods (transport, clearing): shared over the lines by value. */
+  const [extraText, setExtraText] = useState('');
+  /** What is paid to the supplier now; the rest is owed. */
+  const [paidText, setPaidText] = useState(seed && seed.method !== 'credit' ? String(seed.total) : '');
+  const [payVia, setPayVia] = useState<'cash' | 'bank' | 'momo'>(seed && seed.method !== 'credit' ? seed.method as any : 'cash');
   const [lines, setLines] = useState<PurchaseLine[]>(() => seed ? seed.lines.map((line) => ({
     ...line,
     batchAllocations: line.batchAllocations?.map((allocation) => ({ ...allocation })),
@@ -127,6 +135,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
   const [invoiceNo, setInvoiceNo] = useState(editingPurchase?.no || '');
   const [invoiceAt, setInvoiceAt] = useState(() => editingPurchase ? new Date(editingPurchase.ts) : new Date());
   const [cartOpen, setCartOpen] = useState(false);
+  const allowLeave = useConfirmLeave(navigation, lines.length > 0, editingPurchase ? 'these changes' : 'this purchase');
   const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
 
   const [supplierPicker, setSupplierPicker] = useState(false);
@@ -172,17 +181,8 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
     setEntryOpen(true);
   }
 
-  // a new purchase is typed in order: the supplier, then the first item
-  useEffect(() => {
-    if (seed) return;
-    const t = setTimeout(() => (partyId ? openEntry(null) : setSupplierPicker(true)), 350);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   function supplierChosen(id: string | null) {
     setPartyId(id);
-    if (!lines.length) setTimeout(() => openEntry(null), 350);
   }
 
   /** A line from the item entry: qty, cost and description; batches are shared out on the line. */
@@ -284,17 +284,38 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
       || allocated(l) !== l.qty));
   });
 
+  const extra = Math.max(0, num(extraText));
+  const grand = total + extra;
+  const paidNow = Math.min(grand, Math.max(0, num(paidText)));
+  /* the lines as bought: additional costs land on each item's cost in proportion to its value */
+  const landed = (): PurchaseLine[] => (extra > 0 && total > 0
+    ? lines.map((l) => (l.qty > 0 ? { ...l, cost: Math.round((l.cost + (l.cost * extra / total)) * 100) / 100 } : l))
+    : lines);
+
   function save() {
     if (!partyId || !lines.length || needsBatch) return;
     setCartOpen(false);
     who.ask((server) => {
-      if (editingPurchase) {
-        const out = editPurchase(editingPurchase.id, { partyId, lines, method, ref: invoiceNo.trim() }, 'Edited on the purchase');
-        if (!out) { error('That purchase can no longer be changed.'); return; }
-      } else {
-        createPurchase(partyId, lines, method, server.userId, invoiceNo.trim() || undefined, invoiceAt.toISOString());
+      try {
+        const bought = landed();
+        // paid in full: a cash (bank, mobile) purchase; anything less is on credit, with a payment for what was paid
+        const full = paidNow > 0 && paidNow >= grand - 0.005;
+        const how: PayMethod = full ? payVia : 'credit';
+        let pu: { id: string; no: string } | null = null;
+        if (editingPurchase) {
+          const out = editPurchase(editingPurchase.id, { partyId, lines: bought, method: how, ref: invoiceNo.trim() }, 'Edited on the purchase');
+          if (!out) { error('That purchase can no longer be changed.'); return; }
+        } else {
+          pu = createPurchase(partyId, bought, how, server.userId, invoiceNo.trim() || undefined, invoiceAt.toISOString());
+        }
+        if (pu && !full && paidNow > 0) {
+          recordPayment({ partyId, amount: paidNow, direction: 'out', accountId: payVia === 'bank' ? 'acc_bank' : payVia === 'momo' ? 'acc_momo' : 'acc_cash', note: 'Paid on ' + pu.no, userId: server.userId, allocations: [{ saleId: pu.id, amount: paidNow }] });
+        }
+        allowLeave();
+        navigation.goBack();
+      } catch (e: any) {
+        error(e?.message || 'The purchase could not be saved.');
       }
-      navigation.goBack();
     });
   }
 
@@ -327,7 +348,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
               <Pressable onPress={() => setExpandedId(expanded ? null : l.productId)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
+                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
                       {p?.name || l.productId}
                     </Text>
                     {tracked ? <Badge label="Batch" tone="accent" /> : null}
@@ -336,7 +357,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                     {p ? stockOf(p) + ' ' + p.unit + ' in stock now' : ''}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
                 <Pressable
                   onPress={(event) => { event.stopPropagation(); setQty(l.productId, 0); }}
                   accessibilityLabel="Remove line"
@@ -493,7 +514,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
           onPress={() => (suppliers.length ? setSupplierPicker(true) : setSupplierForm(true))}
           right={supplier ? <BalanceTag balance={partyBalance(supplier.id)} money={money} /> : <Icon name={suppliers.length ? 'down' : 'plus'} size={17} color={colors.accent} />}
         >
-          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: supplier ? colors.ink : colors.faint }}>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 14, color: supplier ? colors.ink : colors.faint }}>
             {supplier ? supplier.name : suppliers.length ? 'Choose a supplier' : 'No suppliers yet — add one'}
           </Text>
         </FieldShell>
@@ -509,7 +530,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
             </Pressable>
           }
         >
-          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>
             {invoiceAt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </Text>
         </FieldShell>
@@ -534,7 +555,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
             }}
           >
             <Icon name="plus" size={18} color={colors.accent} />
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>{lines.length ? 'Add another item' : 'Add item'}</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>{lines.length ? 'Add another item' : 'Add item'}</Text>
           </Pressable>
           <Pressable
             onPress={() => setScanning(true)}
@@ -692,7 +713,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                   >
                     <Icon name="box" size={18} color={selected ? colors.faint : colors.accent} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{batch.no}</Text>
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{batch.no}</Text>
                       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{batch.qty} currently on hand{batch.expiry ? ' · expires ' + batch.expiry : ''}</Text>
                     </View>
                     <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: selected ? colors.faint : colors.accent }}>{selected ? 'Added' : 'Choose'}</Text>
@@ -704,7 +725,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16 }}
                   >
                     <Icon name="plus" size={18} color={colors.accent} />
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accent }}>Create a new batch</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent }}>Create a new batch</Text>
               </Pressable>
             </>
           );
@@ -760,28 +781,48 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
           />
         }
       >
-        {lines.map(renderLine)}
-        {lines.length ? (
-          <Panel>
-            <DetailRow label='Items' value={String(lines.length)} />
-            <DetailRow label='Units' value={String(lines.reduce((s, l) => s + l.qty, 0))} />
-            <DetailRow label='Total cost' value={money(total)} bold last />
-          </Panel>
-        ) : null}
+        {lines.filter((l) => {
+          const p = db.products.find((x) => x.id === l.productId);
+          return l.qty <= 0 || (p?.trackBatches && allocated(l) !== l.qty);
+        }).map(renderLine)}
+        <Panel>
+          <DetailRow label='Items' value={lines.length + ' · ' + lines.reduce((s, l) => s + l.qty, 0) + ' units'} />
+          <DetailRow label='Goods' value={money(total)} />
+          {extra > 0 ? <DetailRow label='Additional costs' value={'+ ' + money(extra)} /> : null}
+          <DetailRow label='Total' value={money(grand)} bold />
+          {paidNow > 0 ? <DetailRow label='Paid now' value={'− ' + money(paidNow)} tone={colors.good} /> : null}
+          <DetailRow label='Owed to supplier' value={money(grand - paidNow)} bold tone={grand - paidNow > 0 ? colors.danger : colors.good} last />
+        </Panel>
 
-        <View style={{ height: 16 }} />
-        <SectionLabel>Payment method</SectionLabel>
-        <OptionTiles
-          value={method}
-          onChange={setMethod}
-          tone='warn'
-          options={[
-            { v: 'cash' as PayMethod, l: 'Cash', i: 'cash' },
-            { v: 'bank' as PayMethod, l: 'Bank', i: 'bank' },
-            { v: 'momo' as PayMethod, l: 'Mobile', i: 'phone' },
-            { v: 'credit' as PayMethod, l: 'On credit', i: 'card' },
-          ]}
+        <View style={{ height: 14 }} />
+        <Field
+          icon='plus'
+          label='Additional costs'
+          value={extraText}
+          onChangeText={setExtraText}
+          numeric
+          decimal
+          placeholder='Transport, clearing, loading'
         />
+        {extra > 0 ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: -6, marginBottom: 12 }}>Shared over the items by value, so each one's cost includes its part.</Text> : null}
+        <Field
+          icon='cash'
+          label='Amount paid'
+          value={paidText}
+          onChangeText={setPaidText}
+          numeric
+          decimal
+          placeholder='0 — all on credit'
+        />
+        {paidNow > 0 ? (
+          <SelectField
+            label='Paid by'
+            icon='cash'
+            value={payVia}
+            onChange={(v) => setPayVia(v as 'cash' | 'bank' | 'momo')}
+            options={[{ v: 'cash', l: 'Cash' }, { v: 'momo', l: 'Mobile money' }, { v: 'bank', l: 'Bank' }]}
+          />
+        ) : null}
 
         {!partyId ? (
           <View style={{ marginTop: 14 }}><InfoBanner tone='warn' text='Choose a supplier on the purchase before saving.' /></View>
@@ -795,7 +836,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
 
       <StickyBar>
         <Button
-          label={lines.length ? 'View cart — ' + money(total) : 'Add items to continue'}
+          label={lines.length ? 'View cart' : 'Add items to continue'}
           variant='pri'
           disabled={!lines.length}
           icon={<Icon name='cart' size={17} color={colors.accentInk} />}

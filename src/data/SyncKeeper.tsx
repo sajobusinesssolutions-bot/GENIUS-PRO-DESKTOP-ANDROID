@@ -88,15 +88,18 @@ export default function SyncKeeper() {
     attempt.current();
   };
 
-  // open, sign-in, back online, or the moment a new local operation appears —
-  // but only jump the queue while nothing is currently failing. Mid-outage,
-  // ringing up ten sales should not mean ten immediate retries; it waits for
-  // the same backoff everything else is waiting out.
+  // open, sign-in, back online, or the moment something is saved. A save with
+  // the network up goes up straight away, even after an earlier failure: the
+  // save is itself the sign to try (a blip used to hold every later sale back
+  // for the whole backoff, up to ten minutes, showing "7 changes waiting").
+  // Saves close together are sent as one run. If the network is truly gone the
+  // run fails and the change stays queued, using the offline allowance.
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!ready || !on || !online) return;
-    if (waiting > previousWaiting.current && failures.current === 0) {
-      last.current = Date.now();
-      attempt.current();
+    if (waiting > previousWaiting.current) {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => { saveTimer.current = null; last.current = Date.now(); attempt.current(); }, 400);
     } else {
       tick.current();
     }

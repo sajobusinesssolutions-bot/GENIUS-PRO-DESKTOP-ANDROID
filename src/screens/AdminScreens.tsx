@@ -4,7 +4,8 @@
  * Reference MENU_GROUPS 'admin' (lines 6558-6563) and SCREENS.notifications (2797).
  */
 import React from 'react';
-import { View, Text, ScrollView, TextInput, Switch } from 'react-native';
+import { View, Text, TextInput, Switch } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Card, Cap, KV, KVNode, Button, Chip, EmptyState, IconTile } from '../components/ui';

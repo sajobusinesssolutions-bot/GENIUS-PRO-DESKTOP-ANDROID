@@ -54,7 +54,7 @@ export default function AuditLogScreen() {
               <Icon name="shield" size={19} color={colors.ink} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{item.action}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{item.action}</Text>
               {item.details ? (
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: colors.soft, marginTop: 3 }}>{item.details}</Text>
               ) : null}

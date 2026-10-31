@@ -229,6 +229,8 @@ export function migrate(d: any): any {
     if (w.active === undefined) w.active = true;
   });
   d.queue = d.queue || [];
+  // whether there is internet is asked afresh on every start, never taken from the saved book
+  if (d.session) d.session.online = true;
 
   // PINs used to be stored as the raw digits someone typed. A book saved
   // before hashing existed still has them that way; rehash on this one load
@@ -289,6 +291,9 @@ export function migrate(d: any): any {
     if (p.category && d.categories.indexOf(p.category) < 0) d.categories.push(p.category);
   });
   d.numberSafe = d.numberSafe || { mode: 'auto' };
+  // a book brought down from the computer has no loyalty rules of its own; a
+  // missing set used to stop every sale to a customer from saving
+  d.loyaltyRules = { enabled: false, earnPer: 1000, pointValue: 5, redeemMin: 200, ...(d.loyaltyRules || {}) };
 
   // "Prices already include tax" used to be ignored: tax was always taken out
   // of the price, whatever the switch said, and the switch defaulted to off.

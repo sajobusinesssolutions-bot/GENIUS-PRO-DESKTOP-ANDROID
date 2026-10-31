@@ -6,6 +6,7 @@
  * report a recall runs on: it answers "where did this batch go" and "does the
  * paperwork add up to what is on the shelf".
  */
+import { tsMs } from '../data/helpers';
 import React, { useMemo, useState } from 'react';
 import { View, Text, FlatList } from 'react-native';
 import { Pressable } from '../components/Press';
@@ -57,7 +58,7 @@ export default function BatchMovementScreen() {
     if (!db || !product || !batch) return [];
     const ms = withOlder(db.movements, older)
       .filter((m) => m.productId === product.id && m.batchNo === batch.no)
-      .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+      .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
     let run = 0;
     const out = ms.map((m) => { run += m.qty; return { ...m, balance: run }; });
     return out.reverse();
@@ -160,7 +161,7 @@ export default function BatchMovementScreen() {
                       } />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Batch {batch.no}</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Batch {batch.no}</Text>
                       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                         {batch.expiry
                           ? new Date(batch.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -231,7 +232,7 @@ export default function BatchMovementScreen() {
                 <Icon name={MOVE_ICON[item.type] || 'swap'} size={19} color={fg} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
                   {item.type.charAt(0).toUpperCase() + item.type.slice(1)}{item.ref ? ' · ' + item.ref : ''}
                 </Text>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
@@ -239,7 +240,7 @@ export default function BatchMovementScreen() {
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 3 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: fg }}>
                   {item.qty > 0 ? '+' : '−'}{Math.abs(item.qty)}
                 </Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>bal {item.balance}</Text>

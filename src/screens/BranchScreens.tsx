@@ -10,7 +10,8 @@
  * derived per warehouse from the same records the rest of the app uses.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, Pressable, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -323,7 +324,7 @@ export function BranchesScreen() {
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 16, borderTopWidth: 1, borderColor: colors.line, backgroundColor: colors.accentSoft }}
           >
             <Icon name="chart" size={17} color={ink} />
-            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>Branch analysis</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>Branch analysis</Text>
             <Icon name="chev" size={17} color={ink} />
           </Pressable>
         </Panel>
@@ -352,7 +353,7 @@ export function BranchesScreen() {
                 </View>
                 <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 }}>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{w.name}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{w.name}</Text>
                     {here ? <Badge label="Active" tone="good" /> : null}
                     {off ? <Badge label="Disabled" tone="neutral" /> : null}
                   </View>
@@ -380,7 +381,7 @@ export function BranchesScreen() {
                       <View style={{ position: 'absolute', right: -2, bottom: -2, width: 11, height: 11, borderRadius: 4, backgroundColor: branchColor(branches.length + i, off), borderWidth: 2, borderColor: colors.surface }} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 }}>
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{b.name}</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{b.name}</Text>
                       {off ? <Badge label="Disabled" tone="neutral" /> : <Badge label={b.role ? b.role.charAt(0).toUpperCase() + b.role.slice(1) : 'Account'} tone="accent" />}
                     </View>
                     <Pressable
@@ -388,7 +389,7 @@ export function BranchesScreen() {
                       style={{ height: 36, paddingHorizontal: 13, borderRadius: 4, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                     >
                       <Icon name="swap" size={14} color={ink} />
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Open</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Open</Text>
                     </Pressable>
                   </View>
                 );
@@ -742,7 +743,7 @@ export function BranchAnalysisScreen() {
             {hero.stats.map((s) => (
               <View key={s.l} style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{s.l}</Text>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: s.c, marginTop: 2 }}>{s.v}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: s.c, marginTop: 2 }}>{s.v}</Text>
               </View>
             ))}
           </View>
@@ -791,7 +792,7 @@ export function BranchAnalysisScreen() {
                   <View key={r.id} style={{ paddingVertical: 12, gap: 8, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderColor: colors.line }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Dot color={r.color} />
-                      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{r.name}</Text>
+                      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{r.name}</Text>
                       <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: r.f.kept >= 15 ? colors.good : r.f.kept >= 8 ? colors.ink : colors.danger }}>{Math.round(r.f.kept)} kept</Text>
                     </View>
                     <View style={{ flexDirection: 'row', height: 14, borderRadius: 4, overflow: 'hidden', gap: 2 }}>
@@ -818,7 +819,7 @@ export function BranchAnalysisScreen() {
                   <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderColor: colors.line }}>
                     <Dot color={r.color} />
                     <View style={{ flex: 1, minWidth: 0, gap: 7 }}>
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{r.name}</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{r.name}</Text>
                       <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.sunk }}>
                         <View style={{ position: 'absolute', left: '50%', top: -3, bottom: -3, width: 2, backgroundColor: colors.lineHard }} />
                         <View style={{ position: 'absolute', top: 0, bottom: 0, left: `${dlt >= 0 ? 50 : 50 + dlt}%`, width: `${Math.max(2, Math.abs(dlt))}%`, borderRadius: 3, backgroundColor: fg }} />
@@ -845,7 +846,7 @@ export function BranchAnalysisScreen() {
                 <View key={r.id} style={{ paddingVertical: 12, gap: 8, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderColor: colors.line }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Dot color={r.color} />
-                    <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{r.name}</Text>
+                    <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{r.name}</Text>
                     <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: r.f.outCount >= 5 ? colors.danger : colors.ink }}>
                       {r.f.outCount} {r.f.outCount === 1 ? 'day' : 'days'}
                     </Text>

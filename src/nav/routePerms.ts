@@ -105,6 +105,9 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
 
   // reports
   Reports: 'reports.view',
+  DayReport: 'reports.view',
+  BooksCheck: 'reports.view',
+  DocTerms: 'settings.manage',
   ReportDetail: 'reports.view',
 
   // branches and the business

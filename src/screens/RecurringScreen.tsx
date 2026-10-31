@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ListPage, DocRow, StatusChips, SummaryTiles } from '../components/DocList';
-import { View, Text, FlatList, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, FlatList, Pressable, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
@@ -100,7 +101,7 @@ export function RecurringNewScreen({ navigation }: NativeStackScreenProps<RootSt
       lines={lines}
       onLinesChange={setLines}
       linesLabel="What is billed each time"
-      saveLabel={'Schedule · ' + money(total) + ' ' + frequency}
+      saveLabel="Save"
       askWho="Who set up this schedule?"
       summary={
         <Panel>

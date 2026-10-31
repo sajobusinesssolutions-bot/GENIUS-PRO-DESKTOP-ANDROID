@@ -3,6 +3,7 @@
  * plus the helpers that turn a stored record into something printable.
  */
 import React, { useState } from 'react';
+import { docDefaults } from '../data/docDefaults';
 import { View, Text, ActivityIndicator, Alert } from 'react-native';
 import { Pressable } from './Press';
 import { useTheme, fonts, radius } from '../theme';
@@ -26,6 +27,16 @@ import { Button } from './ui';
 /** Builds the printable form of a sale, including batch and expiry per line. */
 export function useDocBuilder() {
   const { db, party, user, product } = useAppData();
+
+  /* Documents & terms on paper: the copy label, a quotation's validity, a credit invoice's due date, how to pay */
+  function docExtras(sale: any, kind: string): Partial<DocMeta> {
+    const dd = docDefaults(db);
+    const quote = /quotation|estimate/i.test(kind);
+    const invoice = /invoice/i.test(kind);
+    const due = invoice && sale.due > 0.01 && dd.invoiceDueDays > 0 ? new Date(new Date(sale.ts).getTime() + dd.invoiceDueDays * 864e5).toISOString() : undefined;
+    const pay = invoice && (sale.showPayment ?? dd.paymentOnInvoice) && dd.paymentDetails ? dd.paymentDetails : undefined;
+    return { copyLabel: dd.copyLabel, ...(quote && sale.validUntil ? { validUntil: sale.validUntil } : {}), ...(due ? { dueDate: due } : {}), ...(pay ? { paymentDetails: pay } : {}) };
+  }
 
   function saleDoc(sale: Sale, kind = 'Tax Invoice'): DocMeta {
     const pt = sale.partyId ? party(sale.partyId) : undefined;
@@ -81,6 +92,8 @@ export function useDocBuilder() {
       note: sale.note,
       terms: sale.terms,
       servedBy: user(sale.userId)?.name,
+      ...docExtras(sale, kind),
+      ...(sale.id && !/quotation|estimate/i.test(kind) ? { printRef: { kind: 'sale' as const, id: sale.id }, printed: sale.printCount || 0 } : {}),
       ...((sale.ticketName || sale.orderType) && db?.printer?.showTable !== false
         ? { table: [sale.ticketName, orderTypeWord(sale.orderType)].filter(Boolean).join(' · ') } : {}),
     };
@@ -169,7 +182,19 @@ export function useDocBuilder() {
     };
   }
 
-  return { saleDoc, purchaseDoc, paymentDoc };
+  /* a return printed as a credit note, from the same layout as the bill it came off */
+  function creditNoteDoc(c: { no: string; ts: string; partyId: string | null; total: number; reason?: string; lines: Array<{ productId: string; name: string; qty: number; price: number }> }): DocMeta {
+    return saleDoc({ id: c.no, no: c.no, ts: c.ts, partyId: c.partyId, lines: c.lines.map((l) => ({ ...l, sku: '', unit: product(l.productId)?.unit || '', cost: 0, taxRate: 0 })),
+      gross: c.total, discount: 0, tax: 0, total: c.total, paid: c.total, due: 0, method: 'cash', note: c.reason } as any, 'Credit note');
+  }
+  /* an expense or money in, as a one-line voucher */
+  function entryDoc(e: { id: string; ts: string; direction: string; category: string; amount: number; note?: string }): DocMeta {
+    return saleDoc({ id: e.id, no: (e.direction === 'out' ? 'EXP-' : 'INC-') + e.id.slice(-6).toUpperCase(), ts: e.ts, partyId: null,
+      lines: [{ productId: '', name: e.category + (e.note ? ' — ' + e.note : ''), sku: '', unit: '', qty: 1, price: e.amount, cost: 0, taxRate: 0 }],
+      gross: e.amount, discount: 0, tax: 0, total: e.amount, paid: e.amount, due: 0, method: 'cash' } as any, e.direction === 'out' ? 'Expense voucher' : 'Receipt voucher');
+  }
+
+  return { saleDoc, purchaseDoc, paymentDoc, creditNoteDoc, entryDoc };
 }
 
 export interface MoreAction {
@@ -366,7 +391,7 @@ export function DocActions({ doc, more, compact, phone, email }: {
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft }}>Copies</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {btn('down', () => setPick((x) => ({ ...x, copies: Math.max(1, x.copies - 1) })), false, undefined, 'One fewer copy')}
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink, minWidth: 24, textAlign: 'center' }}>{pick.copies}</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, minWidth: 24, textAlign: 'center' }}>{pick.copies}</Text>
             {btn('plus', () => setPick((x) => ({ ...x, copies: Math.min(5, x.copies + 1) })), false, undefined, 'One more copy')}
           </View>
         </View>

@@ -15,7 +15,8 @@
  * server that decides.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Alert, RefreshControl } from 'react-native';
+import { View, Text, Alert, RefreshControl } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useToast } from '../components/Toast';
@@ -60,7 +61,7 @@ function EditionPick({ value, onChange, plan }: { value: Edition; onChange: (e: 
           <Pressable key={e} onPress={() => onChange(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 4, borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}>
             <Icon name={d.icon} size={20} color={colors.ink} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{d.name}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{d.name}</Text>
               <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{d.tagline}</Text>
               {plan !== 'trial' ? <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.soft, marginTop: 2 }}>{p.name}: {money0(p.prices.month)}/month · {money0(p.prices.year)}/year</Text> : null}
             </View>
@@ -93,7 +94,7 @@ function OwnerRow({ o, onPress, last }: { o: Owner; onPress: () => void; last?: 
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
           {o.email}
         </Text>
         <Badge tone={licenceTone(o)} label={licenceLabel(o)} />
@@ -764,6 +765,8 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
         />
       </Panel>
 
+      <SubscriptionPanel ownerId={o.id} access={access} onChanged={onChanged} />
+
       <View style={{ height: 14 }} />
       <SectionLabel>Grant a licence</SectionLabel>
       <Panel>
@@ -795,5 +798,135 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
         />
       </Panel>
     </Sheet>
+  );
+}
+
+/**
+ * One owner's subscription: what is owed and paid, money received (for a
+ * licence granted without amounts, or paid in parts), the client's own fees —
+ * which their Plan & License shows instead of the standard prices — and every
+ * licence they have held, each of which can be reset and reinstated.
+ */
+function SubscriptionPanel({ ownerId, access, onChanged }: { ownerId: string; access: () => Promise<string | null>; onChanged: () => void }) {
+  const { colors } = useTheme();
+  const { success, error } = useToast();
+  const [sub, setSub] = useState<dev.Subscription | null>(null);
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('Mobile money');
+  const [note, setNote] = useState('');
+  const [licFee, setLicFee] = useState('');
+  const [renFee, setRenFee] = useState('');
+  const [feeNote, setFeeNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    const a = await access(); if (!a) return;
+    const r = await dev.subscription(a, ownerId);
+    if (!r.ok) { error(r.error.message); return; }
+    setSub(r.value);
+    setLicFee(r.value.fees?.licence_fee != null ? String(Math.round(Number(r.value.fees.licence_fee))) : '');
+    setRenFee(r.value.fees?.renewal_fee != null ? String(Math.round(Number(r.value.fees.renewal_fee))) : '');
+    setFeeNote(r.value.fees?.note || '');
+  }, [ownerId]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(); }, [load]);
+  const run = async (fn: (a: string) => Promise<{ ok: boolean; error?: { message: string } } & any>, done: string) => {
+    const a = await access(); if (!a) return;
+    setBusy(true);
+    const r = await fn(a);
+    setBusy(false);
+    if (!r.ok) { error(r.error?.message || 'That did not go through.'); return; }
+    success(done); await load(); onChanged();
+  };
+  const fmt = (n: number | string | null | undefined) => money0(Number(n) || 0);
+  const day = (t?: string | null) => (t ? new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+  if (!sub) return <View style={{ marginTop: 14 }}><SectionLabel>Subscription</SectionLabel><Panel><Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>Loading…</Text></Panel></View>;
+  return (
+    <View style={{ marginTop: 14 }}>
+      <SectionLabel>Subscription</SectionLabel>
+      <Panel>
+        <DetailRow label="Fees on their licences (with VAT)" value={fmt(sub.totals.due)} />
+        <DetailRow label="Received" value={fmt(sub.totals.paid)} />
+        <DetailRow label={sub.totals.balance > 0 ? 'Still owed' : 'Paid ahead'} value={fmt(Math.abs(sub.totals.balance))} bold last />
+      </Panel>
+
+      <View style={{ height: 10 }} />
+      <Panel>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink, marginBottom: 8 }}>Receive money</Text>
+        <Field icon="cash" label="Amount received" value={amount} onChangeText={setAmount} numeric money />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          {['Mobile money', 'Bank', 'Cash'].map((m) => (
+            <Pressable key={m} onPress={() => setMethod(m)} style={{ paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill, borderWidth: 1, borderColor: method === m ? colors.accent : colors.line, backgroundColor: method === m ? colors.accentSoft : colors.surface }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: method === m ? colors.accent : colors.soft }}>{m}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Field icon="pencil" label="Note" value={note} onChangeText={setNote} placeholder="Reference, period it covers…" />
+        <Button label="Record payment" variant="pri" loading={busy}
+          onPress={() => { const n = Number(amount) || 0; if (!n) { error('Enter the amount received.'); return; }
+            void run((a) => dev.addPayment(a, ownerId, { amount: n, method, note: note.trim() || undefined }), fmt(n) + ' recorded').then(() => { setAmount(''); setNote(''); }); }} />
+        {sub.payments.length ? (
+          <View style={{ marginTop: 12 }}>
+            {sub.payments.map((p, i) => (
+              <Pressable key={p.id} onLongPress={() => Alert.alert('Remove this payment?', fmt(p.amount) + ' on ' + day(p.received_at), [{ text: 'Keep', style: 'cancel' }, { text: 'Remove', style: 'destructive', onPress: () => void run((a) => dev.removePayment(a, p.id), 'Payment removed') }])}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: i ? 1 : 0, borderTopColor: colors.line }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{day(p.received_at)} · {p.method || 'Payment'}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{[p.note, p.received_by].filter(Boolean).join(' · ')}</Text>
+                </View>
+                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.good }}>{fmt(p.amount)}</Text>
+              </Pressable>
+            ))}
+            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 4 }}>Hold a payment to remove it.</Text>
+          </View>
+        ) : null}
+      </Panel>
+
+      <View style={{ height: 10 }} />
+      <Panel>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Their own fees</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2, marginBottom: 8 }}>Shown in their Plan & License instead of the standard prices. Empty both to go back to the standard prices.</Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}><Field label="Licence fee" value={licFee} onChangeText={setLicFee} numeric money /></View>
+          <View style={{ flex: 1 }}><Field label="Renewal fee" value={renFee} onChangeText={setRenFee} numeric money /></View>
+        </View>
+        <Field icon="pencil" label="Note shown to them" value={feeNote} onChangeText={setFeeNote} placeholder="e.g. Agreed rate for two branches" />
+        <Button label="Save their fees" loading={busy}
+          onPress={() => void run((a) => dev.setFees(a, ownerId, { licenceFee: licFee.trim() ? Number(licFee) : null, renewalFee: renFee.trim() ? Number(renFee) : null, note: feeNote.trim() || undefined }),
+            licFee.trim() || renFee.trim() ? 'Their fees are set' : 'Back to the standard prices')} />
+      </Panel>
+
+      <View style={{ height: 10 }} />
+      <Panel>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink, marginBottom: 6 }}>Licence history</Text>
+        {sub.licences.map((l, i) => {
+          const reset = l.status === 'revoked';
+          return (
+            <View key={l.id} style={{ paddingVertical: 10, borderTopWidth: i ? 1 : 0, borderTopColor: colors.line, gap: 3 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{l.plan.toUpperCase()} · {l.term}{l.edition && l.edition !== 'retail' ? ' · ' + l.edition : ''}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, color: reset ? colors.danger : l.status === 'active' ? colors.good : colors.warn }}>{reset ? 'RESET' : l.status.toUpperCase()}</Text>
+              </View>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{day(l.started_at)} → {l.expires_at ? day(l.expires_at) : 'lifetime'} · by {l.issued_by || '—'}</Text>
+              {l.renewal_fee || l.installation_fee ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Renewal {fmt(l.renewal_fee)} · installation {fmt(l.installation_fee)}</Text> : null}
+              {reset ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.danger }}>Reset {day(l.reset_at)} by {l.reset_by}{l.reset_reason ? ' — ' + l.reset_reason : ''}</Text> : null}
+              {l.reinstated_at && !reset ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.good }}>Reinstated {day(l.reinstated_at)}</Text> : null}
+              <View style={{ flexDirection: 'row', marginTop: 4 }}>
+                {reset ? (
+                  <Pressable onPress={() => Alert.alert('Reinstate this licence?', 'It goes back to ' + (l.prev_status || 'active') + ' and their apps pick it up at the next check-in.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Reinstate', onPress: () => void run((a) => dev.reinstateLicence(a, l.id), 'Licence reinstated') }])}>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent }}>Reinstate</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable onPress={() => Alert.prompt
+                    ? Alert.prompt('Reset this licence?', 'It stops working at their next check-in. Why? (kept in the history)', (why) => void run((a) => dev.resetLicence(a, l.id, why), 'Licence reset'))
+                    : Alert.alert('Reset this licence?', 'It stops working at their next check-in. You can reinstate it from here.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Reset', style: 'destructive', onPress: () => void run((a) => dev.resetLicence(a, l.id), 'Licence reset') }])}>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger }}>Reset</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          );
+        })}
+        {!sub.licences.length ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>No licence yet.</Text> : null}
+      </Panel>
+    </View>
   );
 }

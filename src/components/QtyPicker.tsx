@@ -53,14 +53,14 @@ export default function QtyPicker({ visible, productName, onConfirm, onCancel, m
           }}>
         <View>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 4 }}>Add to cart</Text>
-          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{productName}</Text>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{productName}</Text>
         </View>
 
         <View style={{ flexDirection: 'row', gap: spacing.lg, alignItems: 'center' }}>
           <Field style={{ flex: 1, marginBottom: 0 }} label="Quantity" value={qty} onChangeText={setQty} numeric decimal autoFocus={!start} />
           <View style={{ gap: 4 }}>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Total</Text>
-            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 20, color: colors.ink, textAlign: 'center' }}>{money(lineTotal)}</Text>
+            <Text style={{ fontFamily: fonts.monoSemi, fontSize: 18, color: colors.ink, textAlign: 'center' }}>{money(lineTotal)}</Text>
           </View>
         </View>
 
@@ -82,7 +82,7 @@ export default function QtyPicker({ visible, productName, onConfirm, onCancel, m
                     alignItems: 'center', justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>{d}</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>{d}</Text>
                 </Pressable>
               ))}
               {ri === 3 && (
@@ -93,7 +93,7 @@ export default function QtyPicker({ visible, productName, onConfirm, onCancel, m
                     alignItems: 'center', justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>←</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>←</Text>
                 </Pressable>
               )}
             </View>

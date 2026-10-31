@@ -11,7 +11,8 @@
  * and shop details (logo, phones, address) on the firm, which both share.
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert, Image, Linking, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, Alert, Image, Linking, Platform, ActivityIndicator } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
@@ -170,7 +171,7 @@ function NavCard({ icon, title, sub, onPress }: { icon: IconName; title: string;
         <Icon name={icon} size={20} color={colors.ink} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{title}</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{title}</Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{sub}</Text>
       </View>
       <Icon name="chev" size={18} color={colors.faint} />
@@ -387,7 +388,7 @@ export default function PrintingScreen() {
         }}
       >
         <Icon name={on ? 'check' : icon} size={17} color={on ? '#fff' : colors.ink} />
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? '#fff' : colors.ink }}>{label}</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? '#fff' : colors.ink }}>{label}</Text>
       </Pressable>
     );
   };
@@ -446,7 +447,7 @@ export default function PrintingScreen() {
                   <Icon name={real ? (real.kind === 'bluetooth' ? 'bluetooth' : 'wifi') : 'print'} size={20} color={real ? colors.good : colors.faint} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>
                     {real ? real.name : 'No receipt printer yet'}
                   </Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
@@ -524,7 +525,7 @@ export default function PrintingScreen() {
                                 <Icon name={not ? 'bluetooth' : 'print'} size={18} color={not ? colors.faint : colors.accent} />
                               </View>
                               <View style={{ flex: 1, minWidth: 0 }}>
-                                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{d.name}</Text>
+                                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{d.name}</Text>
                                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
                                   {not ? 'Not a printer' : inUse ? 'In use' : d.address}
                                 </Text>
@@ -790,7 +791,7 @@ export function ReceiptSettingsScreen() {
       }}
     >
       <Icon name={icon} size={20} color={on ? colors.accentInk : colors.soft} />
-      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accentInk : colors.ink }}>{title}</Text>
+      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accentInk : colors.ink }}>{title}</Text>
       <Text style={{ fontFamily: fonts.ui, fontSize: 11, textAlign: 'center', color: on ? colors.accentInk : colors.faint }}>{sub}</Text>
     </Pressable>
   );
@@ -888,7 +889,7 @@ export function ReceiptSettingsScreen() {
           <ToggleRow bare label="Print automatically after a sale" on={d.autoPrint} onChange={(v) => set({ autoPrint: v })} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>Copies per sale</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Copies per sale</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>{d.copies === 1 ? 'One copy' : d.copies + ' copies'}</Text>
             </View>
             <View style={{ width: 44 }}><Button size="sm" label="−" onPress={() => set({ copies: Math.max(1, d.copies - 1) })} /></View>
@@ -1038,7 +1039,7 @@ function InvoicePreview({ d }: { d: InvoiceDraft }) {
     return (
       <View style={{ backgroundColor: '#fff', padding: 10 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 15, color: d.accent }}>{db.firm.name.toUpperCase()}</Text>
+          <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 14, color: d.accent }}>{db.firm.name.toUpperCase()}</Text>
           {logo}
         </View>
         <View style={{ backgroundColor: '#1A9E8F', paddingVertical: 3, paddingHorizontal: 6, width: '75%', marginTop: 2 }}>
@@ -1112,7 +1113,7 @@ function InvoicePreview({ d }: { d: InvoiceDraft }) {
             {logo || <View style={{ width: 26, height: 26, backgroundColor: d.accent, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontFamily: fonts.uiExtra, fontSize: 10 }}>{initials}</Text></View>}
             <View style={{ flex: 1 }}><Text style={[bold, { fontSize: 11 }]}>{db.firm.name}</Text><Text style={small} numberOfLines={1}>{d.address}</Text></View>
           </View>
-          <View style={{ alignItems: 'flex-end' }}><Text style={{ color: d.accent, fontSize: 15, fontFamily: fonts.ui }}>Invoice</Text><Text style={small}>INV-001</Text></View>
+          <View style={{ alignItems: 'flex-end' }}><Text style={{ color: d.accent, fontSize: 14, fontFamily: fonts.ui }}>Invoice</Text><Text style={small}>INV-001</Text></View>
         </View>
         <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
           <View style={box}><Text style={[small, { color: d.accent }]}>BILL TO</Text>{d.showParty ? <Text style={bold}>Taylor & Co</Text> : null}</View>

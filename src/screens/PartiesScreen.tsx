@@ -10,7 +10,7 @@ import React, { useState, useMemo } from 'react';
 import { View, FlatList, Pressable, Text } from 'react-native';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
-import { ListPage, DocRow, StatusChips, SummaryTiles, SortBar } from '../components/DocList';
+import { ListPage, StatusChips, SummaryTiles, SortBar } from '../components/DocList';
 import { Icon } from '../components/icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { vocab } from '../data/editions';
@@ -30,7 +30,7 @@ export default function PartiesScreen({ navigation }: Props) {
   const V = vocab(db);
   const [q, setQ] = useState('');
   const [type, setType] = useState<PType>('all');
-  const [sort, setSort] = useState<PSort>('balance');
+  const [sort, setSort] = useState<PSort>('az');
 
   const all = db?.parties || [];
 
@@ -40,8 +40,12 @@ export default function PartiesScreen({ navigation }: Props) {
       .filter((p) => (type === 'all' || p.type === type)
         && (!needle || p.name.toLowerCase().includes(needle) || (p.phone || '').includes(needle)))
       .map((p) => ({ p, bal: partyBalance(p.id) }))
-      .sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal));
-  }, [db, q, type, partyBalance]);
+      .sort(sort === 'az' ? (a, b) => a.p.name.localeCompare(b.p.name)
+        : sort === 'za' ? (a, b) => b.p.name.localeCompare(a.p.name)
+        : sort === 'owesMost' ? (a, b) => b.bal - a.bal
+        : sort === 'oweMost' ? (a, b) => a.bal - b.bal
+        : (a, b) => Math.abs(b.bal) - Math.abs(a.bal));
+  }, [db, q, type, sort, partyBalance]);
 
   const totals = useMemo(() => {
     let receivable = 0, payable = 0;
@@ -78,17 +82,33 @@ export default function PartiesScreen({ navigation }: Props) {
         const { p, bal } = item;
         const cust = p.type === 'customer';
         const owes = bal > 0.01, credit = bal < -0.01;
+        const tone = cust ? colors.accent : colors.warn;
+        /* name, then whether a customer or a supplier, then the phone; the balance on the right */
         return (
-          <DocRow
-            title={p.name}
-            pill={{ label: cust ? V.customer : V.supplier, tone: cust ? 'accent' : 'warn' }}
-            amount={owes || credit ? money(Math.abs(bal)) : 'Settled'}
-            amountTone={owes ? (cust ? colors.good : colors.danger) : credit ? colors.accent : colors.faint}
-            refText={owes ? (cust ? 'Owes you' : 'You owe') : credit ? 'In credit' : 'Nothing owing'}
-            sideText={p.phone || 'No phone'}
-            lines={p.address ? [{ label: 'Address', value: p.address }] : undefined}
+          <Pressable
             onPress={() => navigation.navigate('PartyDetail', { partyId: p.id })}
-          />
+            style={({ pressed }) => ({
+              marginHorizontal: 16, marginBottom: 6, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 10,
+              flexDirection: 'row', alignItems: 'center', gap: 10,
+              backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line,
+            })}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{p.name}</Text>
+              <View style={{ alignSelf: 'flex-start', marginTop: 4, paddingVertical: 1.5, paddingHorizontal: 6, borderRadius: 4, backgroundColor: cust ? colors.accentSoft : colors.warnSoft }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 9.5, letterSpacing: 0.5, color: tone }}>{(cust ? V.customer : V.supplier).toUpperCase()}</Text>
+              </View>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 3 }}>{p.phone || 'No phone'}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: owes ? (cust ? colors.good : colors.danger) : credit ? colors.accent : colors.faint }}>
+                {owes || credit ? money(Math.abs(bal)) : 'Settled'}
+              </Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 2 }}>
+                {owes ? (cust ? 'Owes you' : 'You owe') : credit ? 'In credit' : 'Nothing owing'}
+              </Text>
+            </View>
+          </Pressable>
         );
       }}
     />

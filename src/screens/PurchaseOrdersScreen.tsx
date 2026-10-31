@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, Pressable, ScrollView } from 'react-native';
+import { View, Text, FlatList, Pressable } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Empty, Button, Cap, Chip, DocCard, Badge, FAB } from '../components/ui';

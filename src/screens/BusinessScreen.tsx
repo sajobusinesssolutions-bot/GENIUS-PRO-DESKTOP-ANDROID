@@ -9,7 +9,8 @@
  * ends up printing a broken image three weeks later.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Image, Pressable, Alert } from 'react-native';
+import { View, Text, Image, Pressable, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -221,7 +222,7 @@ export default function BusinessScreen() {
                 : <Icon name="factory" size={25} color={colors.accent} />}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>
                 {name || firm.name}
               </Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>

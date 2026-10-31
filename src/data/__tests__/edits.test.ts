@@ -262,3 +262,38 @@ describe('editing is void-and-repost', () => {
     expect(d.journal.every((j) => j.balanced)).toBe(true);
   });
 });
+
+/* What the computer is sent. An edit used to post the corrected bill under a
+   new id and drop the old one unsent, so the computer kept both; a void was
+   never sent at all. */
+describe('edits and voids reach the computer', () => {
+  const queued = (d: DB, kind: string) => d.queue.filter((q) => q.kind === kind).map((q) => q.ref);
+  function synced() { const d = makeDb(); d.sync = { ...d.sync, on: true }; return d; }
+
+  it('an edited sale keeps its id and is sent once, as that id', () => {
+    const d = synced();
+    const s = logic.commitSale(d, { lines: [lineA(2)], partyId: 'pty_1', method: 'credit', discount: 0 });
+    d.queue = [];
+    const out = logic.editSale(d, s.id, { lines: [lineA(3)], partyId: 'pty_1', discount: 0 })!;
+    expect(out.id).toBe(s.id);
+    expect(d.sales.filter((x) => x.no === s.no)).toHaveLength(1);
+    expect(queued(d, 'sale')).toEqual([s.id]);
+  });
+
+  it('a voided sale is sent', () => {
+    const d = synced();
+    const s = logic.commitSale(d, { lines: [lineA(1)], partyId: 'pty_1', method: 'cash', discount: 0 });
+    d.queue = [];
+    logic.voidSale(d, s.id, 'wrong item');
+    expect(queued(d, 'sale')).toEqual([s.id]);
+  });
+
+  it('an edited purchase keeps its id and is sent once, as that id', () => {
+    const d = synced();
+    const pu = logic.createPurchase(d, 'pty_2', [{ productId: 'p_b', qty: 5, cost: 30 }], 'credit');
+    d.queue = [];
+    const out = logic.editPurchase(d, pu.id, { partyId: 'pty_2', lines: [{ productId: 'p_b', qty: 7, cost: 30 }], method: 'credit' })!;
+    expect(out.id).toBe(pu.id);
+    expect(queued(d, 'purchase')).toEqual([pu.id]);
+  });
+});

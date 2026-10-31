@@ -13,7 +13,9 @@
  * the screen open for the next line; "Save" goes back to the bill.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, View, Text, TextInput, ScrollView, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { Modal, View, Text, TextInput, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import ScrollView from './KeyScroll';
+import type { ScrollView as RNScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pressable } from './Press';
 import { ToastHost } from './Toast';
@@ -100,7 +102,7 @@ export default function ItemEntrySheet({
   /** An item already chosen, such as one just scanned. */
   startProduct?: Product | null;
   /** `andNew` keeps the screen open, cleared, for the next line. */
-  onSave: (line: EntryLine, andNew: boolean) => void;
+  onSave: (line: EntryLine, andNew: boolean, more?: boolean) => void;
   /** Offered when changing a line already on the bill. */
   onRemove?: () => void;
   onClose: () => void;
@@ -155,7 +157,7 @@ export default function ItemEntrySheet({
   const discRef = useRef<TextInput>(null);
   const noteRef = useRef<TextInput>(null);
   const sellRef = useRef<TextInput>(null);
-  const listRef = useRef<ScrollView>(null);
+  const listRef = useRef<RNScrollView>(null);
 
   const focus = (r: React.RefObject<TextInput | null>, delay = 60) => setTimeout(() => r.current?.focus(), delay);
   /**
@@ -221,6 +223,8 @@ export default function ItemEntrySheet({
     const list = products.filter((p) => p.active !== false && (!needle
       || p.name.toLowerCase().includes(needle)
       || p.sku.toLowerCase().includes(needle)
+      // a drug is found by its generic name too: Paracetamol finds Panadol
+      || (p.genericName || '').toLowerCase().includes(needle)
       || (p.barcodes || []).some((b) => b.toLowerCase().includes(needle))));
     // names that start with what was typed come first
     return list.sort((a, b) => {
@@ -250,6 +254,9 @@ export default function ItemEntrySheet({
   const limit = product && maxFor ? maxFor(product, batchNo) : Infinity;
   const over = Number.isFinite(limit) && qtyNum * factor > limit + 1e-9;
   const batches = product && trackBatches && product.trackBatches ? liveBatches(product) : [];
+  /** Over this batch, but the other batches hold the rest: it is spread over them on saving. */
+  const spreads = over && !!batchNo && !!product && !!maxFor && batches.length > 1
+    && batches.filter((b) => !(blockExpired && isExpired(b))).reduce((n, b) => n + Math.max(0, maxFor(product, b.no)), 0) >= qtyNum * factor - 1e-9;
   const wantsImei = !!(product && trackImei && product.trackSerials);
   const unitCost = product ? (unitsFor(product).find((u) => u.unit === unit)?.cost ?? product.cost) : 0;
   const underCost = belowCost !== 'allow' && !!product && unitCost > 0 && qtyNum > 0 && net < unitCost - 1e-9;
@@ -290,6 +297,29 @@ export default function ItemEntrySheet({
     if (blockExpired && p && batchNo && isExpired((p.batches || []).find((b) => b.no === batchNo))) {
       setErr('Batch ' + batchNo + ' has expired and cannot be sold.');
       return;
+    }
+    if (over && batchNo && product && maxFor && !wantsImei) {
+      // one batch short: the rest comes from the next batches, first to expire first, as lines of their own
+      const want = qtyNum * factor;
+      const order = [batchNo, ...liveBatches(product).map((b) => b.no).filter((n) => n !== batchNo)]
+        .filter((n) => !(blockExpired && isExpired((product.batches || []).find((b) => b.no === n))));
+      const parts: Array<{ no: string; qty: number }> = [];
+      let left = want;
+      for (const no of order) {
+        if (left <= 1e-9) break;
+        const take = Math.min(left, Math.max(0, maxFor(product, no)));
+        if (take > 1e-9) { parts.push({ no, qty: take }); left -= take; }
+      }
+      if (left <= 1e-9 && parts.length > 1) {
+        const c = unitsFor(product).find((u) => u.unit === unit) || { unit: product.unit, factor: 1, cost: product.cost };
+        parts.forEach((pt, i) => onSave({
+          product, qty: pt.qty / c.factor, unit: c.unit, unitFactor: c.factor,
+          price: net, listPrice: rateNum, discountPct: discNum, cost: c.cost,
+          note: note.trim(), batchNo: pt.no,
+        }, i < parts.length - 1 ? true : andNew, i > 0));
+        if (andNew) clear();
+        return;
+      }
     }
     if (over) {
       // one batch short: say which one to take the rest from
@@ -383,7 +413,7 @@ export default function ItemEntrySheet({
                   </Text>
                   {canCreate && onCreateProduct ? (
                     <Pressable onPress={() => releaseName(startNew)} hitSlop={8} accessibilityLabel="Add new item">
-                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accent }}>Add New Item</Text>
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent }}>Add New Item</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -410,7 +440,7 @@ export default function ItemEntrySheet({
                           borderBottomWidth: i === matches.length - 1 ? 0 : 1, borderBottomColor: colors.line,
                         }}
                       >
-                        <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+                        <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>{p.name}</Text>
                         {st === null ? (
                           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Service</Text>
                         ) : (
@@ -427,7 +457,7 @@ export default function ItemEntrySheet({
                   })}
                   {!matches.length ? (
                     <Pressable onPress={canCreate && onCreateProduct ? () => releaseName(startNew) : undefined} style={{ padding: 20, alignItems: 'center' }}>
-                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: canCreate ? colors.accent : colors.faint, textAlign: 'center' }}>
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: canCreate ? colors.accent : colors.faint, textAlign: 'center' }}>
                         {canCreate && onCreateProduct ? 'Add “' + name.trim() + '” as a new ' + V.item.toLowerCase() : 'Nothing matches “' + name.trim() + '”'}
                       </Text>
                     </Pressable>
@@ -449,14 +479,15 @@ export default function ItemEntrySheet({
             >
               <View style={{ backgroundColor: colors.surface, paddingHorizontal: 16, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: colors.line }}>
                 {creating ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -6, marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -4, marginBottom: 10 }}>
                     <Icon name="plus" size={13} color={colors.accent} />
                     <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>New {V.item.toLowerCase()} — saved to your {V.items.toLowerCase()} with this line</Text>
                   </View>
                 ) : product && product.kind !== 'service' ? (
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: -6, marginBottom: 12 }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: -4, marginBottom: 10 }}>
                     In stock: <Text style={{ color: stockOf(product) > 0 ? colors.good : colors.danger }}>{plain(stockOf(product))} {product.unit}</Text>
                     {Number.isFinite(limit) && batchNo ? '  ·  Batch ' + batchNo + ': ' + plain(limit) : ''}
+                    {spreads ? '  ·  the rest from the next batch' : ''}
                   </Text>
                 ) : null}
 
@@ -471,7 +502,7 @@ export default function ItemEntrySheet({
                       numeric
                       decimal
                       returnKeyType="done"
-                      error={over ? 'Only ' + plain(limit / factor) + ' left' : undefined}
+                      error={over && !spreads ? 'Only ' + plain(limit / factor) + ' left' : undefined}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -594,7 +625,7 @@ export default function ItemEntrySheet({
                   ) : null}
                   <View style={{ height: 1, backgroundColor: colors.line }} />
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Total Amount</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Total Amount</Text>
                     <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(lineTotal)}</Text>
                   </View>
                 </View>
@@ -614,13 +645,13 @@ export default function ItemEntrySheet({
               onPress={() => save(true)}
               style={({ pressed }) => ({ flex: 1, height: 56, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : colors.surface })}
             >
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 16, color: colors.soft }}>{start ? 'Save & Add New' : 'Save & New'}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.soft }}>{start ? 'Save & Add New' : 'Save & New'}</Text>
             </Pressable>
             <Pressable
               onPress={() => save(false)}
               style={({ pressed }) => ({ flex: 1, height: 56, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 })}
             >
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.accentInk }}>Save</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>Save</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -676,7 +707,7 @@ function UnitChips({ value, options, onChange }: { value: string; options: strin
                 borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
               }}
             >
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: on ? colors.accent : colors.ink }}>{u}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accent : colors.ink }}>{u}</Text>
             </Pressable>
           );
         })}

@@ -91,9 +91,9 @@ export default function TablePlanEditor() {
 
   const stepper = (v: number, set: (n: number) => void) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Pressable onPress={() => set(Math.max(0, v - 1))} style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20, color: colors.ink }}>−</Text></Pressable>
+      <Pressable onPress={() => set(Math.max(0, v - 1))} style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>−</Text></Pressable>
       <Text style={{ minWidth: 30, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{v || '—'}</Text>
-      <Pressable onPress={() => set(Math.min(40, v + 1))} style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20, color: colors.ink }}>+</Text></Pressable>
+      <Pressable onPress={() => set(Math.min(40, v + 1))} style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18, color: colors.ink }}>+</Text></Pressable>
     </View>
   );
 
@@ -102,7 +102,7 @@ export default function TablePlanEditor() {
       <View style={{ padding: 14, gap: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Icon name="chair" size={18} color={colors.ink} />
-          <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Tables</Text>
+          <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Tables</Text>
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
             {tables.length} table{tables.length === 1 ? '' : 's'}{seatsTotal ? ' · ' + seatsTotal + ' seats' : ''}
           </Text>
@@ -146,7 +146,7 @@ export default function TablePlanEditor() {
 
       <View style={{ borderTopWidth: tables.length ? 1 : 0, borderTopColor: colors.line, padding: 14 }}>
         {!tables.length ? (
-          <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft, marginBottom: 10 }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, marginBottom: 10 }}>
             No tables yet. Without them, waiters type a table name on each order.
           </Text>
         ) : null}
@@ -196,7 +196,7 @@ export default function TablePlanEditor() {
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, marginBottom: 8 }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>Seats{draft.mode === 'add' ? ' at each' : ''}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Seats{draft.mode === 'add' ? ' at each' : ''}</Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Helps seat a party at a table that fits</Text>
               </View>
               {stepper(draft.seats, (n) => setDraft({ ...draft, seats: n }))}

@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { docDefaults, defaultTermsFor } from '../data/docDefaults';
+import TermsPicker from '../components/TermsPicker';
 import { useAppData } from '../data/AppDataContext';
 import DocEntry, { toSaleLines } from '../components/DocEntry';
 import { Field } from '../components/ui';
@@ -20,10 +22,12 @@ export default function EstimateNewScreen({ navigation, route }: Props) {
     unitFactor: l.unitFactor, listPrice: l.listPrice, discountPct: l.discountPct, note: l.note,
   })));
   const [discount, setDiscount] = useState(editing?.discount ? String(editing.discount) : '');
-  const [validFor, setValidFor] = useState('14');
+  const [validFor, setValidFor] = useState(String(docDefaults(db).quoteValidDays));
   /* printed on the quotation: the shop's standing terms to start with, and a note */
-  const [terms, setTerms] = useState(editing ? editing.terms || '' : db?.firm.terms || '');
-  const [note, setNote] = useState(editing?.note || '');
+  const startTerms = defaultTermsFor(db, 'estimate');
+  const [terms, setTerms] = useState(editing ? editing.terms || '' : startTerms.text);
+  const [termsId, setTermsId] = useState<string | null>(editing ? null : startTerms.id);
+  const [note, setNote] = useState(editing?.note ?? docDefaults(db).description);
 
   const total = lines.reduce((s, l) => s + l.qty * l.price, 0);
   const disc = Math.min(Number(discount) || 0, total);
@@ -47,7 +51,7 @@ export default function EstimateNewScreen({ navigation, route }: Props) {
       linesLabel="What is quoted"
       entryTitle="Add Items to Estimate/Quotation"
       autoStart={!editing}
-      saveLabel={(editing ? 'Save changes · ' : 'Create quotation · ') + money(Math.max(0, total - disc))}
+      saveLabel={editing ? 'Save changes' : 'Save quotation'}
       askWho={editing ? 'Who changed this quotation?' : 'Who prepared this quotation?'}
       summary={
         <Field
@@ -86,7 +90,7 @@ export default function EstimateNewScreen({ navigation, route }: Props) {
       {Number(validFor) > 0 ? (
         <Field icon="calendar" label="Holds until" value={until} readOnly onChangeText={() => {}} />
       ) : null}
-      <Field icon="doc" label="Terms" value={terms} onChangeText={setTerms} placeholder="Payment and delivery terms" multiline />
+      <TermsPicker value={terms} onChange={setTerms} chosenId={termsId} onChoose={(id, text) => { setTermsId(id); setTerms(text); }} />
       <Field icon="pencil" label="Note to the customer" value={note} onChangeText={setNote} placeholder="Anything else they should know" multiline />
     </DocEntry>
   );

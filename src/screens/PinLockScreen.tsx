@@ -13,7 +13,8 @@
  *    ask the owner, who resets theirs under Staff & roles.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Alert, ScrollView, Animated as RNAnimated } from 'react-native';
+import { View, Text, Alert, Animated as RNAnimated } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { Tap } from '../components/Tap';
 import { Logo } from '../components/Logo';
@@ -191,7 +192,7 @@ export default function PinLockScreen({ navigation }: Props) {
         <Icon name="home" size={20} color={colors.ink} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{db?.firm.name || 'This shop'}</Text>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{db?.firm.name || 'This shop'}</Text>
         <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
           {account?.email ? account.email : 'On this phone'}
         </Text>
@@ -239,7 +240,7 @@ export default function PinLockScreen({ navigation }: Props) {
         <View style={{ paddingHorizontal: 16, paddingTop: 52 }}>{shopHead}{branchRow}</View>
         <View style={{ alignItems: 'center', paddingTop: 26 }}>
           <Logo size={58} />
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 14 }}>Enter your PIN</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, marginTop: 14 }}>Enter your PIN</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 5 }}>Your PIN opens your own profile.</Text>
         </View>
         <PinDots filled={pin.length} error={!!err} />
@@ -277,7 +278,7 @@ export default function PinLockScreen({ navigation }: Props) {
         {branchRow}
         <View style={{ alignItems: 'center', paddingVertical: 26 }}>
           <Logo size={64} />
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 16 }}>Whose PIN?</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, marginTop: 16 }}>Whose PIN?</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6 }}>Pick the profile to reset. The code goes to the owner.</Text>
         </View>
         <SectionLabel>Profiles</SectionLabel>
@@ -309,7 +310,7 @@ export default function PinLockScreen({ navigation }: Props) {
       <View style={{ paddingHorizontal: 16, paddingTop: 52 }}>{shopHead}{branchRow}</View>
       <View style={{ alignItems: 'center', paddingTop: 22 }}>
         <Avatar name={user.name} id={user.id} size={70} />
-        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 14 }}>{user.name}</Text>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, marginTop: 14 }}>{user.name}</Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 5, textAlign: 'center', paddingHorizontal: 30 }}>
           {cap(user.role)} · {prompt}
         </Text>

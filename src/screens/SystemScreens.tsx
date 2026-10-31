@@ -21,7 +21,8 @@
  * EFRIS is deliberately not carried into this port.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, TextInput, Switch, Alert, ActivityIndicator, Platform, Linking } from 'react-native';
+import { View, Text, TextInput, Switch, Alert, ActivityIndicator, Platform, Linking } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import Constants from 'expo-constants';
 import { PLAY_BUILD } from '../data/store';
@@ -75,7 +76,7 @@ function StateCard({ tone, cap, headline, note, icon, busy, children }: {
             {busy ? <ActivityIndicator color={fg} /> : <Icon name={icon} size={25} color={fg} />}
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: -0.4 }}>{headline}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, letterSpacing: -0.4 }}>{headline}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: colors.faint, marginTop: 3 }}>{note}</Text>
           </View>
           <Badge label={cap} tone={tone === 'accent' ? 'accent' : tone} />
@@ -95,7 +96,7 @@ function GuardCard({ tone, title, note }: { tone: Tone; title: string; note: str
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 11, backgroundColor: bg, borderRadius: 4, paddingVertical: 14, paddingHorizontal: 14 }}>
         <Icon name="alert" size={18} color={fg} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>{title}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: fg }}>{title}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: fg, marginTop: 3 }}>{note}</Text>
         </View>
       </View>
@@ -116,7 +117,7 @@ function ToggleRow({ label, note, value, onChange, last }: {
       }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{label}</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{label}</Text>
         {note ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.faint, marginTop: 2 }}>{note}</Text> : null}
       </View>
       <Sw on={value} onPress={() => onChange(!value)} />
@@ -139,7 +140,7 @@ function PickRow({ label, note, on, onPress, last }: {
       }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{label}</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{label}</Text>
         {note ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{note}</Text> : null}
       </View>
       {on ? <Icon name="check" size={20} color={colors.accent} /> : null}
@@ -186,7 +187,7 @@ function ProWall({ what, blurb }: { what: string; blurb: string }) {
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingTop: 18 }}>
       <View style={{ backgroundColor: colors.accentSoft, borderRadius: 4, padding: 18, alignItems: 'center' }}>
         <Icon name="lock" size={26} color={colors.accent} />
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginTop: 8, textAlign: 'center' }}>{what} is on Pro</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginTop: 8, textAlign: 'center' }}>{what} is on Pro</Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.soft, marginTop: 4, textAlign: 'center' }}>{blurb}</Text>
         <View style={{ width: '100%', marginTop: 14 }}>
           <Button variant="pri" label="See the plans" onPress={() => go('Plans')} />
@@ -232,7 +233,7 @@ export function LicenceStopScreen() {
         <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="lock" size={26} color={colors.danger} />
         </View>
-        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink, marginTop: 12, textAlign: 'center' }}>{w[0]}</Text>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 14, color: colors.ink, marginTop: 12, textAlign: 'center' }}>{w[0]}</Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.soft, marginTop: 4, textAlign: 'center' }}>
           {db.licence.reason || w[1]}
         </Text>
@@ -279,7 +280,7 @@ export function OnlineScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingTop: 18 }}>
         <View style={{ backgroundColor: colors.accentSoft, borderRadius: 4, padding: 18, alignItems: 'center' }}>
           <Icon name="cloud" size={26} color={colors.accent} />
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginTop: 8 }}>Online mode needs Pro</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginTop: 8 }}>Online mode needs Pro</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.soft, marginTop: 4, textAlign: 'center' }}>
             Starter keeps everything on one device. Pro puts the books in the cloud so every till in
             the shop agrees.
@@ -512,7 +513,7 @@ export function AboutScreen() {
       })}
     >
       <Icon name={icon} size={18} color={colors.faint} />
-      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{label}</Text>
+      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{label}</Text>
       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: color || colors.faint }}>{value}</Text>
       {onPress ? <Icon name="chev" size={16} color={colors.lineHard} /> : null}
     </Pressable>
@@ -522,7 +523,7 @@ export function AboutScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
       <View style={{ alignItems: 'center', paddingVertical: 26 }}>
         <Logo size={76} />
-        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 24, color: colors.ink, marginTop: 16, letterSpacing: -0.5 }}>Genius Pro</Text>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: colors.ink, marginTop: 16, letterSpacing: -0.5 }}>Genius Pro</Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>Version {BUILD}</Text>
       </View>
 

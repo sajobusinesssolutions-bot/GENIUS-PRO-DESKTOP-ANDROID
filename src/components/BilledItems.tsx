@@ -6,6 +6,7 @@
  *
  * Shared by the sale, the purchase and every document raised from LineEditor.
  */
+import { groupNum } from '../data/helpers';
 import React, { useState } from 'react';
 import { View, Text } from 'react-native';
 import { Pressable } from './Press';
@@ -16,6 +17,8 @@ import type { SoldSerial } from '../data/types';
 export interface BilledLine {
   name: string;
   qty: number;
+  /** The tax rate on this line, in percent. */
+  taxRate?: number;
   unit?: string;
   /** Net rate charged per unit, after the line discount. */
   price: number;
@@ -32,16 +35,19 @@ export interface BilledLine {
 /** 70000 → "70,000": the rate in the middle row carries no currency, as on paper. */
 export function plain(n: number) {
   const r = Math.round(n * 100) / 100;
-  return r.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return groupNum(r, 2, true);
 }
 
-export default function BilledItems({ lines, money, onPress, title = 'Billed Items', taxTotal, empty }: {
+export default function BilledItems({ lines, money, onPress, title = 'Billed Items', taxTotal, empty, taxInclusive = true, taxName = 'Tax' }: {
   lines: BilledLine[];
   money: (n: number) => string;
   onPress?: (index: number) => void;
   title?: string;
   /** Shown in the totals when the bill carries tax. */
   taxTotal?: number;
+  /** Whether prices already hold the tax (it is taken out) or it goes on top. */
+  taxInclusive?: boolean;
+  taxName?: string;
   /** Shown in place of the cards when there are no lines. */
   empty?: React.ReactNode;
 }) {
@@ -67,7 +73,7 @@ export default function BilledItems({ lines, money, onPress, title = 'Billed Ite
         <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name={open ? 'down' : 'up'} size={13} color={colors.accentInk} />
         </View>
-        <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>{title}</Text>
+        <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>{title}</Text>
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>
           {lines.length} line{lines.length === 1 ? '' : 's'}
         </Text>
@@ -92,8 +98,8 @@ export default function BilledItems({ lines, money, onPress, title = 'Billed Ite
               <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, borderWidth: 1, borderColor: colors.lineHard, backgroundColor: colors.surface }}>
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.soft }}>#{i + 1}</Text>
               </View>
-              <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(l.qty * l.price)}</Text>
+              <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{l.name}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(l.qty * l.price)}</Text>
             </View>
 
             {(l as any).modifiers?.length ? (
@@ -115,6 +121,17 @@ export default function BilledItems({ lines, money, onPress, title = 'Billed Ite
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.warn }}>{money(discAmt)}</Text>
               </View>
             ) : null}
+
+            {taxTotal !== undefined && (l.taxRate || 0) > 0 ? (() => {
+              const net = l.qty * l.price, r = (l.taxRate || 0) / 100;
+              const t = taxInclusive ? net - net / (1 + r) : net * r;
+              return (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>{taxName} {plain(l.taxRate || 0)}%{taxInclusive ? ' (included)' : ' (added)'}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>{money(t)}</Text>
+                </View>
+              );
+            })() : null}
 
             {l.batchNo ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -147,7 +164,7 @@ export default function BilledItems({ lines, money, onPress, title = 'Billed Ite
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>Total Disc: {plain(totalDisc)}</Text>
           {taxTotal !== undefined ? (
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>Total Tax Amt: {plain(taxTotal)}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft }}>{taxName} {taxInclusive ? 'included' : 'added'}: {plain(taxTotal)}</Text>
           ) : null}
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>

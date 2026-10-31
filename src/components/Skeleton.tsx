@@ -79,15 +79,16 @@ export function ScreenSkeleton({ rows = 6 }: { rows?: number }) {
  */
 export function AfterTransition({ children }: { children: React.ReactNode; subscribe?: unknown }) {
   const [ready, setReady] = useState(false);
-  const x = useRef(new Animated.Value(24)).current;
+  /* the navigator slides the screen in now; this only waits for the slide before building it */
+  const x = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     let live = true;
-    Animated.timing(x, { toValue: 0, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true })
+    Animated.timing(x, { toValue: 0, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true })
       .start(() => {
         // build the screen once the slide is over and the frame is free
         requestIdleCallback(() => { if (live) setReady(true); });
       });
-    const t = setTimeout(() => { if (live) setReady(true); }, 400);
+    const t = setTimeout(() => { if (live) setReady(true); }, 300);
     return () => { live = false; clearTimeout(t); };
   }, [x]);
   return (

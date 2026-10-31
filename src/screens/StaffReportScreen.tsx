@@ -8,7 +8,8 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useCan, Denied } from '../components/Gate';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useBookFrom } from '../data/useBookFrom';
@@ -128,13 +129,13 @@ function StaffReportScreenBody() {
               ) : null}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{r.name}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{r.name}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {roleName(db, r.role || undefined)} · {r.count} sale{r.count === 1 ? '' : 's'}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 3 }}>
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(r.total)}</Text>
+              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(r.total)}</Text>
               <Badge label={Math.round(r.share) + '% of takings'} tone={i === 0 ? 'good' : 'neutral'} />
             </View>
           </View>

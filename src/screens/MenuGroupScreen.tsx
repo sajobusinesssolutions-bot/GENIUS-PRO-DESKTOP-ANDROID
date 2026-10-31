@@ -1,6 +1,7 @@
 /** One menu group: its own name as the title, and a tidy list of what is in it. */
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -40,7 +41,7 @@ export default function MenuGroupScreen({ route, navigation }: any) {
             })}
           >
             <Icon name={it.i} size={20} color={colors.ink} />
-            <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{rowName(it, db)}</Text>
+            <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{rowName(it, db)}</Text>
             <Icon name="chev" size={14} color={colors.faint} />
           </Pressable>
         ))}

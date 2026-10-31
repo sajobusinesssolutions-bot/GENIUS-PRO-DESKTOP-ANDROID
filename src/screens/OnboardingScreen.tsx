@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, Animated, Alert } from 'react-native';
+import { View, Text, Animated, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -105,7 +106,7 @@ export default function OnboardingScreen({ navigation }: Props) {
             style={{ alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: colors.sunk, marginBottom: 14 }}
           >
             <Icon name="x" size={15} color={colors.ink} />
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Cancel</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Cancel</Text>
           </Pressable>
         ) : null}
 
@@ -121,7 +122,7 @@ export default function OnboardingScreen({ navigation }: Props) {
           <View style={{ width: 78, height: 78, borderRadius: 39, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name={head.icon} size={34} color={colors.accent} />
           </View>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 16, textAlign: 'center', letterSpacing: -0.4 }}>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, marginTop: 16, textAlign: 'center', letterSpacing: -0.4 }}>
             {head.title}
           </Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 20, color: colors.faint, marginTop: 7, textAlign: 'center' }}>
@@ -152,7 +153,7 @@ export default function OnboardingScreen({ navigation }: Props) {
                     <Icon name={t.icon} size={22} color={colors.ink} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{t.label}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{t.label}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{locked ? 'Needs a ' + EDITIONS[t.id].name + ' licence from Genius Pro' : t.sub}</Text>
                   </View>
                   {locked ? <Icon name="lock" size={18} color={colors.faint} /> : on ? <Icon name="check" size={20} color={colors.accent} /> : <Icon name="chev" size={18} color={colors.faint} />}
@@ -161,7 +162,7 @@ export default function OnboardingScreen({ navigation }: Props) {
             })}
             {/* just looking: a ready-made business to try, of any edition */}
             <View style={{ marginTop: 6, padding: 15, borderRadius: radius.lg, borderWidth: 1.4, borderColor: colors.line, gap: 10 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Just looking? Try a demo</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Just looking? Try a demo</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>A ready-made business with its stock and a little history. Owner PIN 0000. Start your own any time.</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {BUSINESS_TYPES.map((t) => (
@@ -180,7 +181,7 @@ export default function OnboardingScreen({ navigation }: Props) {
             </View>
 
             <View style={{ marginTop: 6, padding: 15, borderRadius: radius.lg, backgroundColor: colors.sunk, gap: 7 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>The {EDITIONS[businessType].name} edition sets you up with</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>The {EDITIONS[businessType].name} edition sets you up with</Text>
               {EDITIONS[businessType].special.map((f) => (
                 <View key={f} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Icon name="check" size={14} color={colors.ink} />
@@ -310,7 +311,7 @@ function TrialWelcome({ ends, left }: { ends: string; left: number | null }) {
       <View style={{ borderRadius: 4, padding: 22, backgroundColor: colors.accent, alignItems: 'center' }}>
         <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 1, color: 'rgba(255,255,255,0.8)' }}>YOUR FREE TRIAL HAS STARTED</Text>
         <Text style={{ fontFamily: fonts.uiExtra, fontSize: 52, color: '#fff', marginTop: 6, letterSpacing: -1 }}>{days} days</Text>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: 'rgba(255,255,255,0.9)' }}>of Genius Pro, free · until {fmtDay(ends)}</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: 'rgba(255,255,255,0.9)' }}>of Genius Pro, free · until {fmtDay(ends)}</Text>
       </View>
       <View style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, marginTop: 14 }}>
         {perks.map(([icon, t], i) => (
@@ -318,7 +319,7 @@ function TrialWelcome({ ends, left }: { ends: string; left: number | null }) {
             <View style={{ width: 34, height: 34, borderRadius: 4, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name={icon} size={17} color={colors.good} />
             </View>
-            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{t}</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{t}</Text>
             <Icon name="check" size={16} color={colors.good} />
           </View>
         ))}

@@ -4,7 +4,8 @@
  * screen can filter with them.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Platform } from 'react-native';
+import { View, Text, Platform } from 'react-native';
+import ScrollView from './KeyScroll';
 import { Pressable } from './Press';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts, radius } from '../theme';

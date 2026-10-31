@@ -28,7 +28,7 @@ export function AmountCard({ label, value, onChange, prefix = 'Sh', tone, hint, 
     <Pressable onPress={() => ref.current?.focus()} style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, padding: 16 }}>
       <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>{label}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: tone || colors.faint, marginRight: 6 }}>{(sign ? sign + ' ' : '') + prefix}</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: tone || colors.faint, marginRight: 6 }}>{(sign ? sign + ' ' : '') + prefix}</Text>
         <TextInput
           ref={ref}
           value={groupDigits(value)}
@@ -67,7 +67,7 @@ export function PickRow({ icon, label, value, placeholder, onPress }: {
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         {label ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{label}</Text> : null}
-        <Text numberOfLines={1} style={{ fontFamily: value ? fonts.uiBold : fonts.ui, fontSize: 15, color: value ? colors.ink : colors.faint, marginTop: label ? 2 : 0 }}>
+        <Text numberOfLines={1} style={{ fontFamily: value ? fonts.uiBold : fonts.ui, fontSize: 14, color: value ? colors.ink : colors.faint, marginTop: label ? 2 : 0 }}>
           {value || placeholder}
         </Text>
       </View>
@@ -122,7 +122,7 @@ export function NoteBox({ value, onChange, placeholder = 'Add a note (optional)'
         placeholder={placeholder}
         placeholderTextColor={colors.faint}
         multiline
-        style={{ flex: 1, padding: 0, minHeight: 22, fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}
+        style={{ flex: 1, padding: 0, minHeight: 22, fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}
       />
     </Pressable>
   );
@@ -153,7 +153,7 @@ export function PickSheet({ visible, title, items, selected, onPick, onClose, se
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.line }}
           >
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{it.title}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{it.title}</Text>
               {it.sub ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{it.sub}</Text> : null}
             </View>
             {it.right ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: it.rightTone || colors.ink }}>{it.right}</Text> : null}

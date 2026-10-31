@@ -7,7 +7,8 @@
  * a single full-width primary action at the bottom of every form.
  */
 import React from 'react';
-import { View, Text, ScrollView, ViewStyle, TextInput, Animated } from 'react-native';
+import { View, Text, ViewStyle, TextInput, Animated } from 'react-native';
+import ScrollView from './KeyScroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, fonts, radius, shadow, control } from '../theme';
 import { Icon, IconName } from './icons';
@@ -62,7 +63,7 @@ export function AccentHead({ title, right, tone = 'good' }: { title: string; rig
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 11 }}>
       <View style={{ width: 3.5, height: 17, borderRadius: 2, backgroundColor: fg }} />
-      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{title}</Text>
+      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{title}</Text>
       {right}
     </View>
   );
@@ -116,7 +117,7 @@ export function ListRow({ icon, tone, title, subtitle, value, valueTone, right, 
       {icon ? <Tile icon={icon} tone={tone} /> : null}
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-          <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{title}</Text>
+          <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{title}</Text>
           {badge}
         </View>
         {subtitle ? (
@@ -124,7 +125,7 @@ export function ListRow({ icon, tone, title, subtitle, value, valueTone, right, 
         ) : null}
       </View>
       {value ? (
-        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: valueTone || colors.ink }}>{value}</Text>
+        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: valueTone || colors.ink }}>{value}</Text>
       ) : null}
       {right}
       {onPress && !right && !value ? <Icon name="chev" size={17} color={colors.faint} /> : null}
@@ -142,8 +143,8 @@ export function DetailRow({ label, value, tone, bold, last }: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14,
       paddingVertical: 11, borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
     }}>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint, flexShrink: 1 }}>{label}</Text>
-      <Text style={{ fontFamily: bold ? fonts.uiBold : fonts.uiSemi, fontSize: 15, color: tone || colors.ink }}>{value}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint, flexShrink: 1 }}>{label}</Text>
+      <Text style={{ fontFamily: bold ? fonts.uiBold : fonts.uiSemi, fontSize: 14, color: tone || colors.ink }}>{value}</Text>
     </View>
   );
 }
@@ -175,7 +176,7 @@ export function StatCard({ icon, label, value, tone = 'accent' }: {
         {icon ? <Icon name={icon} size={15} color={fg} /> : null}
         <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{label}</Text>
       </View>
-      <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 8 }}>{value}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, marginTop: 8 }}>{value}</Text>
     </View>
   );
 }
@@ -254,7 +255,7 @@ export function SegPill<T extends string>({ value, options, onChange, tone = 'go
             style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 14, backgroundColor: on ? fg : 'transparent' }}
           >
             {on ? <Icon name={o.i || 'check'} size={16} color={colors.accentInk} /> : null}
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accentInk : colors.ink }}>{o.l}</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accentInk : colors.ink }}>{o.l}</Text>
           </Tap>
         );
       })}
@@ -340,7 +341,7 @@ export function Empty({ icon = 'box', title, hint, action }: {
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 56, paddingHorizontal: 32, gap: 8 }}>
       <Icon name={icon} size={46} color={colors.lineHard} />
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 6 }}>{title}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.soft, textAlign: 'center', marginTop: 6 }}>{title}</Text>
       {hint ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 19, color: colors.faint, textAlign: 'center' }}>{hint}</Text> : null}
       {action ? <View style={{ marginTop: 14 }}>{action}</View> : null}
     </View>
@@ -362,16 +363,14 @@ export const FAB_COLORS = {
 } as const;
 
 /**
- * Hides a floating button while the list is scrolled down, and brings it back
- * at the top — so it never sits over the row being read.
+ * The floating add buttons (New sale, Quick add, Add contact…) stay on screen
+ * whatever the scroll. They used to slide away while a list was scrolled down,
+ * and a scroll that stopped a few pixels short of the top left them hidden, so
+ * the button seemed gone. Screens still pass the scroll handler; it does nothing.
  */
-export function useHideOnScroll(threshold = 24) {
-  const [hidden, setHidden] = React.useState(false);
-  const onScroll = React.useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
-    const away = e.nativeEvent.contentOffset.y > threshold;
-    setHidden((h) => (h === away ? h : away));
-  }, [threshold]);
-  return { hidden, onScroll };
+export function useHideOnScroll(_threshold = 24) {
+  const onScroll = React.useCallback((_e: { nativeEvent: { contentOffset: { y: number } } }) => undefined, []);
+  return { hidden: false, onScroll };
 }
 
 export function FAB({ label, icon = 'plus', onPress, tone = 'danger', color, hidden }: {
@@ -408,7 +407,7 @@ export function FAB({ label, icon = 'plus', onPress, tone = 'danger', color, hid
         }}
       >
         <Icon name={icon} size={21} color="#FFFFFF" />
-        {label ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: '#FFFFFF' }}>{label}</Text> : null}
+        {label ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: '#FFFFFF' }}>{label}</Text> : null}
       </Tap>
     </Animated.View>
   );
@@ -448,7 +447,7 @@ function GridAction({ label, icon, tone = 'accent', filled, onPress }: {
       }}
     >
       {icon ? <Icon name={icon} size={17} color={filled ? colors.accentInk : fg} /> : null}
-      <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: filled ? colors.accentInk : fg }}>{label}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: filled ? colors.accentInk : fg }}>{label}</Text>
     </Tap>
   );
 }
@@ -536,13 +535,13 @@ export function DocCard({ icon, tone = 'accent', title, subtitle, amount, amount
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         {icon ? <Tile icon={icon} tone={tone} /> : null}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{title}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{title}</Text>
           {subtitle ? (
             <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>{subtitle}</Text>
           ) : null}
         </View>
         {amount ? (
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: amountTone || colors.ink }}>{amount}</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 14, color: amountTone || colors.ink }}>{amount}</Text>
         ) : null}
       </View>
 

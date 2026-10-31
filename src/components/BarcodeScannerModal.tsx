@@ -41,7 +41,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
       <Modal visible transparent animationType="slide" onRequestClose={onClose}>
         <View style={{ flex: 1, backgroundColor: '#000000cc', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <View style={{ backgroundColor: colors.surface, borderRadius: 4, padding: 20, width: '100%', maxWidth: 360 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 8 }}>Camera unavailable</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 8 }}>Camera unavailable</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 16 }}>
               Barcode scanning needs a native camera (not available on this platform/build). Enter the code or SKU manually from the product screen instead.
             </Text>
@@ -69,7 +69,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
       <Modal visible transparent animationType="slide" onRequestClose={onClose}>
         <View style={{ flex: 1, backgroundColor: '#000000cc', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <View style={{ backgroundColor: colors.surface, borderRadius: 4, padding: 20, width: '100%', maxWidth: 360, gap: 10 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Camera permission needed</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Camera permission needed</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
               Allow camera access to scan product barcodes.
             </Text>
@@ -114,7 +114,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
       <View style={{ flex: 1, backgroundColor: '#000' }}>
         {/* the title bar, on solid black so it reads over any scene */}
         <View style={{ paddingTop: insets.top + 14, paddingBottom: 16, paddingHorizontal: 20, backgroundColor: '#000' }}>
-          <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 20, color: '#fff' }}>
+          <Text style={{ textAlign: 'center', fontFamily: fonts.uiBold, fontSize: 18, color: '#fff' }}>
             Scan Barcode
           </Text>
         </View>
@@ -142,7 +142,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
               {corner({ bottom: 0, right: 0 })}
               <View style={{ position: 'absolute', top: '50%', left: 10, right: 10, height: 2, backgroundColor: edge, opacity: 0.75 }} />
             </View>
-            <Text style={{ marginTop: 22, fontFamily: fonts.uiSemi, fontSize: 15, color: 'rgba(255,255,255,0.88)' }}>
+            <Text style={{ marginTop: 22, fontFamily: fonts.uiSemi, fontSize: 14, color: 'rgba(255,255,255,0.88)' }}>
               {info ? (info.ok ? 'Found it — tap Add below' : 'Not sellable') : 'Line the barcode up inside the frame'}
             </Text>
           </View>
@@ -178,7 +178,7 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
               <Icon name={info ? (info.ok ? 'check' : 'alert') : 'box'} size={20} color={info ? edge : 'rgba(255,255,255,0.7)'} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: '#fff' }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: '#fff' }}>
                 {info ? info.title : 'Nothing detected yet'}
               </Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: 'rgba(255,255,255,0.7)', marginTop: 3 }}>
@@ -197,13 +197,13 @@ export default function BarcodeScannerModal({ visible, onClose, onScan, describe
             }}
           >
             <Icon name="plus" size={20} color={info && info.ok ? '#fff' : 'rgba(255,255,255,0.45)'} />
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: info && info.ok ? '#fff' : 'rgba(255,255,255,0.45)' }}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: info && info.ok ? '#fff' : 'rgba(255,255,255,0.45)' }}>
               Add to bill
             </Text>
           </Pressable>
 
           <Pressable onPress={close} style={{ height: 50, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: '#fff' }}>Cancel</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: '#fff' }}>Cancel</Text>
           </Pressable>
         </View>
       </View>

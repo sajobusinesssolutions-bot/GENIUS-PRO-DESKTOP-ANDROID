@@ -6,8 +6,12 @@
  * Everything beyond the prototype — sorting, a custom range, export and
  * tap-through — is driven generically off the `ReportResult`.
  */
+import { groupNum } from '../data/helpers';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
+import { withItemDetails, hasItemDetails } from '../data/reportItems';
+import DetailedStatement, { DetailedKind } from '../components/DetailedStatement';
+import { View, Text, ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTheme, fonts, radius } from '../theme';
@@ -95,6 +99,10 @@ export function fitWidths(result: ReportResult, avail: number): number[] {
   return natural.map((w, i) => Math.round(w - room[i] * k));
 }
 
+const DEFAULT_HIDDEN: Record<string, { order: string[]; hidden: string[] }> = {
+  'invoice-list': { order: [], hidden: ['Mode', 'Due'] },
+};
+
 export default function ReportDetailScreen() {
   const { colors } = useTheme();
   const nav = useNavigation<any>();
@@ -102,11 +110,11 @@ export default function ReportDetailScreen() {
   const go = useGo();
   const { db, money, setSetting } = useAppData();
 
-  const id = route.params?.id || 'sale-summary';
+  const id = route.params?.id || 'invoice-list';
   const def = reportById(id);
   const group = groupOf(id);
 
-  const [period, setPeriod] = useState<ListPeriod>(() => listPeriod('month'));
+  const [period, setPeriod] = useState<ListPeriod>(() => listPeriod(id === 'daybook' || id === 'day-close' ? 'today' : 'month'));
   const [rowFilter, setRowFilter] = useState<'all' | 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month'>('all');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<{ i: number; dir: SortDir } | null>(null);
@@ -115,7 +123,7 @@ export default function ReportDetailScreen() {
   /** Ledgers, parties and vouchers opened from a row, deepest last; Back steps out one. */
   const [drill, setDrill] = useState<{ kind: 'ledger' | 'party' | 'voucher' | 'vouchertype'; id: string }[]>([]);
   /** The detailed form of a statement: every ledger under its group, with opening and closing. */
-  const [detailed, setDetailed] = useState(false);
+  const [detailed, setDetailed] = useState(!!(route.params as any)?.detailed);
   const top = drill[drill.length - 1];
   const { width } = useWindowDimensions();
   const [layout, setLayout] = useState<'cards' | 'table'>(width < 520 ? 'cards' : 'table');
@@ -127,6 +135,8 @@ export default function ReportDetailScreen() {
   const [keep, setKeep] = useState<boolean[]>([]);
   const [showGenerated, setShowGenerated] = useState(true);
   const [showTotals, setShowTotals] = useState(true);
+  /** Under each sale, bill or quotation, the items that were on it. */
+  const [showItems, setShowItems] = useState(false);
   const [fileName, setFileName] = useState('');
   const [nameEdited, setNameEdited] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -178,8 +188,10 @@ export default function ReportDetailScreen() {
   }, [book, allowed, id, span.from, span.to, money, drillProductId, drillMonthKey, top, detailed]);
 
   /* the columns as the owner set them for this report — on screen and in every export */
+  const richDetail = detailed && !top && (id === 'balance-sheet' || id === 'general-ledger' || id === 'pnl');
   const colKey = top ? 'drill:' + top.kind : detailed && DETAIL_VIEW[id] ? DETAIL_VIEW[id] : id;
-  const colChoice = db?.settings.reportCols?.[colKey];
+  /* a few wide lists start with their less-read columns off, so they fit across a phone without scrolling sideways; Columns brings them back */
+  const colChoice = db?.settings.reportCols?.[colKey] ?? DEFAULT_HIDDEN[colKey];
   const result = useMemo(() => (raw ? arrangeColumns(raw, colChoice) : null), [raw, colChoice]);
   const [colsOpen, setColsOpen] = useState(false);
   const [draft, setDraft] = useState<{ h: string; on: boolean }[]>([]);
@@ -353,6 +365,7 @@ export default function ReportDetailScreen() {
     CHOSEN.set(id + ':' + result.cols.map((c) => c.h).join('|'), { keep, showGenerated, showTotals });
     let picked = pickColumns(result, keep);
     if (!showTotals) picked = { ...picked, foot: undefined, stats: undefined };
+    if (showItems && db) picked = withItemDetails(db, picked, (n) => groupNum(n, 2, true), span);
     const what = ask;
     setAsk(null);
     void runExport(what, picked, { ...meta, fileName: nameEdited ? fileName : undefined, showGenerated, showTotals });
@@ -377,6 +390,7 @@ export default function ReportDetailScreen() {
     if (ref.kind === 'sale') go('SaleDetail', { saleId: ref.id });
     else if (ref.kind === 'purchase') go('PurchaseDetail', { purchaseId: ref.id });
     else if (ref.kind === 'creditNote') go('CreditNotes');
+    else if (ref.kind === 'estimate') go('EstimateDetail', { estimateId: ref.id });
     else if (ref.kind === 'payment') go('PaymentDetail', { paymentId: ref.id });
     else if (ref.kind === 'entry') go('Money');
     else if (ref.kind === 'product') {
@@ -412,8 +426,8 @@ export default function ReportDetailScreen() {
           <View style={{ width: 64, height: 64, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="lock" size={28} color={colors.accent} />
           </View>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 16, textAlign: 'center' }}>{def?.name || 'This report'} is a premium report</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 20, color: colors.faint, marginTop: 8, textAlign: 'center' }}>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, marginTop: 16, textAlign: 'center' }}>{def?.name || 'This report'} is a premium report</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, color: colors.faint, marginTop: 8, textAlign: 'center' }}>
             It opens again with a plan. The everyday reports (end of day, sales, stock, balances) stay open.
           </Text>
         </View>
@@ -522,7 +536,7 @@ export default function ReportDetailScreen() {
                 <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.soft }}>
                   {top.kind === 'ledger' ? 'Ledger' : top.kind === 'party' ? 'Statement' : top.kind === 'vouchertype' ? 'Vouchers' : 'Voucher'} · {top.kind === 'voucher' ? 'all lines' : span.label}
                 </Text>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }} numberOfLines={1}>{result.title}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }} numberOfLines={1}>{result.title}</Text>
               </View>
             </View>
           ) : null}
@@ -557,7 +571,14 @@ export default function ReportDetailScreen() {
             </View>
           ) : null}
         </View>
-        {result.stats && result.stats.length ? (
+        {/* balance sheet, general ledger and profit & loss, detailed: grouped cards that open in place */}
+        {richDetail && book ? (
+          <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}>
+            <DetailedStatement kind={id as DetailedKind} db={book} from={span.from} to={span.to} focus={(route.params as any)?.focus}
+              onOpenLedger={(acc) => go('ReportDetail', { id: 'general-ledger', detailed: true, focus: acc } as any)} />
+          </View>
+        ) : null}
+        {!richDetail && result.stats && result.stats.length ? (
           <Pad style={{ paddingTop: 8, paddingBottom: 6 }}>
             <StatGrid
               items={result.stats.map((s) => ({
@@ -570,7 +591,7 @@ export default function ReportDetailScreen() {
           </Pad>
         ) : null}
 
-        {result.rowKinds && result.rows.length ? (
+        {richDetail ? null : result.rowKinds && result.rows.length ? (
           <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 20 }}>
             <Statement result={result} refs={result.rowRefs} onOpen={openRef} />
           </View>
@@ -673,7 +694,7 @@ export default function ReportDetailScreen() {
               }}
               style={{ flexDirection: 'row', alignItems: 'center', minHeight: 50, borderBottomWidth: 1, borderBottomColor: colors.line }}
             >
-              <Text style={{ flex: 1, fontFamily: on ? fonts.uiBold : fonts.ui, fontSize: 15, color: on ? colors.accent : colors.ink }}>{o.l}</Text>
+              <Text style={{ flex: 1, fontFamily: on ? fonts.uiBold : fonts.ui, fontSize: 14, color: on ? colors.accent : colors.ink }}>{o.l}</Text>
               {on ? <Icon name="check" size={17} color={colors.accent} /> : null}
             </Pressable>
           );
@@ -729,7 +750,7 @@ export default function ReportDetailScreen() {
               <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 1.5, borderColor: c.on ? colors.ink : colors.lineHard, backgroundColor: c.on ? colors.ink : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                 {c.on ? <Icon name="check" size={14} color={colors.bg} /> : null}
               </View>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: c.on ? colors.ink : colors.faint }}>{c.h}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: c.on ? colors.ink : colors.faint }}>{c.h}</Text>
             </Pressable>
             <Pressable onPress={() => moveCol(i, -1)} disabled={i === 0} hitSlop={6} accessibilityLabel={'Move ' + c.h + ' up'} style={{ padding: 8, opacity: i === 0 ? 0.3 : 1 }}>
               <Icon name="up" size={18} color={colors.ink} />
@@ -781,7 +802,7 @@ export default function ReportDetailScreen() {
             accessibilityState={{ checked: !!keep[i] }}
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.line }}
           >
-            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>{c.h}</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>{c.h}</Text>
             <Checkbox on={!!keep[i]} size={22} onPress={() => setKeep((k) => k.map((v, j) => (j === i ? !v : v)))} />
           </Pressable>
         ))}
@@ -792,8 +813,22 @@ export default function ReportDetailScreen() {
             accessibilityState={{ checked: showTotals }}
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.line }}
           >
-            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>Totals</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>Totals</Text>
             <Checkbox on={showTotals} size={22} onPress={() => setShowTotals((v) => !v)} />
+          </Pressable>
+        ) : null}
+        {db && hasItemDetails(db, result, span) ? (
+          <Pressable
+            onPress={() => setShowItems((v) => !v)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: showItems }}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.line }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>Item details</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>The items on each sale, bill or quotation, under its line</Text>
+            </View>
+            <Checkbox on={showItems} size={22} onPress={() => setShowItems((v) => !v)} />
           </Pressable>
         ) : null}
         {ask === 'pdf' || ask === 'preview' || ask === 'whatsapp' ? (
@@ -803,7 +838,7 @@ export default function ReportDetailScreen() {
             accessibilityState={{ checked: showGenerated }}
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 15 }}
           >
-            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>Date &amp; Time</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>Date &amp; Time</Text>
             <Checkbox on={showGenerated} size={22} onPress={() => setShowGenerated((v) => !v)} />
           </Pressable>
         ) : null}
@@ -892,11 +927,11 @@ function Statement({ result, refs, onOpen }: { result: ReportResult; refs?: (Row
       ))}
       {result.foot ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 16, borderRadius: 4, backgroundColor: colors.accent }}>
-          <Text style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 16, color: colors.accentInk }}>
+          <Text style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 15, color: colors.accentInk }}>
             {cellText(result.foot[0])}{labelAt && cellText(result.foot[labelAt]) ? ' · ' + cellText(result.foot[labelAt]) : ''}
           </Text>
           {amountCols.map((i) => (
-            <Text key={i} style={{ minWidth: 86, textAlign: 'right', fontFamily: fonts.monoSemi, fontSize: 16, color: colors.accentInk }}>{cellText(result.foot![i] ?? '')}</Text>
+            <Text key={i} style={{ minWidth: 86, textAlign: 'right', fontFamily: fonts.monoSemi, fontSize: 15, color: colors.accentInk }}>{cellText(result.foot![i] ?? '')}</Text>
           ))}
           <View style={{ width: 13 }} />
         </View>

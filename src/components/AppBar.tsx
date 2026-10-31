@@ -3,6 +3,7 @@
  * Reference: render() lines 1529-1536, `.statusbar` / `.appbar` / `.iconbtn` / `.foot` CSS
  * (lines 46-50, 88).
  */
+import { backToTab } from '../nav/backToTab';
 import React, { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +12,7 @@ import { useTheme, fonts } from '../theme';
 import { useAppDataSafe } from '../data/AppDataContext';
 import { Icon, IconName } from './icons';
 import { Tap } from './Tap';
-import { offlineLeft, vouchersWaiting } from '../data/logic';
+import { offlineLeft, vouchersWaiting, queueStuck } from '../data/logic';
 
 function pad(n: number) { return n < 10 ? '0' + n : String(n); }
 
@@ -22,7 +23,7 @@ export function StatusStrip() {
   const db = ctx?.db;
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 20000);
+    const t = setInterval(() => setNow(new Date()), 10000);
     return () => clearInterval(t);
   }, []);
   const online = db?.session.online !== false;
@@ -42,7 +43,7 @@ export function StatusStrip() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: low ? colors.danger : online ? colors.good : colors.warn }} />
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>
-          {(online ? 'online' : 'offline') + (left != null && waiting ? ' · ' + waiting + ' waiting · ' + left + ' left' : !online && queued ? ' · ' + queued + ' queued' : '')}
+          {(online ? 'online' : 'offline') + (left != null && waiting && queueStuck(db, now.getTime()) ? ' · ' + waiting + ' waiting · ' + left + ' left' : !online && queued ? ' · ' + queued + ' queued' : '')}
         </Text>
       </View>
     </View>
@@ -99,7 +100,7 @@ export function AppBar({ title, onBack, right, statusStrip = false, brand }: App
         {onBack ? <IconBtn name="back" size={23} onPress={onBack} /> : null}
         <Text
           numberOfLines={1}
-          style={{ flex: 1, minWidth: 0, fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: -0.4 }}
+          style={{ flex: 1, minWidth: 0, fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, letterSpacing: -0.4 }}
         >
           {name}
         </Text>
@@ -130,7 +131,7 @@ export function Foot({ children }: { children: React.ReactNode }) {
 export function NavHeader({ navigation, options, back, route }: NativeStackHeaderProps) {
   const title = options.title ?? route.name;
   const right = options.headerRight ? options.headerRight({ canGoBack: !!back, tintColor: undefined }) : null;
-  return <AppBar title={String(title)} onBack={back ? () => navigation.goBack() : null} right={right} />;
+  return <AppBar title={String(title)} onBack={back ? () => { if (!backToTab()) navigation.goBack(); } : null} right={right} />;
 }
 
 export default AppBar;

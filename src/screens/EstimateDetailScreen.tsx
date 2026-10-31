@@ -4,7 +4,8 @@
  * that became a sale links to that sale instead.
  */
 import React from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useOnDisk } from '../data/useOnDisk';
@@ -83,7 +84,7 @@ export default function EstimateDetailScreen({ route, navigation }: Props) {
               <Icon name="doc" size={23} color={open ? colors.accent : colors.faint} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{est.no}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{est.no}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {new Date(est.ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </Text>
@@ -97,7 +98,7 @@ export default function EstimateDetailScreen({ route, navigation }: Props) {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Customer</Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink, marginTop: 3 }}>{customer?.name || 'Walk-in customer'}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink, marginTop: 3 }}>{customer?.name || 'Walk-in customer'}</Text>
               {customer?.phone ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{customer.phone}</Text> : null}
             </View>
             {customer ? <BalanceTag balance={partyBalance(customer.id)} money={money} /> : null}

@@ -8,7 +8,8 @@
  * recording this" prompt, so every document carries a name.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from './KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {
@@ -69,7 +70,7 @@ export default function DocEntry({
   partyType = 'customer', partyLabel, partyRequired, partyId, onPartyChange,
   lines, onLinesChange, priceOf = 'price', linesLabel = 'Items',
   children, summary, saveLabel, blockedReason, askWho, onSave, showTotals = true,
-  autoStart = true, entryTitle, priceListId, onPriceListChange,
+  autoStart = false, entryTitle, priceListId, onPriceListChange,
 }: DocEntryProps) {
   const { colors } = useTheme();
   const { db, money, partyBalance, addParty } = useAppData();
@@ -128,67 +129,52 @@ export default function DocEntry({
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 170 }} keyboardShouldPersistTaps="handled">
-        <Panel style={{ marginBottom: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-            <View style={{ width: 48, height: 48, borderRadius: 4, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name={icon} size={22} color={fg} />
-            </View>
+      <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 170 }} keyboardShouldPersistTaps="handled">
+        {/* the details in one row, as on New sale: price list (on documents that sell) and what this is */}
+        <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', marginBottom: 12 }}>
+          {priceOf === 'price' ? (
+            <>
+              <PriceListPicker
+                compact
+                value={listId}
+                onChange={(id) => {
+                  setListId(id);
+                  onPriceListChange?.(id);
+                  const l = (db?.priceLists || []).find((x) => x.id === id) || null;
+                  onLinesChange(repriceLines(lines as any, l, db?.products || []) as CartLine[]);
+                }}
+              />
+              <View style={{ width: 1, backgroundColor: colors.line }} />
+            </>
+          ) : null}
+          <View style={{ flex: 1.4, minWidth: 0, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Icon name={icon} size={16} color={fg} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{kind}</Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
-                {lines.length ? lines.length + ' line' + (lines.length === 1 ? '' : 's') + ' · ' + units + ' units' : 'Nothing added yet'}
-              </Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>New</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink, marginTop: 2 }}>{kind}</Text>
             </View>
-            {showTotals && total > 0 ? <Badge label={money(total)} tone={tone} /> : null}
           </View>
-        </Panel>
+        </View>
 
         {partyType !== 'none' ? (
-          <>
-            <SectionLabel right={missingParty ? <Badge label="Required" tone="danger" /> : undefined}>
-              {partyLabel || (partyType === 'supplier' ? 'Supplier' : 'Customer')}
-            </SectionLabel>
-            <FieldShell
-              label={partyWord}
-              icon={partyType === 'supplier' ? 'factory' : 'user'}
-              onPress={() => setPickerOpen(true)}
-              error={!!missingParty}
-              right={party ? <BalanceTag balance={partyBalance(party.id)} money={money} /> : <Icon name="chev" size={17} color={colors.faint} />}
-            >
-              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: party ? colors.ink : colors.faint }}>
-                {party ? party.name : partyRequired ? 'Choose a ' + partyWord.toLowerCase() : partyType === 'supplier' ? 'Choose a supplier' : 'Walk-in customer'}
-              </Text>
-              {party?.phone ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{party.phone}</Text> : null}
-            </FieldShell>
-          </>
-        ) : null}
-
-        {/* the price list, on documents that sell */}
-        {priceOf === 'price' ? (
-          <View style={{ marginTop: 12 }}>
-            <PriceListPicker
-              value={listId}
-              onChange={(id) => {
-                setListId(id);
-                onPriceListChange?.(id);
-                const l = (db?.priceLists || []).find((x) => x.id === id) || null;
-                onLinesChange(repriceLines(lines as any, l, db?.products || []) as CartLine[]);
-              }}
-            />
+          <View style={{ backgroundColor: colors.surface, borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: missingParty ? colors.danger : colors.line, marginBottom: 12 }}>
+            <Pressable onPress={() => setPickerOpen(true)} style={{ paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{partyWord}{partyRequired ? ' · required' : ''}</Text>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 14, color: party ? colors.ink : colors.soft, marginTop: 3 }}>
+                  {party ? party.name : partyRequired || partyType === 'supplier' ? 'Choose a ' + partyWord.toLowerCase() : 'Walk-in customer'}
+                </Text>
+                {party?.phone ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{party.phone}</Text> : null}
+              </View>
+              {party ? <BalanceTag balance={partyBalance(party.id)} money={money} /> : null}
+              <Icon name="chev" size={18} color={colors.faint} />
+            </Pressable>
           </View>
         ) : null}
 
         {children}
 
-        <View style={{ height: 8 }} />
-        <SectionLabel right={
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-            {lines.length} line{lines.length === 1 ? '' : 's'}
-          </Text>
-        }>
-          {linesLabel}
-        </SectionLabel>
+        <View style={{ height: 4 }} />
         <LineEditor
           products={products}
           lines={lines}
@@ -200,16 +186,6 @@ export default function DocEntry({
           entryTitle={entryTitle || 'Add Items to ' + kind}
         />
 
-        {showTotals && lines.length ? (
-          <View style={{ marginTop: 20 }}>
-            <SectionLabel>Totals</SectionLabel>
-            <Panel>
-              <DetailRow label="Lines" value={String(lines.length)} />
-              <DetailRow label="Units" value={String(units)} />
-              <DetailRow label="Value" value={money(total)} bold last />
-            </Panel>
-          </View>
-        ) : null}
 
         {summary ? <View style={{ marginTop: 20 }}>{summary}</View> : null}
 
@@ -219,11 +195,6 @@ export default function DocEntry({
           </View>
         ) : null}
 
-        {!lines.length ? (
-          <View style={{ marginTop: 16 }}>
-            <InfoBanner tone="neutral" icon="bulb" text={'A ' + kind.toLowerCase() + ' needs at least one line before it can be raised.'} />
-          </View>
-        ) : null}
       </ScrollView>
 
       {who.sheet}
@@ -254,18 +225,19 @@ export default function DocEntry({
         {showTotals ? (
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-              {units} unit{units === 1 ? '' : 's'}
+              {units} item{units === 1 ? '' : 's'}
             </Text>
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(total)}</Text>
+            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(total)}</Text>
           </View>
         ) : null}
-        <Button
-          label={saveLabel}
-          variant="pri"
-          disabled={blocked}
-          icon={<Icon name="check" size={17} color={colors.accentInk} />}
-          onPress={() => who.ask(onSave)}
-        />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Button label="Clear" disabled={!lines.length} onPress={() => onLinesChange([])} />
+          </View>
+          <View style={{ flex: 2 }}>
+            <Button label={saveLabel} variant="pri" disabled={blocked} onPress={() => who.ask(onSave)} />
+          </View>
+        </View>
       </StickyBar>
     </View>
   );

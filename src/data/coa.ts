@@ -6,6 +6,7 @@
  * This gives every ledger a real row that can be renamed, coded, deactivated and
  * read back, without changing a single existing posting.
  */
+import { tsMs } from './helpers';
 import type { DB, JournalEntry } from './types';
 import { activeBranchId, branchJournal } from './branch';
 
@@ -40,6 +41,7 @@ const BUILTIN: Array<Omit<Ledger, 'builtin' | 'active'>> = [
   { id: 'n_ar', code: '1100', name: 'Accounts receivable', type: 'asset' },
   { id: 'n_ap', code: '2100', name: 'Accounts payable', type: 'liability' },
   { id: 'n_tax', code: '2200', name: 'Tax payable', type: 'liability' },
+  { id: 'n_wht_credit', code: '1030', name: 'Tax recoverable (WHT credit)', type: 'asset' },
   { id: 'n_equity', code: '3000', name: 'Owner equity', type: 'equity' },
   { id: 'n_sales', code: '4000', name: 'Sales', type: 'income' },
   { id: 'n_income', code: '4900', name: 'Other income', type: 'income' },
@@ -204,7 +206,7 @@ export function ledgerHistory(d: DB, id: string, branch?: string | null): Ledger
     });
   });
 
-  rows.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  rows.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   let run = 0;
   const withBalance = rows.map((r) => {
     run += pos ? r.dr - r.cr : r.cr - r.dr;

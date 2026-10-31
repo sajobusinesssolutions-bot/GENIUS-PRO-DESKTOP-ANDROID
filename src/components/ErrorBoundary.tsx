@@ -16,15 +16,15 @@ function Fallback({ onRetry }: { onRetry: () => void }) {
       <View style={{ width: 64, height: 64, borderRadius: 4, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name="alert" size={28} color={colors.danger} />
       </View>
-      <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 16, textAlign: 'center' }}>Something went wrong</Text>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 20, color: colors.faint, marginTop: 8, textAlign: 'center' }}>
+      <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, marginTop: 16, textAlign: 'center' }}>Something went wrong</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 20, color: colors.faint, marginTop: 8, textAlign: 'center' }}>
         This screen could not be shown. The problem has been reported so it can be fixed. Your books are safe.
       </Text>
       <Pressable
         onPress={onRetry}
         style={({ pressed }) => ({ marginTop: 22, paddingVertical: 13, paddingHorizontal: 26, borderRadius: 4, backgroundColor: pressed ? colors.accentSoft : colors.accent })}
       >
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>Try again</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accentInk }}>Try again</Text>
       </Pressable>
     </View>
   );

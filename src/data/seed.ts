@@ -1,3 +1,4 @@
+import { tsMs } from './helpers';
 import { DB, Product, Party, User, Account, InstalmentPlan } from './types';
 import { uid, iso, daysAgo, hoursAgo, mulberry } from './uid';
 import { instalSchedule } from './logic';
@@ -220,10 +221,10 @@ function recordPaymentSeed(db: DB, o: { partyId: string; amount: number; directi
   else journal(db, o.when, 'Payment to ' + partyName, 'PAY', [{ acc: 'n_ap', dr: o.amount }, { acc: o.accountId, cr: o.amount }]);
   let left = o.amount;
   if (o.direction === 'in') {
-    db.sales.filter((s) => s.partyId === o.partyId && s.due > 0 && s.status !== 'void').sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
+    db.sales.filter((s) => s.partyId === o.partyId && s.due > 0 && s.status !== 'void').sort((a, b) => tsMs(a.ts) - tsMs(b.ts))
       .forEach((s) => { if (left <= 0) return; const take = Math.min(left, s.due); s.due -= take; s.paid += take; left -= take; });
   } else {
-    db.purchases.filter((x) => x.partyId === o.partyId && x.due > 0).sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
+    db.purchases.filter((x) => x.partyId === o.partyId && x.due > 0).sort((a, b) => tsMs(a.ts) - tsMs(b.ts))
       .forEach((x) => { if (left <= 0) return; const take = Math.min(left, x.due); x.due -= take; x.paid += take; left -= take; });
   }
 }

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, ScrollView, Alert, Image } from 'react-native';
+import { View, Text, Alert, Image } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useOnDisk } from '../data/useOnDisk';
@@ -109,17 +110,30 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 130 }}>
-        {/* the bill at a glance: number, status, total, who and when, how much is paid */}
+        {/* who the bill is for, first — the customer card as on New sale */}
+        <Pressable
+          onPress={sale.partyId ? () => navigation.navigate('PartyDetail' as any, { partyId: sale.partyId } as any) : undefined}
+          style={{ ...card, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+        >
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{sale.method === 'credit' ? 'Credit sale to' : 'Customer'}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink, marginTop: 3 }}>{customer}</Text>
+            {sale.partyId && party(sale.partyId)?.phone ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{party(sale.partyId)?.phone}</Text> : null}
+          </View>
+          {sale.partyId ? <Icon name="chev" size={18} color={colors.faint} /> : null}
+        </Pressable>
+
+        {/* the bill at a glance: number, status, total, when, how much is paid */}
         <View style={{ ...card, padding: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontFamily: fonts.mono, fontSize: 13.5, letterSpacing: 0.5, color: colors.soft }}>{sale.no}</Text>
+            <Text style={{ fontFamily: fonts.mono, fontSize: 13, letterSpacing: 0.5, color: colors.soft }}>{sale.no}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: statusBg }}>
               <Icon name={live ? 'check' : 'x'} size={12} color={statusTone} />
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: statusTone }}>{statusText}</Text>
             </View>
           </View>
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 32, color: colors.ink, marginTop: 14, letterSpacing: -0.5 }}>{money(sale.total)}</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 4 }}>{customer} · {when}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 4 }}>{when}</Text>
           <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.sunk, marginTop: 16, overflow: 'hidden' }}>
             <View style={{ width: `${paidPct * 100}%`, height: 6, backgroundColor: colors.good }} />
           </View>
@@ -139,21 +153,21 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
                 <Icon name="box" size={18} color={colors.faint} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>
+                <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{l.name}</Text>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
                   {l.qty} {(l.unit || '').toUpperCase()} × {money(l.price)}{l.batchNo ? ' · ' + l.batchNo : ''}
                 </Text>
                 {l.modifiers?.length ? <Text numberOfLines={3} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.soft, marginTop: 2 }}>+ {l.modifiers.map((m) => m.name).join(', ')}</Text> : null}
                 {l.note ? <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.warn, marginTop: 2 }}>* {l.note}</Text> : null}
               </View>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(l.qty * l.price)}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(l.qty * l.price)}</Text>
             </View>
           ))}
           {/* the order as a whole: its table and how it was eaten (its note is in the summary) */}
           {sale.ticketName || sale.orderType ? (
             <View style={{ padding: 14, borderTopWidth: 1, borderTopColor: colors.line, gap: 4 }}>
               {sale.ticketName || sale.orderType ? (
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{[sale.ticketName, orderTypeWord(sale.orderType)].filter(Boolean).join(' · ')}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>{[sale.ticketName, orderTypeWord(sale.orderType)].filter(Boolean).join(' · ')}</Text>
               ) : null}
             </View>
           ) : null}
@@ -164,7 +178,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
             {head('Prescription')}
             <View style={card}>
               <View style={{ padding: 14, gap: 4 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>Prescribed by {sale.rx.prescriber}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Prescribed by {sale.rx.prescriber}</Text>
                 {sale.rx.number ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>No. {sale.rx.number}</Text> : null}
                 {sale.rx.patient ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>Patient: {sale.rx.patient}</Text> : null}
                 {sale.rx.facility ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>{sale.rx.facility}</Text> : null}
@@ -204,9 +218,6 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
 
         {!live && sale.voidReason ? <View style={{ marginTop: 14 }}><InfoBanner tone="danger" text={'Reversed — ' + sale.voidReason} /></View> : null}
         {live && !gate.ok ? <View style={{ marginTop: 14 }}><InfoBanner tone="warn" text={gate.why} /></View> : null}
-        {live ? (
-          <Text onPress={onDelete} style={{ textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 14, color: colors.danger, marginTop: 22, padding: 8 }}>Delete sale</Text>
-        ) : null}
       </ScrollView>
 
       {/* Receipt beside Edit sale, as on the design */}
@@ -217,7 +228,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
             style={{ flex: 1, height: 50, borderRadius: 4, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <Icon name="print" size={17} color={colors.ink} />
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Receipt</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>Receipt</Text>
           </Pressable>
           {live ? (
             <Pressable
@@ -225,7 +236,16 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
               style={{ flex: 1, height: 50, borderRadius: 4, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
             >
               <Icon name="pencil" size={16} color={colors.accentInk} />
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accentInk }}>Edit sale</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accentInk }}>Edit sale</Text>
+            </Pressable>
+          ) : null}
+          {live ? (
+            <Pressable
+              onPress={onDelete}
+              style={{ flex: 1, height: 50, borderRadius: 4, backgroundColor: colors.dangerSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            >
+              <Icon name="trash" size={16} color={colors.danger} />
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.danger }}>Delete</Text>
             </Pressable>
           ) : null}
         </View>

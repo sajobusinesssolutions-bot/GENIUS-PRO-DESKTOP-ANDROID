@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { groupNum } from './helpers';
+import { setPrintRecorder } from './docPrint';
 import { SHARED_SETTINGS } from './sharedSettings';
 import { AppState } from 'react-native';
 import {
@@ -59,10 +61,12 @@ export interface Ctx {
   loadDemo: (edition: import('./editions').Edition) => void;
   /** Replaces the local book with a validated backup selected on this phone. */
   restoreBackup: (data: DB) => void;
-  commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: OrderType; priceListId?: string; rx?: import('./types').RxRecord }) => Sale;
+  /** Gives a sale saved with a temporary number the real one from the server. */
+  setSaleNumber: (saleId: string, no: string) => void;
+  commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: OrderType; priceListId?: string; rx?: import('./types').RxRecord; wht?: number; taxOnTop?: boolean; showPayment?: boolean }) => Sale;
   voidSale: (saleId: string, reason?: string) => void;
   createPurchase: (partyId: string, lines: PurchaseLine[], method: PayMethod, userId?: string, no?: string, when?: string) => Purchase;
-  recordPayment: (o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; allocations?: Array<{ saleId: string; amount: number }>; userId?: string }) => Payment;
+  recordPayment: (o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; allocations?: Array<{ saleId: string; amount: number }>; userId?: string; taxDeducted?: number; onAccount?: boolean }) => Payment;
   /** Brings one business from a Vyapar backup into these books. Owner only. */
   importFromVyapar: (tables: import('./vyapar').VyTables, firmId: number) => import('./vyapar').ImportReport;
   recordEntry: (o: {
@@ -113,7 +117,7 @@ export interface Ctx {
   updateEstimate: (estimateId: string, o: { partyId: string | null; lines: SaleLine[]; discount: number; note?: string; terms?: string }) => boolean;
 
   // Delivery challans
-  createChallan: (o: { saleId: string | null; partyId: string | null; lines: ChallanLine[] }) => Challan;
+  createChallan: (o: { saleId: string | null; partyId: string | null; lines: ChallanLine[]; driver?: string; vehicle?: string }) => Challan;
   markChallanDelivered: (challanId: string) => void;
 
   // Credit notes / returns
@@ -203,6 +207,10 @@ export interface Ctx {
   deletePurchase: (purchaseId: string, reason?: string) => boolean;
   editPayment: (payId: string, patch: { amount: number; accountId?: string; note?: string }) => Payment | null;
   deletePayment: (payId: string, reason?: string) => boolean;
+  /** Undo a return, an expense or money in, or a journal: everything it posted is reversed. */
+  deleteCreditNote: (id: string) => boolean;
+  deleteEntry: (id: string) => boolean;
+  deleteJournal: (id: string) => boolean;
   // Restaurant
   /** Adds or changes a modifier group (Size, Extras…). */
   saveModifierGroup: (g: Omit<ModifierGroup, 'id'> & { id?: string }) => ModifierGroup;
@@ -306,6 +314,25 @@ const GATED_ACTIONS = [
 const PERSONAL_SETTINGS = new Set(['lastBackupAt', 'theme', 'reportCols', 'ownerSummarySentOn']);
 
 const stockOfImpl = logic.stockOfImpl;
+
+/* Items and parties by id, kept per book. A list on a big book looked each
+   one up by scanning the whole list — Activity did that for every sale — so
+   opening it took seconds. The book is replaced on every change and the
+   count guards against a change made in place. */
+/* account balances by book: a picker of accounts walked the whole ledger once per account */
+const acctCache = new WeakMap<object, { key: string; map: Map<string, number> }>();
+const idIndex = new WeakMap<object, Record<string, { n: number; map: Map<string, any> }>>();
+function byId<K extends 'products' | 'parties'>(d: DB, key: K): Map<string, DB[K][number]> {
+  const list = d[key] as Array<{ id: string }>;
+  let per = idIndex.get(d);
+  if (!per) { per = {}; idIndex.set(d, per); }
+  const had = per[key];
+  if (had && had.n === list.length) return had.map;
+  const map = new Map<string, any>();
+  list.forEach((x) => map.set(x.id, x));
+  per[key] = { n: list.length, map };
+  return map;
+}
 const saleTotals = logic.saleTotals;
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
@@ -378,19 +405,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
        our server truly cannot be reached from, counts as offline. */
     NetInfo.configure({ reachabilityUrl: SERVER_URL + '/health', reachabilityTest: async (r) => r.status === 200,
       reachabilityShortTimeout: 8000, reachabilityLongTimeout: 60000, reachabilityRequestTimeout: 10000 });
-    const sub = NetInfo.addEventListener((state) => {
-      const up = state.isConnected !== false && state.isInternetReachable !== false;
-      if (up === onlineRef.current) return;
-      onlineRef.current = up;
-      const d = dbRef.current;
-      if (!d || d.session.online === up) return;
-      commitRef.current?.((db2) => { db2.session.online = up; });
-    });
-    NetInfo.fetch().then((state) => {
-      onlineRef.current = state.isConnected !== false && state.isInternetReachable !== false;
-    });
+    const sub = NetInfo.addEventListener((state) => applyOnline(state.isConnected !== false && state.isInternetReachable !== false));
     return () => sub();
   }, []);
+  /* every sale that goes to the printer is counted, so its next print says DUPLICATE, here and on the computer */
+  useEffect(() => {
+    setPrintRecorder((ref) => commitRef.current?.((d) => {
+      const s = d.sales.find((x) => x.id === ref.id);
+      if (!s) return;
+      s.printCount = (s.printCount || 0) + 1;
+      logic.enqueue(d, 'printcount', s.id);
+    }));
+    return () => setPrintRecorder(null);
+  }, []);
+  /* The book carries the last answer, and a book saved while offline used to stay
+     "offline" for good: the check compared against its own memory, which started
+     as online, so nothing ever set the book back and sync said "no internet" on a
+     working phone. It is the book that is compared now, and checked again once loaded. */
+  const applyOnline = (up: boolean) => {
+    onlineRef.current = up;
+    const d = dbRef.current;
+    if (!d || d.session.online === up) return;
+    commitRef.current?.((db2) => { db2.session.online = up; });
+  };
+  useEffect(() => {
+    if (!ready) return;
+    NetInfo.fetch().then((state) => applyOnline(state.isConnected !== false && state.isInternetReachable !== false)).catch(() => applyOnline(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   const commit = useCallback((mut: (d: DB) => void) => {
     const d = dbRef.current;
@@ -475,17 +517,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     money: (n: number) => {
       const st = dbRef.current?.settings;
       const places = Math.max(0, Math.min(3, Number(st?.decimals) || 0));
-      const v = (n || 0).toLocaleString('en-US', { minimumFractionDigits: places, maximumFractionDigits: places });
+      const v = groupNum(n || 0, places);
       const sym = st?.currency || 'Sh';
       return st?.symbolBefore === false ? v + ' ' + sym : sym + ' ' + v;
     },
     stockOf: stockOfImpl,
-    product: (id) => dbRef.current?.products.find((p) => p.id === id),
-    party: (id) => dbRef.current?.parties.find((p) => p.id === id),
+    product: (id) => (dbRef.current ? byId(dbRef.current, 'products').get(id) : undefined),
+    party: (id) => (dbRef.current ? byId(dbRef.current, 'parties').get(id) : undefined),
     user: (id) => dbRef.current?.users.find((u) => u.id === id),
     account: (id) => dbRef.current?.accounts.find((a) => a.id === id),
     me: () => dbRef.current?.users.find((u) => u.id === dbRef.current!.session.userId),
-    partyBalance: (id) => { const d = dbRef.current; return d ? logic.partyBalance(d, id) : 0; },
+    partyBalance: (id) => { const d = dbRef.current; return d ? logic.allPartyBalances(d).get(id) ?? 0 : 0; },
     /**
      * What an account holds, in the branch being worked in.
      *
@@ -497,11 +539,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     accountBalance: (id, branch) => {
       const d = dbRef.current; if (!d) return 0;
       const want = branch === undefined ? activeBranchId(d) : branch;
-      let b = 0;
-      branchJournal(d, want).forEach((e) => e.lines.forEach((l) => {
-        if (l.acc === id) b += (l.dr || 0) - (l.cr || 0);
-      }));
-      return b;
+      // every account's balance from one pass over the ledger, kept for the book as it stands
+      const key = String(want) + ':' + d.journal.length;
+      let per = acctCache.get(d);
+      if (!per || per.key !== key) {
+        const map = new Map<string, number>();
+        branchJournal(d, want).forEach((e) => e.lines.forEach((l) => {
+          map.set(l.acc, (map.get(l.acc) || 0) + (l.dr || 0) - (l.cr || 0));
+        }));
+        per = { key, map };
+        acctCache.set(d, per);
+      }
+      return per.map.get(id) || 0;
     },
     login: (userId, pin) => {
       const d = dbRef.current; if (!d) return false;
@@ -562,6 +611,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       void flushSave();
       scheduleSave(d);
     },
+    setSaleNumber: (saleId, no) => commit((d) => { if (logic.setSaleNumber(d, saleId, no)) logic.enqueue(d, 'sale', saleId); }),
     restoreBackup: (data) => {
       const restored = migrate(JSON.parse(JSON.stringify(data))) as DB;
       const till = dbRef.current?.session.till || restored.session.till;
@@ -657,6 +707,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           ...(offset > 0 ? { offsetSaleId: sale!.id } : {}),
         };
         d.entries.push(e);
+        logic.enqueue(d, 'entry', e.id);
+        if (offset > 0) logic.enqueue(d, 'sale', sale!.id);
 
         const memo = o.category + (o.note ? ' — ' + o.note : '');
         const expLedger = o.ledgerId || 'n_expense';
@@ -935,7 +987,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       let ch!: Challan;
       commit((d) => {
         d.counters.challan += 1;
-        ch = { id: uid('chl'), no: 'DC-' + String(100000 + d.counters.challan).slice(1), ts: iso(new Date()), saleId: o.saleId, partyId: o.partyId, lines: o.lines, status: 'dispatched' };
+        ch = { id: uid('chl'), no: 'DC-' + String(100000 + d.counters.challan).slice(1), ts: iso(new Date()), saleId: o.saleId, partyId: o.partyId, lines: o.lines, status: 'dispatched', ...(o.driver ? { driver: o.driver } : {}), ...(o.vehicle ? { vehicle: o.vehicle } : {}) };
         d.challans.push(ch);
         audit(d, 'Delivery challan created', ch.no);
         logic.enqueue(d, 'challan', ch.id);
@@ -965,6 +1017,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           refund, charges, userId: o.userId || d.session.userId,
         };
         d.creditNotes.push(cn);
+        logic.enqueue(d, 'creditNote', cn.id);
         const wh = d.session.warehouse || 'w1';
         o.lines.forEach((l) => move(d, l.productId, wh, l.qty, 'return', cn.no, when));
         const cost = o.lines.reduce((s, l) => s + l.qty * (l.cost || 0), 0);
@@ -977,13 +1030,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         jl.push({ acc: back, cr: total });
         journal(d, when, 'Credit note ' + cn.no, cn.no, jl);
         if (cost > 0) journal(d, when, 'Return to stock ' + cn.no, cn.no, [{ acc: 'n_inventory', dr: cost }, { acc: 'n_cogs', cr: cost }]);
-        if (o.partyId && !o.saleId) {
-          // no linked sale due to reduce; adjust the party's opening balance instead so the ledger reflects the credit
-          const pt = d.parties.find((p) => p.id === o.partyId);
-          if (pt) pt.openingBalance -= total;
-        } else if (o.saleId) {
+        if (o.partyId && !o.saleId && refund === 'account') {
+          // no bill named: held on their account, which the balance counts — the opening balance is left alone,
+          // or the ledger (which shows the return itself) counted it twice
+          cn.onAccount = true;
+        } else if (o.saleId && refund === 'account') {
+          // only a credit to the account takes it off what the bill owes; cash handed back leaves the bill as it was
           const s = d.sales.find((x) => x.id === o.saleId);
-          if (s && s.due > 0) { const take = Math.min(s.due, total); s.due -= take; }
+          const take = s && s.due > 0 ? Math.min(s.due, total) : 0;
+          if (s && take > 0) { s.due -= take; cn.appliedToSale = take; }
+          // more than the bill still owed: the rest is held on their account
+          if (total - take > 0.005) cn.held = total - take;
         }
         audit(
           d,
@@ -1299,6 +1356,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       commit((d) => { out = logic.editPayment(d, payId, patch); });
       return out;
     },
+    deleteCreditNote: (id) => { requireRecordable(); requirePerm('sales.refund'); let ok = false; commit((d) => { ok = logic.deleteCreditNote(d, id); }); return ok; },
+    deleteEntry: (id) => { requireRecordable(); requirePerm('finance.delete'); let ok = false; commit((d) => { ok = logic.deleteEntry(d, id); }); return ok; },
+    deleteJournal: (id) => { requireRecordable(); requirePerm('finance.delete'); let ok = false; commit((d) => { ok = logic.deleteJournal(d, id); }); return ok; },
     deletePayment: (payId, reason) => { requireRecordable(); requirePerm('finance.delete'); requireOpenDay(tsOf('payments', payId)); let ok = false; commit((d) => { ok = logic.deletePayment(d, payId, reason); }); return ok; },
 
     // --- Audit log ---
@@ -1603,6 +1663,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               const doc: Record<string, unknown> = {};
               for (const k of SHARED_SETTINGS) if (p.doc[k] !== undefined) doc[k] = p.doc[k];
               d.settings = { ...d.settings, ...(doc as Partial<DB['settings']>) };
+              applied++;
+            } else if (p?.coll === 'printCounts' && p.doc) {
+              const s = d.sales.find((x) => x.id === p.doc.id);
+              if (s) s.printCount = Math.max(s.printCount || 0, Number(p.doc.count) || 0);
               applied++;
             } else if (p?.coll === 'firm' && p.doc) {
               // another phone changed the business's details. Every op here is

@@ -146,7 +146,7 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
         <View style={{ width: 30, height: 30, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name={tone.icon} size={17} color={tone.fg} />
         </View>
-        <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, lineHeight: 19, color: tone.fg }}>{toast.message}</Text>
+        <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, lineHeight: 19, color: tone.fg }}>{toast.message}</Text>
         <Icon name="x" size={16} color={tone.fg} />
       </Pressable>
     </Animated.View>

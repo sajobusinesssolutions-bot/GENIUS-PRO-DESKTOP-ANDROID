@@ -12,7 +12,8 @@
  * float does not, or its stock moved but its drawer was never created.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
@@ -55,7 +56,7 @@ function StepHead({ index, step }: { index: number; step: typeof STEPS[number] }
           <Icon name={step.icon} size={19} color={colors.ink} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{step.n}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{step.n}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
             {step.hint}
           </Text>

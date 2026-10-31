@@ -11,6 +11,7 @@ import type { DB } from './types';
 export const SHARED_SETTINGS = [
   'belowCost', 'blockNegativeStock', 'allowNegativeStock', 'requireShift', 'taxEnabled', 'pricesIncludeTax',
   'autoLockMins', 'lowStockAlerts', 'roundTo', 'askWhoOnSave', 'serviceChargePct', 'kitchenDisplay',
+  'withholding', 'whtRate', 'currency', 'decimals', 'expiryAlertDays', 'docTerms', 'docDefaults',
 ] as const;
 
 export function sharedSettingsDoc(d: DB): Record<string, unknown> {

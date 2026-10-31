@@ -2,6 +2,7 @@
  * CASH IN / CASH OUT — the money put into or taken out of the drawer and the
  * accounts, in a period: what it was for, from which account, and who.
  */
+import { tsMs } from '../data/helpers';
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -25,7 +26,7 @@ export default function CashEntriesScreen({ route, navigation }: Props) {
 
   const inRange = useMemo(
     () => (book?.entries || []).filter((e) => e.direction === dir && inPeriod(e.ts, period))
-      .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()),
+      .sort((a, b) => tsMs(b.ts) - tsMs(a.ts)),
     [book?.entries, dir, period],
   );
   const accName = (id: string) => db?.accounts.find((a) => a.id === id)?.name || 'Account';

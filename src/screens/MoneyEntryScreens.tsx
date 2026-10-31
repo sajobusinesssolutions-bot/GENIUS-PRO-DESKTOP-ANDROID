@@ -9,7 +9,9 @@
  * screen to go to.
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { useConfirmLeave } from '../components/useConfirmLeave';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -30,8 +32,8 @@ function Effect({ rows }: { rows: { l: string; v: string; tone?: string; bold?: 
     <View style={{ borderRadius: 4, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
       {rows.map((r) => (
         <View key={r.l} style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text numberOfLines={1} style={{ flex: 1, fontFamily: r.bold ? fonts.uiBold : fonts.ui, fontSize: 13.5, color: r.bold ? colors.ink : colors.soft }}>{r.l}</Text>
-          <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: r.tone || colors.ink }}>{r.v}</Text>
+          <Text numberOfLines={1} style={{ flex: 1, fontFamily: r.bold ? fonts.uiBold : fonts.ui, fontSize: 13, color: r.bold ? colors.ink : colors.soft }}>{r.l}</Text>
+          <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: r.tone || colors.ink }}>{r.v}</Text>
         </View>
       ))}
     </View>
@@ -40,22 +42,31 @@ function Effect({ rows }: { rows: { l: string; v: string; tone?: string; bold?: 
 
 export function EntryNewScreen({ route, navigation }: any) {
   const { colors } = useTheme();
-  const { db, recordEntry, money, accountBalance, party } = useAppData();
+  const { db, recordEntry, deleteEntry, money, accountBalance, party } = useAppData();
   const who = useWho('Who is recording this?');
 
   /** Opened for one direction it stays that; opened plainly it can be either. */
-  const fixed: 'in' | 'out' | undefined = route?.params?.direction;
+  /* an expense or money in being corrected: its figures fill the form, and saving puts the right one in its place */
+  const editing = route?.params?.editEntryId ? db?.entries.find((x) => x.id === route.params.editEntryId) : undefined;
+  const fixed: 'in' | 'out' | undefined = route?.params?.direction || (editing && editing.direction !== 'transfer' ? editing.direction : undefined);
   const [direction, setDirection] = useState<'in' | 'out'>(fixed || 'out');
-  const [amount, setAmount] = useState('');
-  const [ledgerId, setLedgerId] = useState(direction === 'out' ? 'n_expense' : 'n_income');
-  const [accountId, setAccountId] = useState(db?.accounts[0]?.id || '');
-  const [note, setNote] = useState('');
-  const [offsetSaleId, setOffsetSaleId] = useState<string | null>(null);
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
+  const [ledgerId, setLedgerId] = useState(editing?.ledgerId || (direction === 'out' ? 'n_expense' : 'n_income'));
+  const [accountId, setAccountId] = useState(editing?.accountId || db?.accounts[0]?.id || '');
+  const [note, setNote] = useState(editing?.note || '');
+  const [offsetSaleId, setOffsetSaleId] = useState<string | null>(editing?.offsetSaleId || null);
   const [picking, setPicking] = useState<'account' | 'bill' | null>(null);
+  const allowLeave = useConfirmLeave(navigation, num(amount) > 0, direction === 'out' ? 'this expense' : 'this entry');
 
   useEffect(() => {
-    navigation.setOptions({ title: fixed === 'out' ? 'Add expense' : fixed === 'in' ? 'Money in' : 'Adjust Money' });
+    navigation.setOptions({ title: editing ? (editing.direction === 'out' ? 'Edit expense' : 'Edit money in') : fixed === 'out' ? 'Add expense' : fixed === 'in' ? 'Money in' : 'Adjust Money' });
   }, [navigation, fixed]);
+
+  /* worked out once, not on every key typed: on a big book these walk thousands of records */
+  const openBills = React.useMemo(() => (picking === 'bill' || offsetSaleId ? (db?.sales || [])
+    .filter((x) => x.status !== 'void' && x.due > 0.01)
+    .sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0)) : []), [db?.sales, picking, offsetSaleId]);
+  const balance = React.useMemo(() => (accountId ? accountBalance(accountId) : 0), [accountId, db?.journal]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!db) return null;
 
@@ -74,21 +85,20 @@ export function EntryNewScreen({ route, navigation }: any) {
     if (!n) { Alert.alert('Amount', 'Enter an amount first.'); return; }
     if (!ledger) { Alert.alert('Ledger', 'Choose what it was for.'); return; }
     who.ask((server) => {
+      // a correction: the old entry is undone (its money put back) before the right one is recorded
+      if (editing) deleteEntry(editing.id);
       recordEntry({
         direction, accountId, category: ledger.name, ledgerId: ledger.id, amount: n, note,
         userId: server.userId,
         offsetSaleId: out ? offsetSaleId || undefined : undefined,
       });
+      allowLeave();
       navigation.goBack();
     });
   }
 
-  const openBills = (db.sales || [])
-    .filter((x) => x.status !== 'void' && x.due > 0.01)
-    .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   const offsetBill = offsetSaleId ? db.sales.find((x) => x.id === offsetSaleId) : undefined;
   const nameOf = (id: string | null) => (id ? party(id)?.name || 'Walk-in' : 'Walk-in');
-  const balance = acc ? accountBalance(acc.id) : 0;
   const after = balance + (out ? -n : n);
 
   return (
@@ -192,7 +202,7 @@ export function EntryNewScreen({ route, navigation }: any) {
       <StickyBar>
         <Button
           variant="pri"
-          label={(out ? 'Save expense' : 'Save money in') + (n ? ' · ' + money(n) : '')}
+          label="Save"
           disabled={!n || !ledger}
           icon={<Icon name="check" size={17} color={colors.accentInk} />}
           onPress={save}
@@ -254,12 +264,12 @@ export function TransferScreen({ navigation }: any) {
         ) : (
           <View style={{ borderRadius: 4, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
             <View style={{ flexDirection: 'row' }}>
-              <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft }}>{fromAcc?.name} after</Text>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: short ? colors.danger : colors.ink }}>{money(accountBalance(from) - n)}</Text>
+              <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>{fromAcc?.name} after</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: short ? colors.danger : colors.ink }}>{money(accountBalance(from) - n)}</Text>
             </View>
             <View style={{ flexDirection: 'row' }}>
-              <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft }}>{toAcc?.name} after</Text>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: colors.good }}>{money(accountBalance(to) + n)}</Text>
+              <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>{toAcc?.name} after</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.good }}>{money(accountBalance(to) + n)}</Text>
             </View>
             {short ? <Badge label="More than the account holds" tone="danger" /> : null}
           </View>
@@ -269,7 +279,7 @@ export function TransferScreen({ navigation }: any) {
       <Foot>
         <Button
           variant="pri"
-          label={'Transfer' + (n ? ' · ' + money(n) : '')}
+          label="Transfer"
           icon={<Icon name="swap" size={16} color={colors.accentInk} />}
           onPress={save}
           disabled={from === to || !n}

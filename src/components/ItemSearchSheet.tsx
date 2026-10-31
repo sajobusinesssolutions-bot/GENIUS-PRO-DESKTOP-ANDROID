@@ -71,7 +71,7 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
             flexDirection: 'row', alignItems: 'center', gap: 10,
             backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.line,
           }}>
-            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{title}</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{title}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
               {results.length} match{results.length === 1 ? '' : 'es'}
             </Text>
@@ -101,14 +101,14 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                 <View style={{ width: 40, height: 40, borderRadius: 4, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name="plus" size={18} color={colors.accentInk} />
                 </View>
-                <Text numberOfLines={1} style={{ flex: 1, color: colors.accent, fontFamily: fonts.uiBold, fontSize: 15 }}>
+                <Text numberOfLines={1} style={{ flex: 1, color: colors.accent, fontFamily: fonts.uiBold, fontSize: 14 }}>
                   {q.trim() ? 'Create “' + q.trim() + '” as a new item' : 'Create a new item'}
                 </Text>
               </Pressable>
             ) : null}
             ListFooterComponent={results.length || onCreate ? null : (
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>No items match “{q}”</Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint }}>No items match “{q}”</Text>
               </View>
             )}
             renderItem={({ item: p }) => {
@@ -123,7 +123,7 @@ export default function ItemSearchSheet({ visible, products, categories, money, 
                     paddingHorizontal: 12, paddingVertical: 12, marginBottom: 8, opacity: out ? 0.55 : 1,
                   }}
                 >
-                  <Text numberOfLines={2} style={{ flex: 1, color: colors.ink, fontFamily: fonts.ui, fontSize: 15.5 }}>{p.name}</Text>
+                  <Text numberOfLines={2} style={{ flex: 1, color: colors.ink, fontFamily: fonts.ui, fontSize: 14 }}>{p.name}</Text>
                   {p.kind === 'service' ? (
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Service</Text>
                   ) : (

@@ -5,7 +5,8 @@
  * and {total} filled in for each customer, and a live preview.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -70,7 +71,7 @@ export default function ReminderSettingsScreen({ navigation }: any) {
                       backgroundColor: on ? colors.accent : colors.surface, borderWidth: 1.2, borderColor: on ? colors.accent : colors.line,
                     }}
                   >
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: on ? colors.accentInk : colors.ink }}>{n ? n + ' days old' : 'Any age'}</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accentInk : colors.ink }}>{n ? n + ' days old' : 'Any age'}</Text>
                   </Pressable>
                 );
               })}
@@ -114,11 +115,11 @@ export default function ReminderSettingsScreen({ navigation }: any) {
             <Cap style={{ marginBottom: 8 }}>Preview{due[0] ? ' · ' + due[0].name : ' · example'}</Cap>
             <Card style={{ padding: 14, marginBottom: 12, backgroundColor: ch === 'whatsapp' ? '#E7FFDB' : colors.surface, borderRadius: radius.md }}>
               {ch === 'email' ? (
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: '#111', marginBottom: 8 }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: '#111', marginBottom: 8 }}>
                   {fillReminder(cfg.emailSubject, { partyName: sample.name, bills: sample.bills, firm, money })}
                 </Text>
               ) : null}
-              <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, lineHeight: 19, color: ch === 'whatsapp' ? '#111' : colors.ink }}>{preview}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: ch === 'whatsapp' ? '#111' : colors.ink }}>{preview}</Text>
             </Card>
 
             <Pressable

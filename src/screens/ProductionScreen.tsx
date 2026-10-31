@@ -32,10 +32,10 @@ export default function ProductionScreen() {
               <Panel key={p.id} style={{ marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <View style={{ width: 44, height: 44, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 20 }}>{p.emoji || '🧩'}</Text>
+                    <Text style={{ fontSize: 18 }}>{p.emoji || '🧩'}</Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{p.name}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                       {stockOf(p)} {p.unit} in stock
                     </Text>
@@ -103,14 +103,14 @@ export default function ProductionScreen() {
               <Icon name="factory" size={19} color={colors.good} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
                 {product(item.productId)?.name || 'Item'}
               </Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {new Date(item.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
               </Text>
             </View>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.good }}>+{item.qty}</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.good }}>+{item.qty}</Text>
           </View>
         )}
       />

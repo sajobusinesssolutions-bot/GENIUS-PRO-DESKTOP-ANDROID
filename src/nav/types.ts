@@ -23,7 +23,7 @@ export type RootStackParamList = {
   Challans: undefined;
   ChallanNew: { saleId?: string } | undefined;
   CreditNotes: undefined;
-  CreditNoteNew: { saleId?: string } | undefined;
+  CreditNoteNew: { saleId?: string; editCreditNoteId?: string; free?: boolean } | undefined;
   Offers: undefined;
   OfferNew: undefined;
   Recurring: undefined;
@@ -90,12 +90,15 @@ export type RootStackParamList = {
   AccountDetail: { accountId: string; period?: string; from?: number; to?: number };
   PaymentDetail: { paymentId: string };
   PaymentNew: { direction?: 'in' | 'out'; partyId?: string } | undefined;
-  EntryNew: { direction?: 'in' | 'out' } | undefined;
+  EntryNew: { direction?: 'in' | 'out'; editEntryId?: string } | undefined;
   CashEntries: { direction?: 'in' | 'out' } | undefined;
   Transfer: undefined;
   Accounting: undefined;
   Journals: undefined;
   Reports: { id?: string } | undefined;
+  DayReport: undefined;
+  BooksCheck: undefined;
+  DocTerms: undefined;
   ReportDetail: { id: string };
   Tax: undefined;
 

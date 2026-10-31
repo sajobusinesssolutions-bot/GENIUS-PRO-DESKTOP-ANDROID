@@ -8,8 +8,9 @@ it('every report is reachable: on its own, or as a view of exactly one group', (
   const entries = reportEntries();
   const reachable = new Set<string>();
   for (const e of entries) (e.group ? e.group.views.map((v) => v.id) : [e.id]).forEach((id) => reachable.add(id));
-  // the expiry list is left out on purpose: batch balances shows the same lots
-  expect(REPORTS.filter((r) => !reachable.has(r.id)).map((r) => r.id)).toEqual(['expiry']);
+  // left out on purpose: batch balances shows the same lots as the expiry list, and the
+  // sales register opens on the bill list, which says what the summary did
+  expect(REPORTS.filter((r) => !reachable.has(r.id)).map((r) => r.id).sort()).toEqual(['expiry', 'sale-summary']);
   const views = REPORT_GROUPS.flatMap((g) => g.views.map((v) => v.id));
   expect(new Set(views).size).toBe(views.length);
 });

@@ -30,8 +30,8 @@ export default function VersionGate({ children }: { children: React.ReactNode })
         <View style={{ width: 72, height: 72, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="cloud" size={32} color={colors.accent} />
         </View>
-        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: colors.ink, marginTop: 18, textAlign: 'center' }}>Update required</Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 21, color: colors.soft, marginTop: 10, textAlign: 'center' }}>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 18, textAlign: 'center' }}>Update required</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 21, color: colors.soft, marginTop: 10, textAlign: 'center' }}>
           {db?.firm.name || 'These books'} {db?.firm.name ? 'was' : 'were'} last opened with Genius Pro {db?.firm.minAppVersion}. This phone has {APP_VERSION}.
           Update to the latest version to continue — your books are safe and waiting.
         </Text>

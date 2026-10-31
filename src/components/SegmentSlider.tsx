@@ -43,7 +43,7 @@ export default function SegmentSlider<T extends string>({ value, options, onChan
             style={{ flex: 1, height: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}
           >
             {o.i ? <Icon name={o.i} size={16} color={on ? colors.accent : colors.faint} /> : null}
-            <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 15, color: on ? colors.ink : colors.faint }}>{o.l}</Text>
+            <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 14, color: on ? colors.ink : colors.faint }}>{o.l}</Text>
           </Pressable>
         );
       })}

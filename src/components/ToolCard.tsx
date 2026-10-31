@@ -39,7 +39,7 @@ export function ToolCard({ icon, tone = 'accent', title, sub, action, border, ch
           <Icon name={icon} size={23} color={t.fg} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: titleColor || colors.ink }}>{title}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: titleColor || colors.ink }}>{title}</Text>
           {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{sub}</Text> : null}
         </View>
         {action ? (

@@ -4,8 +4,10 @@
  * there. Editing the item itself happens on ProductDetail, reached by the
  * pencil in the header.
  */
+import { tsMs } from '../data/helpers';
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -85,7 +87,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   };
   const moves = useMemo(() => {
     const rows = allMoves.filter((m) => m.productId === id);
-    rows.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+    rows.sort((a, b) => tsMs(b.ts) - tsMs(a.ts));
     if (filter === 'in') return rows.filter((m) => m.qty > 0);
     if (filter === 'out') return rows.filter((m) => m.qty < 0);
     return rows;
@@ -180,7 +182,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 130 }}>
         {/* the item */}
         <View style={{ ...card, padding: 16 }}>
-          <Text numberOfLines={2} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, letterSpacing: -0.3 }}>{p.name}</Text>
+          <Text numberOfLines={2} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, letterSpacing: -0.3 }}>{p.name}</Text>
           <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 4 }}>
             {[p.sku, p.category, p.trackBatches ? 'Batch tracked' : '', p.trackSerials ? 'IMEI tracked' : '', !p.active ? 'Not for sale' : ''].filter(Boolean).join(' · ')}
           </Text>
@@ -217,7 +219,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                   <View key={b.no} style={{ padding: 14, borderBottomWidth: i === batches.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.ink }}>{b.no}</Text>
+                        <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{b.no}</Text>
                         <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
                           {b.expiry
                             ? 'Expires ' + new Date(b.expiry).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -225,7 +227,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                             : 'No expiry set'}
                         </Text>
                       </View>
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>
                         {b.qty} <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{p.unit.toUpperCase()}</Text>
                       </Text>
                     </View>
@@ -252,7 +254,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                 onPress={() => { setFilter(v); setShowAll(false); }}
                 style={{ flex: 1, paddingVertical: 8, borderRadius: 4, alignItems: 'center', backgroundColor: on ? colors.surface : 'transparent', borderWidth: on ? 1 : 0, borderColor: colors.line }}
               >
-                <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13.5, color: on ? colors.ink : colors.soft }}>
+                <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 13, color: on ? colors.ink : colors.soft }}>
                   {l} <Text style={{ fontFamily: fonts.ui, color: colors.faint }}>{n}</Text>
                 </Text>
               </Pressable>
@@ -270,7 +272,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                   <Icon name={MOVE_ICON[m.type] || 'swap'} size={17} color={fg} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>
                     {m.type.charAt(0).toUpperCase() + m.type.slice(1)}{m.ref ? <Text style={{ fontFamily: fonts.mono, color: colors.soft }}>{'  ' + m.ref}</Text> : null}
                   </Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
@@ -278,7 +280,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                     {m.batchNo ? ' · batch ' + m.batchNo : ''}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: fg }}>{m.qty > 0 ? '+' : '−'}{Math.abs(m.qty)}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: fg }}>{m.qty > 0 ? '+' : '−'}{Math.abs(m.qty)}</Text>
                 <Icon name="chev" size={15} color={colors.faint} />
               </Pressable>
             );
@@ -302,14 +304,14 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
             style={{ flex: 1, height: 50, borderRadius: 4, borderWidth: 1.4, borderColor: colors.lineHard, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <Icon name="swap" size={17} color={colors.ink} />
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Adjust stock</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>Adjust stock</Text>
           </Pressable>
           <Pressable
             onPress={() => navigation.navigate('ProductDetail', { productId: id })}
             style={{ flex: 1, height: 50, borderRadius: 4, backgroundColor: colors.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             <Icon name="pencil" size={16} color={colors.accentInk} />
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accentInk }}>Edit item</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accentInk }}>Edit item</Text>
           </Pressable>
         </View>
       </StickyBar>
@@ -352,7 +354,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                   }}
                 >
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>Batch {b.no}</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>Batch {b.no}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                       {b.qty} on hand
                       {b.expiry ? ' · exp ' + new Date(b.expiry).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : ''}
@@ -373,7 +375,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
               }}
             >
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>The whole shelf</Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>The whole shelf</Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                   Corrects the warehouse total without touching a batch
                 </Text>

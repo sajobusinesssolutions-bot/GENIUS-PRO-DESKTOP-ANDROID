@@ -21,6 +21,8 @@ import summaryRoutes from './summary.js';
 import updateRoutes from './updates.js';
 import transferRoutes from './transfers.js';
 import snapshotPartRoutes from './snapshotparts.js';
+import licensingRoutes from './licensing.js';
+import businessExtraRoutes from './businessextra.js';
 import businessRemoveRoutes from './businessremove.js';
 
 const app = Fastify({
@@ -86,6 +88,10 @@ await app.register(async (scope) => {
 await app.register(googleRoutes);
 await app.register(syncRoutes);
 await app.register(adminRoutes);
+// the console's subscription tools: payments received, client fees, reset and reinstate
+await app.register(licensingRoutes);
+// Your businesses: vouchers this week, last used, rename
+await app.register(businessExtraRoutes);
 await app.register(crashRoutes);
 await app.register(summaryRoutes);
 await app.register(updateRoutes);

@@ -10,6 +10,7 @@
  *   date on the right; a line or two of detail; and its actions
  *   an empty state that says so, and an "Add …" button
  */
+import { stampOf } from '../data/helpers';
 import React, { useMemo, useState } from 'react';
 import { View, Text, FlatList, Platform, ListRenderItem } from 'react-native';
 import { Pressable } from './Press';
@@ -62,10 +63,7 @@ export interface DocRowProps {
 
 export function stamp(ts?: string): string {
   if (!ts) return '';
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }).replace(/ (\d\d)$/, ', $1')
-    + ' • ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return stampOf(ts);
 }
 
 export function DocRow(p: DocRowProps) {
@@ -96,7 +94,7 @@ export function DocRow(p: DocRowProps) {
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.title}</Text>
+            <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{p.title}</Text>
             {p.pill ? (
               <View style={{ paddingVertical: 3, paddingHorizontal: 9, borderRadius: 999, backgroundColor: t.bg }}>
                 <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, letterSpacing: 0.3, color: t.fg }}>{p.pill.label.toUpperCase()}</Text>
@@ -104,7 +102,7 @@ export function DocRow(p: DocRowProps) {
             ) : null}
           </View>
           {p.amount ? (
-            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: p.amountTone || colors.ink, marginTop: 6 }}>{p.amount}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: p.amountTone || colors.ink, marginTop: 6 }}>{p.amount}</Text>
           ) : null}
         </View>
         <View style={{ alignItems: 'flex-end' }}>
@@ -127,7 +125,7 @@ export function DocRow(p: DocRowProps) {
               onPress={p.action.onPress}
               style={({ pressed }) => ({ paddingVertical: 10, paddingHorizontal: 18, borderRadius: 999, backgroundColor: pressed ? colors.accent : colors.accentSoft })}
             >
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accent }}>{p.action.label}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent }}>{p.action.label}</Text>
             </Pressable>
           ) : null}
           {p.onPrint ? iconBtn('print', 'Print', p.onPrint) : null}
@@ -145,11 +143,11 @@ export function SummaryTiles({ tiles }: { tiles: { label: string; value: string;
   const { colors } = useTheme();
   if (!tiles.length) return null;
   return (
-    <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 12 }}>
+    <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 8 }}>
       {tiles.map((t) => (
-        <View key={t.label} style={{ flex: 1, borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, paddingVertical: 11, paddingHorizontal: 13 }}>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{t.label}</Text>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: t.tone || colors.ink, marginTop: 3 }}>{t.value}</Text>
+        <View key={t.label} style={{ flex: 1, borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, paddingVertical: 7, paddingHorizontal: 10 }}>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{t.label}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: t.tone || colors.ink, marginTop: 1 }}>{t.value}</Text>
         </View>
       ))}
     </View>
@@ -163,7 +161,8 @@ export function StatusChips<T extends string>({ value, options, onChange }: {
 }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
+    /* one row, however many: each takes its share of the width, so the list starts higher */
+    <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
       {options.map((o) => {
         const on = o.v === value;
         return (
@@ -171,11 +170,11 @@ export function StatusChips<T extends string>({ value, options, onChange }: {
             key={o.v}
             onPress={() => onChange(o.v)}
             style={{
-              paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1.4,
+              flex: 1, minWidth: 0, alignItems: 'center', paddingVertical: 5, paddingHorizontal: 6, borderRadius: 999, borderWidth: 1.2,
               borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface,
             }}
           >
-            <Text style={{ fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 15, color: on ? colors.accent : colors.ink }}>{o.l}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 12, color: on ? colors.accent : colors.ink }}>{o.l}</Text>
           </Pressable>
         );
       })}
@@ -201,8 +200,8 @@ export function SortBar<T extends string>({ value, options, onChange }: {
         style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginHorizontal: 16, marginBottom: 10, paddingVertical: 4 }}
       >
         <Icon name="filter" size={15} color={colors.faint} />
-        <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.faint }}>Sort:</Text>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>{current.l}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>Sort:</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent }}>{current.l}</Text>
         <Icon name="down" size={14} color={colors.accent} />
       </Pressable>
       <Sheet visible={open} title="Sort by" icon="filter" onClose={() => setOpen(false)}>
@@ -218,7 +217,7 @@ export function SortBar<T extends string>({ value, options, onChange }: {
                 borderWidth: 1, borderColor: on ? colors.accent : colors.line,
               })}
             >
-              <Text style={{ fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 15, color: on ? colors.accent : colors.ink }}>{o.l}</Text>
+              <Text style={{ fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 14, color: on ? colors.accent : colors.ink }}>{o.l}</Text>
               {on ? <Icon name="check" size={17} color={colors.accent} /> : null}
             </Pressable>
           );
@@ -268,17 +267,17 @@ export function PeriodBar({ value, onChange }: { value: ListPeriod; onChange: (p
       backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.line, marginBottom: 12,
     }}>
       <Pressable onPress={() => setMenu(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 10, borderRightWidth: 1, borderRightColor: colors.line }}>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>{value.label}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>{value.label}</Text>
         <Icon name="down" size={15} color={colors.accent} />
       </Pressable>
       <Icon name="calendar" size={18} color={colors.accent} />
       {value.key === 'all' ? (
-        <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint }}>Every date</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint }}>Every date</Text>
       ) : (
         <>
-          <Pressable onPress={() => setPicking('from')}><Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>{ddmmyyyy(value.from)}</Text></Pressable>
+          <Pressable onPress={() => setPicking('from')}><Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>{ddmmyyyy(value.from)}</Text></Pressable>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>TO</Text>
-          <Pressable onPress={() => setPicking('to')}><Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>{ddmmyyyy(value.to)}</Text></Pressable>
+          <Pressable onPress={() => setPicking('to')}><Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>{ddmmyyyy(value.to)}</Text></Pressable>
         </>
       )}
 
@@ -292,7 +291,7 @@ export function PeriodBar({ value, onChange }: { value: ListPeriod; onChange: (p
               onPress={() => { onChange(p); setMenu(false); }}
               style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: pressed ? colors.sunk : 'transparent' })}
             >
-              <Text style={{ flex: 1, fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 15, color: on ? colors.accent : colors.ink }}>{p.label}</Text>
+              <Text style={{ flex: 1, fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 14, color: on ? colors.accent : colors.ink }}>{p.label}</Text>
               {on ? <Icon name="check" size={17} color={colors.accent} /> : null}
             </Pressable>
           );
@@ -339,8 +338,8 @@ export function NoData({ title = 'No Data Available', text = 'Nothing matches th
         {sheet('-12deg', 20, 12)}
         {sheet('6deg', 66, 4, true)}
       </View>
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink, marginTop: 22 }}>{title}</Text>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 21, color: colors.faint, marginTop: 6, textAlign: 'center' }}>{text}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink, marginTop: 22 }}>{title}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 21, color: colors.faint, marginTop: 6, textAlign: 'center' }}>{text}</Text>
     </View>
   );
 }

@@ -3,6 +3,7 @@
  * have bought, and every document between you. Each transaction carries its own
  * print / share / more controls, and the quick bar closes the common jobs.
  */
+import { tsMs } from '../data/helpers';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, Linking } from 'react-native';
 import { Pressable } from '../components/Press';
@@ -16,7 +17,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PartyDetail'>;
-type Kind = 'all' | 'sale' | 'purchase' | 'payment';
+type Kind = 'all' | 'sale' | 'purchase' | 'payment' | 'return';
 
 interface Row {
   id: string;
@@ -37,13 +38,13 @@ interface Row {
 }
 
 const KIND_ICON: Record<Exclude<Kind, 'all'>, IconName> = {
-  sale: 'receipt', purchase: 'cart', payment: 'cash',
+  sale: 'receipt', purchase: 'cart', payment: 'cash', return: 'swap',
 };
 
 export default function PartyDetailScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
   const { db, money, party, partyBalance } = useAppData();
-  const { saleDoc, purchaseDoc, paymentDoc } = useDocBuilder();
+  const { saleDoc, purchaseDoc, paymentDoc, creditNoteDoc } = useDocBuilder();
 
   const id = route.params.partyId;
   const pt = id ? party(id) : undefined;
@@ -114,7 +115,23 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
       });
     });
 
-    out.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+    // goods returned: off what they owe (unpaid), or money handed back (cash)
+    (db.creditNotes || []).forEach((c) => {
+      if (c.partyId !== pt.id) return;
+      const off = !c.refund || c.refund === 'account';
+      out.push({
+        id: c.id, kind: 'return', ts: c.ts,
+        title: 'Credit note ' + c.no,
+        type: off ? 'Return · off what they owe' : 'Return · refunded', tone: 'warn',
+        sub: c.reason || 'Goods returned',
+        amount: c.total,
+        signed: off ? -c.total : 0,
+        open: () => navigation.navigate('CreditNoteNew', { editCreditNoteId: c.id }),
+        doc: () => creditNoteDoc(c),
+      });
+    });
+
+    out.sort((a, b) => tsMs(b.ts) - tsMs(a.ts));
     return kind === 'all' ? out : out.filter((r) => r.kind === kind);
   }, [db, pt, kind, navigation, saleDoc, purchaseDoc, paymentDoc]);
 
@@ -161,6 +178,7 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
                 { v: 'sale', l: 'Sales' },
                 { v: 'purchase', l: 'Purchases' },
                 { v: 'payment', l: 'Payments' },
+                { v: 'return', l: 'Returns' },
               ]}
             />
             <View style={{ height: 8 }} />
@@ -184,11 +202,11 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
                   <Icon name={KIND_ICON[item.kind]} size={18} color={tint.fg} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: tint.fg }}>{item.type}{item.void ? ' · void' : ''}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: tint.fg }}>{item.type}{item.void ? ' · void' : ''}</Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{item.title} · {date(item.ts)}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16, color: colors.ink, textDecorationLine: item.void ? 'line-through' : 'none' }}>{money(item.amount)}</Text>
+                  <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink, textDecorationLine: item.void ? 'line-through' : 'none' }}>{money(item.amount)}</Text>
                   {item.due && item.due > 0.01 && !item.void ? (
                     <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.danger, marginTop: 2 }}>{money(item.due)} due</Text>
                   ) : item.kind !== 'payment' && !item.void ? (

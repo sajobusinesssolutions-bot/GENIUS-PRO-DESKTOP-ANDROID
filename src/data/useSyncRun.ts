@@ -15,7 +15,8 @@ import { wholeBook, isPartialBook } from './storage';
 import { useAppData } from './AppDataContext';
 import { useAuth } from './AuthContext';
 import { refreshSession } from './authApi';
-import { ensureWiring, pushQueue, pullOps, uploadSnapshot } from './syncClient';
+import { ensureWiring, pushQueue, pullOps, uploadSnapshot, nextVoucherNumber, cancelVoucherNumber, newOpId } from './syncClient';
+import { saleSeries, saleFloor, formatSaleNo } from './logic';
 import { plural } from './helpers';
 import { needsNewerApp } from './appVersion';
 import { inlineImage } from './docPrint';
@@ -65,12 +66,20 @@ let syncRunning = false;
 let tokenCache: { refresh: string; token: string; at: number } | null = null;
 const TOKEN_REUSE_MS = 4 * 60 * 1000;
 
-/** The whole copy of the books is heavy; it goes up this often, not every run. */
-const SNAPSHOT_EVERY_MS = 30 * 60 * 1000;
+/* The whole copy of the books is heavy: a pharmacy with a year of sales made
+   one of 20 MB, and sending it every half hour (and on every start) froze the
+   phone while it was written and used a gigabyte of data a day. Each change
+   already goes up on its own; the copy is only for a phone opening the
+   business afresh, so it goes up twice a day, sooner after a lot of changes,
+   and on a press of Sync now if the last one is more than a few minutes old. */
+const SNAPSHOT_EVERY_MS = 12 * 60 * 60 * 1000;
+const SNAPSHOT_AFTER_CHANGES = 300;
+const SNAPSHOT_GAP_MS = 30 * 60 * 1000;
+const SNAPSHOT_MANUAL_GAP_MS = 10 * 60 * 1000;
 let lastSnapshotAt = 0;
 
 export function useSyncRun() {
-  const { db, setSync, dropQueued, applyRemoteOps, logAudit, licFeature, shareFirm } = useAppData();
+  const { db, setSync, dropQueued, applyRemoteOps, logAudit, licFeature, shareFirm, setSaleNumber } = useAppData();
   const { account } = useAuth();
   const dbRef = useRef(db);
   dbRef.current = db;
@@ -120,6 +129,18 @@ export function useSyncRun() {
         if (need) applyRemoteOps([{ kind: 'record.upsert', payload: { coll: 'firm', doc: { minAppVersion: need } } } as any]);
       };
 
+      /* Sales saved offline carry a temporary number. They get their real ones
+         first, oldest first, so the run follows the order they were made; and
+         nothing goes up until they have, so no other device ever sees a
+         temporary number. */
+      const pend = d.sales.filter((s) => s.numberPending).sort((a, b) => a.ts.localeCompare(b.ts));
+      for (const s of pend) {
+        const series = saleSeries(d, s.warehouse);
+        const n = await nextVoucherNumber(token, { business: wiring.value.businessId, series, ref: s.id, floor: saleFloor(d, series), device: wiring.value.deviceId });
+        if (!n) return { ok: false, sent: 0, message: 'Waiting for the server to number ' + pend.length + ' sale' + (pend.length === 1 ? '' : 's') + ' saved offline.' };
+        setSaleNumber(s.id, formatSaleNo(series, n));
+      }
+
       const r = await pushQueue(d, token, wiring.value);
       if (!r.ok) { stopIfOld(r.error); return { ok: false, sent: 0, message: r.error.message }; }
       dropQueued([...new Set(r.value.done)]);
@@ -139,7 +160,13 @@ export function useSyncRun() {
 
       // the copy goes after the push, from the books as they are now — when asked
       // for, or when the last one is old; the changes themselves already went up
-      const snapDue = how === 'manual' || !!(dbRef.current || d).sync.snapshotDue || Date.now() - lastSnapshotAt > SNAPSHOT_EVERY_MS;
+      const sc = (dbRef.current || d).sync;
+      const lastAt = Math.max(lastSnapshotAt, sc.snapshotAt ? new Date(sc.snapshotAt).getTime() || 0 : 0);
+      const age = Date.now() - lastAt;
+      const changes = Math.max(r.value.seq || 0, cursor) - (sc.snapshotCursor || 0);
+      const snapDue = !!sc.snapshotDue || age > SNAPSHOT_EVERY_MS
+        || (how === 'manual' && age > SNAPSHOT_MANUAL_GAP_MS)
+        || (changes >= SNAPSHOT_AFTER_CHANGES && age > SNAPSHOT_GAP_MS);
       const keptVersion = (dbRef.current || d).sync.snapshotVersion || 0;
       let snap = snapDue
         ? await uploadSnapshot((isPartialBook(dbRef.current || d) ? await wholeBook(dbRef.current || d) : dbRef.current || d), token, wiring.value, cursor)
@@ -172,7 +199,7 @@ export function useSyncRun() {
         return { ok: true, sent: 0, seq: r.value.seq, message: 'Everything is up to date' };
       }
       setSync({
-        ...(snapDue ? { snapshotDue: false } : {}),
+        ...(snapDue ? { snapshotDue: false, snapshotAt: now, snapshotCursor: Math.max(r.value.seq, cursor) } : {}),
         lastPush: now,
         lastAt: now,
         cursor: Math.max(r.value.seq, cursor),
@@ -265,5 +292,24 @@ export function useSyncRun() {
     }
   }, [account, accessToken, setSync, applyRemoteOps, licFeature]);
 
-  return { run, pull, accessToken };
+  /**
+   * The next sale number from the server, for a sale about to be saved — so
+   * every device follows one run. Null when the server cannot be reached
+   * within a moment: the sale is then saved with a temporary number.
+   * `drop` records the number as cancelled when the sale was not saved after all.
+   */
+  const takeSaleNumber = useCallback(async (warehouse?: string): Promise<{ no: string; drop: () => void } | null> => {
+    const d = dbRef.current;
+    if (!d || !d.sync.on || !d.sync.businessId || d.session.online === false || !licFeature('sync')) return null;
+    const token = await accessToken().catch(() => null);
+    if (!token) return null;
+    const series = saleSeries(d, warehouse);
+    const ref = 'draft-' + newOpId();
+    const business = d.sync.businessId;
+    const n = await nextVoucherNumber(token, { business, series, ref, floor: saleFloor(d, series), device: d.sync.deviceId || undefined });
+    if (!n) return null;
+    return { no: formatSaleNo(series, n), drop: () => { void cancelVoucherNumber(token, business, ref); } };
+  }, [accessToken, licFeature]);
+
+  return { run, pull, accessToken, takeSaleNumber };
 }

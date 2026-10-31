@@ -34,13 +34,13 @@ import { printOptsFor, docKindOf, shareOptsFor } from '../data/printSetup';
 import type { PayMethod } from '../data/types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
-import { listRange, inRange } from '../data/helpers';
+import { listRange, inRange, tsMs, dayTime } from '../data/helpers';
 import SegmentSlider from '../components/SegmentSlider';
 import { isRestaurant, words } from '../data/restaurant';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 type Props = NativeStackScreenProps<RootStackParamList, any>;
-type Kind = 'all' | 'sale' | 'purchase' | 'order' | 'payment' | 'quote' | 'note' | 'return' | 'plan';
+type Kind = 'all' | 'sale' | 'purchase' | 'order' | 'payment' | 'expense' | 'income' | 'transfer' | 'journal' | 'quote' | 'note' | 'return' | 'plan';
 type Tone = 'good' | 'warn' | 'danger' | 'accent' | 'neutral';
 const day = (n: number) => new Date(n).toISOString().slice(0, 10);
 
@@ -65,6 +65,8 @@ interface Row {
   partyId?: string | null;
   status?: string;
   dim?: boolean;
+  /** A tap opens the actions rather than a page. */
+  tapMenu?: boolean;
   phone?: string;
   due?: number;
   open?: () => void;
@@ -78,17 +80,18 @@ interface Row {
 }
 
 const KIND_ICON: Record<Exclude<Kind, 'all'>, IconName> = {
-  sale: 'receipt', purchase: 'cart', order: 'box', payment: 'cash', quote: 'doc', note: 'swap', return: 'arrow', plan: 'calendar',
+  sale: 'receipt', purchase: 'cart', order: 'box', payment: 'cash', quote: 'doc', note: 'swap', return: 'arrow', plan: 'calendar', expense: 'up', income: 'down', transfer: 'swap', journal: 'doc',
 };
 /** The short word on a row's pill: "BILL · PAID". */
 const KIND_WORD: Record<Exclude<Kind, 'all'>, string> = {
-  sale: 'Sale', purchase: 'Bill', order: 'PO', payment: 'Payment', quote: 'Quote', note: 'Delivery', return: 'Return', plan: 'Plan',
+  sale: 'Sale', purchase: 'Bill', order: 'PO', payment: 'Payment', expense: 'Expense', income: 'Money in', transfer: 'Transfer', journal: 'Journal', quote: 'Quote', note: 'Delivery', return: 'Return', plan: 'Plan',
 };
 const KIND_TONE: Record<Exclude<Kind, 'all'>, Exclude<Tone, 'neutral'>> = {
-  sale: 'accent', purchase: 'warn', order: 'accent', payment: 'good', quote: 'accent', note: 'warn', return: 'danger', plan: 'warn',
+  sale: 'accent', purchase: 'warn', order: 'accent', payment: 'good', expense: 'danger', income: 'good', transfer: 'accent', journal: 'accent', quote: 'accent', note: 'warn', return: 'danger', plan: 'warn',
 };
 const KINDS: [Kind, string][] = [
-  ['all', 'All'], ['sale', 'Sales'], ['purchase', 'Bills'], ['order', 'Orders'], ['payment', 'Payments'], ['quote', 'Quotes'],
+  ['all', 'All'], ['sale', 'Sales'], ['purchase', 'Bills'], ['order', 'Orders'], ['payment', 'Payments'],
+  ['expense', 'Expenses'], ['income', 'Money in'], ['transfer', 'Transfers'], ['journal', 'Journals'], ['quote', 'Quotes'],
   ['note', 'Delivery'], ['return', 'Returns'], ['plan', 'Plans'],
 ];
 
@@ -103,8 +106,8 @@ function dayLabel(ts: string) {
 
 export default function SalesListScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party, deleteSale, deletePayment, deletePurchase, voidEstimate, canEditSale, can, user } = useAppData();
-  const { saleDoc, paymentDoc, purchaseDoc } = useDocBuilder();
+  const { db, money, party, deleteSale, deletePayment, deletePurchase, deleteCreditNote, deleteEntry, deleteJournal, voidEstimate, canEditSale, can, user } = useAppData();
+  const { saleDoc, paymentDoc, purchaseDoc, creditNoteDoc, entryDoc } = useDocBuilder();
   /** A document being sent as a message, and to whom. */
   const [sending, setSending] = useState<{ doc: DocMeta; phone?: string; email?: string } | null>(null);
   const { success, error } = useToast();
@@ -362,7 +365,8 @@ export default function SalesListScreen({ navigation }: Props) {
 
     (db.creditNotes || []).forEach((c) => {
       out.push({
-        id: c.id, kind: 'return', ts: c.ts,
+        id: c.id, kind: 'return', ts: c.ts, tapMenu: true,
+        doc: () => creditNoteDoc(c),
         title: nameOf(c.partyId),
         sub: c.reason || 'Goods returned',
         ref: c.no,
@@ -377,9 +381,65 @@ export default function SalesListScreen({ navigation }: Props) {
           ? { label: 'Against', value: '#' + db.sales.find((s) => s.id === c.saleId)!.no }
           : { label: 'Reason', value: c.reason || 'Goods returned' },
         open: () => navigation.navigate('CreditNotes'),
-        edit: () => navigation.navigate('CreditNotes'),
+        edit: can('sales.refund') ? () => navigation.navigate('CreditNoteNew', { editCreditNoteId: c.id }) : undefined,
+        remove: can('sales.refund') ? {
+          label: 'Delete credit note',
+          text: 'The goods go back out of stock, the refund is undone, and the bill owes again what this took off it.',
+          run: () => { if (deleteCreditNote(c.id)) success(c.no + ' deleted'); },
+        } : undefined,
       });
     });
+
+    if (canFor(db.session.role, 'finance.view')) {
+      const accName = (id?: string) => (db.accounts || []).find((a) => a.id === id)?.name || '';
+      (db.entries || []).forEach((e) => {
+        const kind = e.direction === 'out' ? 'expense' : e.direction === 'in' ? 'income' : 'transfer';
+        const against = e.offsetSaleId ? db.sales.find((s) => s.id === e.offsetSaleId) : undefined;
+        out.push({
+          id: e.id, kind, ts: e.ts, tapMenu: true,
+          ...(kind !== 'transfer' ? { doc: () => entryDoc(e) } : {}),
+          ...(kind !== 'transfer' && can('finance.delete') ? { edit: () => navigation.navigate('EntryNew', { editEntryId: e.id }) } : {}),
+          title: e.category || KIND_WORD[kind],
+          sub: e.note || (kind === 'transfer' ? accName(e.accountId) + ' → ' + accName(e.toId) : accName(e.accountId)),
+          ref: KIND_WORD[kind],
+          amount: e.amount,
+          amountTone: kind === 'expense' ? colors.danger : kind === 'income' ? colors.good : undefined,
+          badge: { label: kind === 'expense' ? 'Paid out' : kind === 'income' ? 'Received' : 'Moved', tone: kind === 'expense' ? 'danger' : kind === 'income' ? 'good' : 'neutral' },
+          label: kind === 'expense' ? 'Expense' : kind === 'income' ? 'Money in' : 'Transfer',
+          labelColor: kind === 'expense' ? colors.danger : kind === 'income' ? colors.good : colors.accent,
+          foot: against ? { label: 'Charged to', value: '#' + against.no + ' · ' + nameOf(against.partyId) }
+            : { label: kind === 'income' ? 'Paid into' : kind === 'transfer' ? 'To' : 'Paid from', value: accName(kind === 'transfer' ? e.toId : e.accountId) || '—' },
+          userId: e.userId,
+          remove: can('finance.delete') ? {
+            label: 'Delete ' + KIND_WORD[kind].toLowerCase(),
+            text: 'Its money is put back as it was' + (against ? ', and #' + against.no + ' owes again what this took off it' : '') + '.',
+            run: () => { if (deleteEntry(e.id)) success(KIND_WORD[kind] + ' deleted'); },
+          } : undefined,
+          open: () => navigation.navigate('CashEntries', kind === 'transfer' ? undefined : { direction: e.direction as 'in' | 'out' }),
+        });
+      });
+      // journals written by hand, here or on the computer — not the ones every sale and bill posts
+      (db.journal || []).forEach((j) => {
+        if (j.reversedAt || !/^(JNL|JV|JE)\b|^J[EV]-?\d/i.test(j.ref || '')) return;
+        const amount = j.lines.reduce((s, l) => s + (l.dr || 0), 0);
+        out.push({
+          id: j.id, kind: 'journal', ts: j.ts, tapMenu: true,
+          title: j.memo || 'Journal',
+          sub: j.lines.length + ' line' + (j.lines.length === 1 ? '' : 's'),
+          ref: j.ref,
+          amount,
+          badge: { label: 'Posted', tone: 'neutral' },
+          label: 'Journal',
+          labelColor: colors.accent,
+          remove: can('finance.delete') ? {
+            label: 'Delete journal',
+            text: 'An opposite entry is posted, so every ledger it touched is back where it was.',
+            run: () => { if (deleteJournal(j.id)) success('Journal deleted'); },
+          } : undefined,
+          open: () => navigation.navigate('Journals'),
+        });
+      });
+    }
 
     (db.instalmentPlans || []).forEach((pl) => {
       const done = pl.schedule.filter((x) => x.paidAt).length;
@@ -399,7 +459,7 @@ export default function SalesListScreen({ navigation }: Props) {
       });
     });
 
-    out.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+    out.sort((a, b) => tsMs(b.ts) - tsMs(a.ts));
     return out;
   }, [listBook, colors, navigation, saleDoc, paymentDoc]);
 
@@ -483,7 +543,7 @@ export default function SalesListScreen({ navigation }: Props) {
             <Icon name="receipt" size={14} color={colors.accent} />
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Total sales</Text>
           </View>
-          <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(totalSales)}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(totalSales)}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{sales.length} sale{sales.length === 1 ? '' : 's'} · {periodLabel}</Text>
         </View>
         ) : null}
@@ -494,7 +554,7 @@ export default function SalesListScreen({ navigation }: Props) {
             <Icon name="alert" size={14} color={balanceDue ? colors.danger : colors.good} />
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>Balance due</Text>
           </View>
-          <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: balanceDue ? colors.danger : colors.good }}>{money(balanceDue)}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: balanceDue ? colors.danger : colors.good }}>{money(balanceDue)}</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{balanceDue ? 'Still to collect' : 'All collected'}</Text>
         </View>
         ) : null}
@@ -701,7 +761,7 @@ export default function SalesListScreen({ navigation }: Props) {
                     {new Date(p.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}{p.by ? ' · ' + p.by : ''}{p.note ? ' · ' + p.note : ''}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: colors.good }}>{money(p.amount)}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.good }}>{money(p.amount)}</Text>
               </View>
             )) : (
               <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, paddingVertical: 10 }}>Nothing has been paid on this sale yet.</Text>
@@ -719,7 +779,7 @@ export default function SalesListScreen({ navigation }: Props) {
       >
         {menu && confirm && menu.remove ? (
           <View style={{ backgroundColor: colors.dangerSoft, borderRadius: 4, padding: 14 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.danger }}>{menu.remove.label}?</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.danger }}>{menu.remove.label}?</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft, marginTop: 4 }}>{menu.remove.text}</Text>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
               <View style={{ flex: 1 }}><Button label="Keep it" onPress={() => setConfirm(false)} /></View>
@@ -774,7 +834,7 @@ function MenuRow({ title, sub, onPress, danger }: { title: string; sub?: string;
         borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: pressed ? colors.sunk : 'transparent',
       })}
     >
-      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: danger ? colors.danger : colors.ink }}>{title}</Text>
+      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: danger ? colors.danger : colors.ink }}>{title}</Text>
       {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{sub}</Text> : null}
     </Pressable>
   );
@@ -796,61 +856,47 @@ function TxnRow({ r, money, tone, onPrint, onShare, onMore }: {
   onPrint?: () => void; onShare?: () => void; onMore: () => void;
 }) {
   const { colors } = useTheme();
-  const d = new Date(r.ts);
-  const when = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' · ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const when = dayTime(r.ts);
   const icon = (name: IconName, label: string, onPress: () => void) => (
     <Pressable
       key={label}
       onPress={onPress}
       hitSlop={4}
       accessibilityLabel={label}
-      style={({ pressed }) => ({ width: 38, height: 36, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : 'transparent' })}
+      style={({ pressed }) => ({ width: 30, height: 26, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.sunk : 'transparent' })}
     >
-      <Icon name={name} size={19} color={colors.faint} />
+      <Icon name={name} size={16} color={colors.faint} />
     </Pressable>
   );
   return (
     <Pressable
-      onPress={r.open}
-      disabled={!r.open}
+      /* money entries, journals and returns have no page of their own: a tap opens their actions */
+      onPress={r.tapMenu || !r.open ? onMore : r.open}
       style={({ pressed }) => ({
-        marginHorizontal: 16, marginBottom: 10, borderRadius: 4,
-        paddingTop: 14, paddingBottom: 8, paddingHorizontal: 16,
+        marginHorizontal: 16, marginBottom: 6, borderRadius: 4,
+        paddingTop: 9, paddingBottom: 6, paddingHorizontal: 12,
         backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line, opacity: r.dim ? 0.55 : 1,
       })}
     >
       {/* who, and how much */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{r.title}</Text>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{r.title}</Text>
         {r.amount ? (
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16.5, color: r.amountTone || colors.ink }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: r.amountTone || colors.ink }}>
             {(r.negative ? '-' : '') + money(r.amount)}
           </Text>
         ) : null}
       </View>
 
-      {/* what it is, its number and when — and its status */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }}>
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
+      {/* what it is, its number and when, the fact that matters, its status, and what can be done — one line */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>
           <Text style={{ fontFamily: fonts.uiSemi, color: r.labelColor }}>{r.label}</Text>
-          {'  ·  #' + r.ref + '  ·  ' + when}
+          {' · #' + r.ref + ' · ' + when}
+          {r.foot ? <Text style={{ color: r.foot.tone || colors.soft }}>{' · ' + r.foot.label + ' ' + r.foot.value}</Text> : null}
         </Text>
-        <View style={{ paddingVertical: 3, paddingHorizontal: 9, borderRadius: 4, backgroundColor: tone.bg }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.6, color: tone.fg }}>{r.badge.label.toUpperCase()}</Text>
-        </View>
-      </View>
-
-      <View style={{ height: 1, backgroundColor: colors.line, marginTop: 12, marginBottom: 8 }} />
-
-      {/* the one fact that matters, and what can be done */}
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          {r.foot ? (
-            <>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{r.foot.label}</Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: r.foot.tone || colors.ink, marginTop: 2 }}>{r.foot.value}</Text>
-            </>
-          ) : null}
+        <View style={{ paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4, backgroundColor: tone.bg }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 9.5, letterSpacing: 0.5, color: tone.fg }}>{r.badge.label.toUpperCase()}</Text>
         </View>
         {onPrint ? icon('print', 'Print', onPrint) : null}
         {onShare ? icon('share', 'Share', onShare) : null}
@@ -880,7 +926,7 @@ function FilterChip({ label, on, onPress }: { label: string; on: boolean; onPres
         backgroundColor: on ? colors.accent : colors.surface, borderWidth: 1.2, borderColor: on ? colors.accent : colors.line,
       }}
     >
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: on ? colors.accentInk : colors.ink }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: on ? colors.accentInk : colors.ink }}>{label}</Text>
     </Pressable>
   );
 }

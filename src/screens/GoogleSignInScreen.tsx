@@ -26,7 +26,8 @@
  * no longer one in this file.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Linking, AppState } from 'react-native';
+import { View, Text, Linking, AppState } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { useTheme, fonts } from '../theme';
@@ -166,10 +167,10 @@ export default function GoogleSignInScreen({ navigation }: Props) {
         }}>
           <Icon name="cloud" size={26} color="#fff" />
         </View>
-        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 24, color: colors.ink, letterSpacing: -0.6 }}>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 22, color: colors.ink, letterSpacing: -0.6 }}>
           Continue with Google
         </Text>
-        <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 20.5, color: colors.soft, marginTop: 8 }}>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 20.5, color: colors.soft, marginTop: 8 }}>
           Google will ask which account to use. We only receive your name and email address.
         </Text>
 

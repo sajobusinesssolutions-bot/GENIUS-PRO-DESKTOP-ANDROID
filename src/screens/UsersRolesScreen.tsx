@@ -14,7 +14,8 @@
  * manage staff and settings.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -234,7 +235,7 @@ export default function UsersRolesScreen() {
               <Avatar name={u.name} id={u.id} size={44} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{u.name}</Text>
+                  <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{u.name}</Text>
                   {u.id === db.session.userId ? <Badge label="You" tone="accent" /> : null}
                   {onShift ? <Badge label="On shift" tone="good" /> : null}
                   {!u.active ? <Badge label="Disabled" tone="neutral" /> : null}
@@ -243,7 +244,7 @@ export default function UsersRolesScreen() {
                   {r?.name} · {plural(ss.length, 'sale')} in 30 days
                 </Text>
               </View>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(v)}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(v)}</Text>
             </Pressable>
           );
         })}
@@ -271,7 +272,7 @@ export default function UsersRolesScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{r.name}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{r.name}</Text>
                     {r.builtin ? <Badge label="Built in" tone="neutral" /> : null}
                   </View>
                   <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 16.5, color: colors.faint, marginTop: 3 }}>
@@ -418,7 +419,7 @@ function RoleEditor({ draft, onChange, onCancel, onSave, onDelete }: {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 26 }} keyboardShouldPersistTaps="handled">
         <Card style={{ padding: 14, marginBottom: 14 }}>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>
             {draft.id ? 'Edit this role' : 'Define the role'}
           </Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3, marginBottom: 12 }}>

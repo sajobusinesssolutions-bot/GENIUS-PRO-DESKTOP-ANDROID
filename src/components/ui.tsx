@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle, TextInput, ActivityIndicator } from 'react-native';
+import ScrollView from './KeyScroll';
 import { useTheme, spacing, radius, fonts, shadow, control } from '../theme';
 import { avatarFor } from '../data/helpers';
 import { Icon, IconName } from './icons';
@@ -38,7 +39,7 @@ export function Row({ title, subtitle, right, onPress, left, last }: {
     >
       {left}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }} numberOfLines={1}>{title}</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }} numberOfLines={1}>{title}</Text>
         {subtitle ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }} numberOfLines={1}>{subtitle}</Text> : null}
       </View>
       {right}
@@ -94,7 +95,7 @@ export function Button({ label, onPress, variant = 'default', size = 'md', disab
       ) : (
         icon
       )}
-      {!loading && <Text numberOfLines={1} style={{ color: fg, fontFamily: fonts.uiBold, fontSize: 15 }}>{label}</Text>}
+      {!loading && <Text numberOfLines={1} style={{ color: fg, fontFamily: fonts.uiBold, fontSize: 14 }}>{label}</Text>}
     </Tap>
   );
 }
@@ -211,8 +212,8 @@ export function KV({ label, value, bold, valueColor, last }: {
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14, paddingVertical: 11,
       borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
     }}>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint, flexShrink: 1 }}>{label}</Text>
-      <Text style={{ fontFamily: bold ? fonts.uiBold : fonts.uiSemi, fontSize: 15, color: valueColor || colors.ink }}>{value}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint, flexShrink: 1 }}>{label}</Text>
+      <Text style={{ fontFamily: bold ? fonts.uiBold : fonts.uiSemi, fontSize: 14, color: valueColor || colors.ink }}>{value}</Text>
     </View>
   );
 }
@@ -225,7 +226,7 @@ export function KVNode({ label, children, last }: { label: string; children: Rea
       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 14, paddingVertical: 11,
       borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
     }}>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.faint }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.faint }}>{label}</Text>
       {children}
     </View>
   );
@@ -321,7 +322,7 @@ export function EmptyState({ icon, title, subtitle, action, actionLabel, onActio
   return (
     <View style={{ flex: 1, paddingVertical: 60, paddingHorizontal: 32, alignItems: 'center', justifyContent: 'center' }}>
       <Icon name={icon} size={48} color={colors.lineHard} />
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.soft, marginTop: 16, marginBottom: 8, textAlign: 'center' }}>{title}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.soft, marginTop: 16, marginBottom: 8, textAlign: 'center' }}>{title}</Text>
       {subtitle ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 20, color: colors.faint, textAlign: 'center', marginBottom: 20 }}>{subtitle}</Text> : null}
       {actionLabel && onAction ? (
         <View style={{ marginTop: 12 }}>

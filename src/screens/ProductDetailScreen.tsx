@@ -24,7 +24,8 @@
  * Every field, sheet and rule from the previous editor is kept.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, TextInput, Image } from 'react-native';
+import { View, Text, Alert, TextInput, Image } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -77,11 +78,11 @@ function MarginCard({ cost, price }: { cost: number; price: number }) {
     }}>
       <View>
         <Cap style={{ color: fg }}>Profit on each one</Cap>
-        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: fg, marginTop: 3 }}>{money(profit)}</Text>
+        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: fg, marginTop: 3 }}>{money(profit)}</Text>
       </View>
       <View style={{ alignItems: 'flex-end' }}>
         <Cap style={{ color: fg }}>Margin</Cap>
-        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: fg, marginTop: 3 }}>{m}%</Text>
+        <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: fg, marginTop: 3 }}>{m}%</Text>
       </View>
     </View>
   );
@@ -371,7 +372,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
     >
       <View style={{ flex: 1 }}>
         {value ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 2 }}>{label}</Text> : null}
-        <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: value ? colors.ink : colors.faint }}>{value || label}</Text>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 14, color: value ? colors.ink : colors.faint }}>{value || label}</Text>
       </View>
       <Icon name="down" size={16} color={colors.faint} />
     </Pressable>
@@ -425,7 +426,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         {photo ? (
           <Image source={{ uri: photo }} style={{ width: 44, height: 44, borderRadius: 4 }} />
         ) : null}
-        <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 15, color: photo ? colors.ink : colors.faint }}>
+        <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 14, color: photo ? colors.ink : colors.faint }}>
           {photo ? 'Photo added' : 'Photo'}
         </Text>
         <Pressable onPress={() => void takePhoto()} accessibilityLabel="Take a photo" hitSlop={4}
@@ -601,7 +602,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
         <View style={{ borderRadius: radius.md, borderWidth: 1.4, borderColor: colors.line, backgroundColor: colors.surface, paddingHorizontal: 15, paddingVertical: 12, marginBottom: 14 }}>
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint }}>On hand</Text>
           <Text style={{ fontFamily: fonts.uiExtra, fontSize: 34, color: colors.ink }}>
-            {onHand} <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>{unit}</Text>
+            {onHand} <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint }}>{unit}</Text>
           </Text>
           {db.warehouses.length > 1 ? (
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
@@ -639,7 +640,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
           <View style={{ paddingBottom: 12 }}>
             {/* how many IMEIs each phone carries, and whether to ask its condition */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.soft }}>IMEIs per phone</Text>
+              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>IMEIs per phone</Text>
               <Seg
                 value={dualImei ? '2' : '1'}
                 onChange={(v) => setDualImei(v === '2')}
@@ -649,7 +650,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.soft }}>Condition</Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>Condition</Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 1 }}>New or used, printed on the receipt</Text>
               </View>
               <Sw on={askCondition} onPress={() => setAskCondition(!askCondition)} />
@@ -783,7 +784,7 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
                 borderWidth: 1, borderColor: e === image && !photo ? colors.accent : 'transparent',
               }}
             >
-              <Text style={{ fontSize: 24 }}>{e}</Text>
+              <Text style={{ fontSize: 22 }}>{e}</Text>
             </Pressable>
           ))}
         </View>
@@ -861,7 +862,7 @@ function PickSheet({ visible, title, options, value, onClose, onPick, onCreate, 
       })}
     >
       <Icon name={create ? 'plus' : 'tag'} size={17} color={create || on ? colors.accent : colors.faint} />
-      <Text style={{ flex: 1, fontFamily: on || create ? fonts.uiBold : fonts.ui, fontSize: 15, color: create || on ? colors.accent : colors.ink }}>{label}</Text>
+      <Text style={{ flex: 1, fontFamily: on || create ? fonts.uiBold : fonts.ui, fontSize: 14, color: create || on ? colors.accent : colors.ink }}>{label}</Text>
       {on ? <Icon name="check" size={18} color={colors.accent} /> : null}
     </Pressable>
   );
@@ -999,7 +1000,7 @@ function UnitDropdown({ label, value, options, open, onOpen, onPick, onAdd, none
         backgroundColor: on ? colors.accentSoft : pressed ? colors.sunk : colors.surface,
       })}
     >
-      <Text style={{ flex: 1, fontFamily: on || accent ? fonts.uiSemi : fonts.ui, fontSize: 15, color: accent || on ? colors.accent : colors.ink }}>{text}</Text>
+      <Text style={{ flex: 1, fontFamily: on || accent ? fonts.uiSemi : fonts.ui, fontSize: 14, color: accent || on ? colors.accent : colors.ink }}>{text}</Text>
       {on ? <Icon name="check" size={17} color={colors.accent} /> : null}
     </Pressable>
   );
@@ -1017,7 +1018,7 @@ function UnitDropdown({ label, value, options, open, onOpen, onPick, onAdd, none
       >
         <View style={{ flex: 1 }}>
           {shown ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: open ? colors.accent : colors.faint, marginBottom: 2 }}>{label}</Text> : null}
-          <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: shown ? colors.ink : colors.faint }}>{shown || label}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: shown ? colors.ink : colors.faint }}>{shown || label}</Text>
         </View>
         <Icon name={open ? 'up' : 'down'} size={17} color={colors.faint} />
       </Pressable>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, ScrollView, TextInput } from 'react-native';
+import { View, Text, FlatList, TextInput } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -41,7 +42,7 @@ export default function OffersScreen({ navigation }: Props) {
         )}
       />
       <Pressable onPress={() => navigation.navigate('OfferNew')} style={{ position: 'absolute', right: 18, bottom: 18, width: 52, height: 52, borderRadius: 4, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: colors.accentInk, fontSize: 24, fontFamily: fonts.uiBold }}>+</Text>
+        <Text style={{ color: colors.accentInk, fontSize: 22, fontFamily: fonts.uiBold }}>+</Text>
       </Pressable>
     </View>
   );

@@ -19,7 +19,8 @@
  * opens a picker of the shop's items.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, ScrollView, Pressable, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppData } from '../data/AppDataContext';
 import { fonts, useTheme } from '../theme';
@@ -195,7 +196,7 @@ export default function PriceListsScreen({ navigation }: any) {
           <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, gap: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Pressable onPress={() => navigation?.goBack?.()} accessibilityLabel="Back" style={st.iconBtn}>
-                <Text style={{ fontSize: 24, color: C.ink }}>←</Text>
+                <Text style={{ fontSize: 22, color: C.ink }}>←</Text>
               </Pressable>
               <Text style={{ fontSize: 28, color: C.ink, fontFamily: fonts.ui }}>Price lists</Text>
             </View>
@@ -224,7 +225,7 @@ export default function PriceListsScreen({ navigation }: any) {
               return (
                 <Pressable key={l.id} onPress={() => { setCurrentId(l.id); setItemQuery(''); setScreen('detail'); }} style={st.listRow}>
                   <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-                    <Text numberOfLines={1} style={{ fontSize: 16, fontFamily: fonts.uiSemi, color: C.ink }}>{l.name}</Text>
+                    <Text numberOfLines={1} style={{ fontSize: 15, fontFamily: fonts.uiSemi, color: C.ink }}>{l.name}</Text>
                     <Text style={{ fontSize: 13, color: C.muted, fontFamily: fonts.ui }}>{n} {n === 1 ? V.item.toLowerCase() : V.items.toLowerCase()} · {adjLabel(l.adj)}</Text>
                   </View>
                   <View style={[st.badge, { backgroundColor: sc.bg }]}><Text style={{ fontSize: 12, fontFamily: fonts.uiSemi, color: sc.fg }}>{l.status}</Text></View>
@@ -239,7 +240,7 @@ export default function PriceListsScreen({ navigation }: any) {
           </ScrollView>
           <Pressable onPress={openCreate} style={[st.fab, { bottom: 32 + insets.bottom }]}>
             <Text style={{ fontSize: 26, lineHeight: 28, color: C.fabInk }}>+</Text>
-            <Text style={{ fontSize: 15, fontFamily: fonts.uiSemi, color: C.fabInk }}>New price list</Text>
+            <Text style={{ fontSize: 14, fontFamily: fonts.uiSemi, color: C.fabInk }}>New price list</Text>
           </Pressable>
         </View>
       )}
@@ -248,8 +249,8 @@ export default function PriceListsScreen({ navigation }: any) {
       {screen === 'detail' && current && (
         <View style={{ flex: 1 }}>
           <View style={{ height: 64, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4 }}>
-            <Pressable onPress={() => setScreen('list')} accessibilityLabel="Back" style={st.iconBtn}><Text style={{ fontSize: 24, color: C.ink }}>←</Text></Pressable>
-            <Text numberOfLines={1} style={{ flex: 1, fontSize: 20, color: C.ink, fontFamily: fonts.ui }}>{current.name}</Text>
+            <Pressable onPress={() => setScreen('list')} accessibilityLabel="Back" style={st.iconBtn}><Text style={{ fontSize: 22, color: C.ink }}>←</Text></Pressable>
+            <Text numberOfLines={1} style={{ flex: 1, fontSize: 18, color: C.ink, fontFamily: fonts.ui }}>{current.name}</Text>
             <Pressable onPress={openRename} style={st.textBtn}><Text style={st.textBtnText}>Rename</Text></Pressable>
           </View>
           <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -285,7 +286,7 @@ export default function PriceListsScreen({ navigation }: any) {
                   return (
                     <View key={p.id} style={st.productRow}>
                       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                        <Text numberOfLines={1} style={{ fontSize: 15, color: C.ink, fontFamily: fonts.ui }}>{p.name}</Text>
+                        <Text numberOfLines={1} style={{ fontSize: 14, color: C.ink, fontFamily: fonts.ui }}>{p.name}</Text>
                         <Text numberOfLines={1} style={{ fontSize: 12, color: C.muted, fontFamily: MONO }}>{p.sku} · cost {fmt(p.cost)}</Text>
                       </View>
                       <TextInput
@@ -327,7 +328,7 @@ export default function PriceListsScreen({ navigation }: any) {
             <Pressable onPress={() => {}} style={[st.sheet, { paddingBottom: 32 + insets.bottom }]}>
               <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 20 }}>
                 <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: C.handle, alignSelf: 'center', marginBottom: 4 }} />
-                <Text style={{ fontSize: 22, color: C.ink, fontFamily: fonts.ui }}>{sheet === 'rename' ? 'Rename price list' : 'New price list'}</Text>
+                <Text style={{ fontSize: 20, color: C.ink, fontFamily: fonts.ui }}>{sheet === 'rename' ? 'Rename price list' : 'New price list'}</Text>
 
                 {form ? (
                   <View style={{ gap: 4 }}>
@@ -366,7 +367,7 @@ export default function PriceListsScreen({ navigation }: any) {
                               <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: on ? C.primary : 'transparent' }} />
                             </View>
                             <View style={{ gap: 2, flex: 1 }}>
-                              <Text style={{ fontSize: 16, color: C.ink, fontFamily: fonts.ui }}>{o.label}</Text>
+                              <Text style={{ fontSize: 15, color: C.ink, fontFamily: fonts.ui }}>{o.label}</Text>
                               <Text style={{ fontSize: 13, color: C.muted, fontFamily: fonts.ui }}>{o.sub}</Text>
                             </View>
                           </Pressable>
@@ -375,14 +376,14 @@ export default function PriceListsScreen({ navigation }: any) {
                       {form.source === 'copy' && (
                         <View style={{ gap: 12, paddingTop: 8, paddingLeft: 40 }}>
                           <Pressable onPress={() => setCopyOpen(!copyOpen)} style={st.select}>
-                            <Text style={{ flex: 1, fontSize: 15, color: C.ink, fontFamily: fonts.ui }}>{lists.find((l) => l.id === form.copyFrom)?.name || 'Choose a list'}</Text>
+                            <Text style={{ flex: 1, fontSize: 14, color: C.ink, fontFamily: fonts.ui }}>{lists.find((l) => l.id === form.copyFrom)?.name || 'Choose a list'}</Text>
                             <Text style={{ color: C.muted }}>▾</Text>
                           </Pressable>
                           {copyOpen ? (
                             <View style={{ borderWidth: 1, borderColor: C.outlineSoft, borderRadius: 4, overflow: 'hidden' }}>
                               {lists.map((l) => (
                                 <Pressable key={l.id} onPress={() => { patchForm({ copyFrom: l.id }); setCopyOpen(false); }} style={{ paddingVertical: 12, paddingHorizontal: 12, backgroundColor: l.id === form.copyFrom ? C.chipOn : C.surface }}>
-                                  <Text style={{ fontSize: 15, color: C.ink, fontFamily: fonts.ui }}>{l.name}</Text>
+                                  <Text style={{ fontSize: 14, color: C.ink, fontFamily: fonts.ui }}>{l.name}</Text>
                                 </Pressable>
                               ))}
                             </View>
@@ -390,9 +391,9 @@ export default function PriceListsScreen({ navigation }: any) {
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                             <Text style={{ fontSize: 14, color: C.ink, fontFamily: fonts.ui }}>Adjust prices</Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Pressable onPress={() => patchForm({ adj: Math.max(-90, form.adj - 5) })} style={st.stepBtn}><Text style={{ fontSize: 20, color: C.ink }}>−</Text></Pressable>
-                              <Text style={{ width: 64, textAlign: 'center', fontSize: 15, fontFamily: MONO, color: C.ink }}>{form.adj > 0 ? '+' : ''}{form.adj}%</Text>
-                              <Pressable onPress={() => patchForm({ adj: Math.min(200, form.adj + 5) })} style={st.stepBtn}><Text style={{ fontSize: 20, color: C.ink }}>+</Text></Pressable>
+                              <Pressable onPress={() => patchForm({ adj: Math.max(-90, form.adj - 5) })} style={st.stepBtn}><Text style={{ fontSize: 18, color: C.ink }}>−</Text></Pressable>
+                              <Text style={{ width: 64, textAlign: 'center', fontSize: 14, fontFamily: MONO, color: C.ink }}>{form.adj > 0 ? '+' : ''}{form.adj}%</Text>
+                              <Pressable onPress={() => patchForm({ adj: Math.min(200, form.adj + 5) })} style={st.stepBtn}><Text style={{ fontSize: 18, color: C.ink }}>+</Text></Pressable>
                             </View>
                           </View>
                         </View>
@@ -400,7 +401,7 @@ export default function PriceListsScreen({ navigation }: any) {
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                       <View style={{ gap: 2, flex: 1 }}>
-                        <Text style={{ fontSize: 16, color: C.ink, fontFamily: fonts.ui }}>Activate now</Text>
+                        <Text style={{ fontSize: 15, color: C.ink, fontFamily: fonts.ui }}>Activate now</Text>
                         <Text style={{ fontSize: 13, color: C.muted, fontFamily: fonts.ui }}>Off saves it as a draft</Text>
                       </View>
                       <Pressable
@@ -436,7 +437,7 @@ export default function PriceListsScreen({ navigation }: any) {
         <Pressable onPress={() => setPicking(null)} style={st.scrim}>
           <Pressable onPress={() => {}} style={[st.sheet, { maxHeight: '88%', paddingBottom: 20 + insets.bottom }]}>
             <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: C.handle, alignSelf: 'center', marginBottom: 12 }} />
-            <Text style={{ fontSize: 22, color: C.ink, fontFamily: fonts.ui, marginBottom: 12 }}>{V.items} on this list</Text>
+            <Text style={{ fontSize: 20, color: C.ink, fontFamily: fonts.ui, marginBottom: 12 }}>{V.items} on this list</Text>
             <View style={[st.search, { marginBottom: 8 }]}>
               <View style={{ width: 16, height: 16, borderWidth: 2, borderColor: C.soft, borderRadius: 8 }} />
               <TextInput value={pickQuery} onChangeText={setPickQuery} placeholder={'Search ' + V.items.toLowerCase()} placeholderTextColor={C.muted} style={st.searchInput} />
@@ -455,7 +456,7 @@ export default function PriceListsScreen({ navigation }: any) {
                       {on ? <Text style={{ color: C.onPrimary, fontSize: 12, lineHeight: 14 }}>✓</Text> : null}
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={1} style={{ fontSize: 15, color: C.ink, fontFamily: fonts.ui }}>{p.name}</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 14, color: C.ink, fontFamily: fonts.ui }}>{p.name}</Text>
                       <Text style={{ fontSize: 12, color: C.muted, fontFamily: MONO }}>{p.sku} · cost {fmt(p.cost)}</Text>
                     </View>
                   </Pressable>
@@ -495,7 +496,7 @@ export default function PriceListsScreen({ navigation }: any) {
 
 const makeStyles = (C: Palette) => ({
   search: { height: 52, borderRadius: 26, backgroundColor: C.fill, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18 } as const,
-  searchInput: { flex: 1, fontSize: 16, minWidth: 0, color: C.ink, fontFamily: fonts.ui, padding: 0 } as const,
+  searchInput: { flex: 1, fontSize: 15, minWidth: 0, color: C.ink, fontFamily: fonts.ui, padding: 0 } as const,
   chip: { height: 32, paddingHorizontal: 16, borderRadius: 4, borderWidth: 1, alignItems: 'center', justifyContent: 'center' } as const,
   listRow: { width: '100%', padding: 16, borderRadius: 16, backgroundColor: C.surface, flexDirection: 'row', alignItems: 'center', gap: 14 } as const,
   badge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 4 } as const,
@@ -509,11 +510,11 @@ const makeStyles = (C: Palette) => ({
   tableHead: { paddingHorizontal: 20, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' } as const,
   tableHeadText: { fontSize: 12, fontFamily: fonts.uiSemi, letterSpacing: 0.5, color: C.muted } as const,
   productRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: C.rule } as const,
-  priceInput: { width: 116, height: 40, paddingHorizontal: 10, borderWidth: 1, borderRadius: 4, textAlign: 'right', fontSize: 15, fontFamily: MONO, color: C.ink } as const,
+  priceInput: { width: 116, height: 40, paddingHorizontal: 10, borderWidth: 1, borderRadius: 4, textAlign: 'right', fontSize: 14, fontFamily: MONO, color: C.ink } as const,
   saveBar: { paddingTop: 12, paddingHorizontal: 16, backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.ruleBar, flexDirection: 'row', alignItems: 'center', gap: 8 } as const,
   scrim: { flex: 1, backgroundColor: C.scrim, justifyContent: 'flex-end' } as const,
   sheet: { backgroundColor: C.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 8, paddingHorizontal: 24, maxHeight: '92%' } as const,
-  nameInput: { width: '100%', height: 56, paddingHorizontal: 16, borderRadius: 4, borderWidth: 2, fontSize: 16, color: C.ink, fontFamily: fonts.ui } as const,
+  nameInput: { width: '100%', height: 56, paddingHorizontal: 16, borderRadius: 4, borderWidth: 2, fontSize: 15, color: C.ink, fontFamily: fonts.ui } as const,
   radioRow: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 10, paddingHorizontal: 4, borderRadius: 4 } as const,
   radioRing: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center' } as const,
   select: { height: 48, paddingHorizontal: 12, borderWidth: 1, borderColor: C.outline, borderRadius: 4, flexDirection: 'row', alignItems: 'center' } as const,

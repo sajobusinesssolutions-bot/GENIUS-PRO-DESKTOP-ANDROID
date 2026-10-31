@@ -8,7 +8,8 @@
  * A live preview shows the ticket as the switches are changed.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useToast } from '../components/Toast';
@@ -62,7 +63,7 @@ export default function PrintingKitchenScreen() {
       {/* preview */}
       <View style={{ backgroundColor: '#fff', borderRadius: 4, padding: 14, width: 260, alignSelf: 'center', marginBottom: 18, borderWidth: 1, borderColor: colors.line }}>
         <Text style={{ textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: '#111' }}>{k.title || 'KITCHEN ORDER'}</Text>
-        {k.showTable ? <Text style={{ textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 16, color: '#111' }}>Table 4</Text> : null}
+        {k.showTable ? <Text style={{ textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 15, color: '#111' }}>Table 4</Text> : null}
         <Text style={mono}>--------------------------------</Text>
         <Text style={mono}>Order                       T001</Text>
         {k.showTime ? <Text style={mono}>Time               14 Oct 19:42</Text> : null}

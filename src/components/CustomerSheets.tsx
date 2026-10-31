@@ -33,7 +33,7 @@ export function BalanceTag({ balance, money, align = 'right' }: { balance: numbe
   const tone = settled ? colors.faint : balance > 0 ? colors.good : colors.danger;
   return (
     <View style={{ alignItems: align === 'right' ? 'flex-end' : 'flex-start' }}>
-      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: tone }}>{money(Math.abs(balance))}</Text>
+      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: tone }}>{money(Math.abs(balance))}</Text>
       <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: tone, marginTop: 1 }}>
         {settled ? 'Settled' : balance > 0 ? 'To receive' : 'To pay'}
       </Text>
@@ -83,7 +83,7 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
         <View style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="user" size={16} color={colors.faint} />
         </View>
-        <Text style={{ flex: 1, color: colors.soft, fontFamily: fonts.uiSemi, fontSize: 15 }}>Walk-in customer</Text>
+        <Text style={{ flex: 1, color: colors.soft, fontFamily: fonts.uiSemi, fontSize: 14 }}>Walk-in customer</Text>
         {!selectedId ? <Icon name="check" size={17} color={colors.good} /> : null}
       </Pressable> : null}
 
@@ -94,10 +94,10 @@ export function CustomerPickerSheet({ visible, customers, selectedId, onSelect, 
           style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line }}
         >
           <View style={{ width: 36, height: 36, borderRadius: 4, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: colors.accent, fontFamily: fonts.uiBold, fontSize: 15 }}>{c.name.charAt(0).toUpperCase()}</Text>
+            <Text style={{ color: colors.accent, fontFamily: fonts.uiBold, fontSize: 14 }}>{c.name.charAt(0).toUpperCase()}</Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={{ color: colors.ink, fontFamily: fonts.uiSemi, fontSize: 15 }}>{c.name}</Text>
+            <Text numberOfLines={1} style={{ color: colors.ink, fontFamily: fonts.uiSemi, fontSize: 14 }}>{c.name}</Text>
             <Text numberOfLines={1} style={{ color: colors.faint, fontFamily: fonts.ui, fontSize: 12.5, marginTop: 2 }}>
               {c.phone || 'No phone'}{c.address ? ' · ' + c.address : ''}
             </Text>
@@ -125,6 +125,8 @@ export function CustomerFormSheet({ visible, onClose, onSave, kind = 'customer' 
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [balance, setBalance] = useState('');
+  /** The day the opening balance stood at, so reminders age it from then. */
+  const [asOf, setAsOf] = useState(new Date().toLocaleDateString('en-GB'));
   const [creditLimit, setCreditLimit] = useState('');
   const [gstin, setGstin] = useState('');
 
@@ -141,6 +143,7 @@ export function CustomerFormSheet({ visible, onClose, onSave, kind = 'customer' 
       gstin: gstin.trim(),
       type: kind,
       openingBalance: Number(balance) || 0,
+      ...(Number(balance) ? { openingDate: ((t: string) => { const m = t.trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/); if (!m) return undefined; const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); const d = new Date(y, Number(m[2]) - 1, Number(m[1]), 12); return isNaN(d.getTime()) ? undefined : d.toISOString(); })(asOf) || new Date().toISOString() } : {}),
       creditLimit: Number(creditLimit) || 0,
       points: 0,
       active: true,
@@ -174,6 +177,7 @@ export function CustomerFormSheet({ visible, onClose, onSave, kind = 'customer' 
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Field label="Opening balance" value={balance} onChangeText={setBalance} placeholder="0" keyboardType="numeric" />
+            {Number(balance) ? <Field label="Owed since (dd/mm/yyyy)" value={asOf} onChangeText={setAsOf} placeholder="dd/mm/yyyy" /> : null}
           </View>
           <View style={{ flex: 1 }}>
             <Field label="Credit limit" value={creditLimit} onChangeText={setCreditLimit} placeholder="0" keyboardType="numeric" />

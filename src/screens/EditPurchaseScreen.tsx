@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, TextInput } from 'react-native';
+import { View, Text, Alert, TextInput } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -84,7 +85,7 @@ export default function EditPurchaseScreen({ route, navigation }: Props) {
               <Icon name="cart" size={22} color={colors.warn} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{x.no}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{x.no}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {party(x.partyId)?.name || 'Supplier'} · {new Date(x.ts).toLocaleDateString()} · {x.method}
               </Text>
@@ -111,26 +112,26 @@ export default function EditPurchaseScreen({ route, navigation }: Props) {
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 38, height: 38, borderRadius: 4, backgroundColor: colors.warnSoft, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.warn }}>{i + 1}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.warn }}>{i + 1}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
                   {product(l.productId)?.name || l.productId}
                 </Text>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                   {money(l.cost)} each
                 </Text>
               </View>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 13 }}>
               <Pressable onPress={() => setQty(l.productId, l.qty - 1)} style={stepper(colors)}>
-                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>−</Text>
+                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 18 }}>−</Text>
               </Pressable>
-              <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{l.qty}</Text>
+              <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{l.qty}</Text>
               <Pressable onPress={() => setQty(l.productId, l.qty + 1)} style={stepper(colors)}>
-                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 20 }}>+</Text>
+                <Text style={{ color: colors.ink, fontFamily: fonts.uiBold, fontSize: 18 }}>+</Text>
               </Pressable>
               <Pressable
                 onPress={() => setQty(l.productId, 0)}

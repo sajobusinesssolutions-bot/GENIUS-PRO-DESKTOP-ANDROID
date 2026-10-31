@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, Pressable, ScrollView } from 'react-native';
+import { View, Text, FlatList, Pressable } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Empty, Button, Cap, Chip, DocCard, Badge, FAB, Field, InfoBanner } from '../components/ui';
@@ -55,10 +56,14 @@ export default function ChallansScreen({ navigation }: Props) {
   );
 }
 
-export function ChallanNewScreen({ navigation }: NativeStackScreenProps<RootStackParamList, 'ChallanNew'>) {
+export function ChallanNewScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'ChallanNew'>) {
   const { db, createChallan } = useAppData();
-  const [partyId, setPartyId] = useState<string | null>(null);
-  const [lines, setLines] = useState<CartLine[]>([]);
+  /* made from a sale (Activity → Make delivery note): its customer and goods, ready to send */
+  const fromSale = db?.sales.find((s) => s.id === route?.params?.saleId);
+  const [partyId, setPartyId] = useState<string | null>(fromSale?.partyId || null);
+  const [lines, setLines] = useState<CartLine[]>(() => (fromSale ? fromSale.lines.map((l) => ({
+    productId: l.productId, name: l.name, qty: l.qty, price: l.price, unit: l.unit, ...(l.unitFactor ? { unitFactor: l.unitFactor } : {}),
+  })) : []));
   const [driver, setDriver] = useState('');
   const [vehicle, setVehicle] = useState('');
 
@@ -86,8 +91,10 @@ export function ChallanNewScreen({ navigation }: NativeStackScreenProps<RootStac
       }
       onSave={() => {
         createChallan({
-          saleId: null,
+          saleId: fromSale?.id || null,
           partyId,
+          ...(driver.trim() ? { driver: driver.trim() } : {}),
+          ...(vehicle.trim() ? { vehicle: vehicle.trim() } : {}),
           lines: lines.map((l) => {
             const prod = db!.products.find((x) => x.id === l.productId)!;
             return { productId: prod.id, name: prod.name, qty: l.qty, unit: prod.unit };

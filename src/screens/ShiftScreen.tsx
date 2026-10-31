@@ -15,7 +15,8 @@
  * Closing somebody else's shift needs "See every shift" (shifts.view_all).
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -217,7 +218,7 @@ export default function ShiftScreen({ route }: any) {
           <View style={{ width: 64, height: 64, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="till" size={30} color={colors.faint} />
           </View>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 14 }}>Your till is closed</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, marginTop: 14 }}>Your till is closed</Text>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6, textAlign: 'center', paddingHorizontal: 20 }}>
             Open a shift with the cash in the drawer. Every sale you make is counted to it.
           </Text>
@@ -235,7 +236,7 @@ export default function ShiftScreen({ route }: any) {
         <View style={{ backgroundColor: colors.surface, borderRadius: 4, padding: 18, borderWidth: 1, borderColor: colors.line }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.good }} />
-            <Text style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>Till open</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>Till open</Text>
             <Badge label={shift.till} tone="good" />
           </View>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6 }}>
@@ -301,12 +302,12 @@ export default function ShiftScreen({ route }: any) {
           {rows.map(([k, t], i) => (
             <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderBottomWidth: i === rows.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }} numberOfLines={1}>{k}</Text>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }} numberOfLines={1}>{k}</Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>
                   {t.qty} item{t.qty === 1 ? '' : 's'} · {all ? Math.round(t.amount / all * 100) : 0}%
                 </Text>
               </View>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money0(t.amount)}</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{money0(t.amount)}</Text>
             </View>
           ))}
         </Panel>
@@ -409,7 +410,7 @@ export default function ShiftScreen({ route }: any) {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <Avatar name={u.name} id={u.id} size={34} />
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }} numberOfLines={1}>{u.name}</Text>
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }} numberOfLines={1}>{u.name}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }} numberOfLines={1}>
                       {mineOpen.length
                         ? 'On shift since ' + fmtDate(since) + ' · ' + z.count + ' sale' + (z.count === 1 ? '' : 's')
@@ -417,7 +418,7 @@ export default function ShiftScreen({ route }: any) {
                     </Text>
                   </View>
                   {mineOpen.length
-                    ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money0(z.expected)}</Text>
+                    ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{money0(z.expected)}</Text>
                     : <Badge label="Closed" tone="neutral" />}
                 </View>
                 {mineOpen.length ? <>{money4(z)}{z.recvAll ? received(z) : null}</> : (
@@ -527,7 +528,7 @@ export default function ShiftScreen({ route }: any) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 14 }}>
           <Avatar name={me()?.name || ''} id={me()?.id} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{me()?.name}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{me()?.name}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 1 }}>{fmtDate(new Date().toISOString())}</Text>
           </View>
         </View>
@@ -555,7 +556,7 @@ export default function ShiftScreen({ route }: any) {
           const v = shiftVariance(z.expected, counted);
           return (
             <View key={s.id} style={{ marginBottom: 16, padding: 14, borderRadius: 4, backgroundColor: colors.sunk }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{user(s.userId)?.name || 'Staff'}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{user(s.userId)?.name || 'Staff'}</Text>
               {blind ? null : money4(z)}
               {blind ? null : received(z)}
               <View style={{ height: 12 }} />

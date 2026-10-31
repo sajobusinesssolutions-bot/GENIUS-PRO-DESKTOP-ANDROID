@@ -1,5 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TextInput, Platform, Alert } from 'react-native';
+import { useSyncRun } from '../data/useSyncRun';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { docDefaults, defaultTermsFor } from '../data/docDefaults';
+import { View, Text, TextInput, Platform, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -29,6 +32,7 @@ import { priceFor, repriceLines } from '../data/priceLists';
 import * as ImagePicker from 'expo-image-picker';
 import { keepPhoto } from '../data/photos';
 import FirstTimeTip from '../components/FirstTimeTip';
+import { useConfirmLeave } from '../components/useConfirmLeave';
 import { Product, PayMethod, SaleLine } from '../data/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'NewSale'>;
@@ -37,6 +41,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { db, money, stockOf, commitSale, editSale: editSaleTransaction, addParty, can, partyBalance, markEstimateConverted } = useAppData();
+  const { takeSaleNumber } = useSyncRun();
   /** A quotation being turned into a sale: its lines fill the bill, to change before saving. */
   const fromQuote = db?.estimates.find((e) => e.id === route.params?.fromEstimateId && e.status === 'open');
   const editingSale = db?.sales.find((sale) => sale.id === route.params?.editSaleId);
@@ -61,8 +66,19 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const partyBal = useMemo(() => (partyId ? partyBalance(partyId) : 0), [partyId, db?.sales, db?.purchases]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [discount, setDiscount] = useState(seed?.discount || fromQuote?.discount || 0);
   const [additionalCharges, setAdditionalCharges] = useState(seed?.additionalCharges || 0);
-  const [description, setDescription] = useState(editingSale?.note || '');
-  const [terms, setTerms] = useState('');
+  /** Tax on this bill: as set on each item, none at all, or the shop's rate on everything. */
+  const [taxMode, setTaxMode] = useState<'items' | 'none' | 'added' | 'included'>(
+    // a new bill starts with no tax; the cashier switches it on. A bill being changed keeps what it had.
+    () => (seed && (seed.tax || 0) > 0 ? 'items' : 'none'));
+  /** The customer keeps back withholding tax on this bill. */
+  const [whtOn, setWhtOn] = useState(false);
+  const [discPct, setDiscPct] = useState('');
+  const [description, setDescription] = useState(editingSale?.note ?? (seed || fromQuote ? '' : docDefaults(db).description));
+  const startTerms = defaultTermsFor(db, 'invoice');
+  const [terms, setTerms] = useState(editingSale?.terms ?? startTerms.text);
+  const [termsId, setTermsId] = useState<string | null>(editingSale ? null : startTerms.id);
+  /** This invoice prints the shop's payment details (Documents & terms). */
+  const [showPayment, setShowPayment] = useState(editingSale?.showPayment ?? docDefaults(db).paymentOnInvoice);
   const [loading, setLoading] = useState(false);
   /** What the customer actually hands over on a credit sale. */
   const [received, setReceived] = useState(editingSale?.paidAtSale || 0);
@@ -75,6 +91,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const [invoiceAt, setInvoiceAt] = useState(() => editingSale ? new Date(editingSale.ts) : new Date());
 
   const [scanning, setScanning] = useState(false);
+  const allowLeave = useConfirmLeave(navigation, cart.length > 0, editingSale ? 'these changes' : 'this sale');
   /** The cart line whose IMEIs are being entered. */
   const [imeiFor, setImeiFor] = useState<number | null>(null);
   /** The item entry: open, on which line (null for a new one), and on which item. */
@@ -100,6 +117,9 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   /** The prescription for the Rx-only drugs on this bill has been seen. */
   const [rxSeen, setRxSeen] = useState(false);
   const [rxOpen, setRxOpen] = useState(false);
+  /* checkout runs again from a timer after the prescription is recorded, from a render that still
+     held rxSeen false, so it opened the prescription a second time; the ref is current */
+  const rxSeenRef = useRef(false);
   const [rxForm, setRxForm] = useState({ prescriber: '', number: '', patient: '', facility: '', location: '', diagnosis: '', photo: '' });
   /* any pharmacy sale may carry the prescription it was filled from — optional,
      asked once before checkout and skippable; prescription-only drugs still need the prescriber */
@@ -116,12 +136,14 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   }
   function rxSkip() {
     setRxSeen(true);
+    rxSeenRef.current = true;
     setRxOpen(false);
     setTimeout(checkout, 300);
   }
   function rxConfirm() {
     if (rxNeeded && !rxForm.prescriber.trim()) { error('Write who prescribed it — the doctor or clinician.'); return; }
     setRxSeen(true);
+    rxSeenRef.current = true;
     setRxOpen(false);
     setTimeout(checkout, 300);
   }
@@ -134,10 +156,16 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   const totalQty = cart.reduce((s, l) => s + l.qty, 0);
   // Worked out exactly as the sale will be posted, so the total on the button
   // is the total on the receipt — including tax added on top, where it is.
-  const taxedLines = db?.settings.taxEnabled === false ? cart.map((l) => ({ ...l, taxRate: 0 })) : cart;
-  const priced = saleTotals(taxedLines, discount, db ? pricesIncludeTax(db) : true);
-  const taxOnTop = db && !pricesIncludeTax(db) ? priced.tax : 0;
+  const shopRate = Number(db?.settings.taxRate) || 0;
+  const taxedLines = db?.settings.taxEnabled === false || taxMode === 'none' ? cart.map((l) => ({ ...l, taxRate: 0 }))
+    : taxMode === 'added' || taxMode === 'included' ? cart.map((l) => ({ ...l, taxRate: l.taxRate || shopRate })) : cart;
+  /* added: on top of the prices, so the total grows; included: inside them; otherwise as the shop is set */
+  const inclusive = taxMode === 'added' ? false : taxMode === 'included' ? true : db ? pricesIncludeTax(db) : true;
+  const priced = saleTotals(taxedLines, discount, inclusive);
+  const taxOnTop = !inclusive ? priced.tax : 0;
   const grandTotal = Math.max(0, priced.total) + Math.max(0, additionalCharges);
+  const whtRate = Number(db?.settings.whtRate ?? 6) || 0;
+  const whtAmt = db?.settings.withholding && whtOn ? Math.round(Math.max(0, priced.total - priced.tax) * whtRate) / 100 : 0;
 
   /** Opens the item entry: blank, on a scanned item, or on a line to change. */
   /* an item made on the full item screen from this bill comes straight back as its next line */
@@ -151,14 +179,6 @@ export default function NewSaleScreen({ navigation, route }: Props) {
   }
   const openProduct = (p: Product) => openEntry(p);
 
-  // a new sale is typed in order: the customer, then the first item
-  useEffect(() => {
-    if (seed || fromQuote) return;
-    const t = setTimeout(() => setPartyPickerVisible(true), 350);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   function customerChosen(id: string | null) {
     setPartyId(id);
     // a customer with their own price list is priced from it straight away
@@ -167,7 +187,6 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       choosePriceList(own);
       success('Priced from ' + (db?.priceLists || []).find((l) => l.id === own)?.name);
     }
-    if (!cart.length) setTimeout(() => openEntry(null), 350);
   }
 
   /**
@@ -183,16 +202,17 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     return base - others;
   }
 
-  function saveEntry(e: EntryLine, andNew: boolean) {
+  function saveEntry(e: EntryLine, andNew: boolean, more = false) {
     const line: SaleLine = {
       productId: e.product.id, name: e.product.name, sku: e.product.sku, unit: e.unit,
       qty: e.qty, price: e.price, listPrice: e.listPrice, discountPct: e.discountPct,
-      cost: e.cost, taxRate: e.product.taxRate, batchNo: e.batchNo,
+      cost: e.cost, taxRate: e.product.taxExempt ? 0 : e.product.taxRate || (db?.settings.taxEnabled === false ? 0 : Number((db?.settings as any)?.taxRate) || 0), batchNo: e.batchNo,
       ...(e.unitFactor !== 1 ? { unitFactor: e.unitFactor } : {}),
       ...(e.note ? { note: e.note } : {}),
       ...(e.serials ? { serials: e.serials, serialNo: e.serials[0]?.imei } : {}),
     };
-    const at = entryIndex;
+    // a quantity spread over batches: the first part takes the line being changed, the rest are added
+    const at = more ? null : entryIndex;
     setCart((prev) => {
       // a dish's choices are not edited here: they stay with it while it is the same dish
       if (at !== null) return prev.map((l, i) => (i === at ? (l.productId === line.productId && l.modifiers ? { ...line, modifiers: l.modifiers } : line) : l));
@@ -226,6 +246,37 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     if (p) openProduct(p);
   }
 
+  /* QUICK SALE: the shop's best sellers of late, one tap for one more */
+  const topItems = useMemo(() => {
+    const sales = db?.sales || [];
+    const count = new Map<string, number>();
+    for (let i = sales.length - 1, seen = 0; i >= 0 && seen < 400; i--) {
+      const s = sales[i];
+      if (s.status === 'void') continue;
+      seen++;
+      s.lines.forEach((l) => count.set(l.productId, (count.get(l.productId) || 0) + 1));
+    }
+    const byId = new Map((db?.products || []).map((p) => [p.id, p]));
+    return [...count.entries()].sort((a, b) => b[1] - a[1])
+      .map(([id]) => byId.get(id)).filter((p): p is Product => !!p && p.active !== false).slice(0, 12);
+  }, [db?.sales.length]);   // eslint-disable-line react-hooks/exhaustive-deps
+  function quickAdd(p: Product) {
+    // anything needing a batch, an IMEI or another unit goes through the full entry
+    if (p.trackBatches || p.trackSerials) { openEntry(p); return; }
+    const inCart = cart.filter((l) => l.productId === p.id).reduce((s, l) => s + l.qty * (l.unitFactor || 1), 0);
+    const limit = db ? sellLimit(db, p, stockOf(p)) : Infinity;
+    if (inCart + 1 > limit) { error(p.name + ' — only ' + Math.max(0, limit) + ' ' + p.unit + ' left.'); return; }
+    const price = priceFor(priceList, p);
+    setCart((prev) => {
+      const i = prev.findIndex((l) => l.productId === p.id && !l.batchNo && !l.serials && l.price === price && l.unit === p.unit && !l.note);
+      if (i >= 0) return prev.map((l, k) => (k === i ? { ...l, qty: l.qty + 1 } : l));
+      return [...prev, {
+        productId: p.id, name: p.name, sku: p.sku, unit: p.unit, qty: 1, price, listPrice: price, cost: p.cost,
+        taxRate: p.taxExempt ? 0 : p.taxRate || (db?.settings.taxEnabled === false ? 0 : Number((db?.settings as any)?.taxRate) || 0),
+      }];
+    });
+  }
+
   const productOf = (line: SaleLine) => (db?.products || []).find((x) => x.id === line.productId);
   /** Lines selling IMEI-tracked phones that do not yet have one IMEI per unit. */
   const missingImei = cart.findIndex((l) => productOf(l)?.trackSerials && (l.serials || []).length !== Math.floor(l.qty));
@@ -242,7 +293,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
 
     // a prescription-only drug: the counter confirms it has seen the prescription
     const rx = cart.filter((l) => productOf(l)?.rxOnly);
-    if ((rx.length || rxAsk) && !rxSeen) {
+    if ((rx.length || rxAsk) && !rxSeen && !rxSeenRef.current) {
       // the prescription is recorded: who wrote it, its number, for whom, and a photo if there is one
       setRxOpen(true);
       return;
@@ -291,8 +342,9 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     askCustomer();
   }
 
-  function postSale(userId: string, userName: string) {
+  async function postSale(userId: string, userName: string) {
     setLoading(true);
+    let taken: { no: string; drop: () => void } | null = null;
     try {
       if (editingSale) {
         const out = editSaleTransaction(editingSale.id, {
@@ -304,6 +356,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         if (!out) throw new Error('That sale can no longer be changed.');
         success(out.no + ' updated by ' + userName);
         setCheckoutVisible(false);
+        allowLeave();
         navigation.replace('Receipt', { saleId: out.id });
         return;
       }
@@ -314,12 +367,14 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       const rounded = step > 0 && method !== 'credit' && !splitMethods ? Math.round(grandTotal / step) * step : grandTotal;
       const roundDown = Math.max(0, grandTotal - rounded);
       const roundUp = Math.max(0, rounded - grandTotal);
+      // the number comes from the server, so every till follows one run; offline it is temporary until the next sync
+      if (!invoiceNo.trim()) taken = await takeSaleNumber(db?.session.warehouse).catch(() => null);
       const sale = commitSale({
-        lines: cart, partyId, method,
+        lines: taxedLines, partyId, method, wht: whtAmt || undefined, taxOnTop: !inclusive,
         discount: discount + roundDown,
         additionalCharges: additionalCharges + roundUp,
-        description, terms,
-        methods: splitMethods, no: invoiceNo.trim() || undefined, ts: invoiceAt.toISOString(),
+        description, terms, showPayment,
+        methods: splitMethods, no: invoiceNo.trim() || taken?.no || undefined, ts: invoiceAt.toISOString(),
         received: method === 'credit' ? received : undefined,
         receivedVia: method === 'credit' ? receivedVia : undefined,
         momoNetwork: (method === 'momo' || (method === 'credit' && receivedVia === 'momo')) ? momoNetwork : undefined,
@@ -339,13 +394,14 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       success((fromQuote ? fromQuote.no + ' became ' : '') + sale.no + ' · saved by ' + userName);
       setCart([]);
       setRxSeen(false);
+      rxSeenRef.current = false;
       setRxForm({ prescriber: '', number: '', patient: '', facility: '', location: '', diagnosis: '', photo: '' });
       setMethod((db?.settings.defaultMethod as PayMethod) || 'cash');
       setMethods(undefined);
       setDiscount(0);
       setAdditionalCharges(0);
-      setDescription('');
-      setTerms('');
+      setDescription(docDefaults(db).description);
+      setTerms(startTerms.text); setTermsId(startTerms.id);
       setInvoiceNo('');
       setInvoiceAt(new Date());
       setReceived(0);
@@ -353,10 +409,12 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       setMomoNetwork('mtn');
       setMomoRef('');
       setCheckoutVisible(false);
+      allowLeave();
       navigation.replace('Receipt', { saleId: sale.id });
     } catch (e: any) {
       // The sale did not post. An alert sits above the open sheet, so this
       // cannot be scrolled past the way a banner could be.
+      taken?.drop();
       const why = e?.message || 'The sale could not be saved.';
       Alert.alert('Sale not saved', why, [{ text: 'Go back and fix it' }]);
       error(why);
@@ -433,7 +491,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
                 Customer{method === 'credit' ? ' · required' : ''}
               </Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: selectedParty ? colors.ink : colors.soft, marginTop: 3 }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 14, color: selectedParty ? colors.ink : colors.soft, marginTop: 3 }}>
                 {selectedParty?.name || 'Walk-in customer'}
               </Text>
               {selectedParty?.address ? (
@@ -467,6 +525,30 @@ export default function NewSaleScreen({ navigation, route }: Props) {
           </Pressable>
         </View>
 
+        {topItems.length ? (
+          <View>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint, marginBottom: 6 }}>Quick add · best sellers</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {topItems.map((p) => {
+                const n = cart.filter((l) => l.productId === p.id).reduce((s, l) => s + l.qty, 0);
+                return (
+                  <Pressable key={p.id} onPress={() => quickAdd(p)} onLongPress={() => openEntry(p)} accessibilityLabel={'Add one ' + p.name}
+                    style={({ pressed }: { pressed: boolean }) => ({
+                      width: '31.8%', minHeight: 54, padding: 8, borderRadius: 4, borderWidth: 1.2,
+                      borderColor: n ? colors.accent : colors.line, backgroundColor: pressed ? colors.sunk : n ? colors.accentSoft : colors.surface,
+                    })}>
+                    <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.ink }}>{p.name}</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 'auto' }}>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.faint }}>{money(priceFor(priceList, p))}</Text>
+                      {n ? <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, color: colors.accent }}>×{n}</Text> : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
         <BilledItems
           lines={cart.map((l) => {
             const short = productOf(l)?.trackSerials && (l.serials || []).length !== Math.floor(l.qty);
@@ -474,25 +556,61 @@ export default function NewSaleScreen({ navigation, route }: Props) {
           })}
           money={money}
           taxTotal={db?.settings.taxEnabled === false ? undefined : priced.tax}
+          taxInclusive={inclusive}
+          taxName={db?.settings.taxName || 'Tax'}
           onPress={(i) => openEntry(null, i)}
         />
 
+        {/* tax, discount and charges for the bill as a whole, right under its lines */}
         {cart.length > 0 && (
-          <View style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 14, paddingVertical: 12 }}>
-          <View style={{ gap: 8 }}>
-            <TotalRow label="Subtotal" value={money(subtotal)} colors={colors} />
-            {savings > 0 ? <TotalRow label="Item discounts" value={'− ' + money(savings)} tone={colors.good} colors={colors} /> : null}
-            {discount > 0 ? <TotalRow label="Sale discount" value={'− ' + money(discount)} tone={colors.good} colors={colors} /> : null}
-            {additionalCharges > 0 ? <TotalRow label="Additional charges" value={'+ ' + money(additionalCharges)} colors={colors} /> : null}
-            {taxOnTop > 0 ? <TotalRow label={(db?.settings.taxName || 'Tax') + ' added'} value={'+ ' + money(taxOnTop)} colors={colors} /> : null}
-            <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 2 }} />
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.soft }}>Amount due</Text>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>{money(grandTotal)}</Text>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, padding: 12, gap: 10 }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint, letterSpacing: 0.4 }}>TAX, DISCOUNT & CHARGES</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 0.7 }}>
+                <Field label="Discount %" value={discPct} numeric decimal placeholder="0" style={{ marginBottom: 0 }}
+                  onChangeText={(v) => { setDiscPct(v); const p = Math.min(100, Math.max(0, parseFloat(v) || 0)); setDiscount(Math.round(subtotal * p) / 100); }} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="Discount" value={discount ? String(discount) : ''} numeric decimal money placeholder="0" style={{ marginBottom: 0 }}
+                  onChangeText={(v) => { const n = Math.min(subtotal, Math.max(0, parseFloat(v) || 0)); setDiscount(n); setDiscPct(subtotal ? String(Math.round((n / subtotal) * 1000) / 10) : ''); }} />
+              </View>
+            </View>
+            <Field label="Additional charges" value={additionalCharges ? String(additionalCharges) : ''} numeric decimal money placeholder="0" style={{ marginBottom: 0 }}
+              onChangeText={(v) => setAdditionalCharges(Math.max(0, parseFloat(v) || 0))} />
+            {db?.settings.taxEnabled !== false ? (
+              <View>
+                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginBottom: 6 }}>{db?.settings.taxName || 'Tax'} on this bill</Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {([['items', 'As each item'], ['added', (db?.settings.taxName || 'Tax') + ' ' + shopRate + '% added'], ['included', 'Included'], ['none', 'No tax']] as const).map(([v, l]) => (
+                    <Pressable key={v} onPress={() => setTaxMode(v)}
+                      style={{ flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 4, borderWidth: 1.2,
+                        borderColor: taxMode === v ? colors.accent : colors.line, backgroundColor: taxMode === v ? colors.accentSoft : colors.surface }}>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: taxMode === v ? colors.accent : colors.ink }}>{l}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            {db?.settings.withholding ? (
+              <Pressable onPress={() => setWhtOn((x) => !x)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 }}>
+                <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: whtOn ? colors.accent : colors.lineHard, backgroundColor: whtOn ? colors.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                  {whtOn ? <Icon name="check" size={13} color={colors.accentInk} /> : null}
+                </View>
+                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.ink }}>Less WHT {whtRate}% — the customer keeps it back</Text>
+                {whtAmt ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.danger }}>− {money(whtAmt)}</Text> : null}
+              </Pressable>
+            ) : null}
+            <View style={{ height: 1, backgroundColor: colors.line }} />
+            <View style={{ gap: 4 }}>
+              <TotalRow label="Subtotal" value={money(subtotal)} colors={colors} />
+              {discount > 0 ? <TotalRow label="Discount" value={'− ' + money(discount)} tone={colors.good} colors={colors} /> : null}
+              {priced.tax > 0 ? <TotalRow label={(db?.settings.taxName || 'Tax') + (taxOnTop > 0 ? ' added' : ' included')} value={(taxOnTop > 0 ? '+ ' : '') + money(priced.tax)} colors={colors} /> : null}
+              {additionalCharges > 0 ? <TotalRow label="Charges" value={'+ ' + money(additionalCharges)} colors={colors} /> : null}
+              {whtAmt > 0 ? <TotalRow label={'WHT ' + whtRate + '% kept back'} value={'− ' + money(whtAmt)} tone={colors.danger} colors={colors} /> : null}
             </View>
           </View>
-          </View>
         )}
+
       </ScrollView>
 
       {/* Sticky action bar */}
@@ -503,7 +621,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{totalQty} item{totalQty === 1 ? '' : 's'}</Text>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>{money(grandTotal)}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>{money(grandTotal - whtAmt)}</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
@@ -511,7 +629,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
           </View>
           <View style={{ flex: 2 }}>
             <Button
-              label="Cart"
+              label="View cart"
               variant="pri"
               disabled={!cart.length}
               onPress={() => { if (cart.length) setCheckoutVisible(true); else error('Add at least one item'); }}
@@ -637,28 +755,14 @@ export default function NewSaleScreen({ navigation, route }: Props) {
       <Sheet
         visible={checkoutVisible}
         title="Cart"
-        subtitle={totalQty + ' item' + (totalQty === 1 ? '' : 's') + ' · ' + money(grandTotal)}
+        subtitle={totalQty + ' item' + (totalQty === 1 ? '' : 's') + (selectedParty ? ' · ' + selectedParty.name : '')}
         icon="receipt"
         full
         onClose={() => setCheckoutVisible(false)}
         footer={
           <View>
-            {method === 'credit' ? (
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-                  Received {money(Math.min(received, grandTotal))}
-                </Text>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: grandTotal - received > 0 ? colors.danger : colors.good }}>
-                  Balance {money(Math.max(0, grandTotal - received))}
-                </Text>
-              </View>
-            ) : null}
             <CheckoutButton
-              label={method === 'credit'
-                ? (received > 0
-                  ? 'Take ' + money(Math.min(received, grandTotal)) + ' · owe ' + money(Math.max(0, grandTotal - received))
-                  : 'Put ' + money(grandTotal) + ' on account')
-                : 'Save · ' + money(grandTotal)}
+              label="Save"
               onPress={checkout}
               disabled={!cart.length || (method === 'credit' && !partyId)}
               loading={loading}
@@ -692,6 +796,10 @@ export default function NewSaleScreen({ navigation, route }: Props) {
 
         <CheckoutSheet
           total={subtotal}
+          tax={db?.settings.taxEnabled === false ? 0 : priced.tax}
+          taxAdded={taxOnTop > 0}
+          taxName={db?.settings.taxName || 'Tax'}
+          less={whtAmt}
           money={money}
           method={method}
           onMethodChange={setMethod}
@@ -705,6 +813,10 @@ export default function NewSaleScreen({ navigation, route }: Props) {
           onDescriptionChange={setDescription}
           terms={terms}
           onTermsChange={setTerms}
+          termsId={termsId}
+          onTermsChoose={(id, text) => { setTermsId(id); setTerms(text); }}
+          showPayment={docDefaults(db).paymentDetails ? showPayment : undefined}
+          onShowPaymentChange={setShowPayment}
           partyId={partyId}
           onPartyChange={setPartyId}
           parties={customers}
@@ -733,7 +845,7 @@ function MetaTile({ label, value, onPress, colors }: { label: string; value: str
       style={({ pressed }: { pressed: boolean }) => ({ flex: 1, backgroundColor: pressed ? colors.sunk : colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 11, paddingVertical: 9 })}
     >
       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{label}</Text>
-      <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink, marginTop: 3 }}>{value}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink, marginTop: 3 }}>{value}</Text>
     </Pressable>
   );
 }

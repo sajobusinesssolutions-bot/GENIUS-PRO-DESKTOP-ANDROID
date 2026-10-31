@@ -4,6 +4,7 @@
  * the single-document case, where the layout is a receipt rather than a table.
  */
 import { escposDoc, escposKitchen, imeiTexts, shows, qtyText } from './escpos';
+import { systemPrint } from './printQueue';
 import { printBluetooth, testNetwork } from './rawPrinter';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -14,6 +15,7 @@ import qrcode from 'qrcode-generator';
 import { code128Html } from './code128';
 import { a4Layout, esc, numberToWords } from './invoiceLayouts';
 import { docKindOf } from './printSetup';
+import { copyLabels } from './docDefaults';
 
 export { numberToWords };
 import type { Paper, PrintTemplate, DocKind, Printer, SoldSerial, KitchenSettings } from './types';
@@ -125,6 +127,14 @@ export interface DocMeta {
   logoK?: number;
   /** The whole page in shades of grey (Printing → Black and white). */
   mono?: boolean;
+  /** Documents & terms: the label on each copy, how long a quotation holds, when an invoice is due, how to pay. */
+  copyLabel?: 'auto' | 'original' | 'none';
+  /** The sale it is, and how often it was printed before — so only its very first print says ORIGINAL. */
+  printRef?: { kind: 'sale'; id: string };
+  printed?: number;
+  validUntil?: string;
+  dueDate?: string;
+  paymentDetails?: string;
 }
 
 /** Printing → Logo size, as a scale on the small logo. */
@@ -269,7 +279,10 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   const paper: Paper = opts.paper || opts.tpl?.paper || '80mm';
   const tpl = opts.tpl;
   // the template's own title, when it has one, replaces the document's name
-  const d: DocMeta = tpl?.title?.trim() ? { ...input, kind: tpl.title.trim() } : input;
+  /* a layout's own title ("TAX INVOICE") names the sales it prints — never a quotation, delivery note,
+     credit note or bill that borrows the layout: those keep their own name */
+  const isSale = /invoice|receipt/i.test(input.kind);
+  const d: DocMeta = tpl?.title?.trim() && isSale ? { ...input, kind: tpl.title.trim() } : input;
   const sh = shows(tpl);
   const rollStyle = paper === 'A4' ? 'classic' : sh.style;
   // under each item: its IMEIs, and in a restaurant the choices it was ordered with
@@ -464,8 +477,19 @@ export function docHtml(input: DocMeta, money: (n: number) => string, opts: Prin
   .sign img { max-width: 36mm; max-height: 14mm; }
   .signline { border-top: 1px solid #000; width: 40mm; margin-left: auto; margin-top: 2px; padding-top: 2px; text-align: center; font-size: 9px; }`;
 
+  /* Documents & terms: the copy's label above it; its validity or due date and how to pay below it */
+  // a document printed before (here or on the computer) is a duplicate, every copy of it
+  const labels = d.copyLabel && d.copyLabel !== 'none' && d.printed !== undefined
+    ? Array.from({ length: copies }, (_, i) => (i === 0 && d.printed === 0 ? 'ORIGINAL' : 'DUPLICATE'))
+    : copyLabels(d.copyLabel, copies);
+  const dayText = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const extras = (d.validUntil || d.dueDate || d.paymentDetails) ? `<div style="margin-top:10px;font-size:${paper === 'A4' ? 11 : 9.5}px">
+      ${d.validUntil ? `<div style="font-weight:700">Valid until ${esc(dayText(d.validUntil))}</div>` : ''}
+      ${d.dueDate ? `<div style="font-weight:700">Payment due by ${esc(dayText(d.dueDate))}</div>` : ''}
+      ${d.paymentDetails ? `<div style="margin-top:6px;padding:6px 8px;border:1px solid #999;border-radius:3px"><div style="font-weight:700;letter-spacing:.05em;font-size:.85em">HOW TO PAY</div>${esc(d.paymentDetails).replace(/\n/g, '<br/>')}</div>` : ''}
+    </div>` : '';
   const pages = Array.from({ length: copies }, (_, i) =>
-    `<section style="${i < copies - 1 ? 'page-break-after: always;' : ''}">${doc}</section>`).join('');
+    `<section style="${i < copies - 1 ? 'page-break-after: always;' : ''}">${labels[i] ? `<div style="text-align:right;font:700 ${paper === 'A4' ? 10 : 8.5}px Arial,sans-serif;letter-spacing:.12em;margin-bottom:4px"><span style="border:1.2px solid #000;padding:2px 6px">${labels[i]}</span></div>` : ''}${doc}${extras}</section>`).join('');
 
   return `<!doctype html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -493,7 +517,16 @@ async function ready(d: DocMeta, opts: PrintOpts): Promise<DocMeta> {
  * the system print dialog as before, or straight to the chosen AirPrint
  * printer on iOS.
  */
+/* Counting prints: the book is told each time a sale goes to the printer (AppDataContext registers this). */
+let onPrinted: ((ref: { kind: 'sale'; id: string }) => void) | null = null;
+export function setPrintRecorder(fn: typeof onPrinted) { onPrinted = fn; }
+
 export async function printDoc(d: DocMeta, money: (n: number) => string, opts: PrintOpts = {}): Promise<void> {
+  await printDocInner(d, money, opts);
+  if (d.printRef && onPrinted) { try { onPrinted(d.printRef); } catch { /* the print itself went through */ } }
+}
+
+async function printDocInner(d: DocMeta, money: (n: number) => string, opts: PrintOpts = {}): Promise<void> {
   const paper: Paper = opts.paper || opts.tpl?.paper || '80mm';
   const p = opts.printer;
   if (isDirectPrinter(p) && paper !== 'A4') {
@@ -506,7 +539,7 @@ export async function printDoc(d: DocMeta, money: (n: number) => string, opts: P
     return;
   }
   const full = await ready(d, opts);
-  await Print.printAsync({
+  await systemPrint({
     html: docHtml(full, money, { ...opts, paper }),
     ...pageSize(paper, d.lines.length * Math.max(1, Math.min(5, opts.tpl?.copies || 1))),
     ...(opts.printerUrl ? { printerUrl: opts.printerUrl } : null),
@@ -544,7 +577,7 @@ export async function printKitchenTicket(d: DocMeta, p: Printer, k?: KitchenSett
   const rows = d.lines.map((l) => '<tr><td style="font-size:' + big + 'px;font-weight:700;padding:4px 0">' + esc(String(l.qty)) + ' x ' + esc(l.name) + '</td></tr>'
     + (l.mods || []).map((m) => '<tr><td style="padding-left:16px">+ ' + esc(m) + '</td></tr>').join('')
     + (l.note && k?.showNotes !== false ? '<tr><td style="padding-left:16px">* ' + esc(l.note) + '</td></tr>' : '')).join('');
-  await Print.printAsync({
+  await systemPrint({
     html: '<html><body style="font-family:sans-serif;margin:8px"><h2 style="text-align:center;margin:0">' + esc(k?.title || 'KITCHEN ORDER') + '</h2>'
       + orderBannerHtml(d.orderType)
       + (d.table && k?.showTable !== false ? '<h3 style="text-align:center;margin:4px 0">' + esc(d.table) + '</h3>' : '')

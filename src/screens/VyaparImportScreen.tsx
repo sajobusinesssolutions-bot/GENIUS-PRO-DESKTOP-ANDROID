@@ -4,7 +4,8 @@
  * same backup again only adds what is new.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { pickReadableFile } from '../data/pickFile';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
@@ -75,8 +76,8 @@ export default function VyaparImportScreen({ navigation }: any) {
               <View style={{ width: 60, height: 60, borderRadius: 4, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
                 <Icon name="check" size={28} color={colors.good} />
               </View>
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{report.firm} is in</Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.faint, textAlign: 'center' }}>
+              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{report.firm} is in</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, textAlign: 'center' }}>
                 Everything below was added to these books{report.skipped ? ', and ' + report.skipped + ' record(s) already here were left alone' : ''}.
               </Text>
             </View>
@@ -104,8 +105,8 @@ export default function VyaparImportScreen({ navigation }: any) {
         ) : (
           <>
             <View style={{ borderRadius: 4, backgroundColor: colors.accentSoft, padding: 14, gap: 6, marginBottom: 14 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Move from Vyapar</Text>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, lineHeight: 19, color: colors.soft }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Move from Vyapar</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 13, lineHeight: 19, color: colors.soft }}>
                 In Vyapar, take a backup (Settings → Backup), then choose that .vyb file here. Customers, suppliers, items with their
                 stock, sales, purchases, payments, expenses and quotations come across, and what is owed stays owed.
               </Text>
@@ -122,7 +123,7 @@ export default function VyaparImportScreen({ navigation }: any) {
                 {busy === 'read' ? <ActivityIndicator color={colors.accent} /> : <Icon name={tables ? 'doc' : 'down'} size={19} color={colors.accent} />}
               </View>
               <View style={{ flex: 1 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>
                   {busy === 'read' ? 'Reading the backup…' : tables ? fileName : 'Choose the Vyapar backup'}
                 </Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
@@ -151,7 +152,7 @@ export default function VyaparImportScreen({ navigation }: any) {
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{f.name}</Text>
+                        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{f.name}</Text>
                         {on ? <Icon name="check" size={17} color={colors.accent} /> : null}
                       </View>
                       {f.phone || f.email ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{[f.phone, f.email].filter(Boolean).join(' · ')}</Text> : null}

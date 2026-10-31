@@ -14,7 +14,7 @@ import { useTheme, radius, fonts } from '../theme';
 import { Icon, IconName } from './icons';
 import { Tap, TapProps } from './Tap';
 import { useAppDataSafe } from '../data/AppDataContext';
-import { revealFocused } from './KeyboardSafe';
+import { useScrollHost } from './KeyScroll';
 
 /*
  * MONEY BOXES. A number box for an amount shows the shop's currency and
@@ -77,7 +77,7 @@ export function Seg<T extends string>({ value, options, onChange, style }: {
             }}
           >
             {o.i ? <Icon name={o.i} size={16} color={on ? colors.accentInk : colors.faint} /> : null}
-            <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: on ? colors.accentInk : colors.faint }}>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accentInk : colors.faint }}>
               {o.l}
             </Text>
           </Tap>
@@ -98,11 +98,9 @@ export function FieldNote({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * The app's text field. The label sits inside the box, where a placeholder
- * would be; when the field is tapped (or holds a value) it slides up and
- * shrinks to a small faint caption, leaving the box for what is typed. The
- * placeholder — a hint such as "e.g. 24" — only shows once the field is in
- * use, so an empty form reads as a list of plain names.
+ * The app's text field: its name in a small caption above, the box below.
+ * The placeholder — a hint such as "e.g. 24" — shows in the empty box.
+ * When it gains focus the scroll view around it lifts it clear of the keyboard.
  */
 export function Field({
   label, value, onChangeText, placeholder, numeric, decimal, multiline, readOnly, right, style,
@@ -132,6 +130,8 @@ export function Field({
 }) {
   const { colors } = useTheme();
   const app = useAppDataSafe();
+  const host = useScrollHost();
+  const own = React.useRef<TextInput>(null);
   const [focused, setFocused] = React.useState(false);
   const hasError = !!error;
   const isMoney = !!numeric && !secure && (money ?? isMoneyLabel(label));
@@ -140,60 +140,56 @@ export function Field({
   /* the box being typed in is amber, as the line being worked on is on the Windows voucher desk */
   const amberEdge = "#E8A317", amberFill = colors.bg === "#F2F4F7" ? "#FFFBEA" : "rgba(232,197,71,0.10)";
   const bg = readOnly ? colors.sunk : focused && !hasError ? amberFill : colors.surface;
-  const hasLabel = !!label;
   // a lone zero in a number box is a blank, not a value: it clears on focus
   // so the first key typed replaces it instead of landing after it
   const raw = String(value ?? '');
   const blankZero = numeric && focused && raw !== '' && /^0*(\.0*)?$/.test(raw);
   const shown = blankZero ? '' : isMoney ? groupDigits(raw) : value;
-  const filled = raw !== '';
-  const up = !hasLabel || big || focused || filled;
+  const hasLabel = !!label;
+  /* the label sits where the text goes; it floats up, inside the box, once in use */
+  const up = !hasLabel || focused || raw !== '' || big;
 
-  // two clocks, both 100ms: `lift` moves the label (up while focused or
-  // filled), `glow` turns the border and label blue (only while focused)
   const lift = React.useRef(new Animated.Value(up ? 1 : 0)).current;
-  const glow = React.useRef(new Animated.Value(focused ? 1 : 0)).current;
   React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(lift, { toValue: up ? 1 : 0, duration: FLOAT_MS, useNativeDriver: false }),
-      Animated.timing(glow, { toValue: focused ? 1 : 0, duration: FLOAT_MS, useNativeDriver: false }),
-    ]).start();
-  }, [up, focused, lift, glow]);
+    Animated.timing(lift, { toValue: up ? 1 : 0, duration: 120, useNativeDriver: false }).start();
+  }, [up, lift]);
 
-  const rowH = big ? 84 : multiline ? 104 : compact ? 48 : 56;
-  const restTop = multiline ? 14 : (rowH - 2.8) / 2 - LABEL_H / 2;
-  const padH = compact ? 12 : 15;
-  const restLeft = padH + (icon ? 31 : 0) - 4;
-  const idle = hasError ? colors.danger : colors.line;
-  const lit = hasError ? colors.danger : amberEdge;
+  const rowH = big ? 68 : multiline ? 88 : compact ? 46 : 52;
+  const padH = compact ? 10 : 12;
+  const edge = hasError ? colors.danger : focused ? amberEdge : colors.line;
+  const labelLeft = padH + (icon ? 25 : 0);
+  const restTop = multiline ? 14 : rowH / 2 - 10;
+  const setRef = (r: TextInput | null) => {
+    (own as any).current = r;
+    if (typeof inputRef === 'function') inputRef(r);
+    else if (inputRef) (inputRef as any).current = r;
+  };
 
   return (
-    <View style={[{ marginTop: hasLabel ? 6 : 0, marginBottom: hasError ? 6 : 14 }, style]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Animated.View style={{
-          flex: 1, flexDirection: 'row', alignItems: multiline ? 'flex-start' : 'center', gap: 12,
-          minHeight: compact && !hasLabel ? 46 : rowH,
-          borderRadius: radius.md, borderWidth: 1.4,
-          borderColor: glow.interpolate({ inputRange: [0, 1], outputRange: [idle, lit] }),
-          backgroundColor: bg,
-          paddingHorizontal: padH,
-          paddingVertical: multiline ? 14 : 0,
+    <View style={[{ marginBottom: hasError ? 4 : 12 }, style]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{
+          flex: 1, flexDirection: 'row', alignItems: multiline ? 'flex-start' : 'center', gap: 9,
+          minHeight: rowH, borderRadius: radius.md, borderWidth: 1.2, borderColor: edge,
+          backgroundColor: bg, paddingHorizontal: padH,
+          paddingTop: hasLabel ? (multiline ? 24 : 18) : multiline ? 10 : 0, paddingBottom: hasLabel ? (multiline ? 8 : 4) : multiline ? 10 : 0,
         }}>
           {icon ? (
-            <View style={{ alignSelf: multiline ? 'flex-start' : 'center', marginTop: multiline ? 1 : 0 }}>
-              <Icon name={icon} size={19} color={hasError ? colors.danger : focused ? colors.accent : colors.soft} />
+            <View style={{ alignSelf: multiline ? 'flex-start' : 'center', marginTop: 0 }}>
+              <Icon name={icon} size={16} color={hasError ? colors.danger : focused ? colors.accent : colors.faint} />
             </View>
           ) : null}
           {sym && symBefore && up ? (
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: big ? 22 : 15, color: colors.faint, marginRight: -6 }}>{sym}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: big ? 18 : 13, color: colors.faint, marginRight: -4 }}>{sym}</Text>
           ) : null}
 
           <TextInput
-            ref={inputRef}
+            ref={setRef}
             value={shown}
             onChangeText={onChangeText && isMoney ? (v) => onChangeText(ungroupDigits(v)) : onChangeText}
             editable={!readOnly}
             placeholder={placeholder}
+            /* a hint only while typing here: an empty box never looks filled in */
             placeholderTextColor={focused || !hasLabel ? colors.faint : 'transparent'}
             keyboardType={keyboard || (numeric ? (decimal ? 'decimal-pad' : 'numeric') : 'default')}
             multiline={multiline}
@@ -205,97 +201,55 @@ export function Field({
             onSubmitEditing={onSubmitEditing}
             autoCorrect={autoCorrect}
             submitBehavior={keepFocus ? 'submit' : undefined}
-            onFocus={() => { setFocused(true); onFocus?.(); revealFocused(); }}
-            onBlur={() => { setFocused(false); onBlur?.(); }}
+            onFocus={() => { setFocused(true); onFocus?.(); host?.reveal(own.current as any); }}
+            onBlur={() => { setFocused(false); onBlur?.(); host?.release(); }}
             style={{
               flex: 1, padding: 0, alignSelf: 'stretch',
-              minHeight: multiline ? 70 : undefined,
+              minHeight: multiline ? 54 : undefined,
               color: readOnly ? colors.faint : colors.ink,
               fontFamily: big ? fonts.uiBold : numeric ? fonts.mono : fonts.ui,
-              fontSize: big ? 30 : 15,
+              fontSize: big ? 24 : 14,
               textAlign: numeric && compact && !hasLabel ? 'right' : 'left',
               textAlignVertical: multiline ? 'top' : 'center',
             }}
           />
 
           {sym && !symBefore && up && !suffix ? (
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>{sym}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.faint }}>{sym}</Text>
           ) : null}
           {suffix ? (
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>{suffix}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.faint }}>{suffix}</Text>
           ) : null}
           {trailing}
 
-          {/* the label: the placeholder while empty, a caption cut into the border once in use */}
           {hasLabel ? (
-            <FloatLabel
-              text={label!}
-              bg={bg}
-              lift={lift}
-              glow={glow}
-              restTop={restTop}
-              restLeft={restLeft}
-              upLeft={padH - 5}
-              idle={hasError ? colors.danger : colors.faint}
-              lit={lit}
-            />
+            <Animated.Text
+              pointerEvents="none"
+              numberOfLines={1}
+              style={{
+                position: 'absolute', left: labelLeft, right: padH,
+                top: lift.interpolate({ inputRange: [0, 1], outputRange: [restTop, 5] }),
+                fontSize: lift.interpolate({ inputRange: [0, 1], outputRange: [14, 11] }),
+                fontFamily: fonts.ui,
+                color: hasError ? colors.danger : focused ? amberEdge : colors.faint,
+              }}
+            >
+              {label}
+            </Animated.Text>
           ) : null}
-        </Animated.View>
+        </View>
         {right}
       </View>
       {hasError ? (
-        <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger, marginTop: 6, marginBottom: 7 }}>{error}</Text>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.danger, marginTop: 4, marginBottom: 6 }}>{error}</Text>
       ) : null}
     </View>
   );
 }
 
-const FLOAT_MS = 100;
-const LABEL_H = 18;
-/** Where a raised label sits: centred on the 1.4px top border. */
-const UP_TOP = -1.4 / 2 - 1.4 - LABEL_H / 2 + 1.4;
-
-/**
- * The label of an outlined field. At rest it sits where the text would be;
- * raised, it shrinks onto the top border and a strip of the field's own
- * colour behind it cuts the notch in the line.
- */
-function FloatLabel({ text, bg, lift, glow, restTop, restLeft, upLeft, idle, lit }: {
-  text: string; bg: string; lift: Animated.Value; glow: Animated.Value;
-  restTop: number; restLeft: number; upLeft: number; idle: string; lit: string;
-}) {
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute', height: LABEL_H, maxWidth: '88%', paddingHorizontal: 4, justifyContent: 'center',
-        top: lift.interpolate({ inputRange: [0, 1], outputRange: [restTop, UP_TOP] }),
-        left: lift.interpolate({ inputRange: [0, 1], outputRange: [restLeft, upLeft] }),
-      }}
-    >
-      <Animated.View style={{ position: 'absolute', left: 0, right: 0, top: LABEL_H / 2 - 2, height: 4, backgroundColor: bg, opacity: lift }} />
-      <Animated.Text
-        numberOfLines={1}
-        style={{
-          fontFamily: fonts.ui,
-          fontSize: lift.interpolate({ inputRange: [0, 1], outputRange: [15, 12] }),
-          color: glow.interpolate({ inputRange: [0, 1], outputRange: [idle, lit] }),
-        }}
-      >
-        {text}
-      </Animated.Text>
-    </Animated.View>
-  );
-}
-
-/** A label already raised onto the border, for boxes that always hold a value. */
-function StaticLabel({ text, bg, color, left }: { text: string; bg: string; color: string; left: number }) {
-  return (
-    <View pointerEvents="none" style={{ position: 'absolute', top: UP_TOP, left, height: LABEL_H, maxWidth: '88%', paddingHorizontal: 4, justifyContent: 'center' }}>
-      <View style={{ position: 'absolute', left: 0, right: 0, top: LABEL_H / 2 - 2, height: 4, backgroundColor: bg }} />
-      <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color }}>{text}</Text>
-    </View>
-  );
+/** A picker's name, small, inside the top of its box — where a typed field's label floats to. */
+function InLabel({ text, color }: { text: string; color: string }) {
+  return <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color, marginBottom: 1 }}>{text}</Text>;
 }
 
 /** The same outline, but the body is yours — used for pickers and read-outs. */
@@ -307,19 +261,18 @@ export function FieldShell({ label, icon, children, onPress, right, style, tone,
   const Comp: any = onPress ? SoftTap : View;
   const border = error ? colors.danger : tone || colors.line;
   return (
-    <View style={[{ marginTop: label ? 6 : 0, marginBottom: 14 }, style]}>
+    <View style={[{ marginBottom: 12 }, style]}>
       <Comp
         onPress={onPress}
         style={{
-          flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56,
-          borderRadius: radius.md, borderWidth: 1.4, borderColor: border,
-          backgroundColor: colors.surface, paddingHorizontal: 15, paddingVertical: 8,
+          flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52,
+          borderRadius: radius.md, borderWidth: 1.2, borderColor: border,
+          backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 6,
         }}
       >
         {icon ? <Icon name={icon} size={19} color={error ? colors.danger : colors.soft} /> : null}
-        <View style={{ flex: 1, minWidth: 0 }}>{children}</View>
+        <View style={{ flex: 1, minWidth: 0 }}>{label ? <InLabel text={label} color={error ? colors.danger : colors.faint} /> : null}{children}</View>
         {right}
-        {label ? <StaticLabel text={label} bg={colors.surface} color={error ? colors.danger : colors.faint} left={10} /> : null}
       </Comp>
     </View>
   );
@@ -346,7 +299,7 @@ export function TypeChips<T extends string>({ value, options, onChange, style }:
             }}
           >
             {o.i ? <Icon name={o.i} size={18} color={on ? colors.good : colors.soft} /> : null}
-            <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 15, color: on ? colors.good : colors.ink }}>
+            <Text style={{ fontFamily: on ? fonts.uiBold : fonts.uiSemi, fontSize: 14, color: on ? colors.good : colors.ink }}>
               {o.l}
             </Text>
           </Tap>
@@ -374,7 +327,7 @@ export function HighlightToggle({ title, sub, on, onChange, tone = 'good' }: {
       }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{title}</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{title}</Text>
         {sub ? (
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 18, color: colors.soft, marginTop: 3 }}>{sub}</Text>
         ) : null}
@@ -400,7 +353,7 @@ export function DropZone({ label, onPress, children, tone = 'good' }: {
       }}
     >
       {children ?? <Icon name="plus" size={34} color={fg} />}
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: fg }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: fg }}>{label}</Text>
     </Tap>
   );
 }
@@ -415,23 +368,23 @@ export function SelectField<T extends string>({ label, value, options, onChange,
   const cur = options.find((o) => o.v === value);
   const border = open ? colors.accent : colors.line;
   return (
-    <View style={[{ marginTop: label ? 6 : 0, marginBottom: 14 }, style]}>
+    <View style={[{ marginBottom: 12 }, style]}>
       <Tap feel="soft"
         onPress={() => setOpen((o) => !o)}
         style={{
-          minHeight: 56, borderRadius: radius.md, borderWidth: 1.4, borderColor: border,
-          backgroundColor: colors.surface, paddingHorizontal: 15, paddingVertical: 8,
+          minHeight: 52, borderRadius: radius.md, borderWidth: 1.2, borderColor: border,
+          backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 6,
           flexDirection: 'row', alignItems: 'center', gap: 12,
         }}
       >
         {icon ? <Icon name={icon} size={19} color={open ? colors.accent : colors.soft} /> : null}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 15, color: cur ? colors.ink : colors.faint }}>
+          {label ? <InLabel text={label} color={open ? colors.accent : colors.faint} /> : null}
+          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 14, color: cur ? colors.ink : colors.faint }}>
             {cur ? cur.l : placeholder || 'Select…'}
           </Text>
         </View>
         <Icon name={open ? 'up' : 'down'} size={18} color={colors.faint} />
-        {label ? <StaticLabel text={label} bg={colors.surface} color={open ? colors.accent : colors.faint} left={10} /> : null}
       </Tap>
       {open ? (
         <View style={{ marginTop: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, overflow: 'hidden' }}>
@@ -445,7 +398,7 @@ export function SelectField<T extends string>({ label, value, options, onChange,
                 backgroundColor: o.v === value ? colors.accentSoft : colors.surface,
               }}
             >
-              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{o.l}</Text>
+              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{o.l}</Text>
               {o.v === value ? <Icon name="check" size={17} color={colors.accent} /> : null}
             </Tap>
           ))}
@@ -465,23 +418,23 @@ export function MultiSelectField({ label, value, options, onChange, style, icon,
   const chosen = options.filter((o) => value.includes(o.v)).map((o) => o.l);
   const border = open ? colors.accent : colors.line;
   return (
-    <View style={[{ marginTop: label ? 6 : 0, marginBottom: 14 }, style]}>
+    <View style={[{ marginBottom: 12 }, style]}>
       <Tap feel="soft"
         onPress={() => setOpen((o) => !o)}
         style={{
-          minHeight: 56, borderRadius: radius.md, borderWidth: 1.4, borderColor: border,
-          backgroundColor: colors.surface, paddingHorizontal: 15, paddingVertical: 8,
+          minHeight: 52, borderRadius: radius.md, borderWidth: 1.2, borderColor: border,
+          backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 6,
           flexDirection: 'row', alignItems: 'center', gap: 12,
         }}
       >
         {icon ? <Icon name={icon} size={19} color={open ? colors.accent : colors.soft} /> : null}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 15, color: chosen.length ? colors.ink : colors.faint }}>
+          {label ? <InLabel text={label} color={open ? colors.accent : colors.faint} /> : null}
+          <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 14, color: chosen.length ? colors.ink : colors.faint }}>
             {chosen.length ? chosen.join(', ') : placeholder || 'None'}
           </Text>
         </View>
         <Icon name={open ? 'up' : 'down'} size={18} color={colors.faint} />
-        {label ? <StaticLabel text={label} bg={colors.surface} color={open ? colors.accent : colors.faint} left={10} /> : null}
       </Tap>
       {open ? (
         <View style={{ marginTop: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, overflow: 'hidden' }}>
@@ -500,7 +453,7 @@ export function MultiSelectField({ label, value, options, onChange, style, icon,
                 <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: on ? colors.accent : colors.lineHard, backgroundColor: on ? colors.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                   {on ? <Icon name="check" size={12} color={colors.accentInk} /> : null}
                 </View>
-                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{o.l}</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{o.l}</Text>
               </Tap>
             );
           })}
@@ -566,7 +519,7 @@ export function BigAmount({ caption, value, onChangeText, hint, currency }: {
     }}>
       {caption ? <CapText style={{ marginBottom: 6 }}>{caption}</CapText> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-        {currency ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 20, color: colors.faint }}>{currency}</Text> : null}
+        {currency ? <Text style={{ fontFamily: fonts.monoSemi, fontSize: 18, color: colors.faint }}>{currency}</Text> : null}
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -620,7 +573,7 @@ export function ToggleRow({ label, sub, on, onChange, bare }: {
       }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{label}</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{label}</Text>
         {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>{sub}</Text> : null}
       </View>
       <Sw on={on} onPress={() => onChange(!on)} />
@@ -714,7 +667,7 @@ function RowText({ label, sub, danger }: { label: string; sub?: string; danger?:
   const { colors } = useTheme();
   return (
     <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
-      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, lineHeight: 20, color: danger ? colors.danger : colors.ink }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, lineHeight: 20, color: danger ? colors.danger : colors.ink }}>{label}</Text>
       {sub ? <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.faint, marginTop: 2 }}>{sub}</Text> : null}
     </View>
   );

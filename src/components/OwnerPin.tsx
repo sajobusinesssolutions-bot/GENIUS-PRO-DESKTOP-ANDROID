@@ -114,7 +114,7 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
         askedId ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 4, backgroundColor: colors.accentSoft, marginTop: 12 }}>
             <ActivityIndicator color={colors.accent} />
-            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>Waiting for the owner to answer on their phone…</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent }}>Waiting for the owner to answer on their phone…</Text>
           </View>
         ) : (
           <Pressable
@@ -169,7 +169,7 @@ function OwnerPinSheet({ visible, summary, onOk, onCancel }: {
           >
             {k === 'del'
               ? <Icon name="back" size={22} color={colors.faint} />
-              : <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>{k}</Text>}
+              : <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>{k}</Text>}
           </Pressable>
         ))}
       </View>

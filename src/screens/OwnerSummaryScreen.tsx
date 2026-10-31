@@ -7,7 +7,8 @@
  * sellers, the financial report and anything expiring), with Send now.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -77,7 +78,7 @@ export default function OwnerSummaryScreen() {
             const sel = t === time;
             return (
               <Pressable key={t} onPress={() => setTime(t)} style={{ paddingVertical: 9, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.4, borderColor: sel ? colors.ink : colors.line, backgroundColor: sel ? colors.ink : colors.surface }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: sel ? colors.bg : colors.ink }}>{t}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: sel ? colors.bg : colors.ink }}>{t}</Text>
               </Pressable>
             );
           })}
@@ -90,7 +91,7 @@ export default function OwnerSummaryScreen() {
       <View style={card}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <Icon name="mail" size={18} color={colors.ink} />
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Email</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Email</Text>
         </View>
         <Field label={'Email for ' + (owner?.name || 'the owner')} keyboard="email-address" value={email} onChangeText={setEmail} placeholder="owner@example.com" />
         <ToggleRow label="Email it automatically" sub="Arrives without anyone tapping anything" on={autoEmail} onChange={setAutoEmail} />
@@ -104,7 +105,7 @@ export default function OwnerSummaryScreen() {
       <View style={card}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <Icon name="phone" size={18} color={colors.ink} />
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>WhatsApp</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>WhatsApp</Text>
         </View>
         <Field label="WhatsApp number" keyboard="phone-pad" value={whatsapp} onChangeText={setWhatsapp} placeholder="0772 123456" />
         <ToggleRow

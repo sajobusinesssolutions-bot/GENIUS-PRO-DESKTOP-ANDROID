@@ -106,7 +106,7 @@ export function PinResetSheet({ visible, email, onClose, onDone }: {
           {email ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 4, backgroundColor: colors.sunk }}>
               <Icon name="shield" size={18} color={colors.accent} />
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{maskEmail(email)}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{maskEmail(email)}</Text>
             </View>
           ) : null}
         </>

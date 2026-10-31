@@ -2,6 +2,7 @@
  * PURCHASES — supplier bills in a period: what was bought, what is still owed,
  * and one tap to print or share any bill.
  */
+import { tsMs } from '../data/helpers';
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -27,7 +28,7 @@ export default function PurchasesScreen({ navigation }: Props) {
 
   const inRange = useMemo(
     () => [...(book?.purchases || [])].filter((p) => inPeriod(p.ts, period))
-      .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()),
+      .sort((a, b) => tsMs(b.ts) - tsMs(a.ts)),
     [book?.purchases, period],
   );
   const needle = q.trim().toLowerCase();

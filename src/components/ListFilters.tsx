@@ -92,7 +92,7 @@ export function ListFilters({
           {(['from', 'to'] as const).map((which) => (
             <Pressable key={which} onPress={() => setPicker(which)} style={{ flex: 1, minHeight: 58, justifyContent: 'center', paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1.2, borderColor: colors.line, backgroundColor: colors.surface }}>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{which === 'from' ? 'From' : 'To'}</Text>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink, marginTop: 4 }}>{which === 'from' ? draftFrom : draftTo}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink, marginTop: 4 }}>{which === 'from' ? draftFrom : draftTo}</Text>
             </Pressable>
           ))}
         </View>

@@ -26,6 +26,7 @@
  * same backup twice adds nothing the second time. People and items already
  * in the books are matched by name and reused.
  */
+import { tsMs } from './helpers';
 import type { DB, Party, Product, SaleLine, PurchaseLine, PayMethod } from './types';
 import * as logic from './logic';
 import { uid, iso } from './uid';
@@ -315,6 +316,13 @@ export function importVyapar(d: DB, t: VyTables, firmId: number): ImportReport {
             allocations: plan.cash.length ? plan.cash : [{ saleId: '-', amount: 0 }],
           }, at);
         }
+        // the part that paid an opening balance comes off that balance below, so only what
+        // settled neither a bill nor the opening is held on account
+        if (pay) {
+          const left = r2(cash - plan.cash.reduce((t, x) => t + x.amount, 0) - plan.openingCash);
+          const held = d.payments.find((x) => x.id === pay!.id);
+          if (held) { held.unapplied = left > 0.005 ? left : 0; }
+        }
         const p = d.parties.find((x) => x.id === partyId)!;
         // what settled an opening balance comes off it
         const offOpening = plan.openingCash + plan.openingDiscount;
@@ -481,7 +489,7 @@ function settlePlan(d: DB, links: PayLink[], partyId: string, inbound: boolean, 
   const bills: any[] = (inbound
     ? d.sales.filter((x) => x.partyId === partyId && x.status !== 'void')
     : d.purchases.filter((x) => x.partyId === partyId && x.status !== 'void'))
-    .sort((a: any, b: any) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    .sort((a: any, b: any) => tsMs(a.ts) - tsMs(b.ts));
   const room = new Map<string, number>(bills.map((b) => [b.id, b.due]));
   const take = (target: string, want: number) => {
     let left = want;

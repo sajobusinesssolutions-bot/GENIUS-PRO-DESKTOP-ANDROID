@@ -14,7 +14,7 @@ import { useAppData } from '../data/AppDataContext';
 import { useToast } from './Toast';
 import Sheet from './Sheet';
 import { Icon, IconName } from './icons';
-import { ageOfDays, plural } from '../data/helpers';
+import { ageOfDays, plural, tsMs } from '../data/helpers';
 import { canFor } from '../data/perms';
 import { Channel, DueBill, fillReminder, reminderSettings, sendVia } from '../data/messages';
 
@@ -22,7 +22,7 @@ export interface DueParty { partyId: string; name: string; bills: DueBill[]; due
 
 /** Customers with invoices still open, largest debt first — as the reminder settings ask. */
 export function useDueReminders(): DueParty[] {
-  const { db, party } = useAppData();
+  const { db, party, partyBalance } = useAppData();
   return useMemo(() => {
     if (!db) return [];
     const cfg = reminderSettings(db.settings.reminders);
@@ -38,10 +38,24 @@ export function useDueReminders(): DueParty[] {
         o.oldest = Math.max(o.oldest, ageOfDays(s.ts));
         by.set(k, o);
       });
+    /* a customer brought in owing an opening balance is chased too: what is left of it
+       is what they owe beyond their open invoices */
+    db.parties.forEach((pt) => {
+      if (pt.type !== 'customer' || pt.active === false || !(pt.openingBalance > 0.01)) return;
+      const o = by.get(pt.id) || { partyId: pt.id, name: pt.name, bills: [], due: 0, oldest: 0 };
+      const left = Math.min(pt.openingBalance, partyBalance(pt.id) - o.due);
+      if (left <= 0.01) return;
+      const since = pt.openingDate || (pt as any).createdAt || db.financialYear?.start || '';
+      const age = since ? ageOfDays(since) : cfg.afterDays;
+      o.bills.unshift({ no: 'Opening balance', ts: since || new Date().toISOString(), total: pt.openingBalance, due: left });
+      o.due += left;
+      o.oldest = Math.max(o.oldest, age);
+      by.set(pt.id, o);
+    });
     return [...by.values()]
-      .map((o) => ({ ...o, bills: o.bills.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()) }))
+      .map((o) => ({ ...o, bills: o.bills.sort((a, b) => tsMs(a.ts) - tsMs(b.ts)) }))
       .sort((a, b) => b.due - a.due);
-  }, [db, party]);
+  }, [db, party, partyBalance]);
 }
 
 /** One customer to remind: who, how much, and the Remind button. */
@@ -54,7 +68,7 @@ export function ReminderRow({ r, onRemind, onOpen, last }: { r: DueParty; onRemi
       borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.line,
     }}>
       <Pressable onPress={onOpen} disabled={!onOpen} style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{r.name}</Text>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{r.name}</Text>
         <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: r.oldest > 30 ? colors.danger : colors.faint, marginTop: 2 }}>
           {money(r.due)} · {plural(r.bills.length, 'invoice')} · oldest {r.oldest}d
         </Text>
@@ -121,7 +135,7 @@ export function RemindSheet({ target, onClose }: { target: DueParty | null; onCl
             <Icon name={w.i} size={18} color={w.tint} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{w.l}</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{w.l}</Text>
             <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{w.sub}</Text>
           </View>
           <Icon name="chev" size={14} color={colors.faint} />

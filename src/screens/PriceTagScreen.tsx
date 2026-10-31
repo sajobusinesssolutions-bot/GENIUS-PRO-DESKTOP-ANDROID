@@ -7,9 +7,11 @@
  * from the same settings.
  */
 import React, { useMemo, useState } from 'react';
+import { systemPrint } from '../data/printQueue';
 import { code128b, code128Html } from '../data/code128';
 import { useCan, Denied } from '../components/Gate';
-import { View, Text, FlatList, ScrollView, Alert } from 'react-native';
+import { View, Text, FlatList, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -156,7 +158,7 @@ function PriceTagScreenBody() {
         if (!(await Sharing.isAvailableAsync())) { error('Sharing is not available here.'); return; }
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Price tags' });
       } else {
-        await Print.printAsync({ html, ...size, ...(Platform.OS === 'ios' && printer?.url ? { printerUrl: printer.url } : null) });
+        await systemPrint({ html, ...size, ...(Platform.OS === 'ios' && printer?.url ? { printerUrl: printer.url } : null) });
       }
       success(tagCount + ' tag' + (tagCount === 1 ? '' : 's') + ' sent');
     } catch (e: any) {
@@ -177,7 +179,7 @@ function PriceTagScreenBody() {
       }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{label}</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{label}</Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>{sub}</Text>
       </View>
       <Sw on={!!style[key]} onPress={() => set({ [key]: !style[key] } as Partial<TagStyle>)} />
@@ -297,7 +299,7 @@ function PriceTagScreenBody() {
                   {on ? <Icon name="check" size={16} color={colors.accentInk} /> : null}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{p.name}</Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     {money(p.price)} · {tagCode(p)}
                   </Text>
@@ -309,20 +311,20 @@ function PriceTagScreenBody() {
                       onPress={() => setCopies((c) => ({ ...c, [p.id]: Math.max(1, countOf(p.id) - 1) }))}
                       style={{ width: 32, height: 32, borderRadius: 4, borderWidth: 1.4, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }}
                     >
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>−</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>−</Text>
                     </Pressable>
-                    <Text style={{ minWidth: 30, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>×{countOf(p.id)}</Text>
+                    <Text style={{ minWidth: 30, textAlign: 'center', fontFamily: fonts.uiExtra, fontSize: 14, color: colors.ink }}>×{countOf(p.id)}</Text>
                     <Pressable
                       hitSlop={6}
                       onPress={() => setCopies((c) => ({ ...c, [p.id]: Math.min(500, countOf(p.id) + 1) }))}
                       onLongPress={() => setCopies((c) => ({ ...c, [p.id]: Math.min(500, countOf(p.id) + 10) }))}
                       style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}
                     >
-                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accentInk }}>+</Text>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accentInk }}>+</Text>
                     </Pressable>
                   </View>
                 ) : (
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(p.price)}</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(p.price)}</Text>
                 )}
               </Pressable>
             );

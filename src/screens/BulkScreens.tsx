@@ -8,7 +8,8 @@
  * preview's Change button is tapped.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, TextInput, Switch, Alert, Share } from 'react-native';
+import { View, Text, TextInput, Switch, Alert, Share } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Card, Cap, Chip, Button, EmptyState, KVNode } from '../components/ui';

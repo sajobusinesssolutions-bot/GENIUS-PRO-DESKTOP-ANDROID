@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useOnDisk } from '../data/useOnDisk';
@@ -112,7 +113,7 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
           <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, letterSpacing: 0.6, color: colors.faint }}>
             {(inbound ? 'RECEIVED FROM' : 'PAID TO')}
           </Text>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginTop: 2 }}>{pt?.name || '—'}</Text>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginTop: 2 }}>{pt?.name || '—'}</Text>
           <Text style={{ fontFamily: fonts.monoSemi, fontSize: 26, color: colors.ink, marginTop: 6 }}>{money(pay.amount)}</Text>
         </View>
 
@@ -138,7 +139,7 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
                     onPress={() => (inbound
                       ? navigation.navigate('SaleDetail', { saleId: a.docId } as any)
                       : navigation.navigate('PurchaseDetail', { purchaseId: a.docId } as any))}
-                    style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accent, paddingVertical: 7, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line }}
+                    style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent, paddingVertical: 7, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: colors.line }}
                   >
                     {a.no}  ·  {money(a.amount)}
                   </Text>
@@ -192,8 +193,10 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
               <View style={{ flex: 1 }}>
                 <Button label="Edit" size="sm" variant="pri" disabled={!gate.ok} onPress={onEdit} />
               </View>
+              <View style={{ flex: 1 }}>
+                <Button label="Delete" size="sm" variant="dngr" disabled={!gate.ok} onPress={onDelete} />
+              </View>
             </View>
-            <Button label="Delete this payment" size="sm" variant="dngr" disabled={!gate.ok} onPress={onDelete} />
           </>
         )}
       </View>

@@ -186,33 +186,29 @@ function ItemCard({ product: x, stock, money, onPress }: {
   const tracks = [x.trackSerials ? 'IMEI' : '', x.trackBatches ? 'Batches' : ''].filter(Boolean).join(' · ') || (svc ? 'Time' : 'Quantity');
   const qty = Math.round(stock * 100) / 100;
 
+  /* two lines: the name with its stock, then price, cost and how it is counted — more items to a screen */
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        marginHorizontal: 16, marginBottom: 10, borderRadius: 4, paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14,
+        marginHorizontal: 16, marginBottom: 6, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 9,
         backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line,
       })}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{x.name}</Text>
-        <View style={{ alignItems: 'flex-end' }}>
-          {svc ? null : (
-            <Text style={{ fontFamily: fonts.uiExtra, fontSize: 19, color: tone }}>
-              {qty}
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: tone }}> {x.unit.toUpperCase()}</Text>
-            </Text>
-          )}
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.6, color: tone, marginTop: svc ? 0 : 2 }}>{status}</Text>
-        </View>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{x.name}</Text>
+        {svc ? null : (
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: tone }}>
+            {qty}<Text style={{ fontFamily: fonts.ui, fontSize: 11, color: tone }}> {x.unit.toUpperCase()}</Text>
+          </Text>
+        )}
       </View>
-
-      <View style={{ height: 1, backgroundColor: colors.line, marginTop: 14, marginBottom: 12 }} />
-
-      <View style={{ flexDirection: 'row' }}>
-        <ItemFigure label="Price" value={money(x.price)} strong />
-        <ItemFigure label="Cost" value={svc && !x.cost ? '—' : money(x.cost)} />
-        <ItemFigure label="Tracks" value={tracks} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 }}>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
+          <Text style={{ fontFamily: fonts.uiSemi, color: colors.ink }}>{money(x.price)}</Text>
+          {'  ·  cost ' + (svc && !x.cost ? '—' : money(x.cost)) + '  ·  ' + tracks}
+        </Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 10, letterSpacing: 0.5, color: tone }}>{status}</Text>
       </View>
     </Pressable>
   );
@@ -223,7 +219,7 @@ function ItemFigure({ label, value, strong }: { label: string; value: string; st
   return (
     <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{label}</Text>
-      <Text numberOfLines={1} style={{ fontFamily: strong ? fonts.uiBold : fonts.ui, fontSize: 14.5, color: colors.ink, marginTop: 4 }}>{value}</Text>
+      <Text numberOfLines={1} style={{ fontFamily: strong ? fonts.uiBold : fonts.ui, fontSize: 13.5, color: colors.ink, marginTop: 4 }}>{value}</Text>
     </View>
   );
 }

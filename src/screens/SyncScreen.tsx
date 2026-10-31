@@ -14,7 +14,8 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { wholeBook, isPartialBook } from '../data/storage';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -259,7 +260,7 @@ export default function SyncScreen() {
           <SectionCap
             right={(
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint }}>
                   {(devices ? devices.length : '–') + (max ? ' / ' + max : '')}
                 </Text>
                 <Pressable hitSlop={10} accessibilityLabel="Check devices linked" onPress={() => loadDevices(true)}>
@@ -282,7 +283,7 @@ export default function SyncScreen() {
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{d.name || 'Device'}</Text>
+                    <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{d.name || 'Device'}</Text>
                     {me ? (
                       <View style={{ backgroundColor: colors.goodSoft, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 }}>
                         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.good }}>This device</Text>
@@ -326,7 +327,7 @@ export default function SyncScreen() {
         <Button label="Load cloud backup" loading={busy === 'load'} icon={<Icon name="down" size={17} color={colors.ink} />} onPress={loadCloudCopy} />
         {copy ? (
           <View style={{ marginTop: 12, padding: 14, borderRadius: 4, backgroundColor: colors.sunk, gap: 4 }}>
-            <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Latest cloud copy · version {copy.version}</Text>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Latest cloud copy · version {copy.version}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
               {'Saved ' + fmtDate(copy.updatedAt) + ' · ' + plural((copy.data?.sales || []).length, 'sale') + ' · ' + plural((copy.data?.products || []).length, 'item')}
             </Text>

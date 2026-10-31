@@ -110,8 +110,8 @@ export default function BatchPicker({
           <View style={{ borderRadius: radius.md, backgroundColor: colors.sunk, padding: 14, marginBottom: 14, gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.faint }}>Quantity needed</Text>
-              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: needColor }}>
-                {taken}<Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.faint }}> / {qty}</Text>
+              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: needColor }}>
+                {taken}<Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint }}> / {qty}</Text>
               </Text>
             </View>
             <ProgressBar pct={qty > 0 ? (taken / qty) * 100 : 0} tone={needColor} />
@@ -216,7 +216,7 @@ function BatchRow({ batch, take, onPress, children }: {
           <Icon name="box" size={18} color={fg} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{batch.no}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{batch.no}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
             <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4, backgroundColor: soft }}>
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, color: fg }}>{expiryLabel(batch)}</Text>
@@ -226,7 +226,7 @@ function BatchRow({ batch, take, onPress, children }: {
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>Take</Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: on ? colors.accent : colors.lineHard }}>{take}</Text>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: on ? colors.accent : colors.lineHard }}>{take}</Text>
         </View>
       </View>
       {children}
@@ -245,7 +245,7 @@ function StepBtn({ label, onPress, disabled }: { label: string; onPress: () => v
         alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, opacity: disabled ? 0.4 : 1,
       }}
     >
-      <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>{label}</Text>
     </Pressable>
   );
 }

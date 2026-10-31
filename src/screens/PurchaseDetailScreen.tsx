@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useOnDisk } from '../data/useOnDisk';
@@ -72,7 +73,7 @@ export default function PurchaseDetailScreen({ route, navigation }: Props) {
               <Icon name="cart" size={23} color={!live ? colors.danger : x.due > 0 ? colors.warn : colors.good} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{x.no}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{x.no}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {supplier?.name || 'Supplier'} · received {new Date(x.ts).toLocaleDateString()}
               </Text>
@@ -115,14 +116,14 @@ export default function PurchaseDetailScreen({ route, navigation }: Props) {
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.warn }}>{i + 1}</Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
                   {product(l.productId)?.name || l.productId}
                 </Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                   {l.qty} × {money(l.cost)}
                 </Text>
               </View>
-              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 15, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
+              <Text style={{ fontFamily: fonts.monoSemi, fontSize: 14, color: colors.ink }}>{money(l.qty * l.cost)}</Text>
             </View>
           ))}
         </Panel>

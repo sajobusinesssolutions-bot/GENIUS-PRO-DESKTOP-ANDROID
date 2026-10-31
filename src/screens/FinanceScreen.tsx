@@ -3,7 +3,8 @@
  * (which supersedes the earlier one at 5608), with the header from line 5608-5610.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -128,12 +129,12 @@ export default function FinanceScreen() {
                   <Card style={{ paddingVertical: 14, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <IconTile icon={icon} bg={soft} color={tone} size={44} round={14} iconSize={21} />
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{a.name}</Text>
+                      <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{a.name}</Text>
                       <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: mv >= 0 ? colors.good : colors.danger, marginTop: 3 }}>
                         {(mv >= 0 ? '+' : '−') + ' ' + money0(Math.abs(mv))} in {d.R.label.toLowerCase()}
                       </Text>
                     </View>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(accountBalance(a.id))}</Text>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(accountBalance(a.id))}</Text>
                   </Card>
                 </Pressable>
               );

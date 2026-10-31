@@ -1,5 +1,6 @@
 import React from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { useTheme } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import {

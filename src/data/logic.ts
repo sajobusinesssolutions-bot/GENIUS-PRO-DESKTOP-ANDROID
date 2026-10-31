@@ -1,6 +1,7 @@
 // Pure, framework-free business-logic functions used by AppDataContext.
 // Kept separate (no React/AsyncStorage imports) so they can be unit-tested
 // directly against a plain DB object without rendering a component tree.
+import { tsMs } from './helpers';
 import {
   DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, JournalLine, JournalEntry, PayMethod, Product,
   StockTake, ProductionRun, RecurringInvoice, InstalmentPlan, InstalmentDue, Revision,
@@ -243,9 +244,49 @@ export function guardCash(d: DB, takes: Array<{ acc: string; amount: number }>) 
  * apart. Sending them clears the count. (The computer keeps the same rule.)
  */
 export const OFFLINE_ALLOWANCE = 300;
+/** The start of a temporary voucher number, given while the server cannot be asked. */
+export const PENDING = 'PENDING-';
+
+/** The running number inside a voucher number: INV-03187 → 3187. */
+export function numberPart(no: string): number {
+  const m = /(\d+)(?:-P)?$/.exec(String(no || ''));
+  return m ? Number(m[1]) : 0;
+}
+/** The series a sale is numbered in: its branch prefix (INV unless the branch has its own). */
+export function saleSeries(d: DB, warehouse?: string): string { return branchPrefix(d, warehouse || d.session.warehouse); }
+/** The highest number this book holds in a sale series, so a series that began here carries on. */
+export function saleFloor(d: DB, series: string): number {
+  let top = 0;
+  const pre = series + '-';
+  d.sales.forEach((s) => { if (s.no.startsWith(pre)) top = Math.max(top, numberPart(s.no)); });
+  return top;
+}
+/** The text of a sale number in a series: INV + 3187 → INV-03187, as the phone has always written them. */
+export function formatSaleNo(series: string, n: number): string { return series + '-' + String(n).padStart(5, '0'); }
+
+/** Gives a sale saved with a temporary number its real one, and points its ledger and stock lines at it. */
+export function setSaleNumber(d: DB, saleId: string, no: string): boolean {
+  const s = d.sales.find((x) => x.id === saleId);
+  if (!s || !s.numberPending) return false;
+  renumber(d, s.no, no);
+  s.no = no;
+  delete s.numberPending;
+  return true;
+}
 /** Vouchers only — sales, bills, money, notes, journals — as the computer counts; item and party edits do not use the allowance. */
 const VOUCHER_KINDS = new Set(['sale', 'purchase', 'payment', 'entry', 'creditNote', 'journal', 'movement', 'estimate', 'challan', 'purchaseOrder']);
 export function vouchersWaiting(d: DB): number { return (d.queue || []).filter((q) => VOUCHER_KINDS.has(q.kind)).length; }
+/**
+ * Whether the waiting changes are worth showing. Online, a save goes up within a
+ * second or two, and "1 change waiting" flashing after every sale was noise; it
+ * shows when the phone is offline, or something has waited longer than a send takes.
+ */
+export const WAIT_SHOWN_AFTER_MS = 20 * 1000;
+export function queueStuck(d: DB | null | undefined, now = Date.now()): boolean {
+  if (!d || !(d.queue || []).length) return false;
+  if (d.session.online === false) return true;
+  return d.queue.some((q) => now - (new Date(q.ts).getTime() || now) > WAIT_SHOWN_AFTER_MS);
+}
 export function offlineLeft(d: DB): number | null {
   if (!d.sync?.on) return null;
   return Math.max(0, OFFLINE_ALLOWANCE - vouchersWaiting(d));
@@ -264,7 +305,7 @@ export function enqueue(d: DB, kind: string, ref: string) {
   d.queue.push({ id: uid('q'), ts: iso(new Date()), kind, ref });
 }
 
-export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: import('./types').OrderType; priceListId?: string; rx?: import('./types').RxRecord }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
+export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: import('./types').OrderType; priceListId?: string; rx?: import('./types').RxRecord; wht?: number; taxOnTop?: boolean; showPayment?: boolean }, when = o.ts ? new Date(o.ts) : new Date()): Sale {
   if (!canWith(ensureRoles(d), d.session.role, 'sales.create')) {
     throw new Refusal('Permission denied: sales.create');
   }
@@ -280,7 +321,8 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
   const taxable = d.settings.taxEnabled === false
     ? o.lines.map((l) => ({ ...l, taxRate: 0 }))
     : o.lines;
-  const t = saleTotals(taxable, o.discount, pricesIncludeTax(d));
+  // this bill's own choice wins over the shop's: tax added on top of the prices, or inside them
+  const t = saleTotals(taxable, o.discount, o.taxOnTop === undefined ? pricesIncludeTax(d) : !o.taxOnTop);
   const charges = Math.max(0, Number(o.additionalCharges) || 0);
   const finalTotal = t.total + charges;
   const redeemed = o.redeem || 0;
@@ -350,17 +392,27 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     l.serialNo = l.serials[0].imei;
   });
   d.counters.sale += 1;
-  const partPaid = Math.max(0, Math.min(Number(o.received) || 0, finalTotal));
+  /* With sync on, numbers come from the server so every device shares one run
+     (numbers.ts). A sale saved without one carries a temporary number until
+     the next sync gives it its real one, in the order the sales were made. */
+  const saleId = uid('sal');
+  const givenNo = (o.no || '').trim();
+  const pending = !!d.sync?.on && !d.demo;
+  /* withholding tax the customer keeps back: it settles the bill as money does, and is the shop's tax credit */
+  const wht = useSplitTender ? 0 : Math.max(0, Math.min(Number(o.wht) || 0, finalTotal));
+  const partPaid = Math.max(0, Math.min(Number(o.received) || 0, finalTotal - wht));
   const paidNow = useSplitTender
     ? o.methods!.reduce((s, m) => s + m.amount, 0)
-    : (o.method === 'credit' ? partPaid : finalTotal);
+    : (o.method === 'credit' ? partPaid : finalTotal - wht);
   const finalPaidNow = redeemed ? Math.max(0, paidNow - redeemed) : paidNow;
   const sale: Sale = {
     // each branch's paperwork carries its own prefix over a firm-wide number
-    id: uid('sal'), no: (o.no || '').trim() || branchPrefix(d, wh) + '-' + String(100000 + d.counters.sale).slice(1), ts: iso(when),
+    id: saleId, no: givenNo || (pending ? PENDING + saleId.slice(-6).toUpperCase() : branchPrefix(d, wh) + '-' + String(100000 + d.counters.sale).slice(1)), ts: iso(when),
+    ...(pending && !givenNo ? { numberPending: true } : {}),
     partyId: o.partyId, userId: o.userId || d.session.userId, till: d.session.till, warehouse: wh,
     lines: taxable, discount: t.discount, redeemed, gross: t.gross, tax: t.tax, total: finalTotal, cogs: t.cost,
     additionalCharges: charges, terms: o.terms, note: o.description,
+    ...(o.showPayment !== undefined ? { showPayment: o.showPayment } : {}),
     ...(o.ticketName ? { ticketName: o.ticketName } : {}),
     ...(o.orderType ? { orderType: o.orderType } : {}),
     ...(o.priceListId ? { priceListId: o.priceListId } : {}),
@@ -371,7 +423,8 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
       momoNetwork: o.momoNetwork || 'mtn',
       momoRef: o.momoRef || undefined,
     } : {}),
-    paid: finalPaidNow + redeemed, paidAtSale: finalPaidNow + redeemed, due: finalTotal - finalPaidNow - redeemed,
+    paid: finalPaidNow + redeemed + wht, paidAtSale: finalPaidNow + redeemed + wht, due: finalTotal - finalPaidNow - redeemed - wht,
+    ...(wht ? { wht } : {}),
     ...(useSplitTender && { methods: o.methods }),
     status: 'complete', synced: d.session.online, fiscal: d.settings.efris ? (d.session.online ? 'sent' : 'pending') : 'off',
     fdn: d.settings.efris && d.session.online ? String(9000000000 + Math.floor(Math.random() * 8999999)) : null,
@@ -401,13 +454,14 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     if (finalPaidNow > 0) jl.push({ acc, dr: finalPaidNow });
   }
   if (redeemed > 0) jl.push({ acc: 'n_loyalty', dr: redeemed });
+  if (wht > 0) jl.push({ acc: 'n_wht_credit', dr: wht });
   if (sale.due > 0) jl.push({ acc: 'n_ar', dr: sale.due });
   if (t.discount > 0) jl.push({ acc: 'n_discount', dr: t.discount });
   jl.push({ acc: 'n_sales', cr: t.net + t.discount + charges });
   if (t.tax > 0) jl.push({ acc: 'n_tax', cr: t.tax });
   journal(d, when, 'Sale ' + sale.no, sale.no, jl);
   if (t.cost > 0) journal(d, when, 'Cost of sale ' + sale.no, sale.no, [{ acc: 'n_cogs', dr: t.cost }, { acc: 'n_inventory', cr: t.cost }]);
-  if (sale.partyId && d.loyaltyRules.enabled) {
+  if (sale.partyId && d.loyaltyRules?.enabled) {
     const pt = d.parties.find((p) => p.id === sale.partyId);
     if (pt && pt.type === 'customer') {
       if (redeemed) pt.points = Math.max(0, pt.points - Math.round(redeemed / d.loyaltyRules.pointValue));
@@ -435,6 +489,7 @@ export function voidSale(d: DB, saleId: string, reason?: string, when = new Date
   const s = d.sales.find((x) => x.id === saleId);
   if (!s || s.status === 'void') return;
   s.status = 'void'; s.voidedAt = iso(when); s.voidReason = reason || '';
+  enqueue(d, 'sale', s.id);
   s.lines.forEach((l) => move(d, l.productId, s.warehouse, stockQty(l), 'void', s.no, when, l.batchNo));
   s.lines.forEach((l) => {
     const p = d.products.find((x) => x.id === l.productId);
@@ -527,7 +582,7 @@ export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], me
   return pu;
 }
 
-export function recordPayment(d: DB, o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; userId?: string; allocations?: Array<{ saleId: string; amount: number }> }, when = new Date()): Payment {
+export function recordPayment(d: DB, o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; userId?: string; allocations?: Array<{ saleId: string; amount: number }>; taxDeducted?: number; onAccount?: boolean }, when = new Date()): Payment {
   mustHaveAllowance(d);
   const party = d.parties.find((p) => p.id === o.partyId);
   if (!party) throw new Refusal('A party is required for payments');
@@ -536,24 +591,29 @@ export function recordPayment(d: DB, o: { partyId: string; amount: number; direc
 
   const acc = d.accounts.find((a) => a.id === o.accountId);
   const pay: Payment = { id: uid('pay'), ts: iso(when), partyId: o.partyId, amount: o.amount, direction: o.direction, accountId: o.accountId, note: o.note || '', method: acc?.type || 'cash', userId: o.userId || d.session.userId, branch: activeBranchId(d) };
+  const wht = Math.max(0, cents(o.taxDeducted || 0));
+  if (wht > 0) pay.taxDeducted = wht;
   d.payments.push(pay);
   enqueue(d, 'payment', pay.id);
   audit(d, o.direction === 'in' ? 'Payment received' : 'Payment made', Math.round(o.amount) + ' via ' + (acc?.name || o.accountId));
   const partyName = party.name;
-  if (o.direction === 'in') journal(d, when, 'Receipt from ' + partyName, 'RCT', [{ acc: o.accountId, dr: o.amount }, { acc: 'n_ar', cr: o.amount }]);
-  else journal(d, when, 'Payment to ' + partyName, 'PAY', [{ acc: 'n_ap', dr: o.amount }, { acc: o.accountId, cr: o.amount }]);
+  // withholding: a customer who kept tax back leaves us a tax credit; tax we keep back from a supplier is owed to the tax office
+  if (o.direction === 'in') journal(d, when, 'Receipt from ' + partyName, 'RCT', [{ acc: o.accountId, dr: o.amount }, ...(wht ? [{ acc: 'n_wht_credit', dr: wht }] : []), { acc: 'n_ar', cr: o.amount + wht }]);
+  else journal(d, when, 'Payment to ' + partyName, 'PAY', [{ acc: 'n_ap', dr: o.amount + wht }, { acc: o.accountId, cr: o.amount }, ...(wht ? [{ acc: 'n_tax', cr: wht }] : [])]);
   // Which bills this pays. The bills the person picked, in the amounts they
   // picked; otherwise the oldest first. Before, the picks were thrown away and
   // nothing recorded which bills a payment had settled, so a receipt could not
   // be traced to an invoice or back.
-  let left = o.amount;
+  let left = o.amount + wht;
   const bills: Array<{ id: string; no: string; ts: string; due: number; paid: number; receipts?: { paymentId: string; amount: number; ts: string }[] }> =
     (o.direction === 'in'
       ? d.sales.filter((s) => s.partyId === o.partyId && s.due > 0 && s.status !== 'void')
       : d.purchases.filter((x) => x.partyId === o.partyId && x.due > 0 && (x as any).status !== 'void')) as any;
-  const order = [...bills].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  const order = [...bills].sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   const plan: Array<{ bill: typeof bills[number]; amount: number }> = [];
-  if (o.allocations && o.allocations.length) {
+  if (o.onAccount) {
+    // On account: no bill is named; all of it is held on the party's account
+  } else if (o.allocations && o.allocations.length) {
     o.allocations.forEach((a) => {
       const bill = bills.find((b) => b.id === a.saleId);
       if (!bill || left <= 0) return;
@@ -572,9 +632,32 @@ export function recordPayment(d: DB, o: { partyId: string; amount: number; direc
     bill.receipts = [...(bill.receipts || []), { paymentId: pay.id, amount, ts: pay.ts }];
     return { docId: bill.id, no: bill.no, amount };
   });
-  pay.unapplied = Math.max(0, left);
+  // whatever settled no bill stays on their account, not lost
+  pay.unapplied = left > 0.005 ? cents(left) : 0;
   touch(d, pay, 'Recorded', 'payments');
   return pay;
+}
+
+/**
+ * Every party's balance from one pass over the bills, kept for the book as it
+ * stands. Asking party by party walked every sale and bill each time, so a list
+ * of parties on a big book did parties × bills of work and froze the screen.
+ * The book object is replaced on every change, and the counts guard against a
+ * change made in place, so a kept answer is never stale.
+ */
+const balanceCache = new WeakMap<object, { key: string; map: Map<string, number> }>();
+export function allPartyBalances(d: DB): Map<string, number> {
+  const key = d.sales.length + ':' + d.purchases.length + ':' + d.parties.length + ':' + d.payments.length + ':' + (d.creditNotes || []).length;
+  const had = balanceCache.get(d);
+  if (had && had.key === key) return had.map;
+  const map = new Map<string, number>();
+  d.parties.forEach((p) => map.set(p.id, p.openingBalance || 0));
+  d.sales.forEach((s) => { if (s.partyId && s.status !== 'void' && map.has(s.partyId)) map.set(s.partyId, map.get(s.partyId)! + s.due); });
+  d.payments.forEach((p) => { if (p.unapplied && map.has(p.partyId)) map.set(p.partyId, map.get(p.partyId)! + (p.direction === 'in' ? -p.unapplied : p.unapplied)); });
+  (d.creditNotes || []).forEach((c) => { const h = c.onAccount ? c.total : c.held || 0; if (h && c.partyId && map.has(c.partyId)) map.set(c.partyId, map.get(c.partyId)! - h); });
+  d.purchases.forEach((x) => { if (x.partyId && x.status !== 'void' && map.has(x.partyId)) map.set(x.partyId, map.get(x.partyId)! - x.due); });
+  balanceCache.set(d, { key, map });
+  return map;
 }
 
 export function partyBalance(d: DB, id: string): number {
@@ -582,6 +665,8 @@ export function partyBalance(d: DB, id: string): number {
   let b = pt.openingBalance || 0;
   d.sales.forEach((s) => { if (s.partyId === id && s.status !== 'void') b += s.due; });
   d.purchases.forEach((x) => { if (x.partyId === id && x.status !== 'void') b -= x.due; });
+  d.payments.forEach((p) => { if (p.partyId === id && p.unapplied) b += p.direction === 'in' ? -p.unapplied : p.unapplied; });
+  (d.creditNotes || []).forEach((c) => { if (c.partyId === id) b -= c.onAccount ? c.total : c.held || 0; });
   return b;
 }
 
@@ -1638,6 +1723,8 @@ export function editSale(
   d.counters.sale -= 1;
   renumber(d, fresh.no, oldNo);
   fresh.no = oldNo; fresh.ts = oldTs;
+  // an edit keeps the number it had: real stays real, a temporary one still waits for the server
+  if (s.numberPending) fresh.numberPending = true; else delete fresh.numberPending;
   fresh.ref = o.ref || ''; fresh.note = o.note || '';
   fresh.editedFrom = s.id; fresh.editedAt = iso(when);
 
@@ -1647,6 +1734,11 @@ export function editSale(
     fresh.paid = keep; fresh.due = Math.max(0, fresh.total - keep);
   }
   d.sales = d.sales.filter((x) => x.id !== s.id);
+  const freshId = fresh.id;
+  fresh.id = s.id;
+  (d.warranties || []).forEach((w) => { if (w.saleId === freshId) w.saleId = s.id; });
+  d.queue = d.queue.filter((q: any) => !(q.kind === 'sale' && q.ref === freshId));
+  enqueue(d, 'sale', s.id);
   audit(d, 'Sale edited', oldNo + ' — now ' + Math.round(fresh.total));
   touch(d, fresh, 'Edited' + (reason ? ' — ' + reason : ''), 'sales');
   return fresh;
@@ -1671,6 +1763,7 @@ export function voidPurchase(d: DB, purchaseId: string, reason = '', when = new 
   const x = d.purchases.find((p) => p.id === purchaseId);
   if (!x || x.status === 'void') return false;
   x.status = 'void'; x.voidedAt = iso(when); x.voidReason = reason;
+  enqueue(d, 'purchase', x.id);
   const wh = d.session.warehouse || 'w1';
   x.lines.forEach((l) => move(d, l.productId, wh, -l.qty, 'void', x.no, when));
   const jl: JournalLine[] = [{ acc: 'n_inventory', cr: x.total }];
@@ -1704,6 +1797,10 @@ export function editPurchase(
   fresh.ref = o.ref || ''; fresh.note = o.note || '';
   fresh.editedFrom = x.id; fresh.editedAt = iso(when);
   d.purchases = d.purchases.filter((p) => p.id !== x.id);
+  const freshId = fresh.id;
+  fresh.id = x.id;
+  d.queue = d.queue.filter((q: any) => !(q.kind === 'purchase' && q.ref === freshId));
+  enqueue(d, 'purchase', x.id);
   audit(d, 'Purchase edited', oldNo + ' — now ' + Math.round(fresh.total));
   touch(d, fresh, 'Edited' + (reason ? ' — ' + reason : ''), 'purchases');
   return fresh;
@@ -1728,7 +1825,7 @@ export function unapplyPayment(d: DB, pay: Payment) {
   const list: { paid: number; due: number; ts: string }[] = pay.direction === 'in'
     ? d.sales.filter((s) => s.partyId === pay.partyId && s.paid > 0 && s.status !== 'void')
     : d.purchases.filter((x) => x.partyId === pay.partyId && x.paid > 0 && x.status !== 'void');
-  list.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  list.sort((a, b) => tsMs(b.ts) - tsMs(a.ts));
   list.forEach((x) => {
     if (left <= 0) return;
     const give = Math.min(left, x.paid);
@@ -1742,7 +1839,7 @@ export function applyPayment(d: DB, pay: Payment) {
   const list: { paid: number; due: number; ts: string }[] = pay.direction === 'in'
     ? d.sales.filter((s) => s.partyId === pay.partyId && s.due > 0 && s.status !== 'void')
     : d.purchases.filter((x) => x.partyId === pay.partyId && x.due > 0 && x.status !== 'void');
-  list.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  list.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   list.forEach((x) => {
     if (left <= 0) return;
     const take = Math.min(left, x.due);
@@ -1787,15 +1884,82 @@ export function editPayment(
 }
 
 /** Reference A.deletePayment, line 17745 — the balance goes back up. */
+/* Everything a document posted under its number, turned back: each ledger entry
+   by an opposite one, each stock movement by an opposite movement. */
+function reverseRef(d: DB, ref: string, label: string, when: Date) {
+  d.journal.filter((j) => j.ref === ref && !j.reversedAt).forEach((j) => {
+    journal(d, when, 'Reverse ' + j.memo + ' — ' + label, 'DEL', j.lines.map((l) => ({ acc: l.acc, ...(l.dr ? { cr: l.dr } : {}), ...(l.cr ? { dr: l.cr } : {}) })));
+    j.reversedAt = iso(when);
+  });
+  d.movements.filter((mv) => mv.ref === ref && mv.type !== 'void').forEach((mv) => move(d, mv.productId, mv.wh, -mv.qty, 'void', ref, when, mv.batchNo));
+}
+
+/** A return taken back: its stock goes out again, its money and the bill it cleared are as they were. */
+export function deleteCreditNote(d: DB, id: string, when = new Date()): boolean {
+  const cn = (d.creditNotes || []).find((x) => x.id === id);
+  if (!cn) return false;
+  reverseRef(d, cn.no, 'return deleted', when);
+  if (cn.onAccount) {
+    // held on account: leaving the list is all it takes
+  } else if (cn.partyId && !cn.saleId) {
+    const pt = d.parties.find((p) => p.id === cn.partyId);
+    if (pt) pt.openingBalance += cn.total;
+  } else if (cn.saleId && cn.appliedToSale) {
+    const s = d.sales.find((x) => x.id === cn.saleId);
+    if (s) { s.due += cn.appliedToSale; enqueue(d, 'sale', s.id); }
+  }
+  d.creditNotes = d.creditNotes.filter((x) => x.id !== id);
+  audit(d, 'Credit note deleted', cn.no + ' — ' + Math.round(cn.total));
+  return true;
+}
+
+/** An expense, money in or a transfer between accounts, undone. */
+export function deleteEntry(d: DB, id: string, when = new Date()): boolean {
+  const e = d.entries.find((x) => x.id === id);
+  if (!e) return false;
+  const memo = 'Reverse ' + e.category + ' — deleted';
+  if (e.direction === 'transfer') {
+    journal(d, when, memo, 'DEL', [{ acc: e.accountId, dr: e.amount }, { acc: e.toId || 'acc_cash', cr: e.amount }]);
+  } else if (e.direction === 'in') {
+    journal(d, when, memo, 'DEL', [{ acc: e.accountId, cr: e.amount }, { acc: e.ledgerId || 'n_income', dr: e.amount }]);
+  } else {
+    const exp = e.ledgerId || 'n_expense';
+    const s = e.offsetSaleId ? d.sales.find((x) => x.id === e.offsetSaleId) : undefined;
+    // charged to a customer's bill: the part that came off the bill goes back on it
+    const offset = s ? Math.min(e.amount, s.paid) : 0;
+    if (s && offset > 0) {
+      s.due += offset; s.paid -= offset; enqueue(d, 'sale', s.id);
+      journal(d, when, memo, 'DEL', [{ acc: 'n_ar', dr: offset }, { acc: exp, cr: offset }]);
+    }
+    const rest = e.amount - offset;
+    if (rest > 0) journal(d, when, memo, 'DEL', [{ acc: e.accountId, dr: rest }, { acc: exp, cr: rest }]);
+  }
+  d.entries = d.entries.filter((x) => x.id !== id);
+  audit(d, 'Entry deleted', e.category + ' — ' + Math.round(e.amount));
+  return true;
+}
+
+/** A journal written by hand, undone by its opposite; both leave the lists. */
+export function deleteJournal(d: DB, id: string, when = new Date()): boolean {
+  const j = d.journal.find((x) => x.id === id);
+  if (!j || j.reversedAt) return false;
+  journal(d, when, 'Reverse ' + j.memo + ' — deleted', 'DEL', j.lines.map((l) => ({ acc: l.acc, ...(l.dr ? { cr: l.dr } : {}), ...(l.cr ? { dr: l.cr } : {}) })));
+  j.reversedAt = iso(when);
+  audit(d, 'Journal deleted', (j.memo || j.ref) + ' — ' + Math.round(j.lines.reduce((s, l) => s + (l.dr || 0), 0)));
+  return true;
+}
+
 export function deletePayment(d: DB, payId: string, reason = 'Deleted', when = new Date()): boolean {
   if (!canWith(ensureRoles(d), d.session.role, 'finance.delete')) {
     throw new Refusal('Permission denied: finance.delete');
   }
   const pay = d.payments.find((x) => x.id === payId);
   if (!pay) return false;
+  // the withholding tax kept back comes out with it
+  const wht = pay.taxDeducted || 0;
   const rev: JournalLine[] = pay.direction === 'in'
-    ? [{ acc: pay.accountId, cr: pay.amount }, { acc: 'n_ar', dr: pay.amount }]
-    : [{ acc: 'n_ap', cr: pay.amount }, { acc: pay.accountId, dr: pay.amount }];
+    ? [{ acc: pay.accountId, cr: pay.amount }, ...(wht ? [{ acc: 'n_wht_credit', cr: wht }] : []), { acc: 'n_ar', dr: pay.amount + wht }]
+    : [{ acc: 'n_ap', cr: pay.amount + wht }, { acc: pay.accountId, dr: pay.amount }, ...(wht ? [{ acc: 'n_tax', dr: wht }] : [])];
   journal(d, when, 'Reverse ' + (pay.direction === 'in' ? 'receipt' : 'payment') + ' — deleted', 'DEL', rev);
   unapplyPayment(d, pay);
   d.payments = d.payments.filter((x) => x.id !== pay.id);

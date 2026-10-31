@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, ScrollView, Alert } from 'react-native';
+import { View, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { pickContact } from '../data/pickContact';
 import { useTheme } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -27,6 +28,7 @@ export default function PartyEditScreen({ route, navigation }: Props) {
   const [gstin, setGstin] = useState(existing?.gstin || '');
   const [type, setType] = useState<'customer' | 'supplier'>(existing?.type || 'customer');
   const [openingBalance, setOpeningBalance] = useState(String(existing?.openingBalance ?? ''));
+  const [asOf, setAsOf] = useState(existing?.openingDate ? new Date(existing.openingDate).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB'));
   const [creditLimit, setCreditLimit] = useState(String(existing?.creditLimit ?? ''));
   const [priceListId, setPriceListId] = useState<string | null>(existing?.priceListId || null);
 
@@ -39,6 +41,7 @@ export default function PartyEditScreen({ route, navigation }: Props) {
       gstin: gstin.trim(),
       type,
       openingBalance: num(openingBalance),
+      ...(num(openingBalance) ? { openingDate: ((t: string) => { const m = t.trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/); if (!m) return undefined; const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); const d = new Date(y, Number(m[2]) - 1, Number(m[1]), 12); return isNaN(d.getTime()) ? undefined : d.toISOString(); })(asOf) || existing?.openingDate || new Date().toISOString() } : {}),
       creditLimit: num(creditLimit),
       // only a customer is sold to at a price list
       priceListId: type === 'customer' ? priceListId || undefined : undefined,
@@ -118,6 +121,7 @@ export default function PartyEditScreen({ route, navigation }: Props) {
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Field label="Opening balance" value={openingBalance} onChangeText={setOpeningBalance} numeric placeholder="0" />
+            {num(openingBalance) ? <Field icon="calendar" label="Owed since" value={asOf} onChangeText={setAsOf} placeholder="dd/mm/yyyy" /> : null}
           </View>
           <View style={{ flex: 1 }}>
             <Field label="Credit limit" value={creditLimit} onChangeText={setCreditLimit} numeric placeholder="0" />

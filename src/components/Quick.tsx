@@ -4,8 +4,9 @@
  * a 2-column `.g2` of `.tile.qact` actions; the centre FAB opens the same catalogue
  * as a bottom sheet titled "What are you doing?".
  */
-import React, { useMemo, useState } from 'react';
-import { View, Text } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, Animated, ScrollView, Pressable as RNPressable } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -107,18 +108,57 @@ const SECTION: Record<string, string> = {
   Sell: 'Sale transactions', Money: 'Money', Stock: 'Stock & purchases', People: 'People', Day: 'Day & reports',
 };
 
+/* Each group keeps one colour through the sheet — its chip, its icons, its tiles —
+   so the eye finds Money or Stock by colour before reading a word. */
+const HUE: Record<QuickTone, string> = {
+  accent: '#2563EB', good: '#0E9F6E', warnc: '#D97706', rail: '#7C3AED', danger: '#DB2777',
+};
+const soft = (hex: string, a = '1F') => hex + a;
+
+/** What this phone added most recently, first — kept between visits. */
+const RECENT_KEY = 'quick.recent';
+let recentMem: string[] = [];
+
+/** A tile that gives under the finger and springs back. */
+function Pop({ onPress, style, children, label }: { onPress: () => void; style: any; children: React.ReactNode; label: string }) {
+  const s = useRef(new Animated.Value(1)).current;
+  const to = (v: number) => Animated.spring(s, { toValue: v, useNativeDriver: true, speed: 40, bounciness: v === 1 ? 10 : 0 }).start();
+  return (
+    <RNPressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} onPressIn={() => to(0.94)} onPressOut={() => to(1)} style={{ width: style?.width }}>
+      <Animated.View style={[style, { width: '100%', transform: [{ scale: s }] }]}>{children}</Animated.View>
+    </RNPressable>
+  );
+}
+
 export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { colors } = useTheme();
   const go = useGo();
   const groups = useVisibleQuick();
-  const tone = useToneColor();
   const [q, setQ] = useState('');
-  const [open, setOpen] = useState<string>('');
+  /** The group chip picked; '' shows everything. */
+  const [only, setOnly] = useState('');
+  const [recent, setRecent] = useState<string[]>(recentMem);
 
-  const pick = (route: string, params?: Record<string, unknown>) => {
+  useEffect(() => {
+    if (!visible) return;
+    AsyncStorage.getItem(RECENT_KEY).then((v) => { try { const r = JSON.parse(v || '[]'); recentMem = r; setRecent(r); } catch { /* none kept */ } }).catch(() => {});
+  }, [visible]);
+
+  // the sheet rises with its tiles following a moment behind
+  const rise = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!visible) { rise.setValue(0); return; }
+    Animated.timing(rise, { toValue: 1, duration: 260, delay: 60, useNativeDriver: true }).start();
+  }, [visible, rise]);
+
+  const pick = (name: string, route: string, params?: Record<string, unknown>) => {
+    const next = [name, ...recent.filter((x) => x !== name)].slice(0, 4);
+    recentMem = next;
+    setRecent(next);
+    AsyncStorage.setItem(RECENT_KEY, JSON.stringify(next)).catch(() => {});
     onClose();
     setQ('');
-    setOpen('');
+    setOnly('');
     setTimeout(() => go(route, params), 120);
   };
 
@@ -131,101 +171,124 @@ export function QuickSheet({ visible, onClose }: { visible: boolean; onClose: ()
   const hits = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return [];
-    return all.filter(({ g, it }) => (it.n + ' ' + g.g).toLowerCase().includes(needle));
+    return all.filter(({ g, it }) => (it.n + ' ' + g.g + ' ' + (SECTION[g.g] || '')).toLowerCase().includes(needle));
   }, [all, q]);
 
-  /**
-   * What a shop does all day. Shown first so the common case is one tap, not
-   * one tap after a scroll past everything it is not.
-   */
+  /** What a shop does all day: shown first, largest, so the common case is one tap. */
   const { db } = useAppData();
   const COMMON = COMMON_FOR[editionOf(db)];
   const common = useMemo(
     () => COMMON.map((n) => all.find((x) => x.it.n === n)).filter(Boolean) as typeof all,
     [all, COMMON],
   );
+  const lately = recent.map((n) => all.find((x) => x.it.n === n)).filter(Boolean) as typeof all;
+
+  const fade = (i: number) => ({
+    opacity: rise,
+    transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [10 + i * 4, 0] }) }],
+  });
+
+  const big = ({ g, it }: (typeof all)[number], i: number) => {
+    const hue = HUE[g.tone];
+    return (
+      <Animated.View key={it.n} style={[{ width: '48.5%' }, fade(i)]}>
+        <Pop label={it.n} onPress={() => pick(it.n, it.route, it.params)} style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 4,
+          backgroundColor: soft(hue, '14'), borderWidth: 1, borderColor: soft(hue, '40'),
+        }}>
+          <View style={{ width: 38, height: 38, borderRadius: 4, backgroundColor: hue, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name={it.i} size={20} color="#fff" />
+          </View>
+          <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, lineHeight: 17, color: colors.ink }}>{it.n}</Text>
+        </Pop>
+      </Animated.View>
+    );
+  };
+
+  const shown = groups.filter((g) => !only || g.g === only);
 
   return (
-    <Sheet visible={visible} title="Quick add" onClose={onClose} full>
-      <Search value={q} onChange={setQ} placeholder="Search everything you can add" />
+    <Sheet visible={visible} title="Quick add" subtitle="What are you recording?" onClose={onClose} full>
+      <Search value={q} onChange={setQ} placeholder="Search: sale, expense, customer…" />
+
+      {/* the groups as coloured chips: a tap narrows the sheet to that group */}
+      {!q.trim() ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12, marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
+          {[{ g: '', i: 'grid' as any, tone: 'accent' as QuickTone }, ...groups].map((g) => {
+            const on = only === g.g;
+            const hue = g.g ? HUE[g.tone] : colors.ink;
+            return (
+              <RNPressable key={g.g || 'all'} onPress={() => setOnly(on ? '' : g.g)} style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999,
+                backgroundColor: on ? hue : soft(g.g ? hue : '#64748B', '14'), borderWidth: 1, borderColor: on ? hue : 'transparent',
+              }}>
+                {g.g ? <Icon name={g.i} size={14} color={on ? '#fff' : hue} /> : null}
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: on ? (g.g ? '#fff' : colors.bg) : colors.ink }}>{g.g ? SECTION[g.g] || g.g : 'Everything'}</Text>
+              </RNPressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
 
       {q.trim() ? (
         <View style={{ marginTop: 14 }}>
-          {hits.length ? hits.map(({ g, it }) => {
-            const [fg] = tone(g.tone);
-            return (
-              <ListRow
-                key={g.g + it.n}
-                icon={it.i}
-                title={it.n}
-                subtitle={g.g}
-                onPress={() => pick(it.route, it.params)}
-              />
-            );
-          }) : (
-            <EmptyBlock
-              icon="dots"
-              title={'Nothing matches "' + q.trim() + '"'}
-              hint="Try the name of the thing itself — a sale, an expense, a customer."
-            />
+          {hits.length ? hits.map(({ g, it }) => (
+            <ListRow key={g.g + it.n} icon={it.i} title={it.n} subtitle={SECTION[g.g] || g.g} onPress={() => pick(it.n, it.route, it.params)} />
+          )) : (
+            <EmptyBlock icon="dots" title={'Nothing matches "' + q.trim() + '"'} hint="Try the name of the thing itself — a sale, an expense, a customer." />
           )}
         </View>
       ) : (
         <>
-          {/* the jobs done all day, first and largest */}
-          {common.length ? (
-            <View style={{ paddingTop: 16, paddingBottom: 10 }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 16, color: colors.ink, marginBottom: 10 }}>Most used</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                {common.map(({ it }) => (
-                  <Pressable
-                    key={it.n}
-                    onPress={() => pick(it.route, it.params)}
-                    style={({ pressed }) => ({
-                      width: '31.5%', alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 6, borderRadius: 4,
-                      backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line,
-                    })}
-                  >
-                    <Icon name={it.i} size={28} color={colors.ink} />
-                    <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 13, lineHeight: 17, color: colors.ink, textAlign: 'center' }}>
-                      {it.n}
-                    </Text>
-                  </Pressable>
+          {!only && lately.length ? (
+            <View style={{ paddingTop: 16 }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 11.5, letterSpacing: 0.6, color: colors.faint, marginBottom: 8 }}>LAST USED</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {lately.map(({ g, it }) => (
+                  <RNPressable key={it.n} onPress={() => pick(it.n, it.route, it.params)} style={({ pressed }) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 4,
+                    backgroundColor: pressed ? colors.sunk : colors.surface, borderWidth: 1, borderColor: colors.line,
+                  })}>
+                    <Icon name={it.i} size={15} color={HUE[g.tone]} />
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.ink }}>{it.n}</Text>
+                  </RNPressable>
                 ))}
               </View>
             </View>
           ) : null}
 
-          {/* everything else, by group, without repeating the above */}
-          {groups.map((g) => {
-            const rest = g.items.filter((it) => !COMMON.includes(it.n));
+          {!only && common.length ? (
+            <View style={{ paddingTop: 16, paddingBottom: 6 }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 11.5, letterSpacing: 0.6, color: colors.faint, marginBottom: 8 }}>MOST USED</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 }}>
+                {common.map(big)}
+              </View>
+            </View>
+          ) : null}
+
+          {shown.map((g, gi) => {
+            const rest = only ? g.items : g.items.filter((it) => !COMMON.includes(it.n));
             if (!rest.length) return null;
+            const hue = HUE[g.tone];
             return (
-              <View
-                key={g.g}
-                style={{ paddingTop: 14, paddingBottom: 4, marginHorizontal: -16, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: colors.line }}
-              >
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.faint, marginBottom: 8 }}>{SECTION[g.g] || g.g}</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              <Animated.View key={g.g} style={[{ paddingTop: 16 }, fade(gi + 2)]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <View style={{ width: 4, height: 14, borderRadius: 2, backgroundColor: hue }} />
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 11.5, letterSpacing: 0.6, color: colors.faint }}>{(SECTION[g.g] || g.g).toUpperCase()}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', rowGap: 8 }}>
                   {rest.map((it) => (
-                    <Pressable
-                      key={it.n}
-                      onPress={() => pick(it.route, it.params)}
-                      style={({ pressed }) => ({
-                        width: '25%', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 3, borderRadius: 4,
-                        backgroundColor: pressed ? colors.sunk : 'transparent',
-                      })}
-                    >
-                      <View style={{ width: 46, height: 46, borderRadius: 4, backgroundColor: colors.sunk, alignItems: 'center', justifyContent: 'center' }}>
-                        <Icon name={it.i} size={21} color={colors.ink} />
+                    <Pop key={it.n} label={it.n} onPress={() => pick(it.n, it.route, it.params)} style={{ width: '25%', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 3 }}>
+                      <View style={{ width: 48, height: 48, borderRadius: 4, backgroundColor: soft(hue), alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon name={it.i} size={22} color={hue} />
                       </View>
-                      <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, lineHeight: 15, color: colors.soft, textAlign: 'center', marginTop: 6 }}>
+                      <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 11.5, lineHeight: 14, color: colors.ink, textAlign: 'center', marginTop: 6 }}>
                         {it.n}
                       </Text>
-                    </Pressable>
+                    </Pop>
                   ))}
                 </View>
-              </View>
+              </Animated.View>
             );
           })}
         </>

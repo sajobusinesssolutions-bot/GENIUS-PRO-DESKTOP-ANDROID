@@ -4,8 +4,45 @@ export function plural(n: number, one: string, many?: string): string {
   return n + ' ' + (n === 1 ? one : many || one + 's');
 }
 
+/**
+ * A number with thousands commas, as toLocaleString('en-US') writes it. On the
+ * phone that call goes through Intl and costs about a millisecond each, and a
+ * list of a few thousand sales formats every amount on each change, which froze
+ * a busy pharmacy for seconds. `places` fixed, or with `trim` at most that many.
+ */
+export function groupNum(n: number, places = 0, trim = false): string {
+  let x = Number(n) || 0;
+  const neg = x < 0;
+  x = Math.abs(x);
+  // rounded on the written number, as Intl does: 1.005 to 1.01, not toFixed's 1.00
+  const r = Number(Math.round(Number(x + 'e' + places)) + 'e-' + places);
+  let fixed = Number.isFinite(r) ? r.toFixed(places) : x.toFixed(places);
+  if (/e/i.test(fixed)) return (neg ? -x : x).toLocaleString('en-US', { minimumFractionDigits: trim ? 0 : places, maximumFractionDigits: places });
+  let [int, dec = ''] = fixed.split('.');
+  if (trim) dec = dec.replace(/0+$/, '');
+  let out = '';
+  for (let k = int.length; k > 0; k -= 3) out = int.slice(Math.max(0, k - 3), k) + (out ? ',' + out : '');
+  const zero = !/[1-9]/.test(int + dec);
+  return (neg && !zero ? '-' : '') + out + (dec ? '.' + dec : '');
+}
+
 export function money0(n: number): string {
-  return Math.round(n || 0).toLocaleString('en-US');
+  return groupNum(Math.round(n || 0));
+}
+
+const msOf = new Map<string, number>();
+/** A timestamp as milliseconds, remembered: lists sort and filter thousands of them on every change. */
+export function tsMs(ts: string | number | Date | null | undefined): number {
+  if (typeof ts === 'number') return ts;
+  if (!ts) return NaN;
+  if (ts instanceof Date) return ts.getTime();
+  let v = msOf.get(ts);
+  if (v === undefined) {
+    if (msOf.size > 200000) msOf.clear();
+    v = new Date(ts).getTime();
+    msOf.set(ts, v);
+  }
+  return v;
 }
 
 export function startOfDay(d?: Date | number): number {
@@ -24,11 +61,11 @@ export function daysAgo(n: number): number {
   return d.getTime();
 }
 export function inRange(ts: string | number, from: number, to: number): boolean {
-  const t = typeof ts === 'string' ? new Date(ts).getTime() : ts;
+  const t = tsMs(ts);
   return t >= from && t <= to;
 }
 export function ageOfDays(ts: string): number {
-  return Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+  return Math.floor((Date.now() - tsMs(ts)) / 86400000);
 }
 
 export type Range = { from: number; to: number; label: string };
@@ -85,7 +122,7 @@ export function avatarFor(name: string, id?: string): { initials: string; color:
 }
 
 /** reference `fmtDate()` */
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function pad(n: number) { return n < 10 ? '0' + n : String(n); }
 export function fmtDate(ts: string | number): string {
   const d = new Date(ts); const n = new Date();
@@ -98,4 +135,19 @@ export function fmtDate(ts: string | number): string {
 export function fmtDay(ts: string | number): string {
   const d = new Date(ts);
   return d.getDate() + ' ' + MON[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+const two = (n: number) => (n < 10 ? '0' : '') + n;
+/** '05 Oct · 09:41' without Intl, which is slow on the phone and runs for every row of a list. */
+export function dayTime(ts: string | number): string {
+  const d = new Date(tsMs(ts));
+  if (Number.isNaN(d.getTime())) return '';
+  return two(d.getDate()) + ' ' + MON[d.getMonth()] + ' · ' + two(d.getHours()) + ':' + two(d.getMinutes());
+}
+/** '05 Oct, 25 • 09:41 AM', as the document lists show it. */
+export function stampOf(ts: string | number): string {
+  const d = new Date(tsMs(ts));
+  if (Number.isNaN(d.getTime())) return '';
+  const h = d.getHours() % 12 || 12;
+  return two(d.getDate()) + ' ' + MON[d.getMonth()] + ', ' + two(d.getFullYear() % 100) + ' • ' + two(h) + ':' + two(d.getMinutes()) + ' ' + (d.getHours() < 12 ? 'AM' : 'PM');
 }

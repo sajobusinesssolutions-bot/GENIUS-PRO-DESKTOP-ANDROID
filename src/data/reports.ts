@@ -7,7 +7,7 @@
  * one renderer (ReportDetailScreen) and one exporter set can serve all of them.
  */
 import { DB, Sale, SaleLine, Product, Offer, CreditNoteLine, Shift } from './types';
-import { money0, fmtDay, startOfDay, endOfDay, daysAgo } from './helpers';
+import { money0, fmtDay, startOfDay, endOfDay, daysAgo, tsMs } from './helpers';
 import { shiftTotals, stockOfImpl, partyBalance, shiftSales as logicShiftSales } from './logic';
 import { isRestaurant } from './restaurant';
 import { restaurantReports, byMenuOf } from './reportsRestaurant';
@@ -163,7 +163,7 @@ export const RESTAURANT_REPORTS = new Set(['rest-menu-mix', 'rest-sections', 're
   'rest-hours', 'rest-servers', 'rest-tables', 'rest-stations', 'rest-cancelled', 'rest-sold-out', 'rest-day-week']);
 
 /** The five the prototype pinned above the list — reference SCREENS.reports.body, 5359. */
-export const FAVOURITE_REPORTS = ['day-close', 'sale-summary', 'ar-aging-summary', 'reorder-list', 'pnl'];
+export const FAVOURITE_REPORTS = ['day-close', 'invoice-list', 'ar-aging-summary', 'reorder-list', 'pnl'];
 
 /*
  * REPORTS THAT ARE ONE REPORT.
@@ -184,7 +184,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
   { key: 'end-of-day', name: 'End of day', sub: 'Today so far, closing the day, and past closes', views: [
     { id: 'day-close', label: 'Close the day (Z)' }, { id: 'x-report', label: 'So far today (X)' }, { id: 'zreport-summary', label: 'Past closes' }] },
   { key: 'sales-register', name: 'Sales register', sub: 'Every bill: summary, by day, list and settlement', views: [
-    { id: 'sale-summary', label: 'Summary' }, { id: 'daily-sales', label: 'By day' }, { id: 'invoice-list', label: 'Bill list' }, { id: 'invoice-details', label: 'Settlement' }] },
+    { id: 'invoice-list', label: 'Bill list' }, { id: 'daily-sales', label: 'By day' }, { id: 'invoice-details', label: 'Settlement' }] },
   { key: 'sales-items', name: 'Sales by item & category', sub: 'What sold, by item, category or sale', views: [
     { id: 'item-sales', label: 'Items' }, { id: 'sales-by-category', label: 'Categories' }, { id: 'sale-summary-by-category-item', label: 'Category & item' }, { id: 'sales-by-items', label: 'Per sale' }] },
   { key: 'staff', name: 'Staff sales', sub: 'Each cashier: totals, profit, hours and shifts', views: [
@@ -215,7 +215,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
  * Reports left out of the list because another shows the same thing: the
  * expiry list is the batch balances in another order.
  */
-const HIDDEN = new Set(['expiry']);
+const HIDDEN = new Set(['expiry', 'sale-summary']);
 
 const GROUP_OF = new Map<string, ReportGroup>();
 REPORT_GROUPS.forEach((g) => g.views.forEach((v) => GROUP_OF.set(v.id, g)));
@@ -260,7 +260,7 @@ export interface ReportCol { h: string; r?: boolean; key?: string }
 export interface ReportStat { k: string; v: string; tone?: 'g' | 'w' | 'd' | 'a' }
 
 /** What a tapped row opens. */
-export type RowRefKind = 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month' | 'ledger' | 'party' | 'voucher' | 'vouchertype';
+export type RowRefKind = 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month' | 'ledger' | 'party' | 'voucher' | 'vouchertype' | 'estimate' | 'user';
 
 /** How a row of a statement is drawn: a section heading, an ordinary line, a subtotal, or the bottom line. */
 export type RowKind = 'head' | 'line' | 'sub' | 'total';
@@ -382,7 +382,7 @@ function inventoryMetricSnapshot(
   const all = db.movements
     .filter((m) => m.productId === product.id)
     .slice()
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   const periodTo = to || Date.now();
   const periodFrom = from || (all[0] ? startOfDay(new Date(all[0].ts)) : periodTo);
   const historicalOpening = stockOf(product) - all.reduce((sum, m) => sum + m.qty, 0);
@@ -487,7 +487,7 @@ export function inventoryMetricDrill(
   if (!product) return empty(metricLabel(metric), [{ h: 'Item' }], 'This item is no longer in stock records.');
   const firstMovement = db.movements
     .filter((m) => m.productId === productId)
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())[0];
+    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts))[0];
   const baseFrom = from || (firstMovement ? startOfDay(new Date(firstMovement.ts)) : (to || Date.now()));
   const baseTo = to || Date.now();
   const sample = metric === 'aamc' ? aamcSample(baseFrom, baseTo)
@@ -569,7 +569,7 @@ export function stockMovementDrill(
   const items = db.movements
     .filter((m) => m.productId === productId && within(m.ts, from, to))
     .slice()
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
 
   if (!monthKey) {
     const monthMap: Record<string, typeof items> = {};
@@ -611,7 +611,7 @@ export function stockMovementDrill(
   const monthItems = db.movements
     .filter((m) => m.productId === productId && monthKeyFor(m.ts) === monthKey)
     .slice()
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
 
   const earlierQty = db.movements
     .filter((m) => m.productId === productId && new Date(m.ts).getTime() < new Date(monthKey + '-01T00:00:00').getTime())
@@ -907,7 +907,7 @@ function partyLedgerRows(db: DB, id: string): LedgerRow[] {
       });
     }
   });
-  rows.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  rows.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   let run = 0;
   rows.forEach((r) => { run += r.debit - r.credit; r.balance = run; });
   return rows;
@@ -1094,7 +1094,7 @@ RPT['daybook'] = (db, from, to) => {
     });
   });
 
-  txns.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  txns.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   const rows: Cell[][] = txns.map((t) => txRow(t.ts, t.type, t.no, t.particulars, [m(t.debit), m(t.credit)]));
 
   return {
@@ -1180,11 +1180,13 @@ RPT['sales-by-category'] = (db, from, to) => {
 /* --- Sales by customer — reference RPT['sales-by-customer'], 3527 --- */
 RPT['sales-by-customer'] = (db, from, to) => {
   const groups = groupRows(salesBetween(db, from, to), (s) => s.partyId || 'walkin',
-    (s) => ({ n: partyName(db, s.partyId), c: 0, v: 0, d: 0 }),
+    (s) => ({ k: s.partyId || '', n: partyName(db, s.partyId), c: 0, v: 0, d: 0 }),
     (g, s) => { g.c++; g.v += s.total; g.d += s.due; })
     .sort((a, b) => b.v - a.v);
   return {
     title: 'Sales by customer',
+    // each customer opens their statement; in an export, "Item details" lists what they bought
+    rowRefs: groups.map((g) => (g.k ? { kind: 'party' as const, id: g.k } : null)),
     cols: [{ h: 'Customer' }, { h: 'Sales', r: true }, { h: 'Value', r: true }, { h: 'Unpaid', r: true }],
     rows: groups.map((g) => [g.n, g.c, m(g.v), dash(g.d)]),
     foot: ['Total', groups.reduce((a, g) => a + g.c, 0),
@@ -1195,16 +1197,18 @@ RPT['sales-by-customer'] = (db, from, to) => {
 /* --- Sales by cashier — reference RPT['sales-by-user'], 3537 --- */
 RPT['sales-by-user'] = (db, from, to) => {
   const groups = groupRows(salesBetween(db, from, to), (s) => s.userId,
-    (s) => ({ n: userName(db, s.userId), c: 0, v: 0 }),
+    (s) => ({ k: s.userId || '', n: userName(db, s.userId), c: 0, v: 0 }),
     (g, s) => { g.c++; g.v += s.total; })
     .sort((a, b) => b.v - a.v);
   const bills = groups.reduce((a, g) => a + g.c, 0);
+  const userRefs = groups.map((g) => (g.k ? { kind: 'user' as const, id: g.k } : null));
   const value = groups.reduce((a, g) => a + g.v, 0);
   return {
     title: 'Sales by cashier',
     cols: [{ h: 'Cashier' }, { h: 'Sales', r: true }, { h: 'Value', r: true }, { h: 'Average', r: true }],
     rows: groups.map((g) => [g.n, g.c, m(g.v), m(g.c ? g.v / g.c : 0)]),
     foot: ['Total', bills, m(value), m(bills ? value / bills : 0)],
+    rowRefs: userRefs,
   };
 };
 
@@ -1534,7 +1538,7 @@ RPT['purchase-by-supplier'] = (db, from, to) => {
 /* --- Unpaid purchases — reference 3738; ignores the range, like the prototype --- */
 RPT['unpaid-purchases'] = (db) => {
   const ps = db.purchases.filter((x) => x.due > 0)
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   const rows: Cell[][] = ps.map((x) => {
     const a = ageOf(x.ts);
     return [x.no, supplierName(db, x.partyId), { text: a + 'd', n: a }, mTone(x.due, a > 30 ? 'danger' : 'warn')];
@@ -1591,6 +1595,7 @@ RPT['cash-flow'] = (db, from, to) => {
     cols: [{ h: 'Account' }, { h: 'In', r: true }, { h: 'Out', r: true }, { h: 'Net', r: true }, { h: 'Balance', r: true }],
     rows,
     foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4))],
+    rowRefs: db.accounts.map((a) => ({ kind: 'ledger' as const, id: a.id })),
   };
 };
 
@@ -1668,7 +1673,7 @@ RPT['drawer-entries'] = (db, from, to) => {
 /* --- Unpaid sales — reference 3811; ignores the range, like the prototype --- */
 RPT['unpaid-sales'] = (db) => {
   const ss = db.sales.filter((s) => s.due > 0 && s.status !== 'void')
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   const rows: Cell[][] = ss.map((s) => {
     const a = ageOf(s.ts);
     return [s.no, partyName(db, s.partyId), { text: a + 'd', n: a }, mTone(s.due, a > 30 ? 'danger' : 'warn')];
@@ -1704,7 +1709,7 @@ RPT['expenses-by-category'] = (db, from, to) => {
 /** Reference arRows(), 3829 — every open bill, oldest first. */
 function arRows(db: DB): Sale[] {
   return db.sales.filter((s) => s.due > 0 && s.status !== 'void')
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
 }
 
 function emptyBuckets(): Record<Bucket, number> {
@@ -1765,8 +1770,14 @@ function bucketSummary(
   };
 }
 
-RPT['ar-aging-summary'] = (db) =>
-  agingSummary(db, arRows(db), (x) => partyName(db, (x as Sale).partyId), 'AR ageing summary', 'Customer');
+RPT['ar-aging-summary'] = (db) => withPartyRefs(db,
+  agingSummary(db, arRows(db), (x) => partyName(db, (x as Sale).partyId), 'AR ageing summary', 'Customer'));
+
+/** A list of parties by name: each row opens that party's statement. */
+function withPartyRefs(db: DB, r: ReportResult): ReportResult {
+  const byName = new Map(db.parties.map((p) => [p.name, p.id]));
+  return { ...r, rowRefs: r.rows.map((row) => { const id = byName.get(String(typeof row[0] === 'object' ? (row[0] as any).text : row[0])); return id ? { kind: 'party' as const, id } : null; }) };
+}
 
 /* --- AR ageing details — reference 3846 --- */
 RPT['ar-aging-details'] = (db) => {
@@ -1814,6 +1825,7 @@ RPT['quote-details'] = (db, from, to) => {
     title: 'Quote details',
     cols: [{ h: 'Quote' }, { h: 'Customer' }, { h: 'Raised' }, { h: 'Value', r: true }, { h: 'Status' }],
     rows,
+    rowRefs: qs.map((e) => ({ kind: 'estimate' as const, id: e.id })),
     foot: ['Total', '', '', m(sumCol(rows, 3)), qs.filter((e) => e.status === 'open').length + ' open'],
   };
 };
@@ -1831,12 +1843,12 @@ RPT['customer-balance-summary'] = (db) => {
     })
     .filter((x) => x.inv > 0)
     .map((x) => [x.p.name, m(x.inv), m(x.paid), dash(partyBalance(db, x.p.id))]);
-  return {
+  return withPartyRefs(db, {
     title: 'Customer balance summary',
     cols: [{ h: 'Customer' }, { h: 'Invoiced', r: true }, { h: 'Paid', r: true }, { h: 'Owing', r: true }],
     rows,
     foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3))],
-  };
+  });
 };
 
 RPT['receivable-summary'] = (db, _f, _t, money) =>
@@ -1855,7 +1867,7 @@ RPT['receivable-details'] = (db, from, to, money) => ({
 /** Reference apRows(), 3891. */
 function apRows(db: DB) {
   return db.purchases.filter((x) => x.due > 0)
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
 }
 
 RPT['ap-aging-summary'] = (db) => {
@@ -1966,7 +1978,7 @@ RPT['batch-movement'] = (db, from, to) => {
   const all = db.movements
     .filter((m) => m.batchNo && tracked.has(m.productId))
     .slice()
-    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
 
   const withBalance = all.map((m) => {
     const key = m.productId + '·' + m.batchNo;
@@ -2709,7 +2721,7 @@ function inventoryMetricReport(db: DB, from: number, to: number, metric: Invento
         : { from, to };
     const s = inventoryMetricSnapshot(db, p, sample.from, sample.to);
     const firstMovement = db.movements.filter((m) => m.productId === p.id)
-      .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())[0];
+      .sort((a, b) => tsMs(a.ts) - tsMs(b.ts))[0];
     const metricFrom = sample.from || (firstMovement ? startOfDay(new Date(firstMovement.ts)) : (to || Date.now()));
     const value = metricValue(metric, s, metricFrom, sample.to || Date.now());
     rows.push([
@@ -2851,7 +2863,7 @@ export function ledgerDrill(db: DB, accId: string, from: number, to: number): Re
       else if (at <= to) lines.push({ ts: e.ts, ref: e.ref || '', memo: e.memo || '', dr: l.dr || 0, cr: l.cr || 0 });
     });
   });
-  lines.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  lines.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   const bal = (n: number): CellObj => ({ text: Math.abs(n) < 0.005 ? '0' : money0(Math.abs(n)) + (n > 0 ? ' Dr' : ' Cr'), n, tone: Math.abs(n) < 0.005 ? 'muted' : undefined });
   const day = (ts: number) => new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
   let run = opening;
@@ -2979,7 +2991,7 @@ export function voucherTypeOf(db: DB, e: { ref?: string; memo?: string }): strin
 export function voucherTypeDrill(db: DB, type: string, from: number, to: number): ReportResult {
   const list = db.journal
     .filter((e) => within(e.ts, from, to) && voucherTypeOf(db, e) === type)
-    .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+    .sort((a, b) => tsMs(b.ts) - tsMs(a.ts));
   const rows: Cell[][] = list.map((e) => {
     const dr = e.lines.reduce((a, l) => a + (l.dr || 0), 0);
     return [shortDay(e.ts), e.ref || '—', e.memo || '—', m(dr)];
@@ -3004,58 +3016,96 @@ export const DETAIL_VIEW: Record<string, string> = {
   'trial-balance': 'trial-balance-detail',
   'balance-sheet': 'balance-sheet-detail',
   'general-ledger': 'general-ledger-detail',
+  'pnl': 'pnl-detail',
 };
 
-function detailedLedgers(db: DB, from: number, to: number, title: string, types: AccType[]): ReportResult {
+/* Tally's groups, worked out from each ledger, in the order Tally lists them. */
+const TALLY_GROUPS: Array<[string, AccType]> = [
+  ['Capital Account', 'equity'], ['Current Liabilities', 'liability'], ['Duties & Taxes', 'liability'], ['Sundry Creditors', 'liability'],
+  ['Fixed Assets', 'asset'], ['Current Assets', 'asset'], ['Stock-in-Hand', 'asset'], ['Sundry Debtors', 'asset'], ['Bank Accounts', 'asset'], ['Cash-in-Hand', 'asset'],
+  ['Sales Accounts', 'income'], ['Indirect Incomes', 'income'], ['Purchase & Direct Expenses', 'expense'], ['Indirect Expenses', 'expense'],
+];
+function tallyGroupOf(db: DB, id: string): string {
+  const t = accType(db, id);
+  const acct = (db.accounts || []).find((x) => x.id === id);
+  if (id === 'acc_cash' || acct?.type === 'cash') return 'Cash-in-Hand';
+  if (acct) return 'Bank Accounts';
+  if (id === 'n_ar') return 'Sundry Debtors';
+  if (id === 'n_ap') return 'Sundry Creditors';
+  if (id === 'n_inventory') return 'Stock-in-Hand';
+  if (id === 'n_tax' || id === 'n_wht_credit') return t === 'asset' ? 'Current Assets' : 'Duties & Taxes';
+  if (t === 'equity') return 'Capital Account';
+  if (t === 'liability') return 'Current Liabilities';
+  if (t === 'asset') return /fixed|equipment|furniture|vehicle|building|machine/i.test(accName(db, id)) ? 'Fixed Assets' : 'Current Assets';
+  if (t === 'income') return id === 'n_sales' || id === 'n_discount' || id === 'n_loyalty' ? 'Sales Accounts' : 'Indirect Incomes';
+  return id === 'n_cogs' || id === 'n_transitloss' ? 'Purchase & Direct Expenses' : 'Indirect Expenses';
+}
+
+/**
+ * The detailed statement, as Tally lays it out: each group on its own line
+ * with its totals — opening, debit, credit, closing — and its ledgers indented
+ * under it, so the group is read first and opened into what makes it up.
+ */
+function detailedLedgers(db: DB, from: number, to: number, title: string, types: AccType[], pnl = false): ReportResult {
   const bal = (n: number): CellObj => ({ text: n ? money0(Math.abs(n)) + (n >= 0 ? ' Dr' : ' Cr') : '—', n, tone: n ? undefined : 'muted' });
-  const label: Record<AccType, string> = { asset: 'Assets', liability: 'Liabilities', equity: 'Equity', income: 'Income', expense: 'Expenses' };
   const ids = orderedLedgerIds(db);
+  // every ledger's figures in one pass over the journal
+  const fig = new Map<string, { o: number; d: number; c: number }>();
+  db.journal.forEach((e) => {
+    const at = new Date(e.ts).getTime();
+    if (at > to) return;
+    e.lines.forEach((l) => {
+      const f = fig.get(l.acc) || { o: 0, d: 0, c: 0 };
+      if (at < from) f.o += (l.dr || 0) - (l.cr || 0); else { f.d += l.dr || 0; f.c += l.cr || 0; }
+      fig.set(l.acc, f);
+    });
+  });
   const rows: Cell[][] = [];
   const rowRefs: (RowRef | null)[] = [];
   const total = { o: 0, d: 0, c: 0, x: 0 };
-  types.forEach((t) => {
-    const mine = ids.filter((id) => accType(db, id) === t).map((id) => {
-      let o = 0; let d = 0; let c = 0;
-      db.journal.forEach((e) => {
-        const at = new Date(e.ts).getTime();
-        e.lines.forEach((l) => {
-          if (l.acc !== id) return;
-          if (at < from) o += (l.dr || 0) - (l.cr || 0);
-          else if (at <= to) { d += l.dr || 0; c += l.cr || 0; }
-        });
-      });
-      return { id, o, d, c, x: o + d - c };
+  let income = 0, expense = 0;
+  TALLY_GROUPS.filter(([, t]) => types.includes(t)).forEach(([group, t]) => {
+    const mine = ids.filter((id) => accType(db, id) === t && tallyGroupOf(db, id) === group).map((id) => {
+      const f = fig.get(id) || { o: 0, d: 0, c: 0 };
+      // income and expenses start each period afresh: their opening is not carried into a P&L
+      const o = pnl ? 0 : f.o;
+      return { id, o, d: f.d, c: f.c, x: o + f.d - f.c };
     }).filter((r) => r.o || r.d || r.c);
     if (!mine.length) return;
-    rows.push([{ text: label[t].toUpperCase(), tone: 'accent' }, '', '', '', '']);
+    const g = mine.reduce((acc, r) => ({ o: acc.o + r.o, d: acc.d + r.d, c: acc.c + r.c, x: acc.x + r.x }), { o: 0, d: 0, c: 0, x: 0 });
+    rows.push([{ text: group, tone: 'accent' }, bal(g.o), m(g.d), m(g.c), bal(g.x)]);
     rowRefs.push(null);
-    const g = { o: 0, d: 0, c: 0, x: 0 };
     mine.forEach((r) => {
-      rows.push(['   ' + accName(db, r.id), bal(r.o), dash(r.d, 'accent'), dash(r.c, 'good'), bal(r.x)]);
+      rows.push(['    ' + accName(db, r.id), bal(r.o), dash(r.d), dash(r.c), bal(r.x)]);
       rowRefs.push({ kind: 'ledger', id: r.id });
-      g.o += r.o; g.d += r.d; g.c += r.c; g.x += r.x;
     });
-    rows.push([{ text: 'Total ' + label[t], tone: 'accent' }, bal(g.o), m(g.d), m(g.c), bal(g.x)]);
-    rowRefs.push(null);
     total.o += g.o; total.d += g.d; total.c += g.c; total.x += g.x;
+    if (t === 'income') income += -g.x; else if (t === 'expense') expense += g.x;
   });
+  if (pnl) {
+    const net = income - expense;
+    rows.push([{ text: net >= 0 ? 'Net profit' : 'Net loss', tone: net >= 0 ? 'good' : 'danger' }, '', '', '', { text: money0(Math.abs(net)), n: net, tone: net >= 0 ? 'good' : 'danger' }]);
+    rowRefs.push(null);
+  }
   return {
     title,
-    cols: [{ h: 'Group / ledger' }, { h: 'Opening', r: true }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Closing', r: true }],
+    cols: [{ h: 'Particulars' }, { h: 'Opening', r: true }, { h: 'Debit', r: true }, { h: 'Credit', r: true }, { h: 'Closing', r: true }],
     rows,
-    foot: ['Total', bal(total.o), m(total.d), m(total.c), bal(total.x)],
+    foot: ['Grand total', bal(total.o), m(total.d), m(total.c), bal(total.x)],
     rowRefs,
     searchable: true,
-    note: 'Opening is the balance before the range; debit and credit are the movement within it. Tap a ledger for its postings.',
+    note: 'Each group shows its totals, with its ledgers under it. Opening is the balance before the range; debit and credit are the movement within it. Tap a ledger for its postings.',
   };
 }
 
 RPT['trial-balance-detail'] = (db, from, to) =>
-  detailedLedgers(db, from, to, 'Trial balance · detailed', ['asset', 'equity', 'liability', 'income', 'expense']);
+  detailedLedgers(db, from, to, 'Trial balance · detailed', ['equity', 'liability', 'asset', 'income', 'expense']);
 RPT['balance-sheet-detail'] = (db, from, to) =>
-  detailedLedgers(db, from, to, 'Balance sheet · detailed', ['asset', 'liability', 'equity']);
+  detailedLedgers(db, from, to, 'Balance sheet · detailed', ['equity', 'liability', 'asset']);
 RPT['general-ledger-detail'] = (db, from, to) =>
-  detailedLedgers(db, from, to, 'General ledger · detailed', ['asset', 'equity', 'liability', 'income', 'expense']);
+  detailedLedgers(db, from, to, 'General ledger · detailed', ['equity', 'liability', 'asset', 'income', 'expense']);
+RPT['pnl-detail'] = (db, from, to) =>
+  detailedLedgers(db, from, to, 'Profit & loss · detailed', ['income', 'expense'], true);
 
 /** Reports that show what was earned — behind "View profit". */
 export const PROFIT_REPORTS = new Set(['profit-margin', 'bill-profit', 'user-profit', 'sales-by-items', 'pnl']);

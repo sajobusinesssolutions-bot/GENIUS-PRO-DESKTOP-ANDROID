@@ -22,8 +22,9 @@
  * Reference: the live definition at lines 6289-6381 (alertCount 6384, todoBlock
  * 6392), reorganised rather than ported line for line.
  */
-import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -39,7 +40,7 @@ import { useAuth } from '../data/AuthContext';
 import { QuickSheet } from '../components/Quick';
 import { useDueReminders, ReminderRow, RemindSheet } from '../components/Reminders';
 import { FAB, useHideOnScroll, FAB_COLORS } from '../components/ui';
-import { access, accessDaysLeft } from '../data/logic';
+import { access, accessDaysLeft, queueStuck } from '../data/logic';
 import { isRestaurant, words } from '../data/restaurant';
 import { editionOf } from '../data/editions';
 import {
@@ -118,7 +119,7 @@ function MoneyTile({ label, value, icon, tone, note, onPress }: {
             {label}
           </Text>
         </View>
-        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink, letterSpacing: -0.2 }}>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, letterSpacing: -0.2 }}>
           {value}
         </Text>
         {note ? (
@@ -215,6 +216,14 @@ export default function DashboardScreen() {
   /** A day picked on the bar graph; its figures replace the period's until cleared. */
   const [dayPick, setDayPick] = useState<number | null>(null);
   const [quick, setQuick] = useState(false);
+  /* looks again every few seconds while changes are queued, so a send that stalls is shown */
+  const [nowTick, setNowTick] = useState(Date.now());
+  const queuedNow = db?.queue.length || 0;
+  useEffect(() => {
+    if (!queuedNow) return;
+    const t = setInterval(() => setNowTick(Date.now()), 5000);
+    return () => clearInterval(t);
+  }, [queuedNow]);
   const fab = useHideOnScroll();
   /** The customer a payment reminder is being written for. */
   const [remind, setRemind] = useState<string | null>(null);
@@ -355,7 +364,7 @@ export default function DashboardScreen() {
           <Pressable onPress={() => go('Licence')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 16, marginBottom: 2, padding: 14, borderRadius: 4, backgroundColor: colors.dangerSoft }}>
             <Icon name="lock" size={18} color={colors.danger} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.danger }}>{plan === 'trialOver' ? 'Your free trial has ended' : 'Your plan has run out'}</Text>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.danger }}>{plan === 'trialOver' ? 'Your free trial has ended' : 'Your plan has run out'}</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger, marginTop: 2 }}>Nothing new can be added and sync is paused.{PLAY_BUILD ? '' : ' Tap to choose a plan.'}</Text>
             </View>
             <Icon name="chev" size={17} color={colors.danger} />
@@ -371,7 +380,7 @@ export default function DashboardScreen() {
         ) : null}
         {!online ? (
           <Banner tone="w" icon="cloud" text={'Now offline — ' + plural(queued, 'change') + ' waiting to go up'} />
-        ) : queued ? (
+        ) : queued && queueStuck(db, nowTick) ? (
           <Banner tone="g" icon="cloud" text={plural(queued, 'change') + ' waiting to go up'} />
         ) : null}
         {update.state.stage === 'none' ? null : (() => {
@@ -388,7 +397,7 @@ export default function DashboardScreen() {
             <Pressable onPress={onPress} disabled={!onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 16, marginBottom: 2, padding: 14, borderRadius: 4, backgroundColor: colors.accentSoft }}>
               <Icon name="down" size={18} color={colors.accent} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.accent }}>{title}</Text>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>{title}</Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent, marginTop: 2 }}>
                   Genius Pro {s.info.versionName}{s.info.notes ? ' · ' + s.info.notes : ''}
                 </Text>
@@ -476,7 +485,7 @@ export default function DashboardScreen() {
         {can('profiles.manage') && (db.approvals || []).some((x) => x.status === 'pending') ? (
           <Pressable onPress={() => go('Approvals')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 4, backgroundColor: colors.accentSoft }}>
             <Icon name="lock" size={18} color={colors.accent} />
-            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.accent }}>{(db.approvals || []).filter((x) => x.status === 'pending').length} request(s) waiting for your approval</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.accent }}>{(db.approvals || []).filter((x) => x.status === 'pending').length} request(s) waiting for your approval</Text>
             <Icon name="chev" size={15} color={colors.accent} />
           </Pressable>
         ) : null}
@@ -491,7 +500,7 @@ export default function DashboardScreen() {
             return (
               <Pressable onPress={() => go('Order')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 4, backgroundColor: colors.warnSoft }}>
                 <Icon name="receipt" size={18} color={colors.warn} />
-                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.warn }}>{open.length} open ticket{open.length === 1 ? '' : 's'} · {money(v)} not yet paid</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.warn }}>{open.length} open ticket{open.length === 1 ? '' : 's'} · {money(v)} not yet paid</Text>
                 <Icon name="chev" size={15} color={colors.warn} />
               </Pressable>
             );
@@ -505,7 +514,7 @@ export default function DashboardScreen() {
             return (
               <Pressable onPress={() => go('Batches')} style={{ marginHorizontal: 16, marginTop: 11, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 4, backgroundColor: gone ? colors.dangerSoft : colors.warnSoft }}>
                 <Icon name="alert" size={18} color={gone ? colors.danger : colors.warn} />
-                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: gone ? colors.danger : colors.warn }}>
+                <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: gone ? colors.danger : colors.warn }}>
                   {gone ? gone + ' batch' + (gone === 1 ? '' : 'es') + ' expired · ' : ''}{lots.length - gone} expiring within 90 days
                 </Text>
                 <Icon name="chev" size={15} color={gone ? colors.danger : colors.warn} />
@@ -552,16 +561,16 @@ export default function DashboardScreen() {
                 ...(see('dashboard.view_total_expenses') ? [{ l: 'Expenses', v: -d.spent }] : []),
               ].map((x) => (
                 <View key={x.l} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft }}>{x.l}</Text>
-                  <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: x.v < 0 ? colors.soft : colors.ink }}>
+                  <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>{x.l}</Text>
+                  <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: x.v < 0 ? colors.soft : colors.ink }}>
                     {x.v < 0 ? '(' + money(-x.v) + ')' : money(x.v)}
                   </Text>
                 </View>
               ))}
               <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 2 }} />
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{see('dashboard.view_total_expenses') ? 'Net profit' : 'Gross profit'}</Text>
-                <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiBold, fontSize: 15, color: (see('dashboard.view_total_expenses') ? d.net : d.gross) >= 0 ? colors.good : colors.danger }}>{money(see('dashboard.view_total_expenses') ? d.net : d.gross)}</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{see('dashboard.view_total_expenses') ? 'Net profit' : 'Gross profit'}</Text>
+                <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiBold, fontSize: 14, color: (see('dashboard.view_total_expenses') ? d.net : d.gross) >= 0 ? colors.good : colors.danger }}>{money(see('dashboard.view_total_expenses') ? d.net : d.gross)}</Text>
               </View>
               {d.revenue ? (
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>
@@ -622,7 +631,7 @@ export default function DashboardScreen() {
                 <View key={i + ':' + t.name} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={{ width: 16, fontFamily: fonts.uiBold, fontSize: 13, color: colors.accent }}>{i + 1}</Text>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{t.name}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{t.name}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{t.qty} sold · {money(t.value)}</Text>
                   </View>
                 </View>
@@ -636,7 +645,7 @@ export default function DashboardScreen() {
           <Pressable onPress={() => go('ItemsTab')} style={{ flex: 1 }}>
             <Card style={{ borderRadius: 4, paddingHorizontal: 14, paddingVertical: 13, gap: 6, flex: 1 }}>
               <Cap>Stock</Cap>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{money(d.stockValue)}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{money(d.stockValue)}</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>at cost · {plural(d.stockedCount, 'item')}</Text>
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
                 {d.lowCount ? <Pill tone="w" label={d.lowCount + ' low'} /> : null}
@@ -657,7 +666,7 @@ export default function DashboardScreen() {
               {d.recent.length ? d.recent.map((s, i, a) => (
                 <Row key={s.id} onPress={() => go('SaleDetail', { saleId: s.id })} last={i === a.length - 1}>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>
                       {(s.partyId ? party(s.partyId)?.name : 'Walk-in') || 'Walk-in'}
                     </Text>
                     <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
@@ -666,7 +675,7 @@ export default function DashboardScreen() {
                     </Text>
                   </View>
                   <Text style={{
-                    fontFamily: fonts.uiBold, fontSize: 15,
+                    fontFamily: fonts.uiBold, fontSize: 14,
                     color: s.due > 0 ? colors.warn : colors.ink,
                   }}>
                     {money(s.total)}

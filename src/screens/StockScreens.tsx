@@ -3,13 +3,17 @@
  * Batches & expiry (reference QUICK "Stock" group, lines 5484-5494).
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, FlatList, TextInput, Alert } from 'react-native';
+import { View, Text, FlatList, TextInput, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Card, Cap, Button, Chip, SearchBar, Field, EmptyState, IconTile, Grid, Stat } from '../components/ui';
 import { Icon } from '../components/icons';
 import { fmtDay } from '../data/helpers';
+import DocEntry from '../components/DocEntry';
+import { CartLine } from '../components/LineEditor';
+import { SelectField } from '../components/form';
 
 export function StockAdjustScreen() {
   const { colors } = useTheme();
@@ -84,54 +88,50 @@ export function StockAdjustScreen() {
   );
 }
 
+/* Move between stores: the shared document layout (DocEntry), so it reads
+   like a sale — several items at once, each checked against what the store
+   it leaves from holds. */
 export function StockTransferScreen({ navigation }: any) {
-  const { colors } = useTheme();
-  const { db, stockOf, transferStock } = useAppData();
-  const [productId, setProductId] = useState(db?.products[0]?.id || '');
-  const [from, setFrom] = useState(db?.warehouses[0]?.id || '');
-  const [to, setTo] = useState(db?.warehouses[1]?.id || db?.warehouses[0]?.id || '');
-  const [qty, setQty] = useState('');
-  const [q, setQ] = useState('');
-
+  const { db, transferStock } = useAppData();
+  const stores = db?.warehouses || [];
+  const [from, setFrom] = useState(stores[0]?.id || '');
+  const [to, setTo] = useState(stores[1]?.id || stores[0]?.id || '');
+  const [lines, setLines] = useState<CartLine[]>([]);
   if (!db) return null;
-  const list = db.products.filter((p) => p.active && (p.name + ' ' + p.sku).toLowerCase().includes(q.toLowerCase())).slice(0, 25);
-  const p = db.products.find((x) => x.id === productId);
-
-  const move = () => {
-    const n = Number(qty);
-    if (!p || !n || n <= 0) { Alert.alert('Quantity', 'Pick a product and a quantity.'); return; }
-    if (from === to) { Alert.alert('Stores', 'Pick two different stores.'); return; }
-    if ((p.stock[from] || 0) < n) { Alert.alert('Stock', 'Not enough stock in the selected source store.'); return; }
-    transferStock(p.id, from, to, n, 'Warehouse transfer');
-    navigation.goBack();
-  };
-
+  const qtyOf = (l: CartLine) => l.qty * (l.unitFactor || 1);
+  const short = lines.find((l) => (db.products.find((p) => p.id === l.productId)?.stock?.[from] || 0) < qtyOf(l));
+  const blocked = stores.length < 2 ? 'Add a second store first (Settings → Stores).'
+    : from === to ? 'Pick two different stores.'
+    : short ? short.name + ': only ' + (db.products.find((p) => p.id === short.productId)?.stock?.[from] || 0) + ' in ' + (stores.find((w) => w.id === from)?.name || 'that store') + '.'
+    : undefined;
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <SearchBar value={q} onChange={setQ} placeholder="Search product" />
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <Card style={{ padding: 14 }}>
-          <Cap style={{ marginBottom: 6 }}>Product</Cap>
-          <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
-            {list.map((x) => <Chip key={x.id} label={x.name} on={x.id === productId} onPress={() => setProductId(x.id)} />)}
-          </View>
-          <Cap style={{ marginBottom: 6 }}>From</Cap>
-          <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
-            {db.warehouses.map((w) => <Chip key={w.id} label={w.name} on={w.id === from} onPress={() => setFrom(w.id)} />)}
-          </View>
-          <Cap style={{ marginBottom: 6 }}>To</Cap>
-          <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
-            {db.warehouses.map((w) => <Chip key={w.id} label={w.name} on={w.id === to} onPress={() => setTo(w.id)} />)}
-          </View>
-          <Field label="Quantity" value={qty} onChangeText={setQty} numeric decimal />
-          {p ? (
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 12 }}>
-              {p.name}: {p.stock[from] || 0} in {db.warehouses.find((w) => w.id === from)?.name}, total {stockOf(p)} {p.unit}.
-            </Text>
-          ) : null}
-          <Button variant="pri" label="Move stock" onPress={move} />
-        </Card>
-      </ScrollView>
-    </View>
+    <DocEntry
+      kind="Move between stores"
+      icon="swap"
+      tone="accent"
+      partyType="none"
+      partyId={null}
+      onPartyChange={() => undefined}
+      lines={lines}
+      onLinesChange={setLines}
+      priceOf="cost"
+      showTotals={false}
+      saveLabel="Move stock"
+      askWho="Who moved this stock?"
+      blockedReason={lines.length ? blocked : undefined}
+      onSave={() => {
+        lines.forEach((l) => transferStock(l.productId, from, to, qtyOf(l), 'Warehouse transfer'));
+        navigation.goBack();
+      }}
+    >
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <SelectField label="From" icon="box" value={from} onChange={setFrom} options={stores.map((w) => ({ v: w.id, l: w.name }))} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <SelectField label="To" icon="box" value={to} onChange={setTo} options={stores.map((w) => ({ v: w.id, l: w.name }))} />
+        </View>
+      </View>
+    </DocEntry>
   );
 }

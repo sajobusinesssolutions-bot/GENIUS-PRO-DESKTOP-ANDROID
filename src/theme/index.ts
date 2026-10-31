@@ -19,7 +19,7 @@ export const shadow = {
 };
 
 /** Minimum comfortable tap target, and the standard control heights. */
-export const control = { field: 52, button: 52, buttonSm: 40, row: 60 };
+export const control = { field: 44, button: 46, buttonSm: 36, row: 52 };
 /**
  * Google Sans across the app. It is narrower than Inter was, so long item
  * names fit on one line; body text is the regular weight, as on the reference.

@@ -8,7 +8,8 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useCan, Denied } from '../components/Gate';
-import { View, Text, ScrollView, FlatList, Platform, Alert } from 'react-native';
+import { View, Text, FlatList, Platform, Alert } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, fonts, radius } from '../theme';
@@ -163,7 +164,7 @@ function ChartOfAccountsScreenBody() {
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{l.name}</Text>
+                  <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{l.name}</Text>
                   {!l.active ? <Badge label="Off" tone="neutral" /> : null}
                 </View>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
@@ -171,7 +172,7 @@ function ChartOfAccountsScreenBody() {
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 3 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: balance < 0 ? colors.danger : colors.ink }}>
+                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: balance < 0 ? colors.danger : colors.ink }}>
                   {money(Math.abs(balance))}
                 </Text>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
@@ -370,14 +371,14 @@ function LedgerDetailScreenBody({ route, navigation }: LedgerProps) {
               <Icon name={item.dr ? 'down' : 'up'} size={19} color={item.dr ? colors.accent : colors.warn} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{item.memo}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{item.memo}</Text>
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                 {new Date(item.ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
                 {' · '} {item.ref} · {db?.sales.some((s) => s.no === item.ref) ? 'Sales' : db?.purchases.some((p) => p.no === item.ref) ? 'Purchase' : 'Journal'}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 3 }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: item.dr ? colors.accent : colors.warn }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: item.dr ? colors.accent : colors.warn }}>
                 {item.dr ? money(item.dr) : money(item.cr)}
               </Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>bal {money(item.balance)}</Text>
@@ -496,7 +497,7 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
           style={{ marginBottom: 10 }}
           right={<Icon name="down" size={16} color={colors.faint} />}
         >
-          <Text style={{ fontFamily: fonts.ui, fontSize: 15, color: colors.ink }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: colors.ink }}>
             {at.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
           </Text>
         </FieldShell>
@@ -604,12 +605,12 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
 
             <View style={{ borderRadius: 4, backgroundColor: colors.sunk, padding: 12, gap: 6 }}>
               <View style={{ flexDirection: 'row' }}>
-                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft }}>Debits · credits</Text>
-                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: colors.ink }}>{money(totalDr)} · {money(totalCr)}</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>Debits · credits</Text>
+                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: colors.ink }}>{money(totalDr)} · {money(totalCr)}</Text>
               </View>
               <View style={{ flexDirection: 'row' }}>
-                <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13.5, color: advBalanced ? colors.good : colors.danger }}>{advBalanced ? 'Balanced' : 'Out by'}</Text>
-                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13.5, color: advBalanced ? colors.good : colors.danger }}>{advBalanced ? '✓' : money(Math.abs(diff))}</Text>
+                <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13, color: advBalanced ? colors.good : colors.danger }}>{advBalanced ? 'Balanced' : 'Out by'}</Text>
+                <Text style={{ fontFamily: fonts.monoSemi, fontSize: 13, color: advBalanced ? colors.good : colors.danger }}>{advBalanced ? '✓' : money(Math.abs(diff))}</Text>
               </View>
             </View>
           </>
@@ -691,7 +692,7 @@ function TrialBalanceScreenBody() {
             }}
           >
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{r.ledger.name}</Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{r.ledger.name}</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                 {r.ledger.code} · {r.ledger.type}
               </Text>
@@ -771,14 +772,14 @@ export function ReconciliationScreen() {
       <SelectField label="Bank account" value={selected} options={bankAccounts.map((a) => ({ v: a.id, l: a.name }))} onChange={setAccountId} />
       <Field label="Statement date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
       <Panel style={{ padding: 12 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 8 }}>Add statement line</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 8 }}>Add statement line</Text>
         <Field label="Description" value={description} onChangeText={setDescription} placeholder="Bank charge or deposit" />
         <Field label="Amount" value={amount} onChangeText={setAmount} placeholder="250.00" numeric />
         <Button label="Add line" icon={<Icon name="plus" size={16} color={colors.ink} />} onPress={addLine} />
       </Panel>
       <View style={{ height: 12 }} />
       <Panel style={{ padding: 12 }}>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink, marginBottom: 8 }}>Paste CSV statement</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink, marginBottom: 8 }}>Paste CSV statement</Text>
         <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>Use Date, Description, Amount, or Debit and Credit columns.</Text>
         <Field value={csv} onChangeText={setCsv} placeholder={'Date,Description,Amount\n2026-09-20,Deposit,250'} multiline autoCapitalize="none" />
         <Button label="Import CSV rows" onPress={importCsv} />

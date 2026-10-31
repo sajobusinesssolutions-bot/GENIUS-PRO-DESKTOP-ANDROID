@@ -161,8 +161,8 @@ export default function DeletedTransactionsScreen({ navigation }: Props) {
           <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.goodSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="check" size={28} color={colors.good} />
           </View>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 16, color: colors.ink }}>{q || filter !== 'all' ? 'Nothing matches' : 'The bin is empty'}</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, color: colors.faint, textAlign: 'center' }}>
+          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{q || filter !== 'all' ? 'Nothing matches' : 'The bin is empty'}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, textAlign: 'center' }}>
             Deleted sales, purchases and payments wait here, so they can be restored.
           </Text>
         </View>
@@ -178,12 +178,12 @@ export default function DeletedTransactionsScreen({ navigation }: Props) {
                   <Icon name={k.icon} size={19} color={colors.soft} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15.5, color: colors.ink }}>{x.who}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{x.who}</Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                     {k.label} · {x.no}{x.lines ? ' · ' + x.lines + ' item' + (x.lines === 1 ? '' : 's') : ''}
                   </Text>
                 </View>
-                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16, color: colors.faint, textDecorationLine: 'line-through' }}>{money(x.amount)}</Text>
+                <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.faint, textDecorationLine: 'line-through' }}>{money(x.amount)}</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}>
                 <Icon name="clock" size={13} color={colors.danger} />

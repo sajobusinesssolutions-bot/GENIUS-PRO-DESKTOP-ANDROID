@@ -8,6 +8,7 @@
  * "Received with thanks" stamp.
  */
 import * as Print from 'expo-print';
+import { systemPrint } from './printQueue';
 import * as Sharing from 'expo-sharing';
 import { esc, numberToWords } from './invoiceLayouts';
 import { inlineImage, printPdfToCache } from './docPrint';
@@ -76,7 +77,7 @@ export async function voucherHtml(v: Voucher, money: (n: number) => string): Pro
 }
 
 export async function printVoucher(v: Voucher, money: (n: number) => string): Promise<void> {
-  await Print.printAsync({ html: await voucherHtml(v, money) });
+  await systemPrint({ html: await voucherHtml(v, money) });
 }
 
 export async function shareVoucher(v: Voucher, money: (n: number) => string): Promise<boolean> {

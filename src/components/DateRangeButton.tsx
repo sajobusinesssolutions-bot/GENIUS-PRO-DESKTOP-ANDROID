@@ -35,7 +35,7 @@ export function DateRangeButton({ value, onChange }: { value: DateRange; onChang
         })}
       >
         <Icon name="calendar" size={18} color={colors.ink} />
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14.5, color: colors.ink }}>{value.label}</Text>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{value.label}</Text>
         <Icon name="down" size={14} color={colors.faint} />
       </Pressable>
       {picking ? (

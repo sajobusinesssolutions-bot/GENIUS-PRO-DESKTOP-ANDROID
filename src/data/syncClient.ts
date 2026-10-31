@@ -292,6 +292,7 @@ const KIND_OF: Record<string, OpKind> = {
 const COLL_OF: Record<string, string> = {
   product: 'products', party: 'parties', estimate: 'estimates', ledger: 'coa', firm: 'firm', settings: 'settings',
   challan: 'challans', purchaseOrder: 'purchaseOrders', recurring: 'recurringInvoices', plan: 'instalmentPlans',
+  printcount: 'printCounts',
   user: 'users', role: 'roles', ticket: 'tickets', modifierGroup: 'modifierGroups', menuGroup: 'menuGroups', menu: 'menus', priceList: 'priceLists', kitchenOrder: 'kitchenOrders', approval: 'approvals',
 };
 
@@ -330,6 +331,8 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
     case 'firm': return d.firm?.id === ref ? d.firm : undefined;
     // the shop's rules Windows keeps too (sharedSettings.ts)
     case 'settings': return sharedSettingsDoc(d);
+    // how often a sale has been printed, so the other device prints DUPLICATE too
+    case 'printcount': { const s = d.sales.find((x) => x.id === ref); return s ? { id: s.id, count: s.printCount || 0 } : undefined; }
     default: return undefined;
   }
 }
@@ -462,3 +465,40 @@ export const transfersApi = {
   step: (access: string, business: string, id: number, step: 'claim' | 'finish' | 'release' | 'reconcile' | 'note', body: Record<string, unknown> = {}) =>
     call<{ transfer: RemoteTransfer }>('/v1/transfers/' + id + '/' + step, access, { business, ...body }),
 };
+
+/* ---------------------------------------------------------------- */
+/* Voucher numbers from the server (server/src/numbers.js)          */
+/* ---------------------------------------------------------------- */
+
+/**
+ * The next number of a series, from the server. Every device asks the same
+ * counter, so twelve tills saving together get consecutive numbers. `ref` is
+ * the voucher id: asking twice for one voucher gives the same number. Null when
+ * the server cannot be reached in time — the voucher is then saved with a
+ * temporary number and given its real one on the next sync.
+ */
+export async function nextVoucherNumber(access: string, o: { business: string; series: string; ref: string; floor: number; device?: string }, timeoutMs = 3000): Promise<number | null> {
+  if (!serverConfigured()) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(SERVER_URL.replace(/[/]$/, '') + '/v1/numbers/next', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + access, 'x-app-version': APP_VERSION },
+      body: JSON.stringify(o), signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const n = Number(j?.n);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Marks a number taken for a voucher that was then not saved, so the gap is on record. */
+export async function cancelVoucherNumber(access: string, business: string, ref: string): Promise<void> {
+  await call('/v1/numbers/cancel', access, { business, ref }).catch(() => undefined);
+}

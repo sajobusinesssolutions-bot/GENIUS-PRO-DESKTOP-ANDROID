@@ -208,7 +208,7 @@ function PriceListScreenBody() {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{p.name}</Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                     {p.sku}{p.category ? ' · ' + p.category : ''}
                   </Text>
@@ -223,7 +223,7 @@ function PriceListScreenBody() {
                 <View style={{ width: 74 }}>
                   <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 6 }}>Margin</Text>
                   <View style={{ height: 48, alignItems: 'flex-end', justifyContent: 'center' }}>
-                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: loss ? colors.danger : margin < 10 ? colors.warn : colors.good }}>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: loss ? colors.danger : margin < 10 ? colors.warn : colors.good }}>
                       {Math.round(margin)}%
                     </Text>
                   </View>
@@ -557,7 +557,7 @@ function ActivateScreenBody() {
                 {on ? <Icon name="check" size={16} color={colors.accentInk} /> : null}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{p.name}</Text>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{p.name}</Text>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                   {p.sku} · {st} {p.unit} · {money(p.price)}
                 </Text>

@@ -15,7 +15,8 @@
  * in. Nothing here invents a code or reports a sign-in that did not happen.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, Image } from 'react-native';
+import { View, Text, Alert, Image } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { Easing, Extrapolation, interpolate, interpolateColor, useAnimatedProps, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
@@ -53,7 +54,7 @@ function Hero({ title, sub }: { title: string; sub: string }) {
       <Text style={{ fontFamily: fonts.uiExtra, fontSize: 26, color: colors.ink, letterSpacing: -0.7 }}>
         {title}
       </Text>
-      <Text style={{ fontFamily: fonts.ui, fontSize: 15, lineHeight: 20.5, color: colors.soft }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 14, lineHeight: 20.5, color: colors.soft }}>
         {sub}
       </Text>
     </View>
@@ -154,7 +155,7 @@ export function AuthGateScreen({ navigation }: GateProps) {
               <Text style={{ color: '#FFFFFF', fontFamily: fonts.uiExtra, fontSize: 38, letterSpacing: -1.2, lineHeight: 43 }}>
                 Genius Pro
               </Text>
-              <Text style={{ color: 'rgba(255,255,255,0.78)', fontFamily: fonts.uiSemi, fontSize: 15, lineHeight: 20, marginTop: 7, maxWidth: 245 }}>
+              <Text style={{ color: 'rgba(255,255,255,0.78)', fontFamily: fonts.uiSemi, fontSize: 14, lineHeight: 20, marginTop: 7, maxWidth: 245 }}>
                 Your money, upgraded.
               </Text>
             </View>
@@ -330,7 +331,7 @@ export function SignInScreen({ navigation }: SignInProps) {
               <View style={{ marginTop: 14, padding: 16, borderRadius: 4, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <Icon name="user" size={18} color={colors.accent} />
-                  <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>No account uses this email</Text>
+                  <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>No account uses this email</Text>
                 </View>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 19, color: colors.soft, marginTop: 6 }}>
                   {noAccount} is not registered yet. Check the spelling, or create an account with it. It takes a minute and starts a {7}-day free trial.

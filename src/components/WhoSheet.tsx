@@ -164,7 +164,7 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
                 >
                   <Avatar name={u.name} id={u.id} size={46} />
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{u.name}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{u.name}</Text>
                     <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 3 }}>
                       {u.id === current?.id ? 'Signed in' : roleName(db, u.role)}
                     </Text>
@@ -214,7 +214,7 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
               >
                 {k === 'del'
                   ? <Icon name="back" size={22} color={colors.faint} />
-                  : <Text style={{ fontFamily: fonts.uiBold, fontSize: 20, color: colors.ink }}>{k}</Text>}
+                  : <Text style={{ fontFamily: fonts.uiBold, fontSize: 18, color: colors.ink }}>{k}</Text>}
               </Pressable>
             ))}
           </View>

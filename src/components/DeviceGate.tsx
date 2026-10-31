@@ -16,7 +16,8 @@
  * the server ("removed", "too many", "sign in again") does.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, View, Text, ScrollView, Alert, AppState, ActivityIndicator, Platform } from 'react-native';
+import { Modal, View, Text, Alert, AppState, ActivityIndicator, Platform } from 'react-native';
+import ScrollView from './KeyScroll';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pressable } from './Press';
 import { Button } from './ui';
@@ -176,10 +177,10 @@ export default function DeviceGate() {
           <View style={{ width: 52, height: 52, borderRadius: 4, backgroundColor: removed ? colors.dangerSoft : colors.warnSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
             <Icon name={removed ? 'lock' : 'phone'} size={24} color={removed ? colors.danger : colors.warn} />
           </View>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>
+          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>
             {removed ? 'Sign in to continue' : 'Too many devices'}
           </Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 14.5, lineHeight: 20, color: colors.soft, marginTop: 8 }}>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13.5, lineHeight: 20, color: colors.soft, marginTop: 8 }}>
             {gate.message}
           </Text>
 
@@ -193,7 +194,7 @@ export default function DeviceGate() {
                   <View key={d.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: i === gate.devices.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
                     <Icon name="phone" size={18} color={colors.faint} />
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{d.name || 'Device'}</Text>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{d.name || 'Device'}</Text>
                       <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 2 }}>
                         Last seen {d.last_seen ? new Date(d.last_seen).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'never'}
                       </Text>

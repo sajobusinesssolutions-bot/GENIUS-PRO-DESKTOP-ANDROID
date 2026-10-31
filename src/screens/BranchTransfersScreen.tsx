@@ -16,7 +16,8 @@
  * computer and a phone can never both receive it.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, Alert, TextInput, ActivityIndicator } from 'react-native';
+import ScrollView from '../components/KeyScroll';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
@@ -127,7 +128,7 @@ export default function BranchTransfersScreen() {
             }}>
               <Card style={{ padding: 14 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>{t.transfer_no}</Text>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>{t.transfer_no}</Text>
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: t.status === 'short' ? colors.warn : t.status === 'in_transit' ? colors.accent : colors.faint }}>{STATUS[t.status] || t.status}</Text>
                 </View>
                 <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, marginTop: 3 }}>
@@ -233,7 +234,7 @@ function Detail({ t, business, by, busy, setBusy, token, money, products, can, h
         const options = !p && receiving ? products.filter((x) => !q || norm(x.name).includes(q)).slice(0, 8) : [];
         return (
           <Card key={i} style={{ padding: 14, borderColor: short ? colors.warn : colors.line, borderWidth: 1 }}>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{l.name}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{l.name}</Text>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>sent {l.quantity} {l.unit} · {money(l.unit_cost)} each</Text>
             {receiving ? (
               <>

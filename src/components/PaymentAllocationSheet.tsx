@@ -1,3 +1,4 @@
+import { tsMs } from '../data/helpers';
 import React, { useState, useMemo } from 'react';
 import { View, Text, FlatList } from 'react-native';
 import { Pressable } from './Press';
@@ -23,7 +24,7 @@ export default function PaymentAllocationSheet({ amount, money, bills, onConfirm
   const remaining = Math.max(0, amount - allocated);
 
   const smartAllocate = () => {
-    const sorted = [...bills].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    const sorted = [...bills].sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
     let left = amount;
     const result: Record<string, number> = {};
     for (const bill of sorted) {
@@ -43,10 +44,10 @@ export default function PaymentAllocationSheet({ amount, money, bills, onConfirm
   };
 
   return (
-    <View style={{ backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, padding: spacing.lg, gap: spacing.lg, maxHeight: '80%' }}>
+    <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 8, borderTopRightRadius: 8, padding: spacing.lg, gap: spacing.lg, maxHeight: '80%' }}>
       <View>
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 4 }}>Allocate payment</Text>
-        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink }}>{money(amount)}</Text>
+        <Text style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink }}>{money(amount)}</Text>
       </View>
 
       {bills.length === 0 ? (
@@ -57,10 +58,10 @@ export default function PaymentAllocationSheet({ amount, money, bills, onConfirm
         <>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>
-              Allocated: {money(allocated)} · Remaining: {money(remaining)}
+              Applied {money(allocated)} · {remaining > 0 ? money(remaining) + ' held on account' : 'all applied'}
             </Text>
-            <Pressable onPress={smartAllocate}>
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent }}>Auto-allocate</Text>
+            <Pressable onPress={smartAllocate} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 4, backgroundColor: colors.accent }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 13, color: colors.accentInk }}>Auto-allocate</Text>
             </Pressable>
           </View>
 
@@ -103,7 +104,7 @@ export default function PaymentAllocationSheet({ amount, money, bills, onConfirm
           <Button label="Cancel" onPress={onCancel} />
         </View>
         <View style={{ flex: 1 }}>
-          <Button label="Apply" variant="pri" onPress={handleConfirm} disabled={allocated === 0} />
+          <Button label="Apply" variant="pri" onPress={handleConfirm} />
         </View>
       </View>
     </View>
