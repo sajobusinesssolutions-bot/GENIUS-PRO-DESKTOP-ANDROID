@@ -4,6 +4,7 @@
  * Reference MENU_GROUPS 'admin' (lines 6558-6563) and SCREENS.notifications (2797).
  */
 import React from 'react';
+import { alertsOf } from '../data/alerts';
 import { View, Text, TextInput, Switch } from 'react-native';
 import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
@@ -65,25 +66,14 @@ export function LoyaltyScreen() {
 export function NotificationsScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, stockOf, dueRecurring } = useAppData();
+  const { db, stockOf } = useAppData();
   const reminders = useDueReminders();
   const [remind, setRemind] = React.useState<DueParty | null>(null);
   if (!db) return null;
 
-  // each list is shown only if its alert is switched on in Settings
-  const st = db.settings;
-  const low = st.lowStockAlerts === false || st.notifyLowStock === false
-    ? [] : db.products.filter((p) => p.active && p.kind !== 'service' && stockOf(p) <= p.reorder);
-  const overdue = st.notifyOverdue === false
-    ? [] : db.sales.filter((s) => s.due > 0 && s.status !== 'void' && ageOfDays(s.ts) > 30);
-  const claims = db.claims.filter((c) => c.status === 'open');
-  const due = dueRecurring();
-
-  const rows: { t: string; s: string; route: string; tone: string }[] = [];
-  if (low.length) rows.push({ t: plural(low.length, 'item') + ' to restock', s: 'At or below the reorder level', route: 'ItemsTab', tone: colors.warn });
-  if (overdue.length) rows.push({ t: plural(overdue.length, 'sale') + ' overdue', s: 'Unpaid for more than 30 days', route: 'Sales', tone: colors.danger });
-  if (claims.length) rows.push({ t: plural(claims.length, 'warranty claim') + ' open', s: 'Waiting on a decision', route: 'Warranties', tone: colors.warn });
-  if (due.length) rows.push({ t: plural(due.length, 'recurring sale') + ' due', s: 'Ready to be raised', route: 'Recurring', tone: colors.accent });
+  // each list is shown only if its alert is switched on in Settings (alerts.ts)
+  const tones = { warn: colors.warn, danger: colors.danger, accent: colors.accent };
+  const rows = alertsOf(db, stockOf).map((a) => ({ t: a.title, s: a.sub, route: a.route, tone: tones[a.tone] }));
 
   if (!rows.length && !reminders.length) return <EmptyState icon="check" title="All caught up" subtitle="Stock, sales and claims are all in order." />;
 

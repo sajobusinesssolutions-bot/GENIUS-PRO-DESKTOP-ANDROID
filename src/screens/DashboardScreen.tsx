@@ -35,8 +35,6 @@ import { Icon, IconName } from '../components/icons';
 import { TrendLine } from '../components/charts';
 import { useGo } from '../nav/navigate';
 import { PLAY_BUILD } from '../data/store';
-import { useAppUpdate } from '../data/appUpdate';
-import { useAuth } from '../data/AuthContext';
 import { QuickSheet } from '../components/Quick';
 import { useDueReminders, ReminderRow, RemindSheet } from '../components/Reminders';
 import { FAB, useHideOnScroll, FAB_COLORS } from '../components/ui';
@@ -205,8 +203,6 @@ export function trendPoints(period: Period, now = Date.now()): { from: number; t
 export default function DashboardScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { account } = useAuth();
-  const update = useAppUpdate(account?.localOnly ? undefined : account?.refresh);
   const {
     db, money, me, stockOf, party, partyBalance, accountBalance, dueRecurring,
   } = useAppData();
@@ -383,30 +379,6 @@ export default function DashboardScreen() {
         ) : queued && queueStuck(db, nowTick) ? (
           <Banner tone="g" icon="cloud" text={plural(queued, 'change') + ' waiting to go up'} />
         ) : null}
-        {update.state.stage === 'none' ? null : (() => {
-          const s = update.state;
-          const mb = s.info.size ? ' (' + Math.round(s.info.size / 1e6) + ' MB)' : '';
-          const title = s.stage === 'ready' ? 'Update ready — tap to install'
-            : s.stage === 'downloading' ? 'Downloading update… ' + Math.round(s.progress * 100) + '%'
-            : s.stage === 'failed' ? 'Update did not finish — tap to try again'
-            : 'Update available — tap to download' + mb;
-          const onPress = s.stage === 'ready' ? update.install
-            : s.stage === 'downloading' ? undefined
-            : () => update.download(s.info);
-          return (
-            <Pressable onPress={onPress} disabled={!onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, margin: 16, marginBottom: 2, padding: 14, borderRadius: 4, backgroundColor: colors.accentSoft }}>
-              <Icon name="down" size={18} color={colors.accent} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.accent }}>{title}</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent, marginTop: 2 }}>
-                  Genius Pro {s.info.versionName}{s.info.notes ? ' · ' + s.info.notes : ''}
-                </Text>
-              </View>
-              {onPress ? <Icon name="chev" size={17} color={colors.accent} /> : null}
-            </Pressable>
-          );
-        })()}
-
         {/* 1 — how did we do */}
         {see('dashboard.view_total_sales') ? (
         <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>

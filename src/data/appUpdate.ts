@@ -10,20 +10,21 @@
  * Both the check and the download need a signed-in account: the APK is not on
  * the website, so it cannot be fetched by anyone or hammered to load the server.
  *
- * The app reads it at launch and every few hours. A newer build is downloaded
- * in the background on Wi-Fi (on mobile data it waits to be asked, since the
- * APK is large), then the person is offered "Install". Android always asks
- * them to confirm, and only installs it if it is signed with the same key as
- * the app already on the phone — so a tampered file cannot replace it.
+ * The app reads it at launch and every few hours. A newer build is offered in
+ * a pop-up (UpdatePrompt): what changed, Wait or Update. Update downloads it
+ * in the background while the app is used; when it is in, a notification and
+ * the pop-up offer "Install". Android always asks them to confirm, and only
+ * installs it if it is signed with the same key as the app already on the
+ * phone — so a tampered file cannot replace it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
-import NetInfo from '@react-native-community/netinfo';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { PLAY_BUILD } from './store';
 import { SERVER_URL, refreshSession } from './authApi';
+import { showNow, CHANNEL_UPDATES } from './notify';
 
 export const UPDATE_PATH = '/v1/app/latest';
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -128,6 +129,7 @@ export function useAppUpdate(refresh: string | undefined) {
       if (!access) throw new Error('Not signed in');
       const file = await downloadUpdate(info, access, (progress) => setState({ stage: 'downloading', info, progress }));
       setState({ stage: 'ready', info, file });
+      showNow('app-update', 'Update ready to install', 'Genius POS ' + info.versionName + ' has downloaded. Tap to install it.', { update: info.versionCode }, CHANNEL_UPDATES).catch(() => {});
     } catch {
       setState({ stage: 'failed', info });
     } finally {
@@ -145,11 +147,9 @@ export function useAppUpdate(refresh: string | undefined) {
       if (!info) { clearOld(); setState({ stage: 'none' }); return; }
       const file = apkFor(info);
       if (file.exists && (!info.size || file.size === info.size)) { setState({ stage: 'ready', info, file }); return; }
-      const net = await NetInfo.fetch();
-      if (net.type === 'wifi' || net.type === 'ethernet') await download(info);
-      else setState({ stage: 'available', info });
+      setState({ stage: 'available', info });
     } catch { /* offline or server down — try again later */ }
-  }, [download, refresh]);
+  }, [refresh]);
 
   useEffect(() => {
     if (!updatesEnabled) return;
