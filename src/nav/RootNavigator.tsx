@@ -70,6 +70,7 @@ import DeletedTransactionsScreen from '../screens/DeletedTransactionsScreen';
 import OrderScreen from '../screens/OrderScreen';
 import PriceListsScreen from '../screens/PriceListsScreen';
 import KitchenDisplayScreen from '../screens/KitchenDisplayScreen';
+import { FrontDeskScreen, BookingEditScreen, BookingScreen, HotelSetupScreen, GuestRegisterScreen } from '../screens/HotelScreens';
 import OwnerSummaryScreen from '../screens/OwnerSummaryScreen';
 import DayReportScreen from '../screens/DayReportScreen';
 import BooksCheckScreen from '../screens/BooksCheckScreen';
@@ -269,6 +270,11 @@ export default function RootNavigator() {
         <Stack.Screen name="BatchMovement" component={BatchMovementScreen} options={{ title: 'Batch movement' }} />
         <Stack.Screen name="Approvals" component={ApprovalsScreen} options={{ title: 'Approvals' }} />
         <Stack.Screen name="KitchenDisplay" component={KitchenDisplayScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="FrontDesk" component={FrontDeskScreen} options={{ title: 'Reception' }} />
+        <Stack.Screen name="BookingEdit" component={BookingEditScreen} options={({ route }: any) => ({ title: route.params?.id ? 'Change booking' : 'New booking' })} />
+        <Stack.Screen name="Booking" component={BookingScreen} options={{ title: 'Booking' }} />
+        <Stack.Screen name="HotelSetup" component={HotelSetupScreen} options={{ title: 'Rooms & rates' }} />
+        <Stack.Screen name="GuestRegister" component={GuestRegisterScreen} options={{ title: 'Guest register' }} />
         <Stack.Screen name="DocTerms" component={DocTermsScreen} options={{ title: 'Documents & terms' }} />
         <Stack.Screen name="BooksCheck" component={BooksCheckScreen} options={{ title: 'Check the books' }} />
         <Stack.Screen name="DayReport" component={DayReportScreen} options={{ title: 'The day' }} />

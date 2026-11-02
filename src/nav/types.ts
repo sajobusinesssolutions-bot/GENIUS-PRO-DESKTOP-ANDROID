@@ -121,9 +121,14 @@ export type RootStackParamList = {
   Order: { ticketId?: string } | undefined;
   PriceLists: undefined;
   KitchenDisplay: undefined;
+  FrontDesk: undefined;
+  BookingEdit: { id?: string; roomId?: string; arrive?: string } | undefined;
+  Booking: { id: string };
+  HotelSetup: undefined;
+  GuestRegister: undefined;
   OwnerSummary: undefined;
   Approvals: undefined;
-  MenuEditor: undefined;
+  MenuEditor: { tab?: 'settings' } | undefined;
   PrintingKitchen: undefined;
   Notifications: undefined;
   Plans: undefined;

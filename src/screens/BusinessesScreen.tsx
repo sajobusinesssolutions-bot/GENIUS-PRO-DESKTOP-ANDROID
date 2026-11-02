@@ -66,6 +66,7 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
     return { why: r.error.message, ended: false };
   }, [account?.refresh]);
 
+  const [off, setOff] = useState<RemoteBusiness[]>([]);
   const load = useCallback(async () => {
     setProblem('');
     if (!serverConfigured() || !account || account.localOnly) { setList([]); return; }
@@ -73,9 +74,12 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
     const a = await access();
     if (!('token' in a)) { setProblem(a.why); setEnded(a.ended); setList([]); return; }
     const token = a.token;
-    const r = await listBusinesses(token);
+    /* the deactivated ones too: they are listed apart, each with Reactivate,
+       so a business switched off is never simply missing from the phone */
+    const r = await listBusinesses(token, true);
     if (!r.ok) { setProblem(r.error.message); setList([]); return; }
-    setList(r.value);
+    setList(r.value.filter((b) => b.active !== false));
+    setOff(r.value.filter((b) => b.active === false && b.role === 'owner'));
     setExtra(await businessExtras(token));
     setParked(listParked());
   }, [access, account]);
@@ -155,6 +159,19 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
       adoptBook(r.value.data, { businessId: b.id, ownerEmail: account!.email, snapshotVersion: r.value.version });
         goReset('PinLock');
         setProgress(0);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function reactivate(b: RemoteBusiness) {
+    const a = await access();
+    if (!('token' in a)) { Alert.alert('Could not reach your account', a.why); return; }
+    setBusy('reactivate:' + b.id);
+    try {
+      const r = await setBusinessStatus(a.token, b.id, true);
+      if (!r.ok) { Alert.alert('Could not reactivate ' + b.name, r.error.message); return; }
+      await load();
     } finally {
       setBusy('');
     }
@@ -367,6 +384,27 @@ export default function BusinessesScreen({ route }: { route?: { params?: { stay?
             onPress: () => void open(b),
             onMore: b.active === false ? undefined : () => more(b),
           }))}
+
+          {off.length ? (
+            <View style={{ marginTop: 6, marginBottom: 6 }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, letterSpacing: 0.6, color: colors.faint, marginBottom: 8 }}>DEACTIVATED · {off.length}</Text>
+              {off.map((b) => (
+                <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 4, marginBottom: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, opacity: 0.92 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.soft }}>{b.name}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 3 }}>
+                      Switched off{b.snapshot_at ? ' · last saved ' + fmtDate(b.snapshot_at) : ''} · not counted on your plan
+                    </Text>
+                  </View>
+                  {busy === 'reactivate:' + b.id ? <ActivityIndicator color={colors.accent} /> : (
+                    <Pressable onPress={() => void reactivate(b)} hitSlop={6} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4, borderWidth: 1, borderColor: colors.accent }}>
+                      <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent }}>Reactivate</Text>
+                    </Pressable>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           {onlyHere.length ? (
             <View style={{ marginTop: 6, marginBottom: 6 }}>

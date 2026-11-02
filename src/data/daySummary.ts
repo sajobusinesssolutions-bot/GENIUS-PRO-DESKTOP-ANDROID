@@ -99,7 +99,7 @@ export function daySummary(d: DB, money: (n: number) => string, now = new Date()
     if (gone.length) watch.push(gone.length + ' EXPIRED batch(es) still in stock: ' + gone.slice(0, 4).map((x) => x.name).join(', ') + (gone.length > 4 ? '…' : ''));
     if (near.length) watch.push(near.length + ' batch(es) expire within 30 days: ' + near.slice(0, 4).map((x) => x.name).join(', ') + (near.length > 4 ? '…' : ''));
   }
-  if (ed === 'restaurant') {
+  if (ed === 'restaurant' || ed === 'hotel') {
     const cancelled = (d.tickets || []).filter((t) => t.status === 'void' && inDay(t.updatedAt));
     if (cancelled.length) watch.push(cancelled.length + ' ticket(s) cancelled today');
   }

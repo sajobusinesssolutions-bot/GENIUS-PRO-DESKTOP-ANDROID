@@ -34,9 +34,12 @@ import { businessAllowance, businessLimitWords } from './editions';
 import { lastAccountLicence } from './syncClient';
 import { demoBook } from './demos';
 import { restaurantActions } from './actions/restaurant';
+import { hotelActions, type HotelActions } from './actions/hotel';
 import { importStatementLines, matchStatementLine, summarizeReconciliation, completeReconciliation, StatementInput, ReconciliationSummary } from './reconciliation';
 
 export interface Ctx {
+  /** The hotel's reception and set-up (actions/hotel.ts). */
+  hotel: HotelActions;
   db: DB | null;
   ready: boolean;
   cur: () => string;
@@ -880,7 +883,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (patch.businessType) {
         addStarterLedgers(d, patch.businessType);
         const t = patch.businessType;
-        applyEditionRoles(ensureRoles(d), t === 'restaurant' ? 'restaurant' : t === 'pharmacy' ? 'pharmacy' : 'retail');
+        applyEditionRoles(ensureRoles(d), t === 'restaurant' ? 'restaurant' : t === 'pharmacy' ? 'pharmacy' : t === 'hotel' ? 'hotel' : 'retail');
         ['cashier', 'sales'].forEach((id) => logic.enqueue(d, 'role', id));
         setRoleRegistry(d.roles);
       }
@@ -1328,6 +1331,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     // restaurant, kitchen, approvals and price lists — see actions/restaurant.ts
     ...restaurantActions({ commit, requirePerm, dbRef }),
+    hotel: hotelActions({ commit, requirePerm, dbRef }),
     closeDay: () => commit((d) => {
       d.settings.closedThrough = iso(new Date());
       audit(d, 'Day closed', 'Transactions up to now are frozen');
@@ -1643,6 +1647,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               const coll = p.coll as 'challans' | 'purchaseOrders' | 'recurringInvoices' | 'instalmentPlans';
               (d as any)[coll] = (d as any)[coll] || [];
               put((d as any)[coll], p.doc);
+            } else if (['roomTypes', 'rooms', 'ratePlans', 'seasons', 'stayOffers', 'hotelBookings'].includes(p?.coll) && p.doc) {
+              // the hotel's records: the latest copy wins
+              (d as any)[p.coll] = (d as any)[p.coll] || [];
+              put((d as any)[p.coll], p.doc);
             } else if ((p?.coll === 'tickets' || p?.coll === 'modifierGroups' || p?.coll === 'menuGroups' || p?.coll === 'menus' || p?.coll === 'priceLists' || p?.coll === 'kitchenOrders' || p?.coll === 'approvals') && p.doc) {
               const coll = p.coll as 'tickets' | 'modifierGroups' | 'menuGroups' | 'menus' | 'priceLists' | 'kitchenOrders' | 'approvals';
               (d as any)[coll] = (d as any)[coll] || [];

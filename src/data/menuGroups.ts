@@ -65,6 +65,7 @@ export type MenuItem = {
 const HIDDEN_FOR: Record<Edition, Set<string>> = {
   retail: new Set(['MenuEditor', 'Order']),
   restaurant: RESTAURANT_HIDDEN,
+  hotel: RESTAURANT_HIDDEN,
   // a pharmacy has no menu, no tables, no warranties and makes nothing up
   pharmacy: new Set(['MenuEditor', 'Order', 'Warranties', 'Production']),
 };
@@ -105,6 +106,10 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     id: 'sell', n: 'Sales', names: { restaurant: 'Orders', pharmacy: 'Sales & dispensing' }, i: 'till', tone: 'accent', perm: 'sales',
     b: (c) => plural(liveSales(c.db).length, 'sale'),
     items: [
+      // the hotel's reception, first for a hotel
+      { route: 'FrontDesk', i: 'chair', n: 'Reception', b: (c) => plural(((c.db as any).hotelBookings || []).filter((b: any) => b.status === 'in').length, 'guest booking') + ' in house', show: (d) => d?.firm?.businessType === 'hotel', alt: 'hotel front desk rooms bookings check in check out reservations' },
+      { route: 'GuestRegister', i: 'doc', n: 'Guest register', b: () => 'Everyone who stayed, with ID and nationality', show: (d) => d?.firm?.businessType === 'hotel', alt: 'hotel guests police register' },
+      { route: 'HotelSetup', i: 'cog', n: 'Rooms & rates', b: (c) => plural(((c.db as any).rooms || []).length, 'room'), show: (d) => d?.firm?.businessType === 'hotel', alt: 'hotel room types rates seasons offers' },
       { route: 'KitchenDisplay', i: 'food', n: 'Kitchen display', b: (c) => plural((c.db.kitchenOrders || []).filter((k) => k.status !== 'served').length, 'order') + ' in the kitchen', show: (d) => isRestaurant(d), alt: 'kds kitchen screen cooks orders ready' },
       { route: 'Order', i: 'food', n: 'Take an order', b: (c) => plural((c.db.tickets || []).filter((t) => t.status === 'open').length, 'open ticket'), show: (d) => isRestaurant(d), alt: 'restaurant table ticket kitchen order' },
       { route: 'ReportDetail', i: 'doc', n: 'Day book', b: () => 'Every transaction, with debit and credit', params: { id: 'daybook' }, perm: 'reports', alt: 'daybook all transactions journal register' },

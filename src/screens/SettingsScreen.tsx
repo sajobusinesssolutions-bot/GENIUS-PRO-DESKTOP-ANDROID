@@ -129,6 +129,10 @@ export default function SettingsScreen() {
               <SettingToggle label="A shift must be open to sell" on={s.requireShift} onChange={(v) => set({ requireShift: v })} />
               <SettingToggle label="Ask for the customer on every sale" on={s.askCustomer} onChange={(v) => set({ askCustomer: v })} />
               <SettingToggle label="Let staff change the price at the till" on={s.allowPriceEdit} onChange={(v) => set({ allowPriceEdit: v })} />
+              {/* restaurants: the service charge added to dine-in bills (set in Menu → Settings) */}
+              {s.serviceChargePct || editionOf(db) === 'restaurant' ? (
+                <SettingRow label="Service charge on dine-in bills" value={s.serviceChargePct ? s.serviceChargePct + '%' : 'None'} onPress={() => go('MenuEditor', { tab: 'settings' })} />
+              ) : null}
             </SettingGroup>
 
             {/* Selling rules — reference the wrapper at 15407 */}

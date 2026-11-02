@@ -15,6 +15,7 @@
  *    older server must never drop a newer app's work.
  */
 import { q, tx } from './db.js';
+import { minAppOf, writeSnapshot, sendSnapshot, migrateSnapshots } from './snapshotstore.js';
 import { readAccess, issueLicence } from './tokens.js';
 
 const fail = (reply, status, error, message) => reply.code(status).send({ error, message });
@@ -162,11 +163,8 @@ export function compareVersions(a, b) {
  * not send the header and is not okhttp, so it is not affected.
  */
 async function refuseOldApp(req, reply, businessId) {
-  const { rows } = await q(
-    "select data->'firm'->>'minAppVersion' as need from business_snapshots where business_id = $1",
-    [businessId],
-  );
-  const need = rows[0]?.need;
+  // its own column (snapshotstore.js): reading it out of the copy unpacked the whole book on every pull
+  const need = await minAppOf(businessId);
   if (!need) return false;
   const have = req.headers['x-app-version'];
   const oldPhone = !have && /okhttp/i.test(String(req.headers['user-agent'] || ''));
@@ -179,6 +177,8 @@ async function refuseOldApp(req, reply, businessId) {
 }
 
 export default async function syncRoutes(app) {
+  // the small facts' columns, filled once for copies already saved
+  await migrateSnapshots();
   /* ---------------------------------------------------------- devices */
 
   /*
@@ -321,8 +321,8 @@ export default async function syncRoutes(app) {
               case when b.account_id = $1 then 'owner'
                    else coalesce(bm.role, 'staff') end as role,
               s.updated_at as snapshot_at, s.bytes as snapshot_bytes,
-              (s.data->'sync'->>'on') = 'true' as sync_on,
-              s.data->'firm'->>'businessType' as business_type
+              s.sync_on,
+              s.business_type
          from businesses b
          left join business_members bm on bm.business_id = b.id and bm.account_id = $1
          left join business_snapshots s on s.business_id = b.id
@@ -373,15 +373,7 @@ export default async function syncRoutes(app) {
     }
     const text = JSON.stringify(data);
     const nextVersion = (current.rows[0]?.version || 0) + 1;
-    await q(
-      `insert into business_snapshots (business_id, data, bytes, device_id, version, updated_at)
-       values ($1, $2::jsonb, $3, $4, $5, now())
-       on conflict (business_id) do update
-         set data = excluded.data, bytes = excluded.bytes,
-             device_id = excluded.device_id, version = excluded.version,
-             updated_at = now()`,
-      [biz.id, text, Buffer.byteLength(text), req.body?.device || null, nextVersion],
-    );
+    await writeSnapshot(biz.id, text, data, req.body?.device, nextVersion);
     // the name on the list follows the name on the books
     if (data.firm?.name && data.firm.name !== biz.name) {
       await q('update businesses set name = $2 where id = $1', [biz.id, String(data.firm.name).slice(0, 200)]);
@@ -395,15 +387,10 @@ export default async function syncRoutes(app) {
     const biz = await businessFor(me.id, req.params.id);
     if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
     if (await refuseOldApp(req, reply, biz.id)) return;
-    const { rows } = await q(
-      'select data, updated_at, version from business_snapshots where business_id = $1',
-      [biz.id],
-    );
-    if (!rows[0]) {
-      return fail(reply, 404, 'noSnapshot',
-        'This business has no copy on the server yet. Open it on the phone that holds it and sync once.');
-    }
-    return { data: rows[0].data, updatedAt: rows[0].updated_at, version: rows[0].version };
+    // sent gzipped as it is kept (snapshotstore.js): a tenth of the bytes and no JSON work here
+    if (await sendSnapshot(req, reply, biz.id)) return reply;
+    return fail(reply, 404, 'noSnapshot',
+      'This business has no copy on the server yet. Open it on the phone that holds it and sync once.');
   });
 
   app.post('/v1/businesses', async (req, reply) => {

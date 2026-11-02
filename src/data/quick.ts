@@ -195,12 +195,13 @@ const PHARMACY_QUICK: QuickGroup[] = [
 const RETAIL_QUICK: QuickGroup[] = QUICK;
 
 export function quickFor(edition: Edition): QuickGroup[] {
-  return edition === 'restaurant' ? RESTAURANT_QUICK : edition === 'pharmacy' ? PHARMACY_QUICK : RETAIL_QUICK;
+  return edition === 'restaurant' || edition === 'hotel' ? RESTAURANT_QUICK : edition === 'pharmacy' ? PHARMACY_QUICK : RETAIL_QUICK;
 }
 
 /** What each trade does all day, shown first in quick add. */
 export const COMMON_FOR: Record<Edition, string[]> = {
   retail: ['New sale', 'Money received', 'Record expense', 'Add product', 'New purchase', 'Add customer'],
   restaurant: ['New order', 'Open tickets', 'Add dish', 'Record expense', 'Day close', 'Buy ingredients'],
+  hotel: ['New order', 'Open tickets', 'Record expense', 'Day close', 'Add dish', 'Buy ingredients'],
   pharmacy: ['New sale', 'Add drug', 'Receive drugs', 'Expiring soon', 'Add customer', 'Money received'],
 };

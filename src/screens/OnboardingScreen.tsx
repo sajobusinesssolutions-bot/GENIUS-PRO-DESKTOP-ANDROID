@@ -66,7 +66,7 @@ export default function OnboardingScreen({ navigation }: Props) {
       updateFirm({ name, phone, businessType });
       // a restaurant starts ready to take orders: no customer asked for, and
       // two example modifier groups to show how choices work
-      if (businessType === 'restaurant') {
+      if (businessType === 'restaurant' || businessType === 'hotel') {
         setSetting({ askCustomer: false, defaultMethod: 'cash' });
         if (!(db?.modifierGroups || []).length) starterModifiers().forEach(({ id: _id, ...g }) => saveModifierGroup(g));
       }

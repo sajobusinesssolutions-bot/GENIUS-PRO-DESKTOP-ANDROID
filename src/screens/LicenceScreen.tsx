@@ -110,7 +110,7 @@ export default function LicenceScreen() {
 
   // Restaurant and Pharmacy are priced per shop: setup, data migration and
   // training vary, so they are quoted by sales rather than listed.
-  const quoted = (e: Edition) => e === 'restaurant' || e === 'pharmacy';
+  const quoted = (e: Edition) => e === 'restaurant' || e === 'pharmacy' || e === 'hotel';
   /* Contact us: straight to WhatsApp, with what they are asking about already written */
   const contactUs = (about: string) => void openLink(whatsappUrl('Hello, ' + about + (account?.email ? ' My account: ' + account.email : '')));
   const contactSales = (planName?: string) => contactUs('I would like pricing for Genius Pro POS ' + ed.name + ' edition'
@@ -154,7 +154,7 @@ export default function LicenceScreen() {
     ['POS till', '✓', '✓'],
     ['Cloud sync and backup', '✓', '✓'],
     ['Branches', '—', '✓'],
-    ...(edition === 'restaurant' ? [
+    ...(edition === 'restaurant' || edition === 'hotel' ? [
       ['Kitchen printers', '1', 'Every station'],
       ['Several menus', '—', '✓'],
       ['Tickets on every phone', '—', '✓'],

@@ -13,6 +13,7 @@ import BackupKeeper from './src/data/BackupKeeper';
 import OwnerSummaryKeeper from './src/data/OwnerSummaryKeeper';
 import NotifyKeeper from './src/data/NotifyKeeper';
 import UpdatePrompt from './src/components/UpdatePrompt';
+import AlertHost from './src/components/AppAlert';
 import { installRefusalHandler } from './src/data/refusal';
 import { installCrashReporting } from './src/data/crashReporter';
 import CrashContext from './src/components/CrashContext';
@@ -64,6 +65,7 @@ export default function App() {
               </VersionGate>
             </ErrorBoundary>
             <UpdatePrompt />
+            <AlertHost />
             <ThemedStatusBar />
           </ToastProvider>
         </AppDataProvider>

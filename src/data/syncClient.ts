@@ -42,10 +42,17 @@ export function newOpId(): string {
 
 /* ---------------------------------------------------------------- */
 
-async function call<T>(path: string, access: string, body?: unknown, method = 'POST', onProgress?: (pct: number) => void): Promise<Result<T>> {
+/**
+ * `stallMs` is how long the server may go quiet; a download that keeps
+ * arriving is never cut off for being big (a pharmacy's books run to 18 MB,
+ * more than a phone on mobile data fetches in 30 seconds), up to `totalMs`.
+ */
+async function call<T>(path: string, access: string, body?: unknown, method = 'POST', onProgress?: (pct: number) => void, stallMs = 30000, totalMs = 30000): Promise<Result<T>> {
   if (!serverConfigured()) return { ok: false, error: authError('notConfigured') };
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000);
+  let timer = setTimeout(() => controller.abort(), stallMs);
+  const hardStop = setTimeout(() => controller.abort(), Math.max(stallMs, totalMs));
+  const alive = () => { clearTimeout(timer); timer = setTimeout(() => controller.abort(), stallMs); };
   try {
     const res = await fetch(SERVER_URL.replace(/[/]$/, '') + path, {
       method,
@@ -69,6 +76,7 @@ async function call<T>(path: string, access: string, body?: unknown, method = 'P
         if (part.done) break;
         chunks.push(part.value);
         received += part.value.length;
+        alive();
         onProgress(Math.min(95, Math.max(10, Math.round(received / total * 100))));
       }
       const bytes = new Uint8Array(received);
@@ -76,6 +84,8 @@ async function call<T>(path: string, access: string, body?: unknown, method = 'P
       chunks.forEach((chunk) => { bytes.set(chunk, offset); offset += chunk.length; });
       text = new TextDecoder().decode(bytes);
     } else {
+      // no size to follow: a long download is held only to the overall limit
+      if (totalMs > stallMs) clearTimeout(timer);
       text = await res.text();
     }
     const json = text ? JSON.parse(text) : {};
@@ -85,6 +95,7 @@ async function call<T>(path: string, access: string, body?: unknown, method = 'P
     return { ok: false, error: authError(e?.name === 'AbortError' ? 'timeout' : 'offline') };
   } finally {
     clearTimeout(timer);
+    clearTimeout(hardStop);
   }
 }
 
@@ -251,7 +262,8 @@ export async function uploadDriveBackup(access: string, name: string, base64: st
 /** The last copy of a business's books that any phone sent up. */
 export async function downloadSnapshot(access: string, businessId: string, onProgress?: (pct: number) => void): Promise<Result<{ data: DB; updatedAt: string; version: number }>> {
   onProgress?.(10);
-  const result = await call<{ data: DB; updatedAt: string; version: number }>('/v1/businesses/' + businessId + '/snapshot', access, undefined, 'GET', onProgress);
+  const result = await call<{ data: DB; updatedAt: string; version: number }>('/v1/businesses/' + businessId + '/snapshot', access, undefined, 'GET',
+    onProgress || (() => {}), 45000, 10 * 60 * 1000);
   onProgress?.(result.ok ? 100 : 0);
   return result;
 }
@@ -286,6 +298,7 @@ const KIND_OF: Record<string, OpKind> = {
   priceList: 'record.upsert',
   kitchenOrder: 'record.upsert',
   approval: 'record.upsert',
+  roomType: 'record.upsert', room: 'record.upsert', ratePlan: 'record.upsert', season: 'record.upsert', stayOffer: 'record.upsert', booking: 'record.upsert',
 };
 
 /** Which collection a record.upsert lands in, by queue kind. */
@@ -294,6 +307,7 @@ const COLL_OF: Record<string, string> = {
   challan: 'challans', purchaseOrder: 'purchaseOrders', recurring: 'recurringInvoices', plan: 'instalmentPlans',
   printcount: 'printCounts',
   user: 'users', role: 'roles', ticket: 'tickets', modifierGroup: 'modifierGroups', menuGroup: 'menuGroups', menu: 'menus', priceList: 'priceLists', kitchenOrder: 'kitchenOrders', approval: 'approvals',
+  roomType: 'roomTypes', room: 'rooms', ratePlan: 'ratePlans', season: 'seasons', stayOffer: 'stayOffers', booking: 'hotelBookings',
 };
 
 /** Finds the record a queue entry points at. */
@@ -327,6 +341,13 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
     case 'priceList': return (d.priceLists || []).find((x) => x.id === ref);
     case 'kitchenOrder': return (d.kitchenOrders || []).find((x) => x.id === ref);
     case 'approval': return (d.approvals || []).find((x) => x.id === ref);
+    // the hotel: rooms, rates and bookings are shared by reception, the restaurant and the computer
+    case 'roomType': return (d.roomTypes || []).find((x) => x.id === ref);
+    case 'room': return (d.rooms || []).find((x) => x.id === ref);
+    case 'ratePlan': return (d.ratePlans || []).find((x) => x.id === ref);
+    case 'season': return (d.seasons || []).find((x) => x.id === ref);
+    case 'stayOffer': return (d.stayOffers || []).find((x) => x.id === ref);
+    case 'booking': return (d.hotelBookings || []).find((x) => x.id === ref);
     // the business's own details: name, phones, address, logo, signature…
     case 'firm': return d.firm?.id === ref ? d.firm : undefined;
     // the shop's rules Windows keeps too (sharedSettings.ts)

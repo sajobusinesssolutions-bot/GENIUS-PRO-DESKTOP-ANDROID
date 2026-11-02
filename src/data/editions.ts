@@ -15,12 +15,14 @@
  */
 import type { DB } from './types';
 
-export type Edition = 'retail' | 'restaurant' | 'pharmacy';
+export type Edition = 'retail' | 'restaurant' | 'pharmacy' | 'hotel';
 
 export function editionOf(d: Pick<DB, 'firm'> | null | undefined): Edition {
-  const t = d?.firm?.businessType;
-  return t === 'restaurant' ? 'restaurant' : t === 'pharmacy' ? 'pharmacy' : 'retail';
+  return editionOfType(d?.firm?.businessType);
 }
+
+/** A hotel runs the whole restaurant too: every restaurant feature is on for it. */
+export function servesFood(e: Edition): boolean { return e === 'restaurant' || e === 'hotel'; }
 
 export interface EditionPlan {
   name: string;
@@ -38,7 +40,7 @@ export interface EditionDef {
   about: string;
   /** What it does that the others do not. */
   special: string[];
-  icon: 'cart' | 'food' | 'shield';
+  icon: 'cart' | 'food' | 'shield' | 'chair';
   plans: { starter: EditionPlan; pro: EditionPlan };
 }
 
@@ -79,6 +81,24 @@ export const EDITIONS: Record<Edition, EditionDef> = {
       },
     },
   },
+  hotel: {
+    id: 'hotel', name: 'Hotel', icon: 'chair',
+    tagline: 'Hotels, lodges, guest houses and resorts',
+    about: 'Reception for bookings, check-in and check-out of individuals, couples and company groups, room bills, seasons and offers, the guest register, and the full restaurant and bar.',
+    special: ['Room board and booking calendar', 'Individual, couple and company group bookings', 'Check-in with the guest register, check-out with one bill', 'Room types, rates, seasons and offers', 'The full restaurant and bar'],
+    plans: {
+      starter: {
+        name: 'Hotel Starter', blurb: 'One property: reception, rooms and the restaurant.',
+        prices: { month: 80000, quarter: 220000, year: 800000 },
+        has: ['3 devices', 'Reception: bookings, check-in, check-out', 'Room board and calendar', 'Room bills and payments', 'Guest register', 'Full restaurant and bar'],
+      },
+      pro: {
+        name: 'Hotel Pro', blurb: 'Every desk and outlet, company groups and seasons.',
+        prices: { month: 180000, quarter: 500000, year: 1800000 },
+        has: ['Everything in Hotel Starter', 'Up to 8 devices', 'Company and group bookings', 'Seasons and stay offers', 'Up to 3 properties', 'Cloud sync and off-device backup'],
+      },
+    },
+  },
   pharmacy: {
     id: 'pharmacy', name: 'Pharmacy', icon: 'shield',
     tagline: 'Pharmacies, drug shops and clinics',
@@ -99,11 +119,11 @@ export const EDITIONS: Record<Edition, EditionDef> = {
   },
 };
 
-export const EDITION_LIST: Edition[] = ['retail', 'restaurant', 'pharmacy'];
+export const EDITION_LIST: Edition[] = ['retail', 'restaurant', 'pharmacy', 'hotel'];
 
 /** The edition a business type belongs to. Older types (hardware, salon…) are Retail. */
 export function editionOfType(t: string | null | undefined): Edition {
-  return t === 'restaurant' ? 'restaurant' : t === 'pharmacy' ? 'pharmacy' : 'retail';
+  return t === 'restaurant' ? 'restaurant' : t === 'pharmacy' ? 'pharmacy' : t === 'hotel' ? 'hotel' : 'retail';
 }
 
 /**
@@ -210,6 +230,8 @@ export const VOCAB: Record<Edition, Vocab> = {
     openingStock: 'Opening stock (units)', reorderAt: 'Reorder level', addItem: 'Add drug', searchItems: 'Search drug, generic name or code',
     example: 'e.g. Panadol 500 mg',
   },
+  // a hotel's items are the restaurant's dishes; its customers are guests
+  hotel: { ...RETAIL, item: 'Dish', items: 'Menu', itemName: 'Dish name', itemCode: 'Menu code', category: 'Section', categories: 'Sections', unit: 'Serving', descriptionHint: 'Grilled chicken, lettuce, house sauce', product: 'Dish', addItem: 'Add dish', searchItems: 'Search the menu', example: 'e.g. Chicken burger', customer: 'Guest', customers: 'Guests' },
 };
 
 export function vocab(d: Pick<DB, 'firm'> | null | undefined): Vocab {

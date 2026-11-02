@@ -694,7 +694,7 @@ export default function OrderScreen({ navigation, route }: Props) {
         ) : (
           <View style={{ paddingVertical: 10, gap: 4 }}>
             <View style={{ flexDirection: 'row' }}><Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>Subtotal</Text><Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{money(subtotal)}</Text></View>
-            {service ? <View style={{ flexDirection: 'row' }}><Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>Service charge {servicePct}%</Text><Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{money(service)}</Text></View> : null}
+            {service ? <View style={{ flexDirection: 'row' }}><Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>Service charge {servicePct}%{'  '}<Text onPress={() => (navigation as any).navigate('MenuEditor', { tab: 'settings' })} style={{ fontFamily: fonts.uiSemi, color: colors.accent }}>Change</Text></Text><Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{money(service)}</Text></View> : null}
             <View style={{ flexDirection: 'row' }}><Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }}>Total</Text><Text style={{ fontFamily: fonts.uiExtra, fontSize: 14, color: colors.ink }}>{money(total)}</Text></View>
           </View>
         )}

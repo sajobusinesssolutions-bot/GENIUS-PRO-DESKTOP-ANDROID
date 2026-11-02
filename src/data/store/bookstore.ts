@@ -33,12 +33,13 @@ export const TRACKED = new Set([
   'sales', 'purchases', 'payments', 'deletedPayments', 'entries', 'journal', 'movements', 'shifts',
   'warranties', 'claims', 'estimates', 'challans', 'creditNotes', 'stockTakes', 'purchaseOrders',
   'productionRuns', 'recurringInvoices', 'auditLog', 'queue', 'plans', 'instalmentPlans', 'revisions',
-  'bankStatementLines', 'bankReconciliations', 'kitchenOrders', 'tickets', 'approvals',
+  'bankStatementLines', 'bankReconciliations', 'kitchenOrders', 'tickets', 'approvals', 'hotelBookings',
 ]);
 /** Lists of records small enough to compare in full every save. */
 export const SMALL = new Set([
   'firms', 'roles', 'warehouses', 'products', 'parties', 'users', 'accounts', 'printers', 'templates',
   'coa', 'offers', 'priceLists', 'modifierGroups', 'menuGroups', 'menus', 'businessAccess',
+  'roomTypes', 'rooms', 'ratePlans', 'seasons', 'stayOffers',
 ]);
 export const COLLS: ReadonlySet<string> = new Set([...TRACKED, ...SMALL]);
 

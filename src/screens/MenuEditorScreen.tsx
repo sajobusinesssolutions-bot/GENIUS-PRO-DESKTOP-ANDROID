@@ -49,14 +49,14 @@ interface MenuDraft { id?: string; name: string; sections: string[] }
 let tmp = 0;
 const tmpId = () => 'mo_' + Date.now().toString(36) + (tmp++).toString(36);
 
-export default function MenuEditorScreen({ navigation }: any) {
+export default function MenuEditorScreen({ navigation, route }: any) {
   const { colors } = useTheme();
   const {
     db, money, addProduct, updateProduct, produceDish, saveModifierGroup, removeModifierGroup,
     saveMenuGroup, removeMenuGroup, moveMenuGroup, setSetting, saveMenu, removeMenu, updateUser,
   } = useAppData();
   const { success, error } = useToast();
-  const [tab, setTab] = useState<Tab>('dishes');
+  const [tab, setTab] = useState<Tab>(route?.params?.tab === 'settings' ? 'settings' : 'dishes');
   const [q, setQ] = useState('');
   const [dish, setDish] = useState<DishDraft | null>(null);
   const [group, setGroup] = useState<GroupDraft | null>(null);

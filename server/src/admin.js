@@ -254,7 +254,7 @@ function licenceTerms(body, reply) {
      shop can hold one licence for both. Stored as a comma list; the first is
      the one a new business starts as. */
   const wanted = (Array.isArray(body?.edition) ? body.edition : String(body?.edition || 'retail').split(','))
-    .map((e) => String(e).trim()).filter((e) => ['retail', 'restaurant', 'pharmacy'].includes(e));
+    .map((e) => String(e).trim()).filter((e) => ['retail', 'restaurant', 'pharmacy', 'hotel'].includes(e));
   const edition = [...new Set(wanted)].join(',') || 'retail';
   const term = days === null ? 'lifetime' : days >= 360 ? 'yearly' : days >= 28 ? 'monthly' : 'days';
   // how many businesses; empty keeps the plan's own number (Starter 1, Pro 5)
@@ -391,7 +391,7 @@ export default async function adminRoutes(app) {
     link_url: /^(https:\/\/|mailto:|tel:)/.test(String(b?.linkUrl || '')) ? String(b.linkUrl).slice(0, 500) : null,
     cta: String(b?.cta || '').trim().slice(0, 30) || null,
     audience: ['all', 'trial', 'paying', 'expired'].includes(b?.audience) ? b.audience : 'all',
-    edition: ['retail', 'restaurant', 'pharmacy'].includes(b?.edition) ? b.edition : null,
+    edition: ['retail', 'restaurant', 'pharmacy', 'hotel'].includes(b?.edition) ? b.edition : null,
     starts_at: b?.startsAt ? new Date(b.startsAt) : new Date(),
     ends_at: b?.endsAt ? new Date(b.endsAt) : null,
     active: b?.active !== false,

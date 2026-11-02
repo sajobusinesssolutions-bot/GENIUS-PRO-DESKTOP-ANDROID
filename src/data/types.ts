@@ -635,6 +635,8 @@ export interface Settings {
   blockNegativeStock: boolean; belowCost: BelowCost;
   /** Restaurant: a service charge added to dine-in bills, in percent. */
   serviceChargePct?: number;
+  /** Hotel: check-in and check-out times, the deposit asked for. */
+  hotel?: Partial<import('./hotel').HotelSettings>;
   /** Restaurant: where dishes are prepared; each can have its own printer. */
   stations?: string[];
   /** Restaurant: what a new ticket starts as. */
@@ -841,6 +843,13 @@ export interface DB {
   menus?: Menu[];
   /** Restaurant: what the kitchen display shows. */
   kitchenOrders?: KitchenOrder[];
+  /** Hotel edition (hotel.ts): the rooms, their rates, and every booking. */
+  roomTypes?: import('./hotel').RoomType[];
+  rooms?: import('./hotel').Room[];
+  ratePlans?: import('./hotel').RatePlan[];
+  seasons?: import('./hotel').Season[];
+  stayOffers?: import('./hotel').StayOffer[];
+  hotelBookings?: import('./hotel').Booking[];
   /** Requests waiting on, or answered by, the owner. */
   approvals?: ApprovalRequest[];
   /** Named sets of selling prices. */

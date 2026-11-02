@@ -14,7 +14,7 @@ import type { IconName } from '../components/icons';
 export interface PermGroup {
   k: string; n: string; i: IconName; acts: [string, string][];
   /** Shown only for these kinds of business. Absent means every kind. */
-  editions?: Array<'retail' | 'restaurant' | 'pharmacy'>;
+  editions?: Array<'retail' | 'restaurant' | 'pharmacy' | 'hotel'>;
 }
 
 /** Reference PERM_MATRIX, line 7543. */
@@ -27,7 +27,13 @@ export const PERM_MATRIX: PermGroup[] = [
     ['edit_offline', 'Edit offline'], ['delete_offline', 'Delete offline'], ['toggle_offline', 'Toggle offline'],
   ] },
   // a restaurant's own switches: who may charge, cancel, see every table, sell any menu
-  { k: 'restaurant', n: 'Restaurant', i: 'food', editions: ['restaurant'], acts: [
+  // a hotel's reception: bookings, check-in and out, room bills, the set-up
+  { k: 'hotel', n: 'Reception', i: 'chair', editions: ['hotel'], acts: [
+    ['view', 'See the room board and bookings'], ['book', 'Make and change bookings'], ['checkin', 'Check guests in'],
+    ['checkout', 'Check guests out and take payment'], ['charge', 'Post charges to a room bill'], ['discount', 'Discount a room bill'],
+    ['cancel', 'Cancel bookings and mark no-shows'], ['housekeeping', 'Change room status'], ['setup', 'Set up rooms, rates and seasons'],
+  ] },
+  { k: 'restaurant', n: 'Restaurant', i: 'food', editions: ['restaurant', 'hotel'], acts: [
     ['charge', 'Charge and close tickets'], ['cancel', 'Cancel tickets'],
     ['all_tickets', "See and change other waiters' tickets"], ['switch_menu', 'Sell from any menu'],
     ['print_bill', 'Print the bill'], ['menu', 'Edit the menu and modifiers'], ['kitchen', 'Use the kitchen display'],
@@ -216,7 +222,9 @@ export const ROLE_WORDS: Record<Ed, { cashier: [string, string]; sales: [string,
  * Sets the Cashier and Sales roles for a kind of business: their names,
  * what they do, and their switches. Adds the Sales role if the books predate it.
  */
-export function applyEditionRoles(roles: RoleDef[], edition: Ed): RoleDef[] {
+export function applyEditionRoles(roles: RoleDef[], ed: Ed | 'hotel'): RoleDef[] {
+  // a hotel's front-line roles are the restaurant's, with reception added below
+  const edition: Ed = ed === 'hotel' ? 'restaurant' : ed;
   (['cashier', 'sales'] as const).forEach((id) => {
     const [name, description] = ROLE_WORDS[edition][id];
     const perms = setOf(EDITION_ROLES[edition][id]);

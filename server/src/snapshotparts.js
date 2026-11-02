@@ -14,6 +14,7 @@
 import zlib from 'node:zlib';
 import { q } from './db.js';
 import { whoami } from './sync.js';
+import { writeSnapshot } from './snapshotstore.js';
 
 const fail = (reply, status, error, message) => reply.code(status).send({ error, message });
 
@@ -72,14 +73,9 @@ export default async function snapshotPartRoutes(app) {
     }
     const nextVersion = (current.rows[0]?.version || 0) + 1;
     const bytes = Buffer.byteLength(text);
-    await q(
-      `insert into business_snapshots (business_id, data, bytes, device_id, version, updated_at)
-       values ($1, $2::jsonb, $3, $4, $5, now())
-       on conflict (business_id) do update
-         set data = excluded.data, bytes = excluded.bytes, device_id = excluded.device_id, version = excluded.version, updated_at = now()`,
-      [biz.id, text, bytes, req.body?.device || null, nextVersion],
-    );
-    const name = (() => { try { return JSON.parse(text).firm?.name; } catch { return null; } })();
+    const parsed = JSON.parse(text);
+    await writeSnapshot(biz.id, text, parsed, req.body?.device, nextVersion);
+    const name = parsed?.firm?.name;
     if (name && name !== biz.name) await q('update businesses set name = $2 where id = $1', [biz.id, String(name).slice(0, 200)]);
     return { ok: true, bytes, version: nextVersion };
   });

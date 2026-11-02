@@ -129,6 +129,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   Order: 'sales.create',
   MenuEditor: 'restaurant.menu',
   KitchenDisplay: 'restaurant.kitchen',
+  FrontDesk: 'hotel.view', BookingEdit: 'hotel.book', Booking: 'hotel.view', HotelSetup: 'hotel.setup', GuestRegister: 'hotel.view',
   OwnerSummary: 'settings.manage',
   Approvals: 'profiles.manage',
   PrintingKitchen: 'settings.printing',
@@ -200,6 +201,7 @@ const PHRASES: Record<string, string> = {
   'restaurant.print_bill': 'print the bill',
   'restaurant.menu': 'edit the menu',
   'restaurant.kitchen': 'use the kitchen display',
+  'hotel.view': 'see the reception', 'hotel.book': 'make bookings', 'hotel.setup': 'set up rooms and rates',
   'sales.view_totals': 'see total sales',
   'sales.view_balances': 'see the balance due',
 };

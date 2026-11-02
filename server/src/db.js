@@ -1,17 +1,21 @@
 /**
  * The database pool.
  *
- * One vCPU and one database, so the pool is deliberately small: more
- * connections than cores buys nothing and costs memory. PgBouncer can go in
- * front later if the shape of the load ever justifies it.
+ * With PgBouncer in front (PGBOUNCER_URL, set by deploy/speedup-install.sh)
+ * the API may hold many client connections cheaply: PgBouncer shares a dozen
+ * real PostgreSQL connections between them a transaction at a time, so a
+ * slow request no longer makes every other one wait for a free connection.
+ * Without it, the pool stays small: on one vCPU more real connections than
+ * cores buys nothing and costs memory. Every lock the API takes is per
+ * transaction (pg_advisory_xact_lock), which is what transaction pooling needs.
  */
 import pg from 'pg';
 
 const { Pool } = pg;
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 8,
+  connectionString: process.env.PGBOUNCER_URL || process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX) || (process.env.PGBOUNCER_URL ? 40 : 8),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
 });

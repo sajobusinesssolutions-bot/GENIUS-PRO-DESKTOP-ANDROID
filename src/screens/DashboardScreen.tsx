@@ -423,7 +423,11 @@ export default function DashboardScreen() {
 
         {/* 2 — what to do next */}
         <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 11 }}>
-          {(editionOf(db) === 'restaurant' ? [
+          {(editionOf(db) === 'hotel' ? [
+            { l: 'Reception', i: 'chair', r: 'FrontDesk', p: undefined, ok: can('hotel.view') },
+            { l: 'New booking', i: 'calendar', r: 'BookingEdit', p: undefined, ok: can('hotel.book') },
+            { l: 'New order', i: 'food', r: 'Order', p: undefined, ok: can('sales.create') },
+          ] : editionOf(db) === 'restaurant' ? [
             { l: 'New order', i: 'food', r: 'Order', p: undefined, ok: can('sales.create') },
             { l: 'Kitchen', i: 'food', r: 'KitchenDisplay', p: undefined, ok: can('restaurant.kitchen') },
             { l: 'Menu', i: 'menu', r: 'MenuEditor', p: undefined, ok: can('inventory.edit') },
@@ -465,7 +469,7 @@ export default function DashboardScreen() {
         {/* the one thing each trade must not miss: open tables, drugs about to expire */}
         {(() => {
           const ed = editionOf(db);
-          if (ed === 'restaurant') {
+          if (ed === 'restaurant' || ed === 'hotel') {
             const open = (db.tickets || []).filter((t) => t.status === 'open');
             if (!open.length) return null;
             const v = open.reduce((n, t) => n + t.lines.reduce((a, l) => a + l.qty * l.price, 0), 0);
