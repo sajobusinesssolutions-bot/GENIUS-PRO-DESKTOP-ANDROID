@@ -37,6 +37,7 @@ const BUSINESS_TYPES: { id: Edition; label: string; icon: IconName; sub: string 
   { id: 'retail', label: 'Retail shop', icon: 'cart', sub: EDITIONS.retail.tagline },
   { id: 'restaurant', label: 'Restaurant / bar / café', icon: 'food', sub: EDITIONS.restaurant.tagline },
   { id: 'pharmacy', label: 'Pharmacy / drug shop', icon: 'shield', sub: EDITIONS.pharmacy.tagline },
+  { id: 'hotel', label: 'Hotel / lodge / guest house', icon: 'chair', sub: EDITIONS.hotel.tagline },
 ];
 
 export default function OnboardingScreen({ navigation }: Props) {
