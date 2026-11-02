@@ -126,6 +126,7 @@ export type RootStackParamList = {
   Booking: { id: string };
   HotelSetup: undefined;
   GuestRegister: undefined;
+  HotelReports: undefined;
   OwnerSummary: undefined;
   Approvals: undefined;
   MenuEditor: { tab?: 'settings' } | undefined;

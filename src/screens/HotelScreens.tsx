@@ -28,7 +28,9 @@ import {
   type Booking, type BookingKind, type BookedRoom, type Guest, type RoomStatus, type FolioPayment,
   KIND_WORD, ROOM_WORD, SOURCES, STATUS_WORD, addDays, bookingOn, bookings, checkInMissing, dayAtDesk, folioOf,
   freeRooms, guestRegister, hotelSettings, nightsOf, priceStay, ratePlans, roomTypes, rooms, seasons, stayOffers, today,
+  breakfastList, forecast, guestMessage, hotelReport,
 } from '../data/hotel';
+import { sendVia } from '../data/messages';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -78,7 +80,7 @@ function DateField({ label, value, onChange, min }: { label: string; value: stri
 }
 
 /* ═══════════════════════════ FRONT DESK ═══════════════════════════ */
-type DeskTab = 'today' | 'rooms' | 'calendar' | 'bookings';
+type DeskTab = 'today' | 'rooms' | 'calendar' | 'bookings' | 'house';
 
 export function FrontDeskScreen() {
   const { colors } = useTheme();
@@ -89,6 +91,8 @@ export function FrontDeskScreen() {
   const [roomSheet, setRoomSheet] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [start, setStart] = useState(today());
+  const [fault, setFault] = useState('');
+  const [faultOoo, setFaultOoo] = useState(true);
   if (!db) return null;
   const desk = dayAtDesk(db);
   const list = rooms(db).filter((r) => r.active);
@@ -118,13 +122,14 @@ export function FrontDeskScreen() {
     );
   };
 
+  const faultRoom = roomSheet && roomSheet.startsWith('fault:') ? list.find((r) => 'fault:' + r.id === roomSheet) : null;
   const sheetRoom = roomSheet ? list.find((r) => r.id === roomSheet) : null;
   const sheetBooking = sheetRoom ? bookingOn(db, sheetRoom.id, today()) : undefined;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-        <Seg value={tab} onChange={setTab} options={[{ v: 'today', l: 'Today' }, { v: 'rooms', l: 'Rooms' }, { v: 'calendar', l: 'Calendar' }, { v: 'bookings', l: 'Bookings' }]} />
+        <Seg value={tab} onChange={setTab} options={[{ v: 'today', l: 'Today' }, { v: 'rooms', l: 'Rooms' }, { v: 'calendar', l: 'Calendar' }, { v: 'bookings', l: 'Bookings' }, { v: 'house', l: 'Cleaning' }]} />
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 110 }}>
         {tab === 'today' ? (
@@ -153,6 +158,62 @@ export function FrontDeskScreen() {
               </View>
               {desk.adr ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 10 }}>Average room rate tonight: {money(desk.adr)}</Text> : null}
             </Card>
+
+            {/* the night audit: yesterday closed, holds let go, no-shows marked */}
+            {(hotelSettings(db) as any).lastAudit !== today() && can('hotel.checkout') ? (
+              <Pressable onPress={() => {
+                try {
+                  const r = hotel.nightAudit();
+                  Alert.alert('Hotel day closed', [r.noShows ? r.noShows + ' booking(s) that never arrived marked as no-shows.' : 'No missed arrivals.', r.released ? r.released + ' provisional hold(s) released.' : 'No expired holds.', r.dueOut ? r.dueOut + ' guest(s) due out today.' : ''].filter(Boolean).join('\n'));
+                } catch (e: any) { Alert.alert('Cannot close the day', e.message); }
+              }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14, padding: 14, borderRadius: 8, backgroundColor: colors.accentSoft, opacity: pressed ? 0.85 : 1 })}>
+                <Icon name="clock" size={20} color={colors.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.accent }}>Night audit</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.accent, marginTop: 1 }}>Close yesterday: mark no-shows and let expired holds go</Text>
+                </View>
+                <Icon name="chev" size={14} color={colors.accent} />
+              </Pressable>
+            ) : null}
+
+            {(() => {
+              const fc = forecast(db, 14);
+              return (
+                <Card style={{ padding: 14, marginTop: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                    <Cap style={{ flex: 1 }}>Next 14 nights</Cap>
+                    <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>average {Math.round(fc.reduce((a, x) => a + x.pct, 0) / fc.length)}% booked</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 70 }}>
+                    {fc.map((x) => (
+                      <View key={x.day} style={{ flex: 1, alignItems: 'center' }}>
+                        <View style={{ width: '100%', height: Math.max(3, Math.round(56 * x.pct / 100)), borderRadius: 2, backgroundColor: x.pct >= 85 ? colors.good : x.pct >= 50 ? colors.accent : colors.lineHard }} />
+                        <Text style={{ fontFamily: fonts.ui, fontSize: 9.5, color: colors.faint, marginTop: 3 }}>{+x.day.slice(8)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </Card>
+              );
+            })()}
+
+            {(() => {
+              const bf = breakfastList(db);
+              if (!bf.length) return null;
+              return (
+                <>
+                  <Cap style={{ marginTop: 18, marginBottom: 8 }}>Breakfast this morning · {bf.reduce((a, x) => a + x.adults + x.children, 0)} guests</Cap>
+                  <Card>
+                    {bf.map((x, i) => (
+                      <View key={i} style={{ flexDirection: 'row', padding: 12, borderBottomWidth: i === bf.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+                        <Text style={{ width: 56, fontFamily: fonts.uiSemi, color: colors.ink }}>{x.room}</Text>
+                        <Text style={{ flex: 1, fontFamily: fonts.ui, color: colors.soft }} numberOfLines={1}>{x.guest} · {x.plan}</Text>
+                        <Text style={{ fontFamily: fonts.uiSemi, color: colors.ink }}>{x.adults}{x.children ? ' + ' + x.children : ''}</Text>
+                      </View>
+                    ))}
+                  </Card>
+                </>
+              );
+            })()}
 
             {desk.late.length ? (
               <>
@@ -271,8 +332,55 @@ export function FrontDeskScreen() {
           );
         })() : null}
 
+        {tab === 'house' ? (() => {
+          const order: RoomStatus[] = ['dirty', 'ooo', 'inspected', 'clean'];
+          const staff: string[] = (db.users || []).filter((u: any) => u.active !== false).map((u: any) => u.name);
+          return (
+            <>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginBottom: 10 }}>
+                {desk.dirty} to clean · {desk.departures.length} leaving today · {list.filter((r) => r.assignee).length} assigned
+              </Text>
+              {order.map((st) => {
+                const rs = list.filter((r) => r.status === st);
+                if (!rs.length) return null;
+                return (
+                  <View key={st} style={{ marginBottom: 14 }}>
+                    <Cap style={{ marginBottom: 8, color: tones.room[st] }}>{ROOM_WORD[st]} · {rs.length}</Cap>
+                    <Card>
+                      {rs.map((r, i) => {
+                        const b = bookingOn(db, r.id, today());
+                        const leaving = b && b.status === 'in' && b.depart.slice(0, 10) <= today();
+                        const fl = (r.maintenance || []).filter((m) => !m.fixed).slice(-1)[0];
+                        return (
+                          <View key={r.id} style={{ padding: 12, borderBottomWidth: i === rs.length - 1 ? 0 : 1, borderBottomColor: colors.line, gap: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <Text style={{ fontFamily: fonts.uiExtra, fontSize: 16, color: colors.ink, width: 52 }}>{r.no}</Text>
+                              <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }} numberOfLines={1}>
+                                {b && b.status === 'in' ? (leaving ? 'Check-out today' : 'Stay-over') : 'Empty'}{r.assignee ? ' · ' + r.assignee : ''}
+                              </Text>
+                            </View>
+                            {fl ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.danger }}>Fault: {fl.text}</Text> : null}
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                              {st !== 'clean' && st !== 'ooo' ? <Chip label="Cleaned" onPress={() => hotel.setRoomStatus(r.id, 'clean')} /> : null}
+                              {st === 'clean' ? <Chip label="Inspected" onPress={() => hotel.setRoomStatus(r.id, 'inspected')} /> : null}
+                              {st !== 'dirty' && st !== 'ooo' ? <Chip label="Needs cleaning" onPress={() => hotel.setRoomStatus(r.id, 'dirty')} /> : null}
+                              {fl || st === 'ooo' ? <Chip label="Fixed" onPress={() => hotel.fixFault(r.id)} /> : <Chip label="Report a fault" onPress={() => setRoomSheet('fault:' + r.id)} />}
+                              {staff.slice(0, 6).map((n) => <Chip key={n} label={n.split(' ')[0]} on={r.assignee === n} onPress={() => hotel.assignRoom(r.id, r.assignee === n ? '' : n)} />)}
+                            </ScrollView>
+                          </View>
+                        );
+                      })}
+                    </Card>
+                  </View>
+                );
+              })}
+            </>
+          );
+        })() : null}
+
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-          <View style={{ flex: 1 }}><Button label="Guest register" onPress={() => go('GuestRegister')} /></View>
+          <View style={{ flex: 1 }}><Button label="Reports" onPress={() => go('HotelReports')} /></View>
+          <View style={{ flex: 1 }}><Button label="Register" onPress={() => go('GuestRegister')} /></View>
           <View style={{ flex: 1 }}><Button label="Rooms & rates" onPress={() => go('HotelSetup')} /></View>
         </View>
       </ScrollView>
@@ -286,6 +394,15 @@ export function FrontDeskScreen() {
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.accentInk }}>New booking</Text>
         </Pressable>
       ) : null}
+
+      <Sheet visible={!!faultRoom} title={faultRoom ? 'Fault in room ' + faultRoom.no : ''} icon="wrench" iconTone="danger" onClose={() => setRoomSheet(null)}
+        footer={<Button variant="pri" label="Report it" onPress={() => { try { hotel.reportFault(faultRoom!.id, fault, faultOoo); setFault(''); setRoomSheet(null); } catch (e: any) { Alert.alert('Cannot report it', e.message); } }} />}>
+        <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{['AC not working', 'No hot water', 'Leaking tap', 'TV not working', 'Bulb out', 'Door lock'].map((x) => <Chip key={x} label={x} on={fault === x} onPress={() => setFault(x)} />)}</View>
+          <Field label="What is wrong" value={fault} onChangeText={setFault} multiline />
+          <ToggleRow bare label="Take the room out of order" sub="Nobody can be checked into it until it is fixed" on={faultOoo} onChange={setFaultOoo} />
+        </View>
+      </Sheet>
 
       <Sheet visible={!!sheetRoom} title={sheetRoom ? 'Room ' + sheetRoom.no : ''} subtitle={sheetRoom ? (roomTypes(db).find((t) => t.id === sheetRoom.typeId)?.name || '') + ' · ' + ROOM_WORD[sheetRoom.status] : ''} icon="chair" onClose={() => setRoomSheet(null)}>
         {sheetRoom ? (
@@ -439,6 +556,14 @@ export function BookingEditScreen({ route, navigation }: any) {
                 <Field style={{ flex: 1.4 }} label={i === 0 ? 'Main guest' : 'Guest ' + (i + 1)} value={g.name} onChangeText={(v) => setG(i, { name: v })} autoCapitalize="words" />
                 <Field style={{ flex: 1 }} label="Phone" keyboard="phone-pad" value={g.phone || ''} onChangeText={(v) => setG(i, { phone: v })} />
               </View>
+              {kind !== 'individual' && picked.length > 1 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  {picked.map((p) => {
+                    const no = rooms(db).find((x) => x.id === p.roomId)?.no;
+                    return <Chip key={p.roomId} label={'Room ' + no} on={g.roomId === p.roomId} onPress={() => setG(i, { roomId: g.roomId === p.roomId ? undefined : p.roomId })} />;
+                  })}
+                </ScrollView>
+              ) : null}
               {i === 0 || kind !== 'individual' ? (
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <Field style={{ flex: 1 }} label="ID or passport no." value={g.idNo || ''} onChangeText={(v) => setG(i, { idNo: v })} autoCapitalize="characters" />
@@ -596,6 +721,37 @@ export function BookingScreen({ route, navigation }: any) {
           </View>
         ) : null}
 
+        {/* messages to the guest */}
+        {b.guests[0]?.phone ? (
+          <Card style={{ padding: 14 }}>
+            <Cap style={{ marginBottom: 10 }}>WhatsApp the guest</Cap>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {([['confirm', 'Confirmation'], ['welcome', 'Welcome'], ['bill', 'The bill'], ['thanks', 'Thank you']] as const).map(([k, l]) => (
+                <Chip key={k} label={l} onPress={() => { void sendVia('whatsapp', { text: guestMessage(db, b, k, money), phone: b.guests[0].phone, countryCode: '256' }); }} />
+              ))}
+            </View>
+          </Card>
+        ) : null}
+
+        {(b.status === 'in' || b.status === 'confirmed' || b.status === 'provisional') && can('hotel.book') ? (
+          <Card style={{ padding: 14 }}>
+            <Cap style={{ marginBottom: 10 }}>Move to another room</Cap>
+            {b.rooms.map((r) => {
+              const from = rooms(db).find((x) => x.id === r.roomId);
+              const free = freeRooms(db, b.status === 'in' ? today() : b.arrive.slice(0, 10), b.depart, undefined, b.id).filter((x) => x.id !== r.roomId);
+              return (
+                <View key={r.roomId} style={{ marginBottom: 8 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft, marginBottom: 6 }}>From {from?.no} to:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                    {free.length ? free.map((x) => <Chip key={x.id} label={x.no} onPress={() => Alert.alert('Move to room ' + x.no + '?', 'The rate stays as booked.', [{ text: 'No', style: 'cancel' }, { text: 'Move', onPress: () => run('move room', () => hotel.moveRoom(b.id, r.roomId, x.id), 'Moved to ' + x.no) }])} />)
+                      : <Text style={{ fontFamily: fonts.ui, color: colors.faint }}>No other room is free.</Text>}
+                  </ScrollView>
+                </View>
+              );
+            })}
+          </Card>
+        ) : null}
+
         {/* the register */}
         <Card style={{ padding: 14 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
@@ -604,7 +760,7 @@ export function BookingScreen({ route, navigation }: any) {
           </View>
           {b.guests.map((g, i) => (
             <View key={i} style={{ paddingVertical: 8, borderTopWidth: i ? 1 : 0, borderTopColor: colors.line }}>
-              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{g.name}{g.phone ? '  ·  ' + g.phone : ''}</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink }}>{g.name}{g.phone ? '  ·  ' + g.phone : ''}{g.roomId ? '  ·  room ' + (rooms(db).find((x) => x.id === g.roomId)?.no || '') : ''}</Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: g.idNo ? colors.faint : colors.warn, marginTop: 2 }}>
                 {g.idNo ? 'ID ' + g.idNo : 'No ID yet'} · {g.nationality || 'nationality not given'}{g.purpose ? ' · ' + g.purpose : ''}
               </Text>
@@ -815,5 +971,81 @@ export function GuestRegisterScreen() {
         </Card>
       </ScrollView>
     </View>
+  );
+}
+
+/* ═══════════════════════════ HOTEL REPORTS ═══════════════════════════ */
+export function HotelReportsScreen() {
+  const { colors } = useTheme();
+  const { db, money } = useAppData() as any;
+  const [from, setFrom] = useState(today().slice(0, 8) + '01');
+  const [to, setTo] = useState(today());
+  const r = useMemo(() => (db ? hotelReport(db, from, to) : null), [db, from, to]);
+  const fc = useMemo(() => (db ? forecast(db, 30) : []), [db]);
+  if (!db || !r) return null;
+  const Kpi = ({ l, v, sub }: { l: string; v: string; sub?: string }) => (
+    <View style={{ flex: 1, minWidth: '45%', padding: 12, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{l}</Text>
+      <Text style={{ fontFamily: fonts.uiExtra, fontSize: 20, color: colors.ink, marginTop: 4 }} numberOfLines={1} adjustsFontSizeToFit>{v}</Text>
+      {sub ? <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{sub}</Text> : null}
+    </View>
+  );
+  const Table = ({ title, rows }: { title: string; rows: [string, string, string?][] }) => (
+    <>
+      <Cap style={{ marginTop: 18, marginBottom: 8 }}>{title}</Cap>
+      <Card>
+        {rows.length ? rows.map(([a, b, c], i) => (
+          <View key={i} style={{ flexDirection: 'row', padding: 12, borderBottomWidth: i === rows.length - 1 ? 0 : 1, borderBottomColor: colors.line }}>
+            <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }} numberOfLines={1}>{a}</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginRight: 12 }}>{c || ''}</Text>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{b}</Text>
+          </View>
+        )) : <Text style={{ padding: 14, fontFamily: fonts.ui, color: colors.faint }}>Nothing in this period.</Text>}
+      </Card>
+    </>
+  );
+  const peak = Math.max(1, ...r.nights.map((n) => n.available));
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+        <DateField label="From" value={from} onChange={setFrom} />
+        <DateField label="To" value={to} min={from} onChange={setTo} />
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+        <Kpi l="Occupancy" v={r.occupancy + '%'} sub={r.roomNights + ' of ' + r.availableNights + ' room nights'} />
+        <Kpi l="Room revenue" v={money(r.revenue)} />
+        <Kpi l="Average rate (ADR)" v={money(r.adr)} sub="per room sold a night" />
+        <Kpi l="RevPAR" v={money(r.revpar)} sub="per room available a night" />
+        <Kpi l="Cancelled" v={String(r.cancelled)} sub="bookings arriving in the period" />
+        <Kpi l="No-shows" v={String(r.noShows)} />
+      </View>
+      <Cap style={{ marginTop: 18, marginBottom: 8 }}>Night by night</Cap>
+      <Card style={{ padding: 12 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 90 }}>
+            {r.nights.map((n) => (
+              <View key={n.day} style={{ width: 14, alignItems: 'center' }}>
+                <View style={{ width: 12, height: Math.max(2, Math.round(70 * n.occupied / peak)), borderRadius: 2, backgroundColor: colors.accent }} />
+                <Text style={{ fontFamily: fonts.ui, fontSize: 8.5, color: colors.faint, marginTop: 2 }}>{+n.day.slice(8)}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </Card>
+      <Table title="By room type" rows={r.byType.map((t) => [t.name, money(t.revenue), t.nights + ' nights'])} />
+      <Table title="Where bookings came from" rows={r.bySource.map((x) => [x.source, money(x.revenue), x.bookings + ' bkg · ' + x.nights + ' n'])} />
+      <Table title="Guests by nationality" rows={r.byNation.map((x) => [x.nation, String(x.guests)])} />
+      <Cap style={{ marginTop: 18, marginBottom: 8 }}>Next 30 nights</Cap>
+      <Card style={{ padding: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 80 }}>
+          {fc.map((x) => (
+            <View key={x.day} style={{ flex: 1, height: Math.max(2, Math.round(70 * x.pct / 100)), borderRadius: 2, backgroundColor: x.pct >= 85 ? colors.good : x.pct >= 50 ? colors.accent : colors.lineHard }} />
+          ))}
+        </View>
+        <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 8 }}>
+          {fc.filter((x) => x.pct >= 85).length} nights nearly full · {fc.filter((x) => x.pct < 30).length} nights under 30% — a season price or an offer may help fill them.
+        </Text>
+      </Card>
+    </ScrollView>
   );
 }

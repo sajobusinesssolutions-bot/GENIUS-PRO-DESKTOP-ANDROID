@@ -38,6 +38,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import FirstTimeTip from '../components/FirstTimeTip';
 import OrderStart from '../components/OrderStart';
 import type { RootStackParamList } from '../nav/types';
+import { bookings as hotelBookings, rooms as hotelRooms } from '../data/hotel';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Order'>;
 
@@ -46,7 +47,7 @@ export default function OrderScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { db, money, saveTicket, closeTicket, voidTicket, commitSale, user, can, sendKitchenOrder } = useAppData();
+  const { db, money, saveTicket, closeTicket, voidTicket, commitSale, user, can, sendKitchenOrder, hotel } = useAppData();
   const { takeSaleNumber } = useSyncRun();
   // what this person may do here (Staff & roles → Restaurant)
   const mayCharge = can('restaurant.charge');
@@ -70,6 +71,9 @@ export default function OrderScreen({ navigation, route }: Props) {
   const [openList, setOpenList] = useState(false);
   const [paying, setPaying] = useState(false);
   const [method, setMethod] = useState<PayMethod>('cash');
+  /* a hotel: the meal can go on an in-house guest's room bill instead of being paid now */
+  const [toRoom, setToRoom] = useState<string | null>(null);
+  const inHouse = db?.firm?.businessType === 'hotel' ? hotelBookings(db).filter((b) => b.status === 'in') : [];
   const [received, setReceived] = useState('');
   const [orderNote, setOrderNote] = useState('');
   /** Splitting the bill: how many of each line this payer takes; null when not splitting. */
@@ -328,20 +332,30 @@ export default function OrderScreen({ navigation, route }: Props) {
     if (!lines.some((l) => l.qty > 0)) return;
     const taking = split ? lines.map((l, i) => ({ ...l, qty: split[i] || 0 })).filter((l) => l.qty > 0) : lines.filter((l) => l.qty > 0);
     if (!taking.length) { error('Choose what this person is paying for.'); return; }
-    const paid = method === 'cash' ? Number(received) || due : due;
-    if (method === 'cash' && paid < due - 0.005) { error('The cash received is less than the total.'); return; }
+    const paid = method === 'cash' && !toRoom ? Number(received) || due : due;
+    if (method === 'cash' && !toRoom && paid < due - 0.005) { error('The cash received is less than the total.'); return; }
+    // charged to a room: a sale on the guest's account now, shown on the room bill, settled at check-out
+    let roomParty: string | null = null;
+    if (toRoom) {
+      try { roomParty = hotel.roomGuestParty(toRoom); } catch (e) { explain(e); return; }
+    }
     let sale;
     // the number from the server, as on a sale; offline it is temporary until the next sync
     const taken = await takeSaleNumber(db?.session.warehouse).catch(() => null);
     try {
       sale = commitSale({
         no: taken?.no,
-        lines: taking, partyId: partyId || null, method, discount: 0,
+        lines: taking, partyId: roomParty || partyId || null, method: roomParty ? 'credit' : method, discount: 0,
         additionalCharges: (split ? splitService : service) || undefined,
         ticketName: (name.trim() || '') + (split ? ' (split)' : '') || undefined, orderType,
         description: orderNote.trim() || undefined,
       });
     } catch (e) { taken?.drop(); explain(e); return; }
+    if (toRoom) {
+      const bk = inHouse.find((b) => b.id === toRoom);
+      try { hotel.billSaleToRoom(toRoom, sale.id, 'Restaurant ' + sale.no + (name.trim() ? ' · ' + name.trim() : ''), sale.total); } catch (e) { explain(e); }
+      success(money(sale.total) + ' charged to room ' + (bk ? bk.rooms.map((r) => hotelRooms(db).find((x) => x.id === r.roomId)?.no).join(', ') : ''));
+    }
     // anything not yet cooked still goes to the kitchen (unless a takeaway said it is ready)
     if (toKitchen) await sendToKitchen(sale.no);
     const change = Math.max(0, paid - due);
@@ -362,6 +376,7 @@ export default function OrderScreen({ navigation, route }: Props) {
     setSplit(null);
     clear();
     setPaying(false); setReceived(''); setMethod('cash');
+    if (toRoom) { setToRoom(null); return; }
     if (db?.printer?.autoPrint) {
       printDoc(saleDoc(sale, 'Receipt'), money, printOptsFor(db, 'receipt', undefined, 'cash')).catch((e: any) => error(e?.message || 'The receipt did not print.'));
       success(sale.no + ' paid' + (change ? ' · change ' + money(change) : ''));
@@ -853,8 +868,8 @@ export default function OrderScreen({ navigation, route }: Props) {
         footer={(
           <Button
             variant="pri"
-            label="Paid"
-            disabled={method === 'cash' && !!received && Number(received) < due}
+            label={toRoom ? 'Charge to the room' : 'Paid'}
+            disabled={!toRoom && method === 'cash' && !!received && Number(received) < due}
             onPress={startCharge}
           />
         )}
@@ -883,11 +898,11 @@ export default function OrderScreen({ navigation, route }: Props) {
         {/* how */}
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
           {([['cash', 'Cash', 'cash'], ['momo', 'Mobile money', 'phone'], ['bank', 'Card / bank', 'card']] as const).map(([v, l, i]) => {
-            const on = method === v;
+            const on = method === v && !toRoom;
             return (
               <Pressable
                 key={v}
-                onPress={() => { setMethod(v); if (v !== 'cash') setReceived(''); }}
+                onPress={() => { setToRoom(null); setMethod(v); if (v !== 'cash') setReceived(''); }}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
                 style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 4, borderWidth: 2, borderColor: on ? colors.good : colors.line, backgroundColor: on ? colors.goodSoft : colors.surface }}
@@ -899,7 +914,29 @@ export default function OrderScreen({ navigation, route }: Props) {
           })}
         </View>
 
-        {method === 'cash' ? (
+        {inHouse.length && !split ? (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>OR CHARGE TO A ROOM</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {inHouse.map((b) => {
+                const on = toRoom === b.id;
+                const nos = b.rooms.map((r) => hotelRooms(db).find((x) => x.id === r.roomId)?.no).join(', ');
+                return (
+                  <Pressable key={b.id} onPress={() => setToRoom(on ? null : b.id)} style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 4, borderWidth: 2, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accent : colors.ink }}>Room {nos}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, maxWidth: 150 }}>{b.groupName || b.guests[0]?.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {toRoom ? (
+          <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, textAlign: 'center', paddingVertical: 8 }}>
+            {money(due)} goes on the guest's room bill and is paid at check-out.
+          </Text>
+        ) : method === 'cash' ? (
           <>
             <Field label="Cash received" numeric decimal value={received} onChangeText={setReceived} placeholder={String(due)} />
             {/* the notes customers usually hand over */}

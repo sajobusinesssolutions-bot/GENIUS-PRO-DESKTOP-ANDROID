@@ -33,6 +33,10 @@ export interface RoomType {
 export interface Room {
   id: string; no: string; typeId: string; floor?: string;
   status: RoomStatus; note?: string; active: boolean;
+  /** Housekeeping: who is cleaning it today. */
+  assignee?: string;
+  /** Out of order: what is wrong, logged with the date. */
+  maintenance?: { ts: string; text: string; fixed?: string }[];
 }
 export interface RatePlan {
   id: string; name: string;
@@ -58,6 +62,8 @@ export interface Guest {
   purpose?: string; vehicle?: string;
   /** Child guests are listed, not charged as adults. */
   child?: boolean;
+  /** Group bookings: the room this guest sleeps in (the rooming list). */
+  roomId?: string;
 }
 export interface BookedRoom { roomId: string; typeId: string; rate: number; adults: number; children: number }
 export interface FolioCharge {
@@ -65,8 +71,14 @@ export interface FolioCharge {
   /** Who pays it: the guest, or the company on a company booking. */
   payer: 'guest' | 'company';
   by?: string;
+  /** Already a sale in the books (a meal charged to the room): shown on the bill, not billed twice. */
+  saleId?: string;
 }
-export interface FolioPayment { id: string; ts: string; amount: number; method: 'cash' | 'momo' | 'bank' | 'card'; note?: string; by?: string }
+export interface FolioPayment {
+  id: string; ts: string; amount: number; method: 'cash' | 'momo' | 'bank' | 'card'; note?: string; by?: string;
+  /** The receipt in the books: the money is in the cash book the day it is taken, held on the guest's account until check-out. */
+  paymentId?: string;
+}
 export type BookingKind = 'individual' | 'couple' | 'group';
 export type BookingStatus = 'provisional' | 'confirmed' | 'in' | 'out' | 'cancelled' | 'noshow';
 export interface Booking {
@@ -248,4 +260,106 @@ export function checkInMissing(b: Booking): string[] {
   if (lead && !lead.nationality?.trim()) out.push('their nationality');
   if (!b.rooms.length) out.push('a room');
   return out;
+}
+
+/* ── Reports ──────────────────────────────────────────────────────────────
+   Over a period: how full the hotel was night by night, what the rooms
+   earned, the average rate a sold room fetched (ADR) and what each room
+   available earned (RevPAR) — the three figures every hotel is measured by —
+   with room types, where the bookings came from, and guests' nationalities. */
+export function hotelReport(d: DB, from: string, to: string) {
+  const live = rooms(d).filter((r) => r.active);
+  const sold = bookings(d).filter((b) => b.status === 'in' || b.status === 'out' || b.status === 'confirmed');
+  const nights: { day: string; occupied: number; available: number; revenue: number }[] = [];
+  const byType = new Map<string, { name: string; nights: number; revenue: number }>();
+  const bySource = new Map<string, { bookings: number; nights: number; revenue: number }>();
+  const byNation = new Map<string, number>();
+  for (let day = from; day <= to; day = addDays(day, 1)) {
+    let occupied = 0, revenue = 0;
+    for (const b of sold) {
+      if (!(b.arrive.slice(0, 10) <= day && day < b.depart.slice(0, 10))) continue;
+      for (const r of b.rooms) {
+        const s = seasonOn(d, day);
+        const rate = Math.round(r.rate * (1 + (s ? s.pct : 0) / 100));
+        occupied++; revenue += rate;
+        const t = roomTypes(d).find((x) => x.id === r.typeId);
+        const k = byType.get(r.typeId) || { name: t?.name || 'Room', nights: 0, revenue: 0 };
+        k.nights++; k.revenue += rate; byType.set(r.typeId, k);
+        const src = bySource.get(b.source) || { bookings: 0, nights: 0, revenue: 0 };
+        src.nights++; src.revenue += rate; bySource.set(b.source, src);
+      }
+    }
+    const available = live.filter((r) => r.status !== 'ooo').length || live.length;
+    nights.push({ day, occupied, available, revenue });
+  }
+  for (const b of sold) {
+    if (b.arrive.slice(0, 10) > to || b.depart.slice(0, 10) <= from) continue;
+    const src = bySource.get(b.source); if (src) src.bookings++;
+    for (const g of b.guests) { const n = (g.nationality || 'Not given').trim(); byNation.set(n, (byNation.get(n) || 0) + 1); }
+  }
+  const roomNights = nights.reduce((a, n) => a + n.occupied, 0);
+  const availableNights = nights.reduce((a, n) => a + n.available, 0);
+  const revenue = nights.reduce((a, n) => a + n.revenue, 0);
+  const all = bookings(d).filter((b) => b.arrive.slice(0, 10) >= from && b.arrive.slice(0, 10) <= to);
+  return {
+    nights, roomNights, availableNights, revenue,
+    occupancy: availableNights ? Math.round((roomNights / availableNights) * 1000) / 10 : 0,
+    adr: roomNights ? Math.round(revenue / roomNights) : 0,
+    revpar: availableNights ? Math.round(revenue / availableNights) : 0,
+    cancelled: all.filter((b) => b.status === 'cancelled').length,
+    noShows: all.filter((b) => b.status === 'noshow').length,
+    byType: [...byType.values()].sort((a, b) => b.revenue - a.revenue),
+    bySource: [...bySource.entries()].map(([source, v]) => ({ source, ...v })).sort((a, b) => b.revenue - a.revenue),
+    byNation: [...byNation.entries()].map(([nation, guests]) => ({ nation, guests })).sort((a, b) => b.guests - a.guests),
+  };
+}
+
+/** The nights ahead: rooms booked and how full, from the bookings on the books. */
+export function forecast(d: DB, days = 30, from = today()) {
+  const live = rooms(d).filter((r) => r.active && r.status !== 'ooo').length;
+  return Array.from({ length: days }, (_, i) => {
+    const day = addDays(from, i);
+    const booked = bookings(d).filter((b) => holds(b) && b.arrive.slice(0, 10) <= day && day < b.depart.slice(0, 10)).reduce((a, b) => a + b.rooms.length, 0);
+    return { day, booked, free: Math.max(0, live - booked), pct: live ? Math.round((booked / live) * 100) : 0 };
+  });
+}
+
+/** This morning's breakfast list: guests in house whose rate includes meals. */
+export function breakfastList(d: DB, day = today()) {
+  return bookings(d)
+    .filter((b) => b.status === 'in' && b.arrive.slice(0, 10) < day && day <= b.depart.slice(0, 10))
+    .flatMap((b) => {
+      const plan = ratePlans(d).find((p) => p.id === b.ratePlanId);
+      if (!plan || !(plan.perPerson > 0)) return [];
+      return b.rooms.map((r) => ({
+        room: rooms(d).find((x) => x.id === r.roomId)?.no || '?', plan: plan.name, adults: r.adults, children: r.children,
+        guest: b.guests.find((g) => g.roomId === r.roomId)?.name || b.guests[0]?.name || '',
+      }));
+    })
+    .sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }));
+}
+
+/** Messages a guest is sent on WhatsApp, in the hotel's words. */
+export function guestMessage(d: DB, b: Booking, kind: 'confirm' | 'welcome' | 'bill' | 'thanks', money: (n: number) => string): string {
+  const hotel = d.firm?.name || 'our hotel';
+  const s = hotelSettings(d);
+  const name = (b.guests[0]?.name || '').split(' ')[0] || 'there';
+  const roomsTxt = b.rooms.map((r) => rooms(d).find((x) => x.id === r.roomId)?.no || '').filter(Boolean).join(', ');
+  const f = folioOf(d, b);
+  const nice = (x: string) => new Date(x.slice(0, 10) + 'T12:00:00').toDateString().slice(0, 10);
+  if (kind === 'confirm') {
+    return 'Hello ' + name + ', your booking ' + b.no + ' at ' + hotel + ' is confirmed: ' + nice(b.arrive) + ' to ' + nice(b.depart)
+      + ' (' + nightsOf(b.arrive, b.depart) + ' nights), ' + b.rooms.length + ' room' + (b.rooms.length === 1 ? '' : 's') + '. Total ' + money(f.total)
+      + (f.paid ? ', paid ' + money(f.paid) : '') + '. Check-in from ' + s.checkInTime + '. We look forward to welcoming you.';
+  }
+  if (kind === 'welcome') {
+    return 'Welcome to ' + hotel + ', ' + name + '! You are in room ' + roomsTxt + '. Check-out is by ' + s.checkOutTime + ' on ' + nice(b.depart)
+      + '. Reply here any time if you need anything.';
+  }
+  if (kind === 'bill') {
+    const lines = [...f.stay.lines.map((l) => l.desc + ': ' + money(l.amount)), ...b.charges.map((c) => c.desc + ': ' + money(c.amount))];
+    return hotel + ' · bill ' + b.no + '\n' + lines.join('\n') + (f.discount ? '\nDiscount: -' + money(f.discount) : '')
+      + '\nTotal: ' + money(f.total) + '\nPaid: ' + money(f.paid) + '\nBalance: ' + money(Math.max(0, f.balance));
+  }
+  return 'Thank you for staying with us at ' + hotel + ', ' + name + '. We hope to see you again soon!';
 }

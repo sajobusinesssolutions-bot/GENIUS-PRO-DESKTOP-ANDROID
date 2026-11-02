@@ -94,4 +94,43 @@ describe('hotel edition', () => {
     expect(d.sales.find((s) => s.id === out.guestSale)).toMatchObject({ total: 8000, due: 0 });
     expect(nightsOf(a, addDays(a, 1))).toBe(1);
   });
+
+  it('takes a deposit into the books on the day, and applies it to the bill and a meal at check-out', () => {
+    const { d, h, dbl, r1 } = setup();
+    const a = today();
+    const bk = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Phone', arrive: a, depart: addDays(a, 1), rooms: [{ roomId: r1.id, typeId: dbl.id, rate: 100000, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [guest], discount: 0 });
+    const pays = d.payments.length;
+    h.takeBookingPayment(bk.id, { amount: 130000, method: 'cash' });
+    expect(d.payments.length).toBe(pays + 1);
+    const receipt = d.payments[d.payments.length - 1];
+    expect(receipt).toMatchObject({ direction: 'in', amount: 130000, unapplied: 130000 });
+    h.checkIn(bk.id);
+    // a dinner charged to the room: a sale on the guest's account now, shown on the bill
+    const partyId = h.roomGuestParty(bk.id);
+    const meal = (require('../logic') as typeof import('../logic')).commitSale(d, { lines: [{ productId: 'x', name: 'Dinner', sku: 'X', unit: 'Plate', qty: 1, price: 25000, cost: 0, taxRate: 0 } as any], partyId, method: 'credit', discount: 0 });
+    h.billSaleToRoom(bk.id, meal.id, 'Restaurant ' + meal.no, meal.total);
+    expect(folioOf(d, d.hotelBookings![0]).total).toBe(125000);
+    const out = h.checkOut(bk.id);
+    const room = d.sales.find((s) => s.id === out.guestSale)!;
+    expect(room.total).toBe(100000);
+    expect(room.due).toBe(0);
+    expect(d.sales.find((s) => s.id === meal.id)!.due).toBe(0);
+    // 5,000 over stays on the guest's account
+    expect(d.payments.find((p) => p.id === receipt.id)!.unapplied).toBe(5000);
+  });
+
+  it('the night audit lets expired holds go and marks no-shows; a guest can move room', () => {
+    const { d, h, dbl, r1, r2 } = setup();
+    const y = addDays(today(), -1);
+    const late = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Phone', arrive: y, depart: addDays(y, 2), rooms: [{ roomId: r1.id, typeId: dbl.id, rate: 1, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [{ name: 'Late' }], discount: 0 });
+    const held = h.saveBooking({ kind: 'individual', status: 'provisional', holdUntil: y, source: 'Phone', arrive: addDays(today(), 5), depart: addDays(today(), 6), rooms: [{ roomId: r2.id, typeId: dbl.id, rate: 1, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [{ name: 'Held' }], discount: 0 });
+    expect(h.nightAudit()).toMatchObject({ released: 1, noShows: 1 });
+    expect(d.hotelBookings!.find((b) => b.id === late.id)!.status).toBe('noshow');
+    expect(d.hotelBookings!.find((b) => b.id === held.id)!.status).toBe('cancelled');
+    const bk = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Walk-in', arrive: today(), depart: addDays(today(), 1), rooms: [{ roomId: r1.id, typeId: dbl.id, rate: 1, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [guest], discount: 0 });
+    h.checkIn(bk.id);
+    h.moveRoom(bk.id, r1.id, r2.id);
+    expect(d.hotelBookings!.find((b) => b.id === bk.id)!.rooms[0].roomId).toBe(r2.id);
+    expect(d.rooms!.find((r) => r.id === r1.id)!.status).toBe('dirty');
+  });
 });
