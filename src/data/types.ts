@@ -851,6 +851,10 @@ export interface DB {
   stayOffers?: import('./hotel').StayOffer[];
   hotelBookings?: import('./hotel').Booking[];
   /** The hotel's shared rules: one record, id "config" (hotelSettings). */
+  /** Events: halls and meeting rooms, packages, and the events booked in them (hotel.ts). */
+  eventSpaces?: import('./hotel').EventSpace[];
+  eventPackages?: import('./hotel').EventPackage[];
+  hotelEvents?: import('./hotel').HotelEvent[];
   hotelConfig?: Array<Partial<import('./hotel').HotelSettings> & { id: string }>;
   /** Requests waiting on, or answered by, the owner. */
   approvals?: ApprovalRequest[];

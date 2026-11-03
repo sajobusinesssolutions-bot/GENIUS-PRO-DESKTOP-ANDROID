@@ -23,7 +23,7 @@ import * as logic from '../logic';
 import { Refusal } from '../refusal';
 import {
   type Booking, type BookingStatus, type FolioPayment, type HotelSettings, type RatePlan, type Room, type RoomStatus,
-  type RoomType, type Season, type StayOffer, taxesOf, checkInMissing, folioOf, nightsOf, roomFree, rooms, today,
+  type RoomType, type Season, type StayOffer, type EventSpace, type EventPackage, type HotelEvent, type EventStatus, eventTotals, spaceClash, taxesOf, checkInMissing, folioOf, nightsOf, roomFree, rooms, today,
 } from '../hotel';
 
 export interface HotelActions {
@@ -53,6 +53,13 @@ export interface HotelActions {
   checkOut: (id: string) => { guestSale?: string; companySale?: string };
   /** End of the hotel day: provisional holds let go, no-shows marked. */
   nightAudit: (day?: string) => { released: number; noShows: number; dueOut: number };
+  saveSpace: (x: Omit<EventSpace, 'id'> & { id?: string }) => EventSpace;
+  savePackage: (x: Omit<EventPackage, 'id'> & { id?: string }) => EventPackage;
+  saveEvent: (e: Omit<HotelEvent, 'id' | 'no' | 'createdAt' | 'updatedAt' | 'payments' | 'charges'> & { id?: string; charges?: HotelEvent['charges'] }) => HotelEvent;
+  setEventStatus: (id: string, status: EventStatus) => void;
+  takeEventPayment: (id: string, p: { amount: number; method: FolioPayment['method']; note?: string }) => void;
+  /** The event's bill becomes one sale on account, and the money held settles it. */
+  closeEvent: (id: string) => { saleId?: string };
 }
 
 const ROOM_ITEM = 'hotel_rooms';
@@ -95,6 +102,21 @@ function guestParty(d: DB, b: Booking): string {
     logic.enqueue(d, 'party', id);
   }
   b.partyId = id;
+  return id;
+}
+
+/** The customer an event is billed to: its company, else its contact, made a customer if new. */
+function eventParty(d: DB, e: HotelEvent): string {
+  if (e.companyId && d.parties.some((p) => p.id === e.companyId)) return e.companyId;
+  if (e.partyId && d.parties.some((p) => p.id === e.partyId)) return e.partyId;
+  const name = (e.contact?.name || e.name).trim();
+  const same = d.parties.find((p) => p.type === 'customer' && p.name.toLowerCase() === name.toLowerCase());
+  const id = same ? same.id : uid('pty');
+  if (!same) {
+    d.parties.push({ id, name, type: 'customer', phone: e.contact?.phone || '', openingBalance: 0, creditLimit: 0, points: 0, active: true, email: e.contact?.email });
+    logic.enqueue(d, 'party', id);
+  }
+  e.partyId = id;
   return id;
 }
 
@@ -424,6 +446,104 @@ export function hotelActions(deps: {
         for (const r of b.rooms) room(d, r.roomId, (x) => { if (x.status !== 'ooo') x.status = 'dirty'; });
         logic.enqueue(d, 'booking', b.id);
         logic.audit(d, 'Guest checked out', b.no + ' · ' + lead.name);
+      });
+      return out;
+    },
+    saveSpace: (x) => {
+      requirePerm('hotel.setup');
+      if (!x.name.trim()) throw new Refusal('Give the space a name.');
+      return save<EventSpace>('eventSpaces', 'eventSpace', 'spc', { ...x, name: x.name.trim() });
+    },
+    savePackage: (x) => {
+      requirePerm('hotel.setup');
+      if (!x.name.trim()) throw new Refusal('Give the package a name.');
+      return save<EventPackage>('eventPackages', 'eventPackage', 'pkg', { ...x, name: x.name.trim() });
+    },
+    saveEvent: (e) => {
+      requirePerm('hotel.book');
+      const d0 = deps.dbRef.current!;
+      if (!e.name.trim()) throw new Refusal('Give the event a name.');
+      if (!e.contact?.name?.trim() && !e.companyId) throw new Refusal('Who is it for? Give a contact or choose a company.');
+      for (const sub of e.subEvents) {
+        if (!sub.spaceId) throw new Refusal('Choose a space for ' + (sub.name || 'each session') + '.');
+        if (sub.end <= sub.start) throw new Refusal((sub.name || 'A session') + ' must end after it starts.');
+        if (e.status !== 'cancelled') {
+          const c = spaceClash(d0, sub.spaceId, sub.date, sub.start, sub.end, sub.id);
+          if (c && c.event.id !== e.id) throw new Refusal('The space is taken then by ' + c.event.name + ' (' + c.sub.start + '–' + c.sub.end + ').');
+        }
+      }
+      let out!: HotelEvent;
+      commit((d) => {
+        d.hotelEvents = d.hotelEvents || [];
+        const now = iso(new Date());
+        const dates = e.subEvents.map((x) => x.date).sort();
+        const span = { from: dates[0] || e.from, to: dates[dates.length - 1] || e.to };
+        const i = e.id ? d.hotelEvents.findIndex((x) => x.id === e.id) : -1;
+        if (i >= 0) { out = { ...d.hotelEvents[i], ...e, ...span, id: d.hotelEvents[i].id, updatedAt: now }; d.hotelEvents[i] = out; }
+        else {
+          d.counters = d.counters || ({} as any);
+          const n = ((d.counters as any).event || 0) + 1;
+          (d.counters as any).event = n;
+          out = { ...e, ...span, charges: e.charges || [], payments: [], id: uid('evt'), no: 'EV-' + String(10000 + n).slice(1), createdAt: now, updatedAt: now };
+          d.hotelEvents.push(out);
+        }
+        logic.enqueue(d, 'hotelEvent', out.id);
+      });
+      return out;
+    },
+    setEventStatus: (id, status) => {
+      requirePerm(status === 'cancelled' ? 'hotel.cancel' : 'hotel.book');
+      commit((d) => {
+        const e = (d.hotelEvents || []).find((x) => x.id === id);
+        if (!e) throw new Refusal('That event is not here any more.');
+        if (e.status === 'closed') throw new Refusal('This event is closed and billed.');
+        e.status = status; e.updatedAt = iso(new Date());
+        logic.enqueue(d, 'hotelEvent', e.id);
+      });
+    },
+    takeEventPayment: (id, p) => {
+      requirePerm('hotel.checkout');
+      const amount = Math.round(Number(p.amount) || 0);
+      if (amount <= 0) throw new Refusal('Enter the amount received.');
+      commit((d) => {
+        const e = (d.hotelEvents || []).find((x) => x.id === id);
+        if (!e) throw new Refusal('That event is not here any more.');
+        if (e.status === 'closed' || e.status === 'cancelled') throw new Refusal('This event is closed.');
+        const partyId = eventParty(d, e);
+        const pay = logic.recordPayment(d, { partyId, amount, direction: 'in', accountId: accountFor(d, p.method), onAccount: true, note: 'Event ' + e.no + ' · ' + e.name + (p.note ? ' · ' + p.note : '') });
+        e.payments.push({ id: uid('fpay'), ts: iso(new Date()), amount, method: p.method, note: p.note, by: who(d), paymentId: pay.id });
+        // money in confirms a tentative booking
+        if (e.status === 'prospect' || e.status === 'tentative') e.status = 'confirmed';
+        e.updatedAt = iso(new Date());
+        logic.enqueue(d, 'hotelEvent', e.id);
+      });
+    },
+    closeEvent: (id) => {
+      requirePerm('hotel.checkout');
+      const out: { saleId?: string } = {};
+      commit((d) => {
+        const e = (d.hotelEvents || []).find((x) => x.id === id);
+        if (!e) throw new Refusal('That event is not here any more.');
+        if (e.status === 'closed') throw new Refusal('This event is billed already.');
+        ensureItems(d);
+        const t = eventTotals(d, e);
+        const lines: SaleLine[] = [];
+        for (const { s, t: st } of t.subs) {
+          const sp = (d.eventSpaces || []).find((x) => x.id === s.spaceId);
+          if (st.space) lines.push(line(EXTRA_ITEM, (sp ? sp.name : 'Space') + ' · ' + s.date + ' ' + s.start + '–' + s.end + (s.name ? ' · ' + s.name : ''), st.space));
+          for (const pk of st.lines) if (pk.amount) lines.push(line(EXTRA_ITEM, pk.name + (pk.perPerson ? ' × ' + (pk.qty || '') : '') + ' · ' + s.date, pk.amount));
+          if (st.service) lines.push(line(EXTRA_ITEM, 'Service charge · ' + s.date, st.service));
+        }
+        for (const c of e.charges) lines.push(line(EXTRA_ITEM, c.desc, c.amount));
+        if (t.taxAdded) lines.push(line(EXTRA_ITEM, 'Taxes', t.taxAdded));
+        if (!lines.length) throw new Refusal('There is nothing on this event to bill.');
+        const partyId = eventParty(d, e);
+        const sale = logic.commitSale(d, { lines, partyId, discount: t.discount, method: 'credit', description: 'Event ' + e.no + ' · ' + e.name });
+        applyHeld(d, e.payments.map((p) => p.paymentId!).filter(Boolean), [sale.id]);
+        e.status = 'closed'; e.saleId = sale.id; e.updatedAt = iso(new Date());
+        logic.enqueue(d, 'hotelEvent', e.id);
+        logic.audit(d, 'Event billed', e.no + ' · ' + e.name);
+        out.saleId = sale.id;
       });
       return out;
     },

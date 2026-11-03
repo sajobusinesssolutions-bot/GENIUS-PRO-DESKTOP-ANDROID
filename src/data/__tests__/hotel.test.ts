@@ -1,6 +1,6 @@
 import { seed } from '../seed';
 import { hotelActions } from '../actions/hotel';
-import { priceStay, folioOf, freeRooms, dayAtDesk, guestRegister, addDays, today, nightsOf, folioLines, revenueSummary, taxesOf } from '../hotel';
+import { priceStay, folioOf, freeRooms, dayAtDesk, guestRegister, addDays, today, nightsOf, folioLines, revenueSummary, taxesOf, eventTotals, eventsDesk } from '../hotel';
 import { isRestaurant } from '../restaurant';
 import { editionOf, servesFood } from '../editions';
 import type { DB } from '../types';
@@ -168,5 +168,32 @@ describe('hotel edition', () => {
     expect(rev.rows.find((r) => r.code === 'RR')!.gross).toBe(200000);
     expect(rev.rows.find((r) => r.code === '3005')!.gross).toBe(30000);
     expect(Math.abs(rev.totals.tax - Math.round(230000 - 230000 / 1.18))).toBeLessThanOrEqual(1);
+  });
+
+  it('prices an event, refuses a clash, takes a deposit and bills it at the close', () => {
+    const { d, h } = setup();
+    const hall = h.saveSpace({ name: 'Nile Hall', capacity: 120, rateHour: 50000, rateHalfDay: 200000, rateDay: 350000, active: true });
+    const lunch = h.savePackage({ name: 'Lunch buffet', category: 'FNB', perPerson: 25000, flat: 0, serviceChargePct: 10, active: true });
+    const day = today();
+    const base = { name: 'MTN board meeting', type: 'Meeting', status: 'tentative' as const, contact: { name: 'Grace Atim', phone: '0700000009' }, from: day, to: day, attendees: 20,
+      deposits: [{ id: 'd1', due: day, amount: 300000 }], tasks: [], discount: 0,
+      subEvents: [{ id: 's1', name: 'Board meeting', spaceId: hall.id, date: day, start: '09:00', end: '13:00', setup: 'Boardroom' as const, expected: 20, guaranteed: 20, actual: 0,
+        pricePlan: 'hour' as const, price: 0, serviceChargePct: 0, packages: [{ packageId: lunch.id, name: lunch.name, qty: 0, price: 25000, perPerson: true, serviceChargePct: 10 }] }] };
+    const ev = h.saveEvent(base);
+    const t = eventTotals(d, d.hotelEvents![0]);
+    // 4 hours × 50,000 + 20 × 25,000 lunch + 10% service on lunch
+    expect(t.space).toBe(200000);
+    expect(t.packages).toBe(500000);
+    expect(t.service).toBe(50000);
+    expect(t.total).toBe(750000);
+    expect(eventsDesk(d).depositsDue).toHaveLength(1);
+    expect(() => h.saveEvent({ ...base, name: 'Wedding', subEvents: [{ ...base.subEvents[0], id: 's2', start: '12:00', end: '15:00' }] })).toThrow(/taken/);
+    h.takeEventPayment(ev.id, { amount: 300000, method: 'bank' });
+    expect(d.hotelEvents![0].status).toBe('confirmed');
+    const out = h.closeEvent(ev.id);
+    const sale = d.sales.find((x) => x.id === out.saleId)!;
+    expect(sale.total).toBe(750000);
+    expect(sale.due).toBe(450000);
+    expect(d.hotelEvents![0].status).toBe('closed');
   });
 });

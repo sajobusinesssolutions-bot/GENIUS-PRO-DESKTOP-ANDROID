@@ -298,7 +298,7 @@ const KIND_OF: Record<string, OpKind> = {
   priceList: 'record.upsert',
   kitchenOrder: 'record.upsert',
   approval: 'record.upsert',
-  roomType: 'record.upsert', room: 'record.upsert', ratePlan: 'record.upsert', season: 'record.upsert', stayOffer: 'record.upsert', booking: 'record.upsert', hotelConfig: 'record.upsert',
+  roomType: 'record.upsert', room: 'record.upsert', ratePlan: 'record.upsert', season: 'record.upsert', stayOffer: 'record.upsert', booking: 'record.upsert', hotelConfig: 'record.upsert', eventSpace: 'record.upsert', eventPackage: 'record.upsert', hotelEvent: 'record.upsert',
 };
 
 /** Which collection a record.upsert lands in, by queue kind. */
@@ -307,7 +307,7 @@ const COLL_OF: Record<string, string> = {
   challan: 'challans', purchaseOrder: 'purchaseOrders', recurring: 'recurringInvoices', plan: 'instalmentPlans',
   printcount: 'printCounts',
   user: 'users', role: 'roles', ticket: 'tickets', modifierGroup: 'modifierGroups', menuGroup: 'menuGroups', menu: 'menus', priceList: 'priceLists', kitchenOrder: 'kitchenOrders', approval: 'approvals',
-  roomType: 'roomTypes', room: 'rooms', ratePlan: 'ratePlans', season: 'seasons', stayOffer: 'stayOffers', booking: 'hotelBookings', hotelConfig: 'hotelConfig',
+  roomType: 'roomTypes', room: 'rooms', ratePlan: 'ratePlans', season: 'seasons', stayOffer: 'stayOffers', booking: 'hotelBookings', hotelConfig: 'hotelConfig', eventSpace: 'eventSpaces', eventPackage: 'eventPackages', hotelEvent: 'hotelEvents',
 };
 
 /** Finds the record a queue entry points at. */
@@ -349,6 +349,9 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
     case 'stayOffer': return (d.stayOffers || []).find((x) => x.id === ref);
     case 'booking': return (d.hotelBookings || []).find((x) => x.id === ref);
     case 'hotelConfig': return (d.hotelConfig || []).find((x) => x.id === ref);
+    case 'eventSpace': return (d.eventSpaces || []).find((x) => x.id === ref);
+    case 'eventPackage': return (d.eventPackages || []).find((x) => x.id === ref);
+    case 'hotelEvent': return (d.hotelEvents || []).find((x) => x.id === ref);
     // the business's own details: name, phones, address, logo, signature…
     case 'firm': return d.firm?.id === ref ? d.firm : undefined;
     // the shop's rules Windows keeps too (sharedSettings.ts)

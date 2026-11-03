@@ -379,6 +379,7 @@ export function FrontDeskScreen() {
         })() : null}
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+          <View style={{ flex: 1 }}><Button label="Events" onPress={() => go('HotelEvents')} /></View>
           <View style={{ flex: 1 }}><Button label="Reports" onPress={() => go('HotelReports')} /></View>
           <View style={{ flex: 1 }}><Button label="Register" onPress={() => go('GuestRegister')} /></View>
           <View style={{ flex: 1 }}><Button label="Rooms & rates" onPress={() => go('HotelSetup')} /></View>

@@ -607,3 +607,114 @@ export function deskList(d: DB, which: 'arrivals' | 'inhouse' | 'departures' | '
       pendingDeparture: b.status === 'in' && b.depart.slice(0, 10) <= day };
   });
 }
+
+/* ══ EVENTS AND MEETING SPACES ══════════════════════════════════════════════
+   Halls and meeting rooms (spaces), packages (lunch, tea, AV), and events: a
+   proposal that becomes tentative, then confirmed, with one or more sub-events
+   (a space, a date, a time, a set-up, how many guests, a price plan and the
+   packages served), a deposit schedule, payments held on account, tasks, and
+   at the close one bill in the books. */
+export type SpaceSetup = 'Theatre' | 'Classroom' | 'U-shape' | 'Boardroom' | 'Banquet' | 'Cocktail' | 'Cabaret';
+export const SETUPS: SpaceSetup[] = ['Theatre', 'Classroom', 'U-shape', 'Boardroom', 'Banquet', 'Cocktail', 'Cabaret'];
+export interface EventSpace { id: string; name: string; capacity: number; rateHour: number; rateHalfDay: number; rateDay: number; color?: string; active: boolean }
+export type PackageCategory = 'FNB' | 'AV' | 'DECOR' | 'OTHER';
+export const PACKAGE_WORD: Record<PackageCategory, string> = { FNB: 'Food & drinks', AV: 'Audio-visual', DECOR: 'Decor', OTHER: 'Other' };
+export interface EventPackage { id: string; name: string; category: PackageCategory; perPerson: number; flat: number; serviceChargePct: number; active: boolean }
+export type PricePlan = 'hour' | 'half' | 'day' | 'flat';
+export const PLAN_WORD: Record<PricePlan, string> = { hour: 'By the hour', half: 'Half day', day: 'Full day', flat: 'Agreed amount' };
+export interface SubEventPackage { packageId: string; name: string; qty: number; price: number; perPerson: boolean; serviceChargePct: number }
+export interface SubEvent {
+  id: string; name: string; spaceId: string; date: string; start: string; end: string; setup: SpaceSetup;
+  expected: number; guaranteed: number; actual: number;
+  pricePlan: PricePlan; price: number; serviceChargePct: number;
+  packages: SubEventPackage[]; remarks?: string;
+}
+export type EventStatus = 'prospect' | 'tentative' | 'confirmed' | 'closed' | 'cancelled';
+export const EVENT_STATUS_WORD: Record<EventStatus, string> = { prospect: 'Prospect', tentative: 'Tentative', confirmed: 'Confirmed', closed: 'Closed', cancelled: 'Cancelled' };
+export const EVENT_TYPES = ['Meeting', 'Conference', 'Workshop', 'Wedding', 'Party', 'Dinner', 'Training', 'Other'];
+export interface EventDeposit { id: string; due: string; amount: number }
+export interface EventTask { id: string; due: string; text: string; done: boolean }
+export interface HotelEvent {
+  id: string; no: string; name: string; type: string; status: EventStatus;
+  companyId?: string | null; contact: { name: string; phone?: string; email?: string };
+  partyId?: string | null;
+  from: string; to: string; attendees: number; owner?: string; source?: string;
+  cutOff?: string; cancellationPolicy?: string; notes?: string;
+  subEvents: SubEvent[]; deposits: EventDeposit[]; payments: FolioPayment[]; charges: FolioCharge[]; tasks: EventTask[];
+  discount: number; saleId?: string | null;
+  createdAt: string; updatedAt: string;
+}
+export const eventSpaces = (d: DB | null | undefined): EventSpace[] => (d as any)?.eventSpaces || [];
+export const eventPackages = (d: DB | null | undefined): EventPackage[] => (d as any)?.eventPackages || [];
+export const hotelEvents = (d: DB | null | undefined): HotelEvent[] => (d as any)?.hotelEvents || [];
+
+const minutes = (t: string) => { const [h, m] = String(t || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+/** The space's own price for one sub-event, by its plan: by the hour, half day, day, or an agreed amount. */
+export function spacePrice(d: DB, s: Pick<SubEvent, 'spaceId' | 'start' | 'end' | 'pricePlan' | 'price'>): number {
+  const sp = eventSpaces(d).find((x) => x.id === s.spaceId);
+  if (s.pricePlan === 'flat' || !sp) return Math.max(0, Number(s.price) || 0);
+  if (s.pricePlan === 'hour') return Math.round(Math.max(0, (minutes(s.end) - minutes(s.start)) / 60) * (Number(s.price) || sp.rateHour));
+  if (s.pricePlan === 'half') return Number(s.price) || sp.rateHalfDay;
+  return Number(s.price) || sp.rateDay;
+}
+/** One sub-event's money: the space, the packages (per person on the guaranteed count, or flat), service charge. */
+export function subEventTotals(d: DB, s: SubEvent) {
+  const space = spacePrice(d, s);
+  const heads = Math.max(s.guaranteed || 0, s.actual || 0, 0) || s.expected || 0;
+  const pk = s.packages.map((p) => {
+    const amount = Math.round(p.perPerson ? p.price * (p.qty || heads) : p.price * (p.qty || 1));
+    return { ...p, amount, service: Math.round(amount * (p.serviceChargePct || 0) / 100) };
+  });
+  const packages = pk.reduce((a, p) => a + p.amount, 0);
+  const service = Math.round(space * (s.serviceChargePct || 0) / 100) + pk.reduce((a, p) => a + p.service, 0);
+  return { space, packages, service, total: space + packages + service, lines: pk };
+}
+/** The whole event: space and package revenue, service charge, other charges, taxes, payments, deposits due. */
+export function eventTotals(d: DB, e: HotelEvent, now = today()) {
+  const st = hotelSettings(d);
+  const subs = e.subEvents.map((s) => ({ s, t: subEventTotals(d, s) }));
+  const space = subs.reduce((a, x) => a + x.t.space, 0);
+  const packages = subs.reduce((a, x) => a + x.t.packages, 0);
+  const service = subs.reduce((a, x) => a + x.t.service, 0);
+  const charges = e.charges.reduce((a, c) => a + c.amount, 0);
+  const net = Math.max(0, space + packages + service + charges - (Number(e.discount) || 0));
+  let taxAdded = 0, taxIncluded = 0;
+  for (const x of st.taxes.filter((t) => t.active && t.pct && t.on.includes('charges'))) {
+    const rate = x.pct! / 100;
+    if (st.ratesIncludeTax) taxIncluded += net - net / (1 + rate); else taxAdded += net * rate;
+  }
+  const total = Math.round(net + taxAdded);
+  const paid = e.payments.reduce((a, p) => a + p.amount, 0);
+  const depositsDue = e.deposits.filter((x) => x.due <= now).reduce((a, x) => a + x.amount, 0);
+  return { space, packages, service, charges, discount: Number(e.discount) || 0, taxAdded: Math.round(taxAdded), taxIncluded: Math.round(taxIncluded), total, paid,
+    balance: total - paid, depositOwing: Math.max(0, depositsDue - paid), subs };
+}
+/** Another event holding the same space at an overlapping time on the date, if any (cancelled ones do not). */
+export function spaceClash(d: DB, spaceId: string, date: string, start: string, end: string, exceptSub?: string): { event: HotelEvent; sub: SubEvent } | null {
+  for (const e of hotelEvents(d)) {
+    if (e.status === 'cancelled') continue;
+    for (const s of e.subEvents) {
+      if (s.id === exceptSub || s.spaceId !== spaceId || s.date !== date) continue;
+      if (minutes(start) < minutes(s.end) && minutes(s.start) < minutes(end)) return { event: e, sub: s };
+    }
+  }
+  return null;
+}
+/** The events desk: counts and revenue by status, deposits due, cut-offs and tasks today. */
+export function eventsDesk(d: DB, day = today()) {
+  const live = hotelEvents(d).filter((e) => e.status !== 'cancelled');
+  const by = (st: EventStatus) => live.filter((e) => e.status === st);
+  const rev = (list: HotelEvent[]) => list.reduce((a, e) => a + eventTotals(d, e, day).total, 0);
+  return {
+    prospect: by('prospect').length, tentative: by('tentative').length, confirmed: by('confirmed').length,
+    revProspect: rev(by('prospect')), revTentative: rev(by('tentative')), revConfirmed: rev(by('confirmed')),
+    depositsDue: live.filter((e) => e.status !== 'closed' && eventTotals(d, e, day).depositOwing > 0),
+    cutOffs: live.filter((e) => (e.status === 'prospect' || e.status === 'tentative') && e.cutOff && e.cutOff <= day),
+    tasksDue: live.flatMap((e) => e.tasks.filter((t) => !t.done && t.due <= day).map((t) => ({ e, t }))),
+  };
+}
+/** What is on in the spaces on a day, by start time. */
+export function eventsOn(d: DB, day: string) {
+  return hotelEvents(d).filter((e) => e.status !== 'cancelled').flatMap((e) => e.subEvents.filter((s) => s.date === day).map((s) => ({ e, s })))
+    .sort((a, b) => a.s.start.localeCompare(b.s.start));
+}

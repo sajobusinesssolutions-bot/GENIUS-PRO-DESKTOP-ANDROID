@@ -70,6 +70,7 @@ import DeletedTransactionsScreen from '../screens/DeletedTransactionsScreen';
 import OrderScreen from '../screens/OrderScreen';
 import PriceListsScreen from '../screens/PriceListsScreen';
 import KitchenDisplayScreen from '../screens/KitchenDisplayScreen';
+import HotelEventsScreen from '../screens/HotelEventsScreen';
 import { FrontDeskScreen, BookingEditScreen, BookingScreen, HotelSetupScreen, GuestRegisterScreen, HotelReportsScreen } from '../screens/HotelScreens';
 import OwnerSummaryScreen from '../screens/OwnerSummaryScreen';
 import DayReportScreen from '../screens/DayReportScreen';
@@ -276,6 +277,7 @@ export default function RootNavigator() {
         <Stack.Screen name="HotelSetup" component={HotelSetupScreen} options={{ title: 'Rooms & rates' }} />
         <Stack.Screen name="GuestRegister" component={GuestRegisterScreen} options={{ title: 'Guest register' }} />
         <Stack.Screen name="HotelReports" component={HotelReportsScreen} options={{ title: 'Hotel reports' }} />
+        <Stack.Screen name="HotelEvents" component={HotelEventsScreen} options={{ title: 'Events' }} />
         <Stack.Screen name="DocTerms" component={DocTermsScreen} options={{ title: 'Documents & terms' }} />
         <Stack.Screen name="BooksCheck" component={BooksCheckScreen} options={{ title: 'Check the books' }} />
         <Stack.Screen name="DayReport" component={DayReportScreen} options={{ title: 'The day' }} />

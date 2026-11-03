@@ -108,6 +108,7 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     items: [
       // the hotel's reception, first for a hotel
       { route: 'FrontDesk', i: 'chair', n: 'Reception', b: (c) => plural(((c.db as any).hotelBookings || []).filter((b: any) => b.status === 'in').length, 'guest booking') + ' in house', show: (d) => d?.firm?.businessType === 'hotel', alt: 'hotel front desk rooms bookings check in check out reservations' },
+      { route: 'HotelEvents', i: 'calendar', n: 'Events and halls', b: (c) => plural(((c.db as any).hotelEvents || []).filter((e: any) => e.status === 'confirmed' || e.status === 'tentative').length, 'event') + ' coming', show: (d) => d?.firm?.businessType === 'hotel', alt: 'events conference meeting wedding hall banquet' },
       { route: 'GuestRegister', i: 'doc', n: 'Guest register', b: () => 'Everyone who stayed, with ID and nationality', show: (d) => d?.firm?.businessType === 'hotel', alt: 'hotel guests police register' },
       { route: 'HotelSetup', i: 'cog', n: 'Rooms & rates', b: (c) => plural(((c.db as any).rooms || []).length, 'room'), show: (d) => d?.firm?.businessType === 'hotel', alt: 'hotel room types rates seasons offers' },
       { route: 'KitchenDisplay', i: 'food', n: 'Kitchen display', b: (c) => plural((c.db.kitchenOrders || []).filter((k) => k.status !== 'served').length, 'order') + ' in the kitchen', show: (d) => isRestaurant(d), alt: 'kds kitchen screen cooks orders ready' },
