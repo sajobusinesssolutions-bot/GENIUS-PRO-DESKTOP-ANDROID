@@ -33,7 +33,7 @@ export const TRACKED = new Set([
   'sales', 'purchases', 'payments', 'deletedPayments', 'entries', 'journal', 'movements', 'shifts',
   'warranties', 'claims', 'estimates', 'challans', 'creditNotes', 'stockTakes', 'purchaseOrders',
   'productionRuns', 'recurringInvoices', 'auditLog', 'queue', 'plans', 'instalmentPlans', 'revisions',
-  'bankStatementLines', 'bankReconciliations', 'kitchenOrders', 'tickets', 'approvals', 'hotelBookings', 'hotelEvents',
+  'bankStatementLines', 'bankReconciliations', 'kitchenOrders', 'tickets', 'approvals', 'hotelBookings', 'hotelEvents', 'groupBlocks',
 ]);
 /** Lists of records small enough to compare in full every save. */
 export const SMALL = new Set([

@@ -111,6 +111,8 @@ export interface Booking {
   checkedInAt?: string; checkedOutAt?: string;
   /** The sale the bill became at check-out. */
   saleId?: string | null;
+  /** A room picked up from a group block (GroupBlock): it uses one of the rooms the block holds. */
+  blockId?: string | null;
 }
 export interface HotelSettings {
   checkInTime: string; checkOutTime: string; depositPct: number;
@@ -215,8 +217,25 @@ export function roomFree(d: DB, roomId: string, arrive: string, depart: string, 
   return nightsList(arrive, depart).every((n) => !bookingOn(d, roomId, n, except));
 }
 /** Rooms of a type (or any) free for every night of a stay. */
-export function freeRooms(d: DB, arrive: string, depart: string, typeId?: string, except?: string): Room[] {
-  return rooms(d).filter((r) => r.active && r.status !== 'ooo' && (!typeId || r.typeId === typeId) && roomFree(d, r.id, arrive, depart, except));
+export function freeRooms(d: DB, arrive: string, depart: string, typeId?: string, except?: string, forBlock?: string | null): Room[] {
+  const free = rooms(d).filter((r) => r.active && r.status !== 'ooo' && (!typeId || r.typeId === typeId) && roomFree(d, r.id, arrive, depart, except));
+  /* rooms a group block holds and has not yet filled are kept back from everyone
+     else: per type, the most the blocks hold on any night of the stay */
+  const blocks = groupBlocks(d).filter((b) => holdsRooms(b) && b.id !== forBlock);
+  if (!blocks.length) return free;
+  const nights = nightsList(arrive, depart);
+  const keepBack = new Map<string, number>();
+  for (const t of new Set(free.map((r) => r.typeId))) {
+    let most = 0;
+    for (const n of nights) most = Math.max(most, blocks.reduce((a, b) => a + blockUnpicked(d, b, t, n), 0));
+    if (most) keepBack.set(t, most);
+  }
+  if (!keepBack.size) return free;
+  const out: Room[] = [];
+  const byType = new Map<string, Room[]>();
+  for (const r of free) byType.set(r.typeId, [...(byType.get(r.typeId) || []), r]);
+  for (const [t, list] of byType) out.push(...list.slice(0, Math.max(0, list.length - (keepBack.get(t) || 0))));
+  return out.sort((a, b) => a.no.localeCompare(b.no, undefined, { numeric: true }));
 }
 
 /** The season a night falls in, if any (the last made wins where two overlap). */
@@ -717,4 +736,49 @@ export function eventsDesk(d: DB, day = today()) {
 export function eventsOn(d: DB, day: string) {
   return hotelEvents(d).filter((e) => e.status !== 'cancelled').flatMap((e) => e.subEvents.filter((s) => s.date === day).map((s) => ({ e, s })))
     .sort((a, b) => a.s.start.localeCompare(b.s.start));
+}
+
+/* ══ GROUP BLOCKS ════════════════════════════════════════════════════════════
+   Rooms held for a group (a conference, a wedding party, a tour): so many of
+   each room type on each night, at the group's rate, until a cut-off date.
+   Guests are "picked up" from the block as bookings tied to it; each one uses
+   a room the block holds. Rooms the block still holds are kept back from
+   everyone else; at the cut-off whatever is not picked up goes back on sale. */
+export type BlockStatus = 'tentative' | 'definite' | 'released' | 'cancelled';
+export const BLOCK_STATUS_WORD: Record<BlockStatus, string> = { tentative: 'Tentative', definite: 'Definite', released: 'Released', cancelled: 'Cancelled' };
+export interface BlockLine { typeId: string; rate: number; nights: Record<string, number> }
+export interface GroupBlock {
+  id: string; no: string; name: string; status: BlockStatus;
+  companyId?: string | null; contact: { name: string; phone?: string; email?: string };
+  arrive: string; depart: string; cutOff: string;
+  ratePlanId?: string | null; roomsPaidBy: 'guest' | 'company';
+  lines: BlockLine[];
+  notes?: string; createdAt: string; updatedAt: string;
+}
+export const groupBlocks = (d: DB | null | undefined): GroupBlock[] => (d as any)?.groupBlocks || [];
+/** Whether a block still holds its unpicked rooms back from sale. */
+export const holdsRooms = (b: GroupBlock) => (b.status === 'tentative' || b.status === 'definite');
+/** The block's bookings: the guests picked up from it. */
+export const blockBookings = (d: DB, b: GroupBlock) => bookings(d).filter((x) => x.blockId === b.id && x.status !== 'cancelled' && x.status !== 'noshow');
+/** Rooms of a type picked up from the block on a night. */
+export function blockPicked(d: DB, b: GroupBlock, typeId: string, day: string): number {
+  return blockBookings(d, b).filter((x) => x.arrive.slice(0, 10) <= day && day < x.depart.slice(0, 10)).reduce((a, x) => a + x.rooms.filter((r) => r.typeId === typeId).length, 0);
+}
+/** Rooms of a type the block still holds on a night, not yet picked up. */
+export function blockUnpicked(d: DB, b: GroupBlock, typeId: string, day: string): number {
+  const line = b.lines.find((l) => l.typeId === typeId);
+  if (!line) return 0;
+  return Math.max(0, (line.nights[day] || 0) - blockPicked(d, b, typeId, day));
+}
+/** The block in numbers: room nights held and picked up, and what the held rooms are worth. */
+export function blockSummary(d: DB, b: GroupBlock) {
+  let held = 0, picked = 0, value = 0;
+  for (const l of b.lines) for (const [day, n] of Object.entries(l.nights)) {
+    held += n; const p = Math.min(n, blockPicked(d, b, l.typeId, day)); picked += p; value += n * l.rate;
+  }
+  return { held, picked, pct: held ? Math.round((picked / held) * 100) : 0, value, rooms: Math.max(0, ...b.lines.map((l) => Math.max(0, ...Object.values(l.nights)))) };
+}
+/** A grid of held rooms: the same count every night of the stay, for a new block. */
+export function evenNights(arrive: string, depart: string, count: number): Record<string, number> {
+  return Object.fromEntries(nightsList(arrive, depart).map((n) => [n, count]));
 }

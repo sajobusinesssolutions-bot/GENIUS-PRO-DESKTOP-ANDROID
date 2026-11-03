@@ -23,7 +23,7 @@ import * as logic from '../logic';
 import { Refusal } from '../refusal';
 import {
   type Booking, type BookingStatus, type FolioPayment, type HotelSettings, type RatePlan, type Room, type RoomStatus,
-  type RoomType, type Season, type StayOffer, type EventSpace, type EventPackage, type HotelEvent, type EventStatus, eventTotals, spaceClash, taxesOf, checkInMissing, folioOf, nightsOf, roomFree, rooms, today,
+  type RoomType, type Season, type StayOffer, type EventSpace, type EventPackage, type HotelEvent, type EventStatus, type GroupBlock, type BlockStatus, eventTotals, spaceClash, freeRooms, groupBlocks, blockUnpicked, blockPicked, nightsList, addDays, taxesOf, checkInMissing, folioOf, nightsOf, roomFree, rooms, today,
 } from '../hotel';
 
 export interface HotelActions {
@@ -60,6 +60,10 @@ export interface HotelActions {
   takeEventPayment: (id: string, p: { amount: number; method: FolioPayment['method']; note?: string }) => void;
   /** The event's bill becomes one sale on account, and the money held settles it. */
   closeEvent: (id: string) => { saleId?: string };
+  saveBlock: (b: Omit<GroupBlock, 'id' | 'no' | 'createdAt' | 'updatedAt'> & { id?: string }) => GroupBlock;
+  setBlockStatus: (id: string, status: BlockStatus) => void;
+  /** A guest picked up from a block: a booking in one of the rooms it holds, at the group's rate. */
+  pickUp: (blockId: string, g: { typeId: string; guest: import('../hotel').Guest; arrive?: string; depart?: string; adults?: number }) => Booking;
 }
 
 const ROOM_ITEM = 'hotel_rooms';
@@ -257,6 +261,12 @@ export function hotelActions(deps: {
         if (!roomFree(d0, r.roomId, b.arrive, b.depart, b.id)) {
           const no = rooms(d0).find((x) => x.id === r.roomId)?.no || 'A room';
           throw new Refusal('Room ' + no + ' is already booked for some of those nights.');
+        }
+        // rooms a group block holds are kept for the group
+        const was = (d0.hotelBookings || []).find((x) => x.id === b.id);
+        const same = was && was.rooms.some((y) => y.roomId === r.roomId) && was.arrive === b.arrive && was.depart === b.depart;
+        if (!same && !freeRooms(d0, b.arrive, b.depart, r.typeId, b.id, b.blockId || null).some((x) => x.id === r.roomId)) {
+          throw new Refusal('The rooms of that type left for those nights are held for a group. Pick the guest up from the group, or choose another type.');
         }
       }
       let out!: Booking;
@@ -547,6 +557,65 @@ export function hotelActions(deps: {
       });
       return out;
     },
+    saveBlock: (b) => {
+      requirePerm('hotel.book');
+      const d0 = deps.dbRef.current!;
+      if (!b.name.trim()) throw new Refusal('Name the group.');
+      if (nightsList(b.arrive, b.depart).length < 1) throw new Refusal('The block must be at least one night.');
+      if (!b.lines.length) throw new Refusal('Hold at least one room type.');
+      // a block can only hold rooms that are there to hold: free ones, and the ones it has already filled
+      const was = b.id ? groupBlocks(d0).find((x) => x.id === b.id) : undefined;
+      for (const l of b.lines) for (const [day, n] of Object.entries(l.nights)) {
+        if (!n) continue;
+        const free = freeRooms(d0, day, addDays(day, 1), l.typeId, undefined, b.id || null).length;
+        const filled = was ? blockPicked(d0, was, l.typeId, day) : 0;
+        if (n > free + filled) throw new Refusal('Only ' + (free + filled) + ' ' + ((d0.roomTypes || []).find((t) => t.id === l.typeId)?.name || 'rooms') + ' can be held on ' + day + '.');
+      }
+      return save<GroupBlock>('groupBlocks', 'groupBlock', 'grp', b.id ? { ...b, updatedAt: iso(new Date()) } as any : {
+        ...b, no: 'GR-' + String(10000 + (d0.groupBlocks || []).length + 1).slice(1), createdAt: iso(new Date()), updatedAt: iso(new Date()) } as any);
+    },
+    setBlockStatus: (id, status) => {
+      requirePerm(status === 'cancelled' ? 'hotel.cancel' : 'hotel.book');
+      commit((d) => {
+        const b = (d.groupBlocks || []).find((x) => x.id === id);
+        if (!b) throw new Refusal('That group is not here any more.');
+        b.status = status; b.updatedAt = iso(new Date());
+        logic.enqueue(d, 'groupBlock', b.id);
+      });
+    },
+    pickUp: (blockId, g) => {
+      requirePerm('hotel.book');
+      const d0 = deps.dbRef.current!;
+      const blk = groupBlocks(d0).find((x) => x.id === blockId);
+      if (!blk) throw new Refusal('That group is not here any more.');
+      if (blk.status === 'cancelled') throw new Refusal('This group is cancelled.');
+      const arrive = g.arrive || blk.arrive, depart = g.depart || blk.depart;
+      const line = blk.lines.find((l) => l.typeId === g.typeId);
+      if (!line) throw new Refusal('The group holds no rooms of that type.');
+      const short = nightsList(arrive, depart).filter((n) => blockUnpicked(d0, blk, g.typeId, n) < 1);
+      if (short.length && blk.status !== 'released') throw new Refusal('The group has no room of that type left on ' + short[0] + '.');
+      const room = freeRooms(d0, arrive, depart, g.typeId, undefined, blockId)[0];
+      if (!room) throw new Refusal('No room of that type is free for those nights.');
+      if (!g.guest.name.trim()) throw new Refusal('Give the guest’s name.');
+      // one booking a guest, at the group's rate, tied to the block
+      let out!: Booking;
+      commit((d) => {
+        d.hotelBookings = d.hotelBookings || [];
+        d.counters = d.counters || ({} as any);
+        const n = ((d.counters as any).booking || 0) + 1;
+        (d.counters as any).booking = n;
+        const now = iso(new Date());
+        out = {
+          id: uid('bkg'), no: 'BK-' + String(10000 + n).slice(1), kind: 'group', status: 'confirmed', source: 'Group', groupName: blk.name,
+          companyId: blk.companyId || null, roomsPaidBy: blk.companyId ? blk.roomsPaidBy : 'guest', arrive, depart, ratePlanId: blk.ratePlanId || null,
+          rooms: [{ roomId: room.id, typeId: g.typeId, rate: line.rate, adults: g.adults || 1, children: 0 }],
+          guests: [{ ...g.guest, roomId: room.id }], charges: [], payments: [], discount: 0, blockId, createdAt: now, updatedAt: now,
+        };
+        d.hotelBookings.push(out);
+        logic.enqueue(d, 'booking', out.id);
+      });
+      return out;
+    },
     nightAudit: (day = today()) => {
       requirePerm('hotel.checkout');
       const res = { released: 0, noShows: 0, dueOut: 0 };
@@ -563,6 +632,13 @@ export function hotelActions(deps: {
           logic.enqueue(d, 'booking', b.id);
         }
         res.dueOut = (d.hotelBookings || []).filter((b) => b.status === 'in' && b.depart.slice(0, 10) <= day).length;
+        for (const g of d.groupBlocks || []) {
+          if ((g.status === 'tentative' || g.status === 'definite') && g.cutOff && g.cutOff < day) {
+            g.status = 'released'; g.updatedAt = iso(new Date());
+            logic.enqueue(d, 'groupBlock', g.id);
+            logic.audit(d, 'Group block released at cut-off', g.no + ' · ' + g.name);
+          }
+        }
         (d.settings as any).hotel = { ...((d.settings as any).hotel || {}), lastAudit: day };
         logic.audit(d, 'Night audit', day + ' · ' + res.released + ' holds released, ' + res.noShows + ' no-shows');
       });

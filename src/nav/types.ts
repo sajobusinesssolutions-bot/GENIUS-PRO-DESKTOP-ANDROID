@@ -128,6 +128,7 @@ export type RootStackParamList = {
   GuestRegister: undefined;
   HotelReports: undefined;
   HotelEvents: undefined;
+  HotelGroups: undefined;
   OwnerSummary: undefined;
   Approvals: undefined;
   MenuEditor: { tab?: 'settings' } | undefined;

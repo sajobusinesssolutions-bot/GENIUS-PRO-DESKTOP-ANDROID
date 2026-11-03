@@ -855,6 +855,8 @@ export interface DB {
   eventSpaces?: import('./hotel').EventSpace[];
   eventPackages?: import('./hotel').EventPackage[];
   hotelEvents?: import('./hotel').HotelEvent[];
+  /** Group blocks: rooms held for a group until a cut-off (hotel.ts). */
+  groupBlocks?: import('./hotel').GroupBlock[];
   hotelConfig?: Array<Partial<import('./hotel').HotelSettings> & { id: string }>;
   /** Requests waiting on, or answered by, the owner. */
   approvals?: ApprovalRequest[];

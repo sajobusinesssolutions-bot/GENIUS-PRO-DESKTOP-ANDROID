@@ -1647,7 +1647,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               const coll = p.coll as 'challans' | 'purchaseOrders' | 'recurringInvoices' | 'instalmentPlans';
               (d as any)[coll] = (d as any)[coll] || [];
               put((d as any)[coll], p.doc);
-            } else if (['roomTypes', 'rooms', 'ratePlans', 'seasons', 'stayOffers', 'hotelBookings', 'hotelConfig', 'eventSpaces', 'eventPackages', 'hotelEvents'].includes(p?.coll) && p.doc) {
+            } else if (['roomTypes', 'rooms', 'ratePlans', 'seasons', 'stayOffers', 'hotelBookings', 'hotelConfig', 'eventSpaces', 'eventPackages', 'hotelEvents', 'groupBlocks'].includes(p?.coll) && p.doc) {
               // the hotel's records: the latest copy wins
               (d as any)[p.coll] = (d as any)[p.coll] || [];
               put((d as any)[p.coll], p.doc);

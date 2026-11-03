@@ -1,6 +1,6 @@
 import { seed } from '../seed';
 import { hotelActions } from '../actions/hotel';
-import { priceStay, folioOf, freeRooms, dayAtDesk, guestRegister, addDays, today, nightsOf, folioLines, revenueSummary, taxesOf, eventTotals, eventsDesk } from '../hotel';
+import { priceStay, folioOf, freeRooms, dayAtDesk, guestRegister, addDays, today, nightsOf, folioLines, revenueSummary, taxesOf, eventTotals, eventsDesk, evenNights, blockSummary, groupBlocks } from '../hotel';
 import { isRestaurant } from '../restaurant';
 import { editionOf, servesFood } from '../editions';
 import type { DB } from '../types';
@@ -195,5 +195,29 @@ describe('hotel edition', () => {
     expect(sale.total).toBe(750000);
     expect(sale.due).toBe(450000);
     expect(d.hotelEvents![0].status).toBe('closed');
+  });
+
+  it('holds rooms for a group, keeps them from others, picks guests up, and releases at the cut-off', () => {
+    const { d, h, dbl, r1, r2 } = setup();
+    const r3 = h.saveRoom({ no: '103', typeId: dbl.id, active: true });
+    const a = today(), z = addDays(a, 2);
+    const blk = h.saveBlock({ name: 'Rotary conference', status: 'definite', contact: { name: 'Paul' }, arrive: a, depart: z, cutOff: addDays(a, 1), roomsPaidBy: 'guest',
+      lines: [{ typeId: dbl.id, rate: 90000, nights: evenNights(a, z, 2) }] });
+    // three doubles, two held: one left for everyone else
+    expect(freeRooms(d, a, z, dbl.id)).toHaveLength(1);
+    expect(freeRooms(d, a, z, dbl.id, undefined, blk.id)).toHaveLength(3);
+    const free = freeRooms(d, a, z, dbl.id)[0];
+    const held = [r1, r2, r3].find((r) => r.id !== free.id)!;
+    expect(() => h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Walk-in', arrive: a, depart: z, rooms: [{ roomId: held.id, typeId: dbl.id, rate: 100000, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [guest], discount: 0 })).toThrow(/held for a group/);
+    const one = h.pickUp(blk.id, { typeId: dbl.id, guest: { name: 'Delegate One' } });
+    expect(one).toMatchObject({ blockId: blk.id, kind: 'group', groupName: 'Rotary conference' });
+    expect(one.rooms[0].rate).toBe(90000);
+    h.pickUp(blk.id, { typeId: dbl.id, guest: { name: 'Delegate Two' } });
+    expect(() => h.pickUp(blk.id, { typeId: dbl.id, guest: { name: 'Delegate Three' } })).toThrow(/no room of that type left/);
+    expect(blockSummary(d, groupBlocks(d)[0])).toMatchObject({ held: 4, picked: 4, pct: 100 });
+    // a block past its cut-off goes back on sale at the night audit
+    const b2 = h.saveBlock({ name: 'Tour group', status: 'tentative', contact: { name: 'Ann' }, arrive: addDays(a, 5), depart: addDays(a, 6), cutOff: addDays(a, -1), roomsPaidBy: 'guest', lines: [{ typeId: dbl.id, rate: 80000, nights: evenNights(addDays(a, 5), addDays(a, 6), 1) }] });
+    h.nightAudit();
+    expect(groupBlocks(d).find((x) => x.id === b2.id)!.status).toBe('released');
   });
 });
