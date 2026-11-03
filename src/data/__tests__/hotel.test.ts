@@ -1,6 +1,6 @@
 import { seed } from '../seed';
 import { hotelActions } from '../actions/hotel';
-import { priceStay, folioOf, freeRooms, dayAtDesk, guestRegister, addDays, today, nightsOf } from '../hotel';
+import { priceStay, folioOf, freeRooms, dayAtDesk, guestRegister, addDays, today, nightsOf, folioLines, revenueSummary, taxesOf } from '../hotel';
 import { isRestaurant } from '../restaurant';
 import { editionOf, servesFood } from '../editions';
 import type { DB } from '../types';
@@ -132,5 +132,41 @@ describe('hotel edition', () => {
     h.moveRoom(bk.id, r1.id, r2.id);
     expect(d.hotelBookings!.find((b) => b.id === bk.id)!.rooms[0].roomId).toBe(r2.id);
     expect(d.rooms!.find((r) => r.id === r1.id)!.status).toBe('dirty');
+  });
+
+  it('shows VAT inside the rate by default, and adds it (and a levy) on top when rates exclude tax', () => {
+    const { d, h, dbl, r1 } = setup();
+    const a = today();
+    const bk = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Walk-in', arrive: a, depart: addDays(a, 2), rooms: [{ roomId: r1.id, typeId: dbl.id, rate: 118000, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [guest], discount: 0 });
+    let b = d.hotelBookings!.find((x) => x.id === bk.id)!;
+    expect(folioOf(d, b).total).toBe(236000);
+    expect(taxesOf(d, b).included).toBe(36000);
+    h.saveHotelSettings({ ratesIncludeTax: false, taxes: [{ id: 'vat', name: 'VAT 18%', pct: 18, on: ['room', 'charges'], active: true }, { id: 'levy', name: 'Tourism levy', perNight: 2000, on: ['room'], active: true }] });
+    b = d.hotelBookings!.find((x) => x.id === bk.id)!;
+    // 236,000 + 18% (42,480) + 2 nights × 2,000
+    expect(folioOf(d, b).total).toBe(236000 + 42480 + 4000);
+    const lines = folioLines(d, b);
+    expect(lines.filter((l) => l.kind === 'room')).toHaveLength(2);
+    expect(lines[lines.length - 1].balance).toBe(folioOf(d, b).balance);
+    h.checkIn(bk.id);
+    const out = h.checkOut(bk.id);
+    expect(d.sales.find((x) => x.id === out.guestSale)!.total).toBe(236000 + 42480 + 4000);
+  });
+
+  it('moves a charge to another guest, and sums revenue by charge type', () => {
+    const { d, h, dbl, r1, r2 } = setup();
+    const a = today();
+    const one = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Walk-in', arrive: a, depart: addDays(a, 1), rooms: [{ roomId: r1.id, typeId: dbl.id, rate: 100000, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [guest], discount: 0 });
+    const two = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Walk-in', arrive: a, depart: addDays(a, 1), rooms: [{ roomId: r2.id, typeId: dbl.id, rate: 100000, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [{ ...guest, name: 'Tom Okello', idNo: 'X2' }], discount: 0 });
+    h.checkIn(one.id); h.checkIn(two.id);
+    h.postCharge(one.id, { desc: 'Dinner', amount: 30000, chargeTypeId: 'FD' });
+    const c = d.hotelBookings!.find((x) => x.id === one.id)!.charges[0];
+    h.transferCharge(one.id, c.id, two.id);
+    expect(d.hotelBookings!.find((x) => x.id === one.id)!.charges).toHaveLength(0);
+    expect(d.hotelBookings!.find((x) => x.id === two.id)!.charges[0]).toMatchObject({ amount: 30000, kind: 'transfer' });
+    const rev = revenueSummary(d, a, a);
+    expect(rev.rows.find((r) => r.code === 'RR')!.gross).toBe(200000);
+    expect(rev.rows.find((r) => r.code === '3005')!.gross).toBe(30000);
+    expect(Math.abs(rev.totals.tax - Math.round(230000 - 230000 / 1.18))).toBeLessThanOrEqual(1);
   });
 });

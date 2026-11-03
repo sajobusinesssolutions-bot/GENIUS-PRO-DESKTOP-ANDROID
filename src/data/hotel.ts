@@ -73,6 +73,11 @@ export interface FolioCharge {
   by?: string;
   /** Already a sale in the books (a meal charged to the room): shown on the bill, not billed twice. */
   saleId?: string;
+  /** What kind of charge (Settings: charge types) — it decides the taxes and the revenue line. */
+  chargeTypeId?: string;
+  /** A charge, a correction (adjust, usually negative), or one moved in from another booking. */
+  kind?: 'charge' | 'adjust' | 'transfer';
+  note?: string;
 }
 export interface FolioPayment {
   id: string; ts: string; amount: number; method: 'cash' | 'momo' | 'bank' | 'card'; note?: string; by?: string;
@@ -107,7 +112,49 @@ export interface Booking {
   /** The sale the bill became at check-out. */
   saleId?: string | null;
 }
-export interface HotelSettings { checkInTime: string; checkOutTime: string; depositPct: number }
+export interface HotelSettings {
+  checkInTime: string; checkOutTime: string; depositPct: number;
+  /** Room rates and charges already include the percentage taxes (usual in Uganda), or have them added on top. */
+  ratesIncludeTax: boolean;
+  taxes: TaxType[];
+  chargeTypes: ChargeType[];
+  cancellationPolicy: string;
+}
+
+/** A tax or levy on the bill: a percentage (VAT 18%), or an amount per room a night (a tourism levy). */
+export interface TaxType {
+  id: string; name: string;
+  pct?: number;
+  perNight?: number;
+  /** What it is charged on: room nights, other charges, or both. */
+  on: ('room' | 'charges')[];
+  active: boolean;
+}
+export type ChargeCategory = 'ROOM' | 'FOOD' | 'BEVERAGE' | 'MISC' | 'EVENT' | 'SPA';
+/** A kind of charge on a bill, with a code, as the revenue report groups them. */
+export interface ChargeType { id: string; code: string; name: string; category: ChargeCategory; taxed: boolean; active: boolean }
+
+export const DEFAULT_TAXES: TaxType[] = [
+  { id: 'vat', name: 'VAT 18%', pct: 18, on: ['room', 'charges'], active: true },
+  { id: 'levy', name: 'Tourism levy', perNight: 0, on: ['room'], active: false },
+];
+export const DEFAULT_CHARGE_TYPES: ChargeType[] = [
+  { id: 'RR', code: 'RR', name: 'Accommodation', category: 'ROOM', taxed: true, active: true },
+  { id: 'XB', code: '1020', name: 'Extra bed', category: 'ROOM', taxed: true, active: true },
+  { id: 'LCO', code: '1030', name: 'Late check-out', category: 'ROOM', taxed: true, active: true },
+  { id: 'FD', code: '3005', name: 'Restaurant food', category: 'FOOD', taxed: true, active: true },
+  { id: 'BV', code: '3006', name: 'Bar and drinks', category: 'BEVERAGE', taxed: true, active: true },
+  { id: 'MB', code: '3010', name: 'Minibar', category: 'BEVERAGE', taxed: true, active: true },
+  { id: 'RS', code: '3020', name: 'Room service', category: 'FOOD', taxed: true, active: true },
+  { id: 'LD', code: '2010', name: 'Laundry', category: 'MISC', taxed: true, active: true },
+  { id: 'TR', code: '2020', name: 'Airport transfer', category: 'MISC', taxed: true, active: true },
+  { id: 'PK', code: '2003', name: 'Car parking', category: 'MISC', taxed: true, active: true },
+  { id: 'SP', code: '4031', name: 'Spa and gym', category: 'SPA', taxed: true, active: true },
+  { id: 'EV', code: '5001', name: 'Hall and meeting hire', category: 'EVENT', taxed: true, active: true },
+  { id: 'DM', code: '2030', name: 'Damage', category: 'MISC', taxed: false, active: true },
+  { id: 'MS', code: '2099', name: 'Miscellaneous', category: 'MISC', taxed: true, active: true },
+];
+export const CATEGORY_WORD: Record<ChargeCategory, string> = { ROOM: 'Room', FOOD: 'Food', BEVERAGE: 'Beverage', MISC: 'Other', EVENT: 'Events', SPA: 'Spa' };
 
 export const STATUS_WORD: Record<BookingStatus, string> = {
   provisional: 'Provisional', confirmed: 'Confirmed', in: 'In house', out: 'Checked out', cancelled: 'Cancelled', noshow: 'No-show',
@@ -131,9 +178,25 @@ export function nightsList(arrive: string, depart: string): string[] {
   return Array.from({ length: n }, (_, i) => addDays(arrive, i));
 }
 
+/**
+ * The hotel's rules: times, deposit, taxes, charge types, cancellation policy.
+ * Kept as one shared record (hotelConfig, id "config") so every phone and the
+ * computer tax and print a bill alike; older books kept them in settings.hotel.
+ */
 export function hotelSettings(d: DB | null | undefined): HotelSettings {
-  return { checkInTime: '14:00', checkOutTime: '10:00', depositPct: 0, ...((d as any)?.settings?.hotel || {}) };
+  const cfg = ((d as any)?.hotelConfig || []).find((x: any) => x.id === 'config') || {};
+  const s = { ...((d as any)?.settings?.hotel || {}), ...cfg };
+  return {
+    checkInTime: '14:00', checkOutTime: '10:00', depositPct: 0, ratesIncludeTax: true, cancellationPolicy: '',
+    ...s,
+    taxes: Array.isArray(s.taxes) && s.taxes.length ? s.taxes : DEFAULT_TAXES,
+    chargeTypes: Array.isArray(s.chargeTypes) && s.chargeTypes.length ? s.chargeTypes : DEFAULT_CHARGE_TYPES,
+  };
 }
+export const chargeTypeOf = (d: DB, id?: string): ChargeType => {
+  const all = hotelSettings(d).chargeTypes;
+  return all.find((c) => c.id === id) || all.find((c) => c.category === 'MISC' && /misc/i.test(c.name)) || all[0];
+};
 export const roomTypes = (d: DB | null | undefined): RoomType[] => (d as any)?.roomTypes || [];
 export const rooms = (d: DB | null | undefined): Room[] => ((d as any)?.rooms || []).slice().sort((a: Room, b: Room) => a.no.localeCompare(b.no, undefined, { numeric: true }));
 export const ratePlans = (d: DB | null | undefined): RatePlan[] => (d as any)?.ratePlans || [];
@@ -197,6 +260,11 @@ export function priceStay(d: DB, b: Pick<Booking, 'arrive' | 'depart' | 'rooms' 
 }
 
 export interface Folio {
+  /** All tax on the bill, whether inside the prices or added. */
+  tax: number;
+  /** The part of it added on top of the prices. */
+  taxAdded: number;
+  taxLines: { id: string; name: string; amount: number; added: boolean }[];
   stay: StayPrice;
   charges: number;
   discount: number;
@@ -211,10 +279,48 @@ export function folioOf(d: DB, b: Booking): Folio {
   const stay = priceStay(d, b);
   const charges = b.charges.reduce((a, c) => a + c.amount, 0);
   const discount = Math.max(0, Number(b.discount) || 0);
-  const total = Math.max(0, stay.total + charges - discount);
+  const t = taxesOf(d, b);
+  const total = Math.max(0, stay.total + charges - discount + t.added);
   const paid = b.payments.reduce((a, p) => a + p.amount, 0);
-  const company = b.companyId ? (b.roomsPaidBy === 'company' ? stay.total : 0) + b.charges.filter((c) => c.payer === 'company').reduce((a, c) => a + c.amount, 0) : 0;
-  return { stay, charges, discount, total, paid, balance: total - paid, companyPart: Math.max(0, company - (b.companyId ? discount : 0)), guestPart: Math.max(0, total - company + (b.companyId ? discount : 0)) };
+  const company = b.companyId ? (b.roomsPaidBy === 'company' ? stay.total + t.addedRoom : 0) + b.charges.filter((c) => c.payer === 'company').reduce((a, c) => a + c.amount, 0) + (b.companyId ? t.addedCompanyCharges : 0) : 0;
+  return { stay, charges, discount, total, paid, balance: total - paid, tax: t.included + t.added, taxAdded: t.added, taxLines: t.lines,
+    companyPart: Math.max(0, company - (b.companyId ? discount : 0)), guestPart: Math.max(0, total - company + (b.companyId ? discount : 0)) };
+}
+
+/**
+ * The taxes on a bill. A percentage tax is inside the price when rates include
+ * tax (shown, not added) or added on top otherwise; a per-night levy is always
+ * added. Returns the lines by tax, and what was added to the total.
+ */
+export function taxesOf(d: DB, b: Booking) {
+  const st = hotelSettings(d);
+  const roomNights = nightsOf(b.arrive, b.depart) * b.rooms.length;
+  const roomBase = priceStay(d, b).total;
+  const taxed = (payer?: 'guest' | 'company') => b.charges
+    .filter((c) => (!payer || c.payer === payer) && chargeTypeOf(d, c.chargeTypeId).taxed !== false)
+    .reduce((a, c) => a + c.amount, 0);
+  const lines: { id: string; name: string; amount: number; added: boolean }[] = [];
+  let added = 0, included = 0, addedRoom = 0, addedCompanyCharges = 0;
+  for (const x of st.taxes.filter((t) => t.active)) {
+    // a percentage: inside the price when rates include tax, else on top
+    if (x.pct) {
+      const rate = x.pct / 100;
+      const of = (v: number) => (st.ratesIncludeTax ? v - v / (1 + rate) : v * rate);
+      const room = x.on.includes('room') ? of(roomBase) : 0;
+      const other = x.on.includes('charges') ? of(taxed()) : 0;
+      const amt = room + other;
+      if (st.ratesIncludeTax) included += amt;
+      else { added += amt; addedRoom += room; addedCompanyCharges += x.on.includes('charges') ? of(taxed('company')) : 0; }
+      if (Math.abs(amt) >= 0.5) lines.push({ id: x.id, name: x.name, amount: Math.round(amt), added: !st.ratesIncludeTax });
+    }
+    // an amount per room a night: always added
+    if (x.perNight && x.on.includes('room')) {
+      const lv = x.perNight * roomNights;
+      added += lv; addedRoom += lv;
+      lines.push({ id: x.id + ':night', name: x.name, amount: Math.round(lv), added: true });
+    }
+  }
+  return { lines, added: Math.round(added), included: Math.round(included), addedRoom: Math.round(addedRoom), addedCompanyCharges: Math.round(addedCompanyCharges) };
 }
 
 /** The day at reception: who comes, who goes, who is in, and how full the house is. */
@@ -362,4 +468,142 @@ export function guestMessage(d: DB, b: Booking, kind: 'confirm' | 'welcome' | 'b
       + '\nTotal: ' + money(f.total) + '\nPaid: ' + money(f.paid) + '\nBalance: ' + money(Math.max(0, f.balance));
   }
   return 'Thank you for staying with us at ' + hotel + ', ' + name + '. We hope to see you again soon!';
+}
+
+/* ── The folio, line by line ───────────────────────────────────────────────
+   What the Information Bill prints: each night of each room with its rate,
+   the taxes on it, every other charge with its taxes, then each payment as a
+   credit, with a running balance. Nights not yet slept are marked expected. */
+export interface FolioLine {
+  date: string; kind: 'room' | 'tax' | 'charge' | 'adjust' | 'transfer' | 'offer' | 'discount' | 'payment';
+  desc: string; code?: string; category?: ChargeCategory;
+  charge: number; credit: number; balance: number;
+  payer?: 'guest' | 'company'; room?: string; future?: boolean; ref?: string;
+}
+
+/** Each night of a stay, room by room, at its own price (season and rate plan). */
+export function nightly(d: DB, b: Pick<Booking, 'arrive' | 'depart' | 'rooms' | 'ratePlanId'>) {
+  const plan = ratePlans(d).find((p) => p.id === b.ratePlanId && p.active);
+  const out: { day: string; roomId: string; room: string; amount: number }[] = [];
+  for (const r of b.rooms) {
+    const no = rooms(d).find((x) => x.id === r.roomId)?.no || '?';
+    for (const n of nightsList(b.arrive, b.depart)) {
+      const s = seasonOn(d, n);
+      out.push({ day: n, roomId: r.roomId, room: no, amount: Math.round(r.rate * (1 + (s ? s.pct : 0) / 100)) + (plan ? plan.perNight + plan.perPerson * Math.max(1, r.adults) : 0) });
+    }
+  }
+  return out;
+}
+
+export function folioLines(d: DB, b: Booking, now = today()): FolioLine[] {
+  const st = hotelSettings(d);
+  const taxes = st.taxes.filter((x) => x.active);
+  const plan = ratePlans(d).find((p) => p.id === b.ratePlanId && p.active);
+  const rr = chargeTypeOf(d, 'RR');
+  const roomPayer: 'guest' | 'company' = b.companyId && b.roomsPaidBy === 'company' ? 'company' : 'guest';
+  const raw: Omit<FolioLine, 'balance'>[] = [];
+  const taxFor = (amount: number, date: string, onRoom: boolean, payer: 'guest' | 'company', taxed: boolean, future?: boolean) => {
+    for (const x of taxes) {
+      if (!x.on.includes(onRoom ? 'room' : 'charges')) continue;
+      if (x.pct && taxed) {
+        const rate = x.pct / 100;
+        const v = st.ratesIncludeTax ? amount - amount / (1 + rate) : amount * rate;
+        if (Math.abs(v) >= 0.5) raw.push({ date, kind: 'tax', desc: x.name + (st.ratesIncludeTax ? ' (included)' : ''), charge: st.ratesIncludeTax ? 0 : Math.round(v), credit: 0, payer, future, ref: st.ratesIncludeTax ? String(Math.round(v)) : undefined });
+      }
+      if (x.perNight && onRoom) raw.push({ date, kind: 'tax', desc: x.name, charge: x.perNight, credit: 0, payer, future });
+    }
+  };
+  for (const n of nightly(d, b)) {
+    const future = n.day > now;
+    raw.push({ date: n.day, kind: 'room', desc: (plan ? plan.name : rr.name) + ' · room ' + n.room, code: rr.code, category: 'ROOM', charge: n.amount, credit: 0, payer: roomPayer, room: n.room, future });
+    taxFor(n.amount, n.day, true, roomPayer, true, future);
+  }
+  const stay = priceStay(d, b);
+  if (stay.offer) raw.push({ date: b.depart.slice(0, 10), kind: 'offer', desc: stay.lines.find((l) => l.amount < 0)?.desc || 'Offer', charge: 0, credit: stay.offer, payer: roomPayer });
+  for (const c of b.charges) {
+    const ct = chargeTypeOf(d, c.chargeTypeId);
+    raw.push({ date: dayOf(c.ts), kind: c.kind === 'adjust' ? 'adjust' : c.kind === 'transfer' ? 'transfer' : 'charge', desc: c.desc + (c.note ? ' — ' + c.note : '') + (c.saleId ? ' (billed)' : ''), code: ct.code, category: ct.category,
+      charge: c.amount > 0 ? c.amount : 0, credit: c.amount < 0 ? -c.amount : 0, payer: c.payer, ref: c.id });
+    if (c.amount > 0) taxFor(c.amount, dayOf(c.ts), false, c.payer, ct.taxed !== false);
+  }
+  if (b.discount) raw.push({ date: dayOf(b.updatedAt || b.createdAt), kind: 'discount', desc: 'Discount', charge: 0, credit: Math.max(0, Number(b.discount) || 0), payer: roomPayer });
+  for (const p of b.payments) raw.push({ date: dayOf(p.ts), kind: 'payment', desc: 'Payment · ' + (p.method === 'momo' ? 'Mobile money' : p.method[0].toUpperCase() + p.method.slice(1)) + (p.note ? ' · ' + p.note : ''), charge: 0, credit: p.amount, ref: p.id });
+  const order: Record<FolioLine['kind'], number> = { room: 0, charge: 1, transfer: 1, adjust: 2, tax: 3, offer: 4, discount: 5, payment: 6 };
+  raw.sort((a, b2) => a.date.localeCompare(b2.date) || order[a.kind] - order[b2.kind]);
+  let bal = 0;
+  return raw.map((l) => { bal += l.charge - l.credit; return { ...l, balance: Math.round(bal) }; });
+}
+
+/* ── Revenue summary: day by day, charge type by charge type ───────────── */
+export function revenueSummary(d: DB, from: string, to: string) {
+  const st = hotelSettings(d);
+  const pctTaxes = st.taxes.filter((x) => x.active && x.pct);
+  const rows = new Map<string, { date: string; chargeType: string; code: string; category: ChargeCategory; gross: number; net: number; tax: number; taxes: Record<string, number> }>();
+  const add = (date: string, ct: ChargeType, amount: number, onRoom: boolean, taxed: boolean) => {
+    if (date < from || date > to || !amount) return;
+    const key = date + '|' + ct.id;
+    const r = rows.get(key) || { date, chargeType: ct.name, code: ct.code, category: ct.category, gross: 0, net: 0, tax: 0, taxes: {} };
+    let net = amount, tax = 0;
+    for (const x of pctTaxes) {
+      if (!taxed || !x.on.includes(onRoom ? 'room' : 'charges')) continue;
+      const rate = x.pct! / 100;
+      const v = st.ratesIncludeTax ? amount - amount / (1 + rate) : amount * rate;
+      tax += v; r.taxes[x.name] = (r.taxes[x.name] || 0) + v;
+    }
+    if (st.ratesIncludeTax) net = amount - tax;
+    r.gross += st.ratesIncludeTax ? amount : amount + tax; r.net += net; r.tax += tax;
+    rows.set(key, r);
+  };
+  const rr = chargeTypeOf(d, 'RR');
+  for (const b of bookings(d).filter((x) => x.status === 'in' || x.status === 'out')) {
+    for (const n of nightly(d, b)) add(n.day, rr, n.amount, true, true);
+    for (const c of b.charges) { const ct = chargeTypeOf(d, c.chargeTypeId); add(dayOf(c.ts), ct, c.amount, false, ct.taxed !== false); }
+  }
+  const list = [...rows.values()].map((r) => ({ ...r, gross: Math.round(r.gross), net: Math.round(r.net), tax: Math.round(r.tax), taxes: Object.fromEntries(Object.entries(r.taxes).map(([k, v]) => [k, Math.round(v)])) }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.code.localeCompare(b.code));
+  const sum = (k: 'gross' | 'net' | 'tax') => list.reduce((a, r) => a + r[k], 0);
+  return { rows: list, taxNames: pctTaxes.map((x) => x.name), totals: { gross: sum('gross'), net: sum('net'), tax: sum('tax') } };
+}
+
+/** Every line of every bill in a period: charges, adjustments, transfers and payments, with the guest and room. */
+export function allTransactions(d: DB, from: string, to: string, kinds?: FolioLine['kind'][]) {
+  const out: (FolioLine & { booking: string; guest: string; rooms: string })[] = [];
+  for (const b of bookings(d).filter((x) => x.status === 'in' || x.status === 'out')) {
+    const roomsTxt = b.rooms.map((r) => rooms(d).find((x) => x.id === r.roomId)?.no || '?').join(', ');
+    for (const l of folioLines(d, b)) {
+      if (l.date < from || l.date > to || l.future) continue;
+      if (kinds && kinds.length && !kinds.includes(l.kind)) continue;
+      out.push({ ...l, booking: b.no, guest: b.guests[0]?.name || '', rooms: roomsTxt });
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** A company's invoice: every stay billed to it in a period, as one statement. */
+export function companyStays(d: DB, companyIds: string[], from: string, to: string) {
+  return bookings(d)
+    .filter((b) => b.companyId && companyIds.includes(b.companyId) && (b.status === 'out' || b.status === 'in') && b.depart.slice(0, 10) >= from && b.arrive.slice(0, 10) <= to)
+    .map((b) => {
+      const f = folioOf(d, b);
+      return { date: (b.checkedOutAt || b.depart).slice(0, 10), booking: b.no, guest: b.guests[0]?.name || '', others: b.guests.slice(1).map((g) => g.name).join(', '),
+        checkIn: b.arrive.slice(0, 10), checkOut: b.depart.slice(0, 10), nights: nightsOf(b.arrive, b.depart),
+        room: b.rooms.map((r) => rooms(d).find((x) => x.id === r.roomId)?.no || '?').join(', '), amount: f.companyPart };
+    })
+    .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+}
+
+/** Arrivals, in house and departures as reception lists them, with what is owed. */
+export function deskList(d: DB, which: 'arrivals' | 'inhouse' | 'departures' | 'all', day = today()) {
+  const all = bookings(d);
+  const pick = which === 'arrivals' ? all.filter((b) => (b.status === 'confirmed' || b.status === 'provisional') && b.arrive.slice(0, 10) <= day)
+    : which === 'inhouse' ? all.filter((b) => b.status === 'in')
+    : which === 'departures' ? all.filter((b) => b.status === 'in' && b.depart.slice(0, 10) <= day)
+    : all;
+  return pick.map((b) => {
+    const f = folioOf(d, b);
+    const rs = b.rooms.map((r) => rooms(d).find((x) => x.id === r.roomId)).filter(Boolean) as Room[];
+    return { b, balance: f.balance, total: f.total, rooms: rs, plan: ratePlans(d).find((p) => p.id === b.ratePlanId)?.name || 'Room only',
+      nights: nightsOf(b.arrive, b.depart), adults: b.rooms.reduce((a, r) => a + r.adults, 0), children: b.rooms.reduce((a, r) => a + r.children, 0),
+      pendingDeparture: b.status === 'in' && b.depart.slice(0, 10) <= day };
+  });
 }

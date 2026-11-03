@@ -23,7 +23,7 @@ import * as logic from '../logic';
 import { Refusal } from '../refusal';
 import {
   type Booking, type BookingStatus, type FolioPayment, type HotelSettings, type RatePlan, type Room, type RoomStatus,
-  type RoomType, type Season, type StayOffer, checkInMissing, folioOf, nightsOf, roomFree, rooms, today,
+  type RoomType, type Season, type StayOffer, taxesOf, checkInMissing, folioOf, nightsOf, roomFree, rooms, today,
 } from '../hotel';
 
 export interface HotelActions {
@@ -41,7 +41,9 @@ export interface HotelActions {
   setBookingStatus: (id: string, status: Extract<BookingStatus, 'provisional' | 'confirmed' | 'cancelled' | 'noshow'>) => void;
   moveRoom: (id: string, fromRoomId: string, toRoomId: string) => void;
   checkIn: (id: string) => void;
-  postCharge: (id: string, c: { desc: string; amount: number; payer?: 'guest' | 'company' }) => void;
+  postCharge: (id: string, c: { desc: string; amount: number; payer?: 'guest' | 'company'; chargeTypeId?: string; kind?: 'charge' | 'adjust'; note?: string }) => void;
+  /** Moves a charge to another guest in the house (a dinner signed to the wrong room). */
+  transferCharge: (fromId: string, chargeId: string, toId: string) => void;
   removeCharge: (id: string, chargeId: string) => void;
   takeBookingPayment: (id: string, p: { amount: number; method: FolioPayment['method']; note?: string }) => void;
   /** The guest's customer record, made if needed: a meal charged to the room is sold on it. */
@@ -183,7 +185,14 @@ export function hotelActions(deps: {
     },
     saveHotelSettings: (s) => {
       requirePerm('hotel.setup');
-      commit((d) => { (d.settings as any).hotel = { ...((d.settings as any).hotel || {}), ...s }; logic.enqueue(d, 'settings', 'settings'); });
+      // one shared record, so every phone and the computer tax and print alike
+      commit((d) => {
+        d.hotelConfig = d.hotelConfig || [];
+        const i = d.hotelConfig.findIndex((x) => x.id === 'config');
+        const next = { ...(i >= 0 ? d.hotelConfig[i] : (d.settings as any).hotel || {}), ...s, id: 'config' };
+        if (i >= 0) d.hotelConfig[i] = next; else d.hotelConfig.push(next);
+        logic.enqueue(d, 'hotelConfig', 'config');
+      });
     },
     setRoomStatus: (roomId, status, note) => {
       requirePerm('hotel.housekeeping');
@@ -304,7 +313,29 @@ export function hotelActions(deps: {
       if (amount < 0) requirePerm('hotel.discount');
       touch(id, (b, d) => {
         open(b);
-        b.charges.push({ id: uid('chg'), ts: iso(new Date()), desc: c.desc.trim(), amount, payer: b.companyId ? c.payer || 'guest' : 'guest', by: who(d) });
+        b.charges.push({ id: uid('chg'), ts: iso(new Date()), desc: c.desc.trim(), amount, payer: b.companyId ? c.payer || 'guest' : 'guest', by: who(d),
+          ...(c.chargeTypeId ? { chargeTypeId: c.chargeTypeId } : {}), ...(c.kind === 'adjust' || amount < 0 ? { kind: 'adjust' as const } : {}), ...(c.note ? { note: c.note } : {}) });
+      });
+    },
+    transferCharge: (fromId, chargeId, toId) => {
+      requirePerm('hotel.charge');
+      if (fromId === toId) return;
+      commit((d) => {
+        const all = d.hotelBookings || [];
+        const a = all.find((x) => x.id === fromId), b = all.find((x) => x.id === toId);
+        if (!a || !b) throw new Refusal('That booking is not here any more.');
+        if (b.status !== 'in') throw new Refusal('A charge can only move to a guest in the house.');
+        const c = a.charges.find((x) => x.id === chargeId);
+        if (!c) throw new Refusal('That charge is not on this bill.');
+        if (c.saleId) throw new Refusal('This is a sale in the books already and stays with its guest.');
+        const fromRooms = a.rooms.map((r) => (d.rooms || []).find((x) => x.id === r.roomId)?.no).join(', ');
+        const toRooms = b.rooms.map((r) => (d.rooms || []).find((x) => x.id === r.roomId)?.no).join(', ');
+        a.charges = a.charges.filter((x) => x.id !== chargeId);
+        b.charges.push({ ...c, id: uid('chg'), kind: 'transfer', payer: 'guest', note: 'from room ' + fromRooms + ', ' + a.no });
+        const now = iso(new Date());
+        a.updatedAt = now; b.updatedAt = now;
+        logic.enqueue(d, 'booking', a.id); logic.enqueue(d, 'booking', b.id);
+        logic.audit(d, 'Charge transferred', c.desc + ' ' + c.amount + ': room ' + fromRooms + ' → ' + toRooms);
       });
     },
     removeCharge: (id, chargeId) => {
@@ -359,6 +390,14 @@ export function hotelActions(deps: {
         const companyRooms = !!b.companyId && b.roomsPaidBy === 'company';
         const guestLines = [...(companyRooms ? [] : roomLines), ...chargeLines('guest')];
         const companyLines = b.companyId ? [...(companyRooms ? roomLines : []), ...chargeLines('company')] : [];
+        /* taxes added on top of the prices (rates without tax, a per-night levy): one line each, on the bill that carries them */
+        const tx = taxesOf(d, b);
+        if (tx.added > 0) {
+          const toCompany = Math.min(tx.added, (companyRooms ? tx.addedRoom : 0) + (b.companyId ? tx.addedCompanyCharges : 0));
+          const toGuest = tx.added - toCompany;
+          if (toGuest > 0) guestLines.push(line(EXTRA_ITEM, 'Taxes and levies', toGuest));
+          if (toCompany > 0 && b.companyId) companyLines.push(line(EXTRA_ITEM, 'Taxes and levies', toCompany));
+        }
         const lead = b.guests[0];
         const partyId = guestParty(d, b);
         const note = 'Hotel ' + b.no + ' · ' + b.guests.map((g) => g.name).join(', ') + ' · ' + b.arrive.slice(0, 10) + ' to ' + today();

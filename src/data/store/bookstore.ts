@@ -39,7 +39,7 @@ export const TRACKED = new Set([
 export const SMALL = new Set([
   'firms', 'roles', 'warehouses', 'products', 'parties', 'users', 'accounts', 'printers', 'templates',
   'coa', 'offers', 'priceLists', 'modifierGroups', 'menuGroups', 'menus', 'businessAccess',
-  'roomTypes', 'rooms', 'ratePlans', 'seasons', 'stayOffers',
+  'roomTypes', 'rooms', 'ratePlans', 'seasons', 'stayOffers', 'hotelConfig',
 ]);
 export const COLLS: ReadonlySet<string> = new Set([...TRACKED, ...SMALL]);
 

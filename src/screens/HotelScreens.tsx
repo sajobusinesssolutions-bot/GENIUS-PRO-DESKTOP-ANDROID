@@ -614,6 +614,8 @@ export function BookingScreen({ route, navigation }: any) {
   const [amt, setAmt] = useState('');
   const [payer, setPayer] = useState<'guest' | 'company'>('guest');
   const [method, setMethod] = useState<FolioPayment['method']>('cash');
+  const [ctId, setCtId] = useState<string>('');
+  const [adjust, setAdjust] = useState(false);
   const b: Booking | undefined = bookings(db).find((x) => x.id === route?.params?.id);
   if (!db) return null;
   if (!b) return <EmptyState icon="calendar" title="Booking not found" subtitle="It may have been removed on another device." />;
@@ -621,7 +623,9 @@ export function BookingScreen({ route, navigation }: any) {
   const company = b.companyId ? party?.(b.companyId) || db.parties.find((p: any) => p.id === b.companyId) : null;
   const run = (what: string, fn: () => void, ok?: string) => { try { fn(); if (ok) success(ok); } catch (e: any) { Alert.alert('Cannot ' + what, e.message); } };
   const missing = checkInMissing(b);
-  const quick = ['Laundry', 'Minibar', 'Room service', 'Restaurant', 'Bar', 'Airport transfer', 'Extra bed', 'Late check-out', 'Damage'];
+  /* the hotel's charge types (Set-up), each with its code and whether it is taxed */
+  const cts = hotelSettings(db).chargeTypes.filter((c) => c.active && c.id !== 'RR');
+  const inHouseOthers = bookings(db).filter((x) => x.id !== b.id && x.status === 'in');
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -685,13 +689,23 @@ export function BookingScreen({ route, navigation }: any) {
             </View>
           ))}
           {b.charges.map((c) => (
-            <Pressable key={c.id} onLongPress={() => b.status !== 'out' && Alert.alert('Remove ' + c.desc + '?', money(c.amount) + ' comes off the bill.', [{ text: 'Keep', style: 'cancel' }, { text: 'Remove', style: 'destructive', onPress: () => run('remove the charge', () => hotel.removeCharge(b.id, c.id)) }])}
+            <Pressable key={c.id} onLongPress={() => b.status !== 'out' && !c.saleId && Alert.alert(c.desc + ' · ' + money(c.amount), 'Remove it, or move it to another guest in the house.', [
+              { text: 'Keep', style: 'cancel' },
+              ...inHouseOthers.slice(0, 3).map((o) => ({ text: 'Move to room ' + o.rooms.map((r) => rooms(db).find((x) => x.id === r.roomId)?.no).join(', '), onPress: () => run('move the charge', () => hotel.transferCharge(b.id, c.id, o.id), 'Moved') })),
+              { text: 'Remove', style: 'destructive', onPress: () => run('remove the charge', () => hotel.removeCharge(b.id, c.id)) }])}
               style={{ flexDirection: 'row', paddingVertical: 5 }}>
               <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.soft }}>{c.desc}{company ? ' · ' + c.payer : ''} <Text style={{ color: colors.faint, fontSize: 11.5 }}>{short(c.ts)}</Text></Text>
               <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{money(c.amount)}</Text>
             </Pressable>
           ))}
           {f.discount ? <View style={{ flexDirection: 'row', paddingVertical: 5 }}><Text style={{ flex: 1, fontFamily: fonts.ui, color: colors.good }}>Discount</Text><Text style={{ fontFamily: fonts.uiSemi, color: colors.good }}>−{money(f.discount)}</Text></View> : null}
+          {/* taxes: inside the prices (shown) or added on top, and any levy a night */}
+          {f.taxLines.map((t) => (
+            <View key={t.id} style={{ flexDirection: 'row', paddingVertical: 3 }}>
+              <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{t.name}{t.added ? '' : ' (included)'}</Text>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{money(t.amount)}</Text>
+            </View>
+          ))}
           <View style={{ height: 1, backgroundColor: colors.line, marginVertical: 8 }} />
           <View style={{ flexDirection: 'row' }}><Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>Total</Text><Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink }}>{money(f.total)}</Text></View>
           {b.payments.map((p) => (
@@ -770,9 +784,10 @@ export function BookingScreen({ route, navigation }: any) {
       </ScrollView>
 
       <Sheet visible={charge} title="Charge to the room" icon="receipt" onClose={() => setCharge(false)}
-        footer={<Button variant="pri" label="Add to the bill" onPress={() => { try { hotel.postCharge(b.id, { desc, amount: Number(amt), payer }); setCharge(false); success('Added to the bill'); } catch (e: any) { Alert.alert('Cannot add it', e.message); } }} />}>
+        footer={<Button variant="pri" label={adjust ? 'Take it off the bill' : 'Add to the bill'} onPress={() => { try { hotel.postCharge(b.id, { desc, amount: Number(amt) * (adjust ? -1 : 1), payer, chargeTypeId: adjust ? undefined : ctId || undefined, kind: adjust ? 'adjust' : 'charge' }); setCharge(false); success(adjust ? 'Adjusted' : 'Added to the bill'); } catch (e: any) { Alert.alert('Cannot do that', e.message); } }} />}>
         <View style={{ gap: 12 }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{quick.map((x) => <Chip key={x} label={x} on={desc === x} onPress={() => setDesc(x)} />)}</View>
+          <Seg value={adjust ? 'adjust' : 'charge'} onChange={(v) => { setAdjust(v === 'adjust'); if (v === 'adjust') setDesc('Adjustment'); }} options={[{ v: 'charge', l: 'Charge' }, { v: 'adjust', l: 'Adjust (take off)' }]} />
+          {!adjust ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{cts.map((c) => <Chip key={c.id} label={c.name} on={ctId === c.id} onPress={() => { setCtId(c.id); setDesc(c.name); }} />)}</View> : null}
           <Field label="What for" value={desc} onChangeText={setDesc} />
           <Field label="Amount" numeric money value={amt} onChangeText={setAmt} />
           {company ? <Seg value={payer} onChange={setPayer} options={[{ v: 'guest', l: 'Guest pays' }, { v: 'company', l: company.name + ' pays' }]} /> : null}

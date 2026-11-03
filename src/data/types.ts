@@ -850,6 +850,8 @@ export interface DB {
   seasons?: import('./hotel').Season[];
   stayOffers?: import('./hotel').StayOffer[];
   hotelBookings?: import('./hotel').Booking[];
+  /** The hotel's shared rules: one record, id "config" (hotelSettings). */
+  hotelConfig?: Array<Partial<import('./hotel').HotelSettings> & { id: string }>;
   /** Requests waiting on, or answered by, the owner. */
   approvals?: ApprovalRequest[];
   /** Named sets of selling prices. */
