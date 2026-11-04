@@ -28,7 +28,7 @@ import {
   type Booking, type BookingKind, type BookedRoom, type Guest, type RoomStatus, type FolioPayment,
   KIND_WORD, ROOM_WORD, SOURCES, STATUS_WORD, addDays, bookingOn, bookings, checkInMissing, dayAtDesk, folioOf,
   freeRooms, guestRegister, hotelSettings, nightsOf, priceStay, ratePlans, roomTypes, rooms, seasons, stayOffers, today,
-  breakfastList, forecast, guestMessage, hotelReport,
+  breakfastList, forecast, guestMessage, hotelReport, nightly, planMeals, MEAL_WORD, guestFlags,
 } from '../data/hotel';
 import { sendVia } from '../data/messages';
 
@@ -618,6 +618,8 @@ export function BookingScreen({ route, navigation }: any) {
   const [method, setMethod] = useState<FolioPayment['method']>('cash');
   const [ctId, setCtId] = useState<string>('');
   const [adjust, setAdjust] = useState(false);
+  // cancelling or a no-show: what is kept as a fee and what is refunded
+  const [ending, setEnding] = useState<null | { status: 'cancelled' | 'noshow'; fee: string; refund: string; method: FolioPayment['method']; reason: string }>(null);
   const b: Booking | undefined = bookings(db).find((x) => x.id === route?.params?.id);
   if (!db) return null;
   if (!b) return <EmptyState icon="calendar" title="Booking not found" subtitle="It may have been removed on another device." />;
@@ -640,6 +642,15 @@ export function BookingScreen({ route, navigation }: any) {
           <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.faint, marginTop: 4 }}>
             {b.no} · {KIND_WORD[b.kind]} · {b.source}{company ? ' · billed to ' + company.name : ''}
           </Text>
+          {(() => {
+            const fl = guestFlags(db, b.guests[0]);
+            return fl.blacklist || fl.vip || fl.prefs ? (
+              <View style={{ marginTop: 8, padding: 10, borderRadius: 4, backgroundColor: fl.blacklist ? colors.dangerSoft || colors.sunk : colors.accentSoft }}>
+                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: fl.blacklist ? colors.danger : colors.accent }}>{fl.blacklist ? 'Do not take again' + (fl.blacklistWhy ? ': ' + fl.blacklistWhy : '') : fl.vip ? 'VIP guest' : 'Likes'}</Text>
+                {fl.prefs ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft, marginTop: 2 }}>{fl.prefs}</Text> : null}
+              </View>
+            ) : null;
+          })()}
           <View style={{ flexDirection: 'row', marginTop: 14, gap: 8 }}>
             {[['Arrive', nice(b.arrive)], ['Leave', nice(b.depart)], ['Nights', String(nightsOf(b.arrive, b.depart))]].map(([l, v]) => (
               <View key={l} style={{ flex: 1, padding: 10, borderRadius: 6, backgroundColor: colors.sunk }}>
@@ -649,7 +660,7 @@ export function BookingScreen({ route, navigation }: any) {
             ))}
           </View>
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.soft, marginTop: 12 }}>
-            Room {b.rooms.map((r) => rooms(db).find((x) => x.id === r.roomId)?.no + ' (' + (roomTypes(db).find((t) => t.id === r.typeId)?.name || '') + ')').join(', ')}
+            Room {b.rooms.map((r) => (r.roomId ? rooms(db).find((x) => x.id === r.roomId)?.no : 'not given yet') + ' (' + (roomTypes(db).find((t) => t.id === r.typeId)?.name || '') + ')').join(', ')}
           </Text>
           {b.note ? <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, marginTop: 6 }}>{b.note}</Text> : null}
         </Card>
@@ -667,13 +678,18 @@ export function BookingScreen({ route, navigation }: any) {
             <View style={{ flexDirection: 'row', gap: 10 }}>
               {b.status === 'provisional' ? <View style={{ flex: 1 }}><Button label="Confirm" onPress={() => run('confirm', () => hotel.setBookingStatus(b.id, 'confirmed'), 'Confirmed')} /></View> : null}
               <View style={{ flex: 1 }}><Button label="Change" onPress={() => go('BookingEdit', { id: b.id })} /></View>
-              {can('hotel.cancel') ? <View style={{ flex: 1 }}><Button variant="dngr" label="Cancel…" onPress={() => Alert.alert('Cancel booking ' + b.no + '?', 'The rooms are let go for these dates. Deposits taken stay on the bill until refunded.', [
-                { text: 'Keep it', style: 'cancel' },
-                { text: 'No-show', onPress: () => run('mark a no-show', () => hotel.setBookingStatus(b.id, 'noshow'), 'Marked as a no-show') },
-                { text: 'Cancel booking', style: 'destructive', onPress: () => run('cancel', () => hotel.setBookingStatus(b.id, 'cancelled'), 'Booking cancelled') },
-              ])} /></View> : null}
+              {can('hotel.cancel') ? <View style={{ flex: 1 }}><Button variant="dngr" label="Cancel…" onPress={() => setEnding({ status: 'cancelled', fee: '', refund: '', method: 'cash', reason: '' })} /></View> : null}
             </View>
           </View>
+        ) : null}
+
+        {(b.log || []).length ? (
+          <Card style={{ padding: 14 }}>
+            <Cap style={{ marginBottom: 6 }}>History</Cap>
+            {[...(b.log || [])].reverse().slice(0, 12).map((x, i) => (
+              <Text key={i} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft, paddingVertical: 3 }}><Text style={{ color: colors.faint }}>{short(x.ts)}{x.by ? ' · ' + x.by : ''} </Text>{x.what}</Text>
+            ))}
+          </Card>
         ) : null}
 
         {/* the bill */}
@@ -797,12 +813,35 @@ export function BookingScreen({ route, navigation }: any) {
       </Sheet>
 
       <Sheet visible={pay} title={b.status === 'in' ? 'Take payment' : 'Take a deposit'} icon="money" iconTone="good" onClose={() => setPay(false)}
-        footer={<Button variant="pri" label={'Receive ' + money(Number(amt) || 0)} onPress={() => { try { hotel.takeBookingPayment(b.id, { amount: Number(amt), method }); setPay(false); success('Payment received'); } catch (e: any) { Alert.alert('Cannot take it', e.message); } }} />}>
+        footer={<Button variant="pri" label="Receive payment" onPress={() => { try { hotel.takeBookingPayment(b.id, { amount: Number(amt), method }); setPay(false); success('Payment received'); } catch (e: any) { Alert.alert('Cannot take it', e.message); } }} />}>
         <View style={{ gap: 12 }}>
           <Seg value={method} onChange={setMethod} options={[{ v: 'cash', l: 'Cash' }, { v: 'momo', l: 'Mobile money' }, { v: 'card', l: 'Card' }, { v: 'bank', l: 'Bank' }]} />
           <Field label="Amount" numeric money value={amt} onChangeText={setAmt} big />
           <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>Payments are kept on the bill and go into the books with the bill at check-out.</Text>
         </View>
+      </Sheet>
+      <Sheet visible={!!ending} title={ending?.status === 'noshow' ? 'No-show · ' + b.no : 'Cancel ' + b.no} icon="x" iconTone="danger" onClose={() => setEnding(null)}
+        footer={<Button variant="dngr" label={ending?.status === 'noshow' ? 'Mark no-show' : 'Cancel booking'} onPress={() => { if (!ending) return; try { hotel.endBooking(b.id, { status: ending.status, fee: Number(ending.fee) || 0, refund: Number(ending.refund) || 0, method: ending.method, reason: ending.reason }); setEnding(null); success(ending.status === 'noshow' ? 'Marked as a no-show' : 'Booking cancelled'); } catch (e: any) { Alert.alert('Cannot do that', e.message); } }} />}>
+        {ending ? (() => {
+          const paid = b.payments.reduce((a, x) => a + x.amount, 0);
+          const first = nightly(db, b).filter((n) => n.day === b.arrive.slice(0, 10)).reduce((a, n) => a + n.amount, 0);
+          return <View style={{ gap: 12 }}>
+            <Seg value={ending.status} onChange={(v) => setEnding({ ...ending, status: v })} options={[{ v: 'cancelled', l: 'Cancelled' }, { v: 'noshow', l: 'No-show' }]} />
+            <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft }}>The rooms are let go for these dates. {paid > 0 ? money(paid) + ' was paid.' : 'Nothing was paid.'}</Text>
+            <Field label="Reason" value={ending.reason} onChangeText={(v) => setEnding({ ...ending, reason: v })} />
+            {paid > 0 ? <>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                <Chip label="First night, refund the rest" onPress={() => setEnding({ ...ending, fee: String(Math.min(paid, first)), refund: String(Math.max(0, paid - Math.min(paid, first))) })} />
+                <Chip label="Refund all" onPress={() => setEnding({ ...ending, fee: '', refund: String(paid) })} />
+                <Chip label="Keep all" onPress={() => setEnding({ ...ending, fee: String(paid), refund: '' })} />
+              </View>
+              <Field label={ending.status === 'noshow' ? 'Keep as a no-show charge' : 'Keep as a cancellation fee'} numeric money value={ending.fee} onChangeText={(v) => setEnding({ ...ending, fee: v })} />
+              <Field label="Refund to the guest" numeric money value={ending.refund} onChangeText={(v) => setEnding({ ...ending, refund: v })} />
+              {Number(ending.refund) > 0 ? <Seg value={ending.method} onChange={(v) => setEnding({ ...ending, method: v })} options={[{ v: 'cash', l: 'Cash' }, { v: 'momo', l: 'Mobile money' }, { v: 'bank', l: 'Bank' }]} /> : null}
+              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{money(Math.max(0, paid - (Number(ending.fee) || 0) - (Number(ending.refund) || 0)))} stays on the guest's account for a later stay.</Text>
+            </> : null}
+          </View>;
+        })() : null}
       </Sheet>
       {void navigation}
     </View>
@@ -861,8 +900,8 @@ export function HotelSetupScreen() {
         ) : null}
         {tab === 'plans' ? (
           <Card>
-            {ratePlans(db).map((p) => <Row key={p.id} off={!p.active} title={p.name} sub={(p.perNight ? (p.perNight > 0 ? '+' : '') + money(p.perNight) + ' a room · ' : '') + (p.perPerson ? money(p.perPerson) + ' a person a night' : 'no meals')} onPress={() => setEdit({ k: 'plan', ...p, perNight: String(p.perNight), perPerson: String(p.perPerson) })} />)}
-            {add('Rate plan', () => setEdit({ k: 'plan', name: 'Bed & breakfast', perNight: '0', perPerson: '15000', active: true }))}
+            {ratePlans(db).map((p) => <Row key={p.id} off={!p.active} title={(p.code ? p.code + ' · ' : '') + p.name} sub={(planMeals(p).length ? planMeals(p).map((m) => MEAL_WORD[m]).join(', ') : 'Room only') + (p.perPerson ? ' · ' + money(p.perPerson) + ' an adult' : '') + (p.perChild ? ' · ' + money(p.perChild) + ' a child' : '') + (p.perNight ? ' · ' + (p.perNight > 0 ? '+' : '') + money(p.perNight) + ' a room' : '')} onPress={() => setEdit({ k: 'plan', ...p, meals: planMeals(p), perNight: String(p.perNight), perPerson: String(p.perPerson), perChild: String(p.perChild || 0) })} />)}
+            {add('Meal plan', () => setEdit({ k: 'plan', code: '', name: '', meals: ['breakfast'], perNight: '0', perPerson: '', perChild: '', active: true }))}
           </Card>
         ) : null}
         {tab === 'seasons' ? (
@@ -901,7 +940,7 @@ export function HotelSetupScreen() {
             if (!(a > 0 && z >= a && z - a < 200)) throw new Error('Give a first and last room number, such as 101 and 120.');
             for (let n = a; n <= z; n++) if (!rooms(db).some((r) => r.no === String(n))) hotel.saveRoom({ no: String(n), typeId: e.typeId, floor: e.floor, active: true });
           }, 'Rooms added');
-          else if (e.k === 'plan') run(() => hotel.saveRatePlan({ id: e.id, name: e.name, perNight: Number(e.perNight) || 0, perPerson: Number(e.perPerson) || 0, active: e.active !== false }), 'Rate plan saved');
+          else if (e.k === 'plan') run(() => hotel.saveRatePlan({ id: e.id, code: (e.code || '').trim().toUpperCase(), name: e.name, meals: e.meals || [], perNight: Number(e.perNight) || 0, perPerson: Number(e.perPerson) || 0, perChild: Number(e.perChild) || 0, active: e.active !== false }), 'Meal plan saved');
           else if (e.k === 'season') run(() => hotel.saveSeason({ id: e.id, name: e.name, from: e.from, to: e.to, pct: Number(e.pct) || 0, active: e.active !== false }), 'Season saved');
           else run(() => hotel.saveStayOffer({ id: e.id, name: e.name, from: e.from, to: e.to, stay: Number(e.stay) || 0, pay: Number(e.pay) || 0, active: e.active !== false }), 'Offer saved');
         }} /> : null}>
@@ -927,9 +966,12 @@ export function HotelSetupScreen() {
               <Field label="Floor or block" value={edit.floor || ''} onChangeText={(v) => setEdit({ ...edit, floor: v })} />
             </> : null}
             {edit.k === 'plan' ? <>
+              <Field label="Code (EP, CP, MAP, AP…)" value={edit.code || ''} onChangeText={(v) => setEdit({ ...edit, code: v })} autoCapitalize="characters" />
               <Field label="Name" value={edit.name} onChangeText={(v) => setEdit({ ...edit, name: v })} autoCapitalize="words" />
-              <Field label="Meals, a person a night" numeric money value={edit.perPerson} onChangeText={(v) => setEdit({ ...edit, perPerson: v })} />
-              <Field label="Added to the room a night (minus for a discount)" numeric money value={edit.perNight} onChangeText={(v) => setEdit({ ...edit, perNight: v })} />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{(['breakfast', 'lunch', 'dinner'] as const).map((m) => <Chip key={m} label={MEAL_WORD[m]} on={(edit.meals || []).includes(m)} onPress={() => setEdit({ ...edit, meals: (edit.meals || []).includes(m) ? edit.meals.filter((x: string) => x !== m) : [...(edit.meals || []), m] })} />)}</View>
+              <Field label="Each adult, a night" numeric money value={edit.perPerson} onChangeText={(v) => setEdit({ ...edit, perPerson: v })} />
+              <Field label="Each child, a night" numeric money value={edit.perChild || ''} onChangeText={(v) => setEdit({ ...edit, perChild: v })} />
+              <Field label="Each room, a night (minus for a discount)" numeric money value={edit.perNight} onChangeText={(v) => setEdit({ ...edit, perNight: v })} />
             </> : null}
             {edit.k === 'season' || edit.k === 'offer' ? <>
               <Field label="Name" value={edit.name} onChangeText={(v) => setEdit({ ...edit, name: v })} autoCapitalize="words" />

@@ -220,4 +220,53 @@ describe('hotel edition', () => {
     h.nightAudit();
     expect(groupBlocks(d).find((x) => x.id === b2.id)!.status).toBe('released');
   });
+
+  it('bills each night at the night audit and only the rest at check-out', () => {
+    const { d, h, dbl, r1 } = setup();
+    const a = today();
+    // arrived two nights ago, leaves tomorrow: three nights of 100,000
+    const bk = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Walk-in', arrive: addDays(a, -2), depart: addDays(a, 1), rooms: [{ roomId: r1.id, typeId: dbl.id, rate: 100000, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [guest], discount: 0 });
+    h.checkIn(bk.id);
+    const before = d.sales.length;
+    h.nightAudit(addDays(a, -1));   // two nights caught up
+    expect(d.sales.length).toBe(before + 2);
+    h.nightAudit(addDays(a, -1));   // run again: nothing billed twice
+    expect(d.sales.length).toBe(before + 2);
+    const b = d.hotelBookings!.find((x) => x.id === bk.id)!;
+    expect(b.posted!.map((x) => x.amount)).toEqual([100000, 100000]);
+    h.postCharge(bk.id, { desc: 'Laundry', amount: 15000 });
+    const out = h.checkOut(bk.id);
+    const last = d.sales.find((s) => s.id === out.guestSale)!;
+    expect(last.total).toBe(100000 + 15000);
+    const billed = d.sales.slice(before).reduce((x, s) => x + s.total, 0);
+    expect(billed).toBe(folioOf(d, b).total);
+  });
+
+  it('holds a room of the type for a booking not yet given its room', () => {
+    const { d, h, dbl, r1, r2 } = setup();
+    const a = today();
+    const bk = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Phone', arrive: a, depart: addDays(a, 2), rooms: [{ roomId: '', typeId: dbl.id, rate: 100000, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [guest], discount: 0 });
+    expect(freeRooms(d, a, addDays(a, 2), dbl.id)).toHaveLength(1);
+    expect(freeRooms(d, addDays(a, 2), addDays(a, 3), dbl.id)).toHaveLength(2);
+    expect(() => h.checkIn(bk.id)).toThrow(/room first/);
+    h.saveBooking({ ...d.hotelBookings!.find((x) => x.id === bk.id)!, rooms: [{ roomId: r2.id, typeId: dbl.id, rate: 100000, adults: 1, children: 0 }] });
+    expect(freeRooms(d, a, addDays(a, 2), dbl.id).map((r) => r.id)).toEqual([r1.id]);
+  });
+
+  it('cancels with a fee kept and the rest refunded', () => {
+    const { d, h, dbl, r1 } = setup();
+    const a = today();
+    const bk = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Phone', arrive: addDays(a, 3), depart: addDays(a, 5), rooms: [{ roomId: r1.id, typeId: dbl.id, rate: 100000, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [guest], discount: 0 });
+    h.takeBookingPayment(bk.id, { amount: 150000, method: 'momo' });
+    expect(() => h.endBooking(bk.id, { status: 'cancelled', fee: 100000, refund: 100000 })).toThrow(/Only 150000/);
+    const sales = d.sales.length;
+    h.endBooking(bk.id, { status: 'cancelled', fee: 100000, refund: 50000, method: 'cash', reason: 'Plans changed' });
+    const b = d.hotelBookings!.find((x) => x.id === bk.id)!;
+    expect(b.status).toBe('cancelled');
+    expect(d.sales.length).toBe(sales + 1);
+    expect(d.sales[d.sales.length - 1].total).toBe(100000);
+    expect(d.sales[d.sales.length - 1].due).toBe(0);
+    expect(b.payments.reduce((x, p) => x + p.amount, 0)).toBe(100000);
+    expect(b.log!.slice(-1)[0].what).toMatch(/Cancelled · Plans changed · fee 100000 · refunded 50000/);
+  });
 });

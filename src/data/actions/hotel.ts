@@ -23,8 +23,7 @@ import * as logic from '../logic';
 import { Refusal } from '../refusal';
 import {
   type Booking, type BookingStatus, type FolioPayment, type HotelSettings, type RatePlan, type Room, type RoomStatus,
-  type RoomType, type Season, type StayOffer, type EventSpace, type EventPackage, type HotelEvent, type EventStatus, type GroupBlock, type BlockStatus, eventTotals, spaceClash, freeRooms, groupBlocks, blockUnpicked, blockPicked, nightsList, addDays, taxesOf, checkInMissing, folioOf, nightsOf, roomFree, rooms, today,
-} from '../hotel';
+  type RoomType, type Season, type StayOffer, type EventSpace, type EventPackage, type HotelEvent, type EventStatus, type GroupBlock, type BlockStatus, eventTotals, spaceClash, freeRooms, groupBlocks, blockUnpicked, blockPicked, nightsList, addDays, taxesOf, checkInMissing, folioOf, nightsOf, roomFree, rooms, today, nightsToPost, postedTotals } from '../hotel';
 
 export interface HotelActions {
   saveRoomType: (t: Omit<RoomType, 'id'> & { id?: string }) => RoomType;
@@ -39,6 +38,8 @@ export interface HotelActions {
   fixFault: (roomId: string) => void;
   saveBooking: (b: Omit<Booking, 'id' | 'no' | 'createdAt' | 'updatedAt' | 'charges' | 'payments'> & { id?: string }) => Booking;
   setBookingStatus: (id: string, status: Extract<BookingStatus, 'provisional' | 'confirmed' | 'cancelled' | 'noshow'>) => void;
+  /** Cancel or mark a no-show, keeping part of what was paid as a fee and refunding the rest. */
+  endBooking: (id: string, o: { status: 'cancelled' | 'noshow'; fee?: number; refund?: number; method?: FolioPayment['method']; reason?: string }) => void;
   moveRoom: (id: string, fromRoomId: string, toRoomId: string) => void;
   checkIn: (id: string) => void;
   postCharge: (id: string, c: { desc: string; amount: number; payer?: 'guest' | 'company'; chargeTypeId?: string; kind?: 'charge' | 'adjust'; note?: string }) => void;
@@ -50,6 +51,10 @@ export interface HotelActions {
   roomGuestParty: (id: string) => string;
   /** A sale already made on the guest's account (a meal), shown on the room bill. */
   billSaleToRoom: (id: string, saleId: string, desc: string, amount: number) => void;
+  /** The event's client as a customer in the books: a restaurant or bar bill for the event is sold on it. */
+  eventGuestParty: (id: string) => string;
+  /** A sale already made on the client's account, shown on the event's bill (not billed again at close). */
+  billSaleToEvent: (id: string, saleId: string, desc: string, amount: number) => void;
   checkOut: (id: string) => { guestSale?: string; companySale?: string };
   /** End of the hotel day: provisional holds let go, no-shows marked. */
   nightAudit: (day?: string) => { released: number; noShows: number; dueOut: number };
@@ -64,6 +69,11 @@ export interface HotelActions {
   setBlockStatus: (id: string, status: BlockStatus) => void;
   /** A guest picked up from a block: a booking in one of the rooms it holds, at the group's rate. */
   pickUp: (blockId: string, g: { typeId: string; guest: import('../hotel').Guest; arrive?: string; depart?: string; adults?: number }) => Booking;
+}
+
+/** A line in the booking's history: what was done, by whom, when. */
+function logIt(d: DB, b: Booking, what: string) {
+  b.log = [...(b.log || []), { ts: iso(new Date()), by: d.users.find((u) => u.id === d.session.userId)?.name || '', what }];
 }
 
 const ROOM_ITEM = 'hotel_rooms';
@@ -257,7 +267,14 @@ export function hotelActions(deps: {
       if (!b.rooms.length) throw new Refusal('Choose at least one room.');
       if (!b.guests.length || !b.guests[0].name.trim()) throw new Refusal('Who is staying? Give the main guest’s name.');
       if (b.kind === 'group' && !b.companyId && !(b.groupName || '').trim()) throw new Refusal('Name the group, or choose the company it is for.');
+      // a room type booked without its room yet: the type must have a room to spare
+      for (const t of new Set(b.rooms.filter((r) => !r.roomId).map((r) => r.typeId))) {
+        const want = b.rooms.filter((r) => !r.roomId && r.typeId === t).length;
+        const spare = freeRooms(d0, b.arrive, b.depart, t, b.id, b.blockId || null).filter((x) => !b.rooms.some((r) => r.roomId === x.id)).length;
+        if (spare < want) throw new Refusal('Only ' + spare + ' ' + ((d0.roomTypes || []).find((x) => x.id === t)?.name || 'rooms') + ' are free for those nights.');
+      }
       for (const r of b.rooms) {
+        if (!r.roomId) continue;
         if (!roomFree(d0, r.roomId, b.arrive, b.depart, b.id)) {
           const no = rooms(d0).find((x) => x.id === r.roomId)?.no || 'A room';
           throw new Refusal('Room ' + no + ' is already booked for some of those nights.');
@@ -319,18 +336,52 @@ export function hotelActions(deps: {
         logic.audit(d, 'Guest moved room', b.no + ' → ' + to.no);
       });
     },
+    endBooking: (id, o) => {
+      requirePerm('hotel.cancel');
+      const fee = Math.max(0, Math.round(Number(o.fee) || 0)), refund = Math.max(0, Math.round(Number(o.refund) || 0));
+      commit((d) => {
+        const b = (d.hotelBookings || []).find((x) => x.id === id);
+        if (!b) throw new Refusal('That booking is not here any more.');
+        if (b.status !== 'confirmed' && b.status !== 'provisional') throw new Refusal('Only a booking not yet in can be cancelled.');
+        const paid = b.payments.reduce((a, p) => a + p.amount, 0);
+        if (fee + refund > paid) throw new Refusal('Only ' + paid + ' was paid.');
+        const label = o.status === 'noshow' ? 'No-show charge' : 'Cancellation fee';
+        if (fee || refund) {
+          const partyId = guestParty(d, b);
+          if (fee) {
+            // the fee is a sale on the guest's account; the deposit held pays it
+            ensureItems(d);
+            const sale = logic.commitSale(d, { lines: [line(EXTRA_ITEM, label, fee)], partyId, discount: 0, description: 'Hotel ' + b.no + ' · ' + label.toLowerCase(), method: 'credit' });
+            b.charges.push({ id: uid('chg'), ts: iso(new Date()), desc: label, amount: fee, payer: 'guest', by: who(d), saleId: sale.id });
+            applyHeld(d, b.payments.map((p) => p.paymentId!).filter(Boolean), [sale.id]);
+          }
+          if (refund) {
+            const m = o.method || 'cash';
+            const pay = logic.recordPayment(d, { partyId, amount: refund, direction: 'out', accountId: accountFor(d, m), note: 'Hotel ' + b.no + ' · deposit refunded' });
+            b.payments.push({ id: uid('fpay'), ts: iso(new Date()), amount: -refund, method: m, note: 'refund', by: who(d), paymentId: pay.id });
+          }
+        }
+        b.status = o.status;
+        b.updatedAt = iso(new Date());
+        logIt(d, b, (o.status === 'noshow' ? 'No-show' : 'Cancelled') + (o.reason ? ' · ' + o.reason : '') + (fee ? ' · fee ' + fee : '') + (refund ? ' · refunded ' + refund : '') + (paid - fee - refund > 0 ? ' · ' + (paid - fee - refund) + ' left on the guest\'s account' : ''));
+        logic.enqueue(d, 'booking', b.id);
+        logic.audit(d, o.status === 'noshow' ? 'Booking no-show' : 'Booking cancelled', b.no);
+      });
+    },
     checkIn: (id) => {
       requirePerm('hotel.checkin');
       touch(id, (b, d) => {
         if (b.status !== 'confirmed' && b.status !== 'provisional') throw new Refusal('Only a booking not yet in can be checked in.');
         const missing = checkInMissing(b);
         if (missing.length) throw new Refusal('Before check-in, the guest register needs ' + missing.join(', ') + '.');
+        if (b.rooms.some((r) => !r.roomId)) throw new Refusal('Give the guest a room first: the booking is for a room type, not yet a room.');
         for (const r of b.rooms) {
           const rm = (d.rooms || []).find((x) => x.id === r.roomId);
           if (rm?.status === 'ooo') throw new Refusal('Room ' + rm.no + ' is out of order. Move the guest to another room first.');
         }
         b.status = 'in';
         b.checkedInAt = iso(new Date());
+        logIt(d, b, 'Checked in');
         // an early arrival starts the stay today
         const t = today();
         if (b.arrive.slice(0, 10) > t) b.arrive = t;
@@ -388,6 +439,7 @@ export function hotelActions(deps: {
         const partyId = guestParty(d, b);
         const pay = logic.recordPayment(d, { partyId, amount, direction: 'in', accountId: accountFor(d, p.method), onAccount: true, note: 'Hotel ' + b.no + (b.status === 'in' ? '' : ' · deposit') + (p.note ? ' · ' + p.note : '') });
         b.payments.push({ id: uid('fpay'), ts: iso(new Date()), amount, method: p.method, note: p.note, by: who(d), paymentId: pay.id });
+        logIt(d, b, 'Payment received ' + amount + ' (' + p.method + ')' + (p.note ? ' · ' + p.note : ''));
         // a deposit confirms a provisional booking
         if (b.status === 'provisional') b.status = 'confirmed';
       });
@@ -399,6 +451,25 @@ export function hotelActions(deps: {
         partyId = guestParty(d, b);
       });
       return partyId;
+    },
+    eventGuestParty: (id) => {
+      let partyId = '';
+      commit((d) => {
+        const e = (d.hotelEvents || []).find((x) => x.id === id);
+        if (!e) throw new Refusal('That event is not here any more.');
+        if (e.status === 'closed' || e.status === 'cancelled') throw new Refusal('This event is closed.');
+        partyId = eventParty(d, e);
+      });
+      return partyId;
+    },
+    billSaleToEvent: (id, saleId, desc, amount) => {
+      commit((d) => {
+        const e = (d.hotelEvents || []).find((x) => x.id === id);
+        if (!e) throw new Refusal('That event is not here any more.');
+        e.charges.push({ id: uid('chg'), ts: iso(new Date()), desc, amount: Math.round(amount), payer: 'guest', saleId });
+        e.updatedAt = iso(new Date());
+        logic.enqueue(d, 'hotelEvent', e.id);
+      });
     },
     billSaleToRoom: (id, saleId, desc, amount) => {
       touch(id, (b, d) => {
@@ -415,15 +486,20 @@ export function hotelActions(deps: {
         if (b.status !== 'in') throw new Refusal('Only a guest in the house can be checked out.');
         ensureItems(d);
         const f = folioOf(d, b);
-        const offerAndDiscount = f.stay.offer + f.discount;
-        const roomLines = f.stay.lines.filter((l) => l.amount > 0).map((l) => line(ROOM_ITEM, l.desc, l.amount));
+        // nights the night audit billed already are left out; what is left is billed net of the offer
+        const pt = postedTotals(b);
+        const offerAndDiscount = (pt.nights ? 0 : f.stay.offer) + f.discount;
+        const roomLines = pt.nights
+          ? (f.stay.total - pt.amount > 0 ? [line(ROOM_ITEM, 'Room nights not billed yet', f.stay.total - pt.amount)] : [])
+          : f.stay.lines.filter((l) => l.amount > 0).map((l) => line(ROOM_ITEM, l.desc, l.amount));
         const chargeLines = (payer: 'guest' | 'company') => b.charges.filter((c) => !c.saleId && (b.companyId ? c.payer === payer : payer === 'guest'))
           .map((c) => line(EXTRA_ITEM, c.desc, c.amount));
         const companyRooms = !!b.companyId && b.roomsPaidBy === 'company';
         const guestLines = [...(companyRooms ? [] : roomLines), ...chargeLines('guest')];
         const companyLines = b.companyId ? [...(companyRooms ? roomLines : []), ...chargeLines('company')] : [];
         /* taxes added on top of the prices (rates without tax, a per-night levy): one line each, on the bill that carries them */
-        const tx = taxesOf(d, b);
+        const tx0 = taxesOf(d, b);
+        const tx = { ...tx0, added: Math.max(0, tx0.added - pt.tax), addedRoom: Math.max(0, tx0.addedRoom - pt.tax) };
         if (tx.added > 0) {
           const toCompany = Math.min(tx.added, (companyRooms ? tx.addedRoom : 0) + (b.companyId ? tx.addedCompanyCharges : 0));
           const toGuest = tx.added - toCompany;
@@ -443,6 +519,7 @@ export function hotelActions(deps: {
         }
         // the meals charged to the room are sales already: the money held settles them too
         bills.push(...b.charges.filter((c) => c.saleId).map((c) => c.saleId!));
+        bills.push(...(b.posted || []).filter((x) => x.payer === 'guest').map((x) => x.saleId));
         applyHeld(d, b.payments.map((p) => p.paymentId!).filter(Boolean), bills);
 
         if (companyLines.length && b.companyId) {
@@ -451,6 +528,7 @@ export function hotelActions(deps: {
         }
         b.status = 'out';
         b.checkedOutAt = iso(new Date());
+        logIt(d, b, 'Checked out');
         b.updatedAt = b.checkedOutAt;
         // the rooms need cleaning before the next guest
         for (const r of b.rooms) room(d, r.roomId, (x) => { if (x.status !== 'ooo') x.status = 'dirty'; });
@@ -544,7 +622,7 @@ export function hotelActions(deps: {
           for (const pk of st.lines) if (pk.amount) lines.push(line(EXTRA_ITEM, pk.name + (pk.perPerson ? ' × ' + (pk.qty || '') : '') + ' · ' + s.date, pk.amount));
           if (st.service) lines.push(line(EXTRA_ITEM, 'Service charge · ' + s.date, st.service));
         }
-        for (const c of e.charges) lines.push(line(EXTRA_ITEM, c.desc, c.amount));
+        for (const c of e.charges.filter((x) => !x.saleId)) lines.push(line(EXTRA_ITEM, c.desc, c.amount));
         if (t.taxAdded) lines.push(line(EXTRA_ITEM, 'Taxes', t.taxAdded));
         if (!lines.length) throw new Refusal('There is nothing on this event to bill.');
         const partyId = eventParty(d, e);
@@ -620,6 +698,18 @@ export function hotelActions(deps: {
       requirePerm('hotel.checkout');
       const res = { released: 0, noShows: 0, dueOut: 0 };
       commit((d) => {
+        // tonight's room charges go into the books, a sale a night on whoever pays the rooms
+        ensureItems(d);
+        for (const b of d.hotelBookings || []) {
+          for (const n of nightsToPost(d, b, day)) {
+            const partyId = n.payer === 'company' && b.companyId ? b.companyId : guestParty(d, b);
+            const lines = [...n.lines.map((l) => line(ROOM_ITEM, l.desc, l.amount)), ...(n.tax > 0 ? [line(EXTRA_ITEM, 'Taxes and levies', n.tax)] : [])];
+            const sale = logic.commitSale(d, { lines, partyId, discount: 0, description: 'Hotel ' + b.no + ' · night of ' + n.day, method: 'credit' });
+            b.posted = [...(b.posted || []), { day: n.day, saleId: sale.id, amount: n.amount, tax: n.tax, payer: n.payer }];
+            b.updatedAt = iso(new Date());
+            logic.enqueue(d, 'booking', b.id);
+          }
+        }
         for (const b of d.hotelBookings || []) {
           // a provisional hold whose day has passed lets the rooms go
           if (b.status === 'provisional' && b.holdUntil && b.holdUntil < day) {

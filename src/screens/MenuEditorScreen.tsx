@@ -515,7 +515,7 @@ export default function MenuEditorScreen({ navigation, route }: any) {
               </View>
             </View>
 
-            <Field label="Dish name" value={dish.name} onChangeText={(v) => setDish({ ...dish, name: v })} placeholder="Chicken burger" />
+            <Field label="Dish name" value={dish.name} onChangeText={(v) => setDish({ ...dish, name: v })} placeholder="Name of the dish" />
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}><Field label="Price" numeric decimal value={dish.price} onChangeText={(v) => setDish({ ...dish, price: v })} /></View>
               <View style={{ flex: 1 }}><Field label="Cost (optional)" numeric decimal value={dish.cost} onChangeText={(v) => setDish({ ...dish, cost: v })} /></View>

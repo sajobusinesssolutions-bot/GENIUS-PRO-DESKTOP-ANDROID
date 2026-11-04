@@ -152,7 +152,7 @@ export default function HotelEventsScreen() {
       </Sheet>
 
       <Sheet visible={!!pay} title="Take a payment" icon="money" iconTone="good" onClose={() => setPay(null)}
-        footer={<Button variant="pri" label={'Receive ' + money(+(pay?.amount || 0))} onPress={() => run('take it', () => { hotel.takeEventPayment(ev!.id, { amount: +pay!.amount, method: pay!.method }); setPay(null); }, 'Payment received')} />}>
+        footer={<Button variant="pri" label="Receive payment" onPress={() => run('take it', () => { hotel.takeEventPayment(ev!.id, { amount: +pay!.amount, method: pay!.method }); setPay(null); }, 'Payment received')} />}>
         {pay ? <View style={{ gap: 12 }}>
           <Seg value={pay.method} onChange={(m) => setPay({ ...pay, method: m })} options={[{ v: 'cash', l: 'Cash' }, { v: 'momo', l: 'Mobile money' }, { v: 'bank', l: 'Bank' }]} />
           <Field label="Amount" numeric money value={pay.amount} onChangeText={(v) => setPay({ ...pay, amount: v })} big />

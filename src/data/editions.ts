@@ -220,7 +220,7 @@ export const VOCAB: Record<Edition, Vocab> = {
     item: 'Dish', items: 'Menu', itemName: 'Dish name', itemCode: 'Menu code', category: 'Section', categories: 'Sections',
     unit: 'Serving', description: 'Description', descriptionHint: 'Grilled chicken, lettuce, house sauce', product: 'Dish',
     openingStock: 'Opening stock', reorderAt: 'Reorder at', addItem: 'Add dish', searchItems: 'Search the menu',
-    example: 'e.g. Chicken burger',
+    example: 'Name of the dish',
   },
   pharmacy: {
     ...RETAIL,
@@ -231,7 +231,7 @@ export const VOCAB: Record<Edition, Vocab> = {
     example: 'e.g. Panadol 500 mg',
   },
   // a hotel's items are the restaurant's dishes; its customers are guests
-  hotel: { ...RETAIL, item: 'Dish', items: 'Menu', itemName: 'Dish name', itemCode: 'Menu code', category: 'Section', categories: 'Sections', unit: 'Serving', descriptionHint: 'Grilled chicken, lettuce, house sauce', product: 'Dish', addItem: 'Add dish', searchItems: 'Search the menu', example: 'e.g. Chicken burger', customer: 'Guest', customers: 'Guests' },
+  hotel: { ...RETAIL, item: 'Dish', items: 'Menu', itemName: 'Dish name', itemCode: 'Menu code', category: 'Section', categories: 'Sections', unit: 'Serving', descriptionHint: 'Grilled chicken, lettuce, house sauce', product: 'Dish', addItem: 'Add dish', searchItems: 'Search the menu', example: 'Name of the dish', customer: 'Guest', customers: 'Guests' },
 };
 
 export function vocab(d: Pick<DB, 'firm'> | null | undefined): Vocab {

@@ -38,7 +38,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import FirstTimeTip from '../components/FirstTimeTip';
 import OrderStart from '../components/OrderStart';
 import type { RootStackParamList } from '../nav/types';
-import { bookings as hotelBookings, rooms as hotelRooms } from '../data/hotel';
+import { bookings as hotelBookings, rooms as hotelRooms, hotelEvents, today } from '../data/hotel';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Order'>;
 
@@ -74,6 +74,8 @@ export default function OrderScreen({ navigation, route }: Props) {
   /* a hotel: the meal can go on an in-house guest's room bill instead of being paid now */
   const [toRoom, setToRoom] = useState<string | null>(null);
   const inHouse = db?.firm?.businessType === 'hotel' ? hotelBookings(db).filter((b) => b.status === 'in') : [];
+  // today's events: a meal or the bar for an event goes on the event's bill
+  const eventsToday = db?.firm?.businessType === 'hotel' ? hotelEvents(db).filter((e) => (e.status === 'confirmed' || e.status === 'tentative') && e.from.slice(0, 10) <= today() && e.to.slice(0, 10) >= today()) : [];
   const [received, setReceived] = useState('');
   const [orderNote, setOrderNote] = useState('');
   /** Splitting the bill: how many of each line this payer takes; null when not splitting. */
@@ -336,8 +338,9 @@ export default function OrderScreen({ navigation, route }: Props) {
     if (method === 'cash' && !toRoom && paid < due - 0.005) { error('The cash received is less than the total.'); return; }
     // charged to a room: a sale on the guest's account now, shown on the room bill, settled at check-out
     let roomParty: string | null = null;
+    const toEvent = toRoom && toRoom.startsWith('ev:') ? toRoom.slice(3) : null;
     if (toRoom) {
-      try { roomParty = hotel.roomGuestParty(toRoom); } catch (e) { explain(e); return; }
+      try { roomParty = toEvent ? hotel.eventGuestParty(toEvent) : hotel.roomGuestParty(toRoom); } catch (e) { explain(e); return; }
     }
     let sale;
     // the number from the server, as on a sale; offline it is temporary until the next sync
@@ -351,7 +354,11 @@ export default function OrderScreen({ navigation, route }: Props) {
         description: orderNote.trim() || undefined,
       });
     } catch (e) { taken?.drop(); explain(e); return; }
-    if (toRoom) {
+    if (toEvent) {
+      const ev = eventsToday.find((x) => x.id === toEvent);
+      try { hotel.billSaleToEvent(toEvent, sale.id, 'Restaurant ' + sale.no + (name.trim() ? ' · ' + name.trim() : ''), sale.total); } catch (e) { explain(e); }
+      success(money(sale.total) + ' put on ' + (ev ? ev.name : 'the event'));
+    } else if (toRoom) {
       const bk = inHouse.find((b) => b.id === toRoom);
       try { hotel.billSaleToRoom(toRoom, sale.id, 'Restaurant ' + sale.no + (name.trim() ? ' · ' + name.trim() : ''), sale.total); } catch (e) { explain(e); }
       success(money(sale.total) + ' charged to room ' + (bk ? bk.rooms.map((r) => hotelRooms(db).find((x) => x.id === r.roomId)?.no).join(', ') : ''));
@@ -868,7 +875,7 @@ export default function OrderScreen({ navigation, route }: Props) {
         footer={(
           <Button
             variant="pri"
-            label={toRoom ? 'Charge to the room' : 'Paid'}
+            label={toRoom ? (toRoom.startsWith('ev:') ? 'Put on the event' : 'Charge to the room') : 'Paid'}
             disabled={!toRoom && method === 'cash' && !!received && Number(received) < due}
             onPress={startCharge}
           />
@@ -914,6 +921,23 @@ export default function OrderScreen({ navigation, route }: Props) {
           })}
         </View>
 
+        {eventsToday.length && !split ? (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>OR PUT ON AN EVENT</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {eventsToday.map((e) => {
+                const on = toRoom === 'ev:' + e.id;
+                return (
+                  <Pressable key={e.id} onPress={() => setToRoom(on ? null : 'ev:' + e.id)} style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 4, borderWidth: 2, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.uiBold, fontSize: 14, color: on ? colors.accent : colors.ink, maxWidth: 170 }}>{e.name}</Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, maxWidth: 170 }}>{e.no}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+
         {inHouse.length && !split ? (
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginBottom: 8 }}>OR CHARGE TO A ROOM</Text>
@@ -934,7 +958,7 @@ export default function OrderScreen({ navigation, route }: Props) {
 
         {toRoom ? (
           <Text style={{ fontFamily: fonts.ui, fontSize: 13, color: colors.soft, textAlign: 'center', paddingVertical: 8 }}>
-            {money(due)} goes on the guest's room bill and is paid at check-out.
+            {toRoom.startsWith('ev:') ? "It goes on the event's bill and is paid with the event." : "It goes on the guest's room bill and is paid at check-out."}
           </Text>
         ) : method === 'cash' ? (
           <>

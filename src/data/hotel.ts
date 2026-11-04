@@ -38,14 +38,35 @@ export interface Room {
   /** Out of order: what is wrong, logged with the date. */
   maintenance?: { ts: string; text: string; fixed?: string }[];
 }
+export type Meal = 'breakfast' | 'lunch' | 'dinner';
 export interface RatePlan {
   id: string; name: string;
+  /** The meal plan's short code: EP, CP, MAP, AP, or the hotel's own. */
+  code?: string;
+  /** The meals the plan includes, for the kitchen's count. */
+  meals?: Meal[];
   /** Added to each room's rate a night (negative for a discount). */
   perNight: number;
   /** Added a night for each adult: breakfast, lunch, dinner. */
   perPerson: number;
+  /** Added a night for each child. */
+  perChild?: number;
+  description?: string;
   active: boolean;
 }
+/** The four meal plans hotels use, to start from; the prices are the hotel's to set. */
+export const STANDARD_MEAL_PLANS: Omit<RatePlan, 'id'>[] = [
+  { code: 'EP', name: 'Room only', meals: [], perNight: 0, perPerson: 0, perChild: 0, description: 'The room, no meals (European plan).', active: true },
+  { code: 'CP', name: 'Bed & breakfast', meals: ['breakfast'], perNight: 0, perPerson: 0, perChild: 0, description: 'Room and breakfast (Continental plan).', active: true },
+  { code: 'MAP', name: 'Half board', meals: ['breakfast', 'dinner'], perNight: 0, perPerson: 0, perChild: 0, description: 'Room, breakfast and dinner (Modified American plan).', active: true },
+  { code: 'AP', name: 'Full board', meals: ['breakfast', 'lunch', 'dinner'], perNight: 0, perPerson: 0, perChild: 0, description: 'Room and all three meals (American plan).', active: true },
+];
+export const MEAL_WORD: Record<Meal, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' };
+/** What the plan adds to one room a night. */
+export const planNight = (plan: RatePlan | undefined | null, adults: number, children: number) =>
+  plan ? plan.perNight + plan.perPerson * Math.max(1, adults) + (plan.perChild || 0) * Math.max(0, children || 0) : 0;
+/** The meals a plan includes: its own list, or, on an older plan, breakfast when it charges by the person. */
+export const planMeals = (plan: RatePlan | undefined | null): Meal[] => (!plan ? [] : plan.meals ? plan.meals : plan.perPerson > 0 ? ['breakfast'] : []);
 export interface Season {
   id: string; name: string; from: string; to: string;
   /** +20 is 20% dearer, -15 is 15% off. */
@@ -113,7 +134,20 @@ export interface Booking {
   saleId?: string | null;
   /** A room picked up from a group block (GroupBlock): it uses one of the rooms the block holds. */
   blockId?: string | null;
+  /** Room nights the night audit has already put in the books, one sale a night. */
+  posted?: PostedNight[];
+  /** What was done to the booking, by whom and when (the desk's History tab). */
+  log?: { ts: string; by: string; what: string }[];
+  /** Messages already sent to the guest, by kind. */
+  sent?: Record<string, string>;
+  /** The travel agent who sent the guest (hotelConfig agents), and whether their commission is paid. */
+  agentId?: string | null; agentPaid?: boolean;
+  /** Notes for the departments: booking, housekeeping, group. */
+  notes?: Record<string, string>;
+  /** On a group booking with a company: who pays the extras (meals, bar, laundry). */
+  extrasPaidBy?: 'guest' | 'company';
 }
+export interface PostedNight { day: string; saleId: string; amount: number; tax: number; payer: 'guest' | 'company' }
 export interface HotelSettings {
   checkInTime: string; checkOutTime: string; depositPct: number;
   /** Room rates and charges already include the percentage taxes (usual in Uganda), or have them added on top. */
@@ -220,14 +254,19 @@ export function roomFree(d: DB, roomId: string, arrive: string, depart: string, 
 export function freeRooms(d: DB, arrive: string, depart: string, typeId?: string, except?: string, forBlock?: string | null): Room[] {
   const free = rooms(d).filter((r) => r.active && r.status !== 'ooo' && (!typeId || r.typeId === typeId) && roomFree(d, r.id, arrive, depart, except));
   /* rooms a group block holds and has not yet filled are kept back from everyone
-     else: per type, the most the blocks hold on any night of the stay */
+     else, and so is a room for each booking of a type not yet given its room:
+     per type, the most held on any night of the stay */
   const blocks = groupBlocks(d).filter((b) => holdsRooms(b) && b.id !== forBlock);
-  if (!blocks.length) return free;
+  const open = bookings(d).filter((b) => b.id !== except && holds(b) && b.rooms.some((r) => !r.roomId));
+  if (!blocks.length && !open.length) return free;
   const nights = nightsList(arrive, depart);
   const keepBack = new Map<string, number>();
   for (const t of new Set(free.map((r) => r.typeId))) {
     let most = 0;
-    for (const n of nights) most = Math.max(most, blocks.reduce((a, b) => a + blockUnpicked(d, b, t, n), 0));
+    for (const n of nights) {
+      const unassigned = open.filter((b) => b.arrive.slice(0, 10) <= n && n < b.depart.slice(0, 10)).reduce((a, b) => a + b.rooms.filter((r) => !r.roomId && r.typeId === t).length, 0);
+      most = Math.max(most, blocks.reduce((a, b) => a + blockUnpicked(d, b, t, n), 0) + unassigned);
+    }
     if (most) keepBack.set(t, most);
   }
   if (!keepBack.size) return free;
@@ -263,7 +302,7 @@ export function priceStay(d: DB, b: Pick<Booking, 'arrive' | 'depart' | 'rooms' 
     const each = nights.map((n) => {
       const s = seasonOn(d, n);
       const base = Math.round(r.rate * (1 + (s ? s.pct : 0) / 100));
-      return base + (plan ? plan.perNight + plan.perPerson * Math.max(1, r.adults) : 0);
+      return base + planNight(plan, r.adults, r.children);
     });
     const sum = each.reduce((a, v) => a + v, 0);
     roomsTotal += sum;
@@ -316,7 +355,8 @@ export function taxesOf(d: DB, b: Booking) {
   const roomNights = nightsOf(b.arrive, b.depart) * b.rooms.length;
   const roomBase = priceStay(d, b).total;
   const taxed = (payer?: 'guest' | 'company') => b.charges
-    .filter((c) => (!payer || c.payer === payer) && chargeTypeOf(d, c.chargeTypeId).taxed !== false)
+    // a sale billed to the room carries its own tax
+    .filter((c) => !c.saleId && (!payer || c.payer === payer) && chargeTypeOf(d, c.chargeTypeId).taxed !== false)
     .reduce((a, c) => a + c.amount, 0);
   const lines: { id: string; name: string; amount: number; added: boolean }[] = [];
   let added = 0, included = 0, addedRoom = 0, addedCompanyCharges = 0;
@@ -455,13 +495,56 @@ export function breakfastList(d: DB, day = today()) {
     .filter((b) => b.status === 'in' && b.arrive.slice(0, 10) < day && day <= b.depart.slice(0, 10))
     .flatMap((b) => {
       const plan = ratePlans(d).find((p) => p.id === b.ratePlanId);
-      if (!plan || !(plan.perPerson > 0)) return [];
+      if (!plan || !planMeals(plan).includes('breakfast')) return [];
       return b.rooms.map((r) => ({
         room: rooms(d).find((x) => x.id === r.roomId)?.no || '?', plan: plan.name, adults: r.adults, children: r.children,
         guest: b.guests.find((g) => g.roomId === r.roomId)?.name || b.guests[0]?.name || '',
       }));
     })
     .sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }));
+}
+
+/**
+ * The kitchen's count for a day: breakfast for everyone who slept in the
+ * night before, lunch and dinner for everyone staying that night, by what
+ * their meal plan includes. Booked guests not yet in are counted as expected.
+ */
+export function mealCount(d: DB, day = today()) {
+  const out: Record<Meal, { adults: number; children: number; rooms: { room: string; guest: string; plan: string; adults: number; children: number; expected: boolean }[] }> = {
+    breakfast: { adults: 0, children: 0, rooms: [] }, lunch: { adults: 0, children: 0, rooms: [] }, dinner: { adults: 0, children: 0, rooms: [] },
+  };
+  for (const b of bookings(d)) {
+    if (!['in', 'confirmed', 'provisional'].includes(b.status)) continue;
+    const plan = ratePlans(d).find((p) => p.id === b.ratePlanId);
+    const meals = planMeals(plan);
+    if (!meals.length) continue;
+    const a = b.arrive.slice(0, 10), z = b.depart.slice(0, 10);
+    for (const m of meals) {
+      const on = m === 'breakfast' ? a < day && day <= z : a <= day && day < z;
+      if (!on) continue;
+      for (const r of b.rooms) {
+        out[m].adults += r.adults; out[m].children += r.children || 0;
+        out[m].rooms.push({ room: rooms(d).find((x) => x.id === r.roomId)?.no || '?', guest: b.guests.find((g) => g.roomId === r.roomId)?.name || b.guests[0]?.name || '',
+          plan: plan!.code || plan!.name, adults: r.adults, children: r.children || 0, expected: b.status !== 'in' });
+      }
+    }
+  }
+  for (const m of Object.values(out)) m.rooms.sort((x, y) => x.room.localeCompare(y.room, undefined, { numeric: true }));
+  return out;
+}
+
+/**
+ * A guest's flags, set on the desk's Guests page and kept in the hotelConfig
+ * doc under guests[key]: VIP, do-not-take-again, preferences. The key is the
+ * phone's last nine digits, or the name when there is no phone.
+ */
+export const guestKey = (g: Partial<Guest> | undefined) => {
+  const ph = String(g?.phone || '').replace(/\D/g, '').slice(-9);
+  return ph.length >= 7 ? 'p' + ph : 'n' + String(g?.name || '').trim().toLowerCase();
+};
+export function guestFlags(d: DB, g: Partial<Guest> | undefined): { vip?: boolean; blacklist?: boolean; blacklistWhy?: string; prefs?: string; birthday?: string } {
+  const cfg = ((d as any).hotelConfig || []).find((x: any) => x.id === 'config') || {};
+  return (cfg.guests || {})[guestKey(g)] || {};
 }
 
 /** Messages a guest is sent on WhatsApp, in the hotel's words. */
@@ -508,10 +591,45 @@ export function nightly(d: DB, b: Pick<Booking, 'arrive' | 'depart' | 'rooms' | 
     const no = rooms(d).find((x) => x.id === r.roomId)?.no || '?';
     for (const n of nightsList(b.arrive, b.depart)) {
       const s = seasonOn(d, n);
-      out.push({ day: n, roomId: r.roomId, room: no, amount: Math.round(r.rate * (1 + (s ? s.pct : 0) / 100)) + (plan ? plan.perNight + plan.perPerson * Math.max(1, r.adults) : 0) });
+      out.push({ day: n, roomId: r.roomId, room: no, amount: Math.round(r.rate * (1 + (s ? s.pct : 0) / 100)) + planNight(plan, r.adults, r.children) });
     }
   }
   return out;
+}
+
+/**
+ * The room nights the night audit should put in the books now: every night up
+ * to and including `day` that the guest is staying and that is not posted
+ * yet. Each night is the room's rate for that night with the stay offer
+ * spread over the stay (so the nights add up to what the stay costs), and the
+ * taxes added on top of the prices (percentages when rates exclude tax, a
+ * levy a room a night). The booking discount stays for check-out.
+ */
+export function nightsToPost(d: DB, b: Booking, day = today()) {
+  if (b.status !== 'in') return [];
+  const st = hotelSettings(d);
+  const stay = priceStay(d, b);
+  const ratio = stay.rooms > 0 ? stay.total / stay.rooms : 1;
+  const done = new Set((b.posted || []).map((x) => x.day));
+  const byDay: Record<string, { lines: { desc: string; amount: number }[]; amount: number; tax: number }> = {};
+  for (const n of nightly(d, b)) {
+    if (n.day > day || done.has(n.day)) continue;
+    const x = (byDay[n.day] = byDay[n.day] || { lines: [], amount: 0, tax: 0 });
+    const amt = Math.round(n.amount * ratio);
+    x.lines.push({ desc: 'Room ' + n.room + ' · night of ' + n.day, amount: amt });
+    x.amount += amt;
+    for (const t of st.taxes.filter((t) => t.active && t.on.includes('room'))) {
+      if (t.pct && !st.ratesIncludeTax) x.tax += amt * t.pct / 100;
+      if (t.perNight) x.tax += t.perNight;
+    }
+  }
+  return Object.entries(byDay).sort(([a], [b2]) => a.localeCompare(b2))
+    .map(([n, x]) => ({ day: n, lines: x.lines, amount: x.amount, tax: Math.round(x.tax), payer: (b.companyId && b.roomsPaidBy === 'company' ? 'company' : 'guest') as 'guest' | 'company' }));
+}
+/** What the night audit has billed already: room money and its taxes. */
+export function postedTotals(b: Booking) {
+  const p = b.posted || [];
+  return { amount: p.reduce((a, x) => a + x.amount, 0), tax: p.reduce((a, x) => a + x.tax, 0), saleIds: p.map((x) => x.saleId), nights: p.length };
 }
 
 export function folioLines(d: DB, b: Booking, now = today()): FolioLine[] {
@@ -543,7 +661,7 @@ export function folioLines(d: DB, b: Booking, now = today()): FolioLine[] {
     const ct = chargeTypeOf(d, c.chargeTypeId);
     raw.push({ date: dayOf(c.ts), kind: c.kind === 'adjust' ? 'adjust' : c.kind === 'transfer' ? 'transfer' : 'charge', desc: c.desc + (c.note ? ' — ' + c.note : '') + (c.saleId ? ' (billed)' : ''), code: ct.code, category: ct.category,
       charge: c.amount > 0 ? c.amount : 0, credit: c.amount < 0 ? -c.amount : 0, payer: c.payer, ref: c.id });
-    if (c.amount > 0) taxFor(c.amount, dayOf(c.ts), false, c.payer, ct.taxed !== false);
+    if (c.amount > 0) taxFor(c.amount, dayOf(c.ts), false, c.payer, ct.taxed !== false && !c.saleId);
   }
   if (b.discount) raw.push({ date: dayOf(b.updatedAt || b.createdAt), kind: 'discount', desc: 'Discount', charge: 0, credit: Math.max(0, Number(b.discount) || 0), payer: roomPayer });
   for (const p of b.payments) raw.push({ date: dayOf(p.ts), kind: 'payment', desc: 'Payment · ' + (p.method === 'momo' ? 'Mobile money' : p.method[0].toUpperCase() + p.method.slice(1)) + (p.note ? ' · ' + p.note : ''), charge: 0, credit: p.amount, ref: p.id });
@@ -635,13 +753,21 @@ export function deskList(d: DB, which: 'arrivals' | 'inhouse' | 'departures' | '
    at the close one bill in the books. */
 export type SpaceSetup = 'Theatre' | 'Classroom' | 'U-shape' | 'Boardroom' | 'Banquet' | 'Cocktail' | 'Cabaret';
 export const SETUPS: SpaceSetup[] = ['Theatre', 'Classroom', 'U-shape', 'Boardroom', 'Banquet', 'Cocktail', 'Cabaret'];
-export interface EventSpace { id: string; name: string; capacity: number; rateHour: number; rateHalfDay: number; rateDay: number; color?: string; active: boolean }
+export interface EventSpace {
+  id: string; name: string; capacity: number; rateHour: number; rateHalfDay: number; rateDay: number; color?: string; active: boolean;
+  /** Days the space cannot be sold: maintenance, the hotel's own use. */
+  blocks?: { id: string; from: string; to: string; reason: string }[];
+}
 export type PackageCategory = 'FNB' | 'AV' | 'DECOR' | 'OTHER';
 export const PACKAGE_WORD: Record<PackageCategory, string> = { FNB: 'Food & drinks', AV: 'Audio-visual', DECOR: 'Decor', OTHER: 'Other' };
-export interface EventPackage { id: string; name: string; category: PackageCategory; perPerson: number; flat: number; serviceChargePct: number; active: boolean }
+export interface EventPackage {
+  id: string; name: string; category: PackageCategory; perPerson: number; flat: number; serviceChargePct: number; active: boolean;
+  /** What it costs the hotel: a person, or the whole package — for the event's profit. */
+  cost?: number;
+}
 export type PricePlan = 'hour' | 'half' | 'day' | 'flat';
 export const PLAN_WORD: Record<PricePlan, string> = { hour: 'By the hour', half: 'Half day', day: 'Full day', flat: 'Agreed amount' };
-export interface SubEventPackage { packageId: string; name: string; qty: number; price: number; perPerson: boolean; serviceChargePct: number }
+export interface SubEventPackage { packageId: string; name: string; qty: number; price: number; perPerson: boolean; serviceChargePct: number; cost?: number }
 export interface SubEvent {
   id: string; name: string; spaceId: string; date: string; start: string; end: string; setup: SpaceSetup;
   expected: number; guaranteed: number; actual: number;
@@ -677,39 +803,56 @@ export function spacePrice(d: DB, s: Pick<SubEvent, 'spaceId' | 'start' | 'end' 
   return Number(s.price) || sp.rateDay;
 }
 /** One sub-event's money: the space, the packages (per person on the guaranteed count, or flat), service charge. */
-export function subEventTotals(d: DB, s: SubEvent) {
+/**
+ * One session's money. Per-person packages are billed on the most of the
+ * guaranteed and actual numbers — and, with an attrition minimum (minPct of
+ * the contracted number), never on fewer than that.
+ */
+export function subEventTotals(d: DB, s: SubEvent, minPct = 0) {
   const space = spacePrice(d, s);
-  const heads = Math.max(s.guaranteed || 0, s.actual || 0, 0) || s.expected || 0;
+  const floor = minPct > 0 ? Math.ceil((s.expected || 0) * minPct / 100) : 0;
+  const heads = Math.max(s.guaranteed || 0, s.actual || 0, floor, 0) || s.expected || 0;
   const pk = s.packages.map((p) => {
-    const amount = Math.round(p.perPerson ? p.price * (p.qty || heads) : p.price * (p.qty || 1));
-    return { ...p, amount, service: Math.round(amount * (p.serviceChargePct || 0) / 100) };
+    const n = p.perPerson ? p.qty || heads : p.qty || 1;
+    const amount = Math.round(p.price * n);
+    return { ...p, amount, service: Math.round(amount * (p.serviceChargePct || 0) / 100), costTotal: Math.round((p.cost || 0) * n) };
   });
   const packages = pk.reduce((a, p) => a + p.amount, 0);
   const service = Math.round(space * (s.serviceChargePct || 0) / 100) + pk.reduce((a, p) => a + p.service, 0);
-  return { space, packages, service, total: space + packages + service, lines: pk };
+  const attrition = floor > Math.max(s.guaranteed || 0, s.actual || 0) ? floor - Math.max(s.guaranteed || 0, s.actual || 0) : 0;
+  return { space, packages, service, total: space + packages + service, lines: pk, heads, attrition, cost: pk.reduce((a, p) => a + p.costTotal, 0) };
 }
 /** The whole event: space and package revenue, service charge, other charges, taxes, payments, deposits due. */
 export function eventTotals(d: DB, e: HotelEvent, now = today()) {
   const st = hotelSettings(d);
-  const subs = e.subEvents.map((s) => ({ s, t: subEventTotals(d, s) }));
+  const subs = e.subEvents.map((s) => ({ s, t: subEventTotals(d, s, Number((e as any).minPct) || 0) }));
   const space = subs.reduce((a, x) => a + x.t.space, 0);
   const packages = subs.reduce((a, x) => a + x.t.packages, 0);
   const service = subs.reduce((a, x) => a + x.t.service, 0);
   const charges = e.charges.reduce((a, c) => a + c.amount, 0);
-  const net = Math.max(0, space + packages + service + charges - (Number(e.discount) || 0));
+  // sales billed to the event (the restaurant, the bar) are in the books already, with their own tax
+  const billed = e.charges.filter((c) => c.saleId).reduce((a, c) => a + c.amount, 0);
+  const net = Math.max(0, space + packages + service + charges - billed - (Number(e.discount) || 0));
   let taxAdded = 0, taxIncluded = 0;
-  for (const x of st.taxes.filter((t) => t.active && t.pct && t.on.includes('charges'))) {
+  // a tax-exempt client (an embassy, an NGO with a certificate) pays no tax
+  for (const x of (e as any).taxExempt ? [] : st.taxes.filter((t) => t.active && t.pct && t.on.includes('charges'))) {
     const rate = x.pct! / 100;
     if (st.ratesIncludeTax) taxIncluded += net - net / (1 + rate); else taxAdded += net * rate;
   }
-  const total = Math.round(net + taxAdded);
+  const total = Math.round(net + billed + taxAdded);
   const paid = e.payments.reduce((a, p) => a + p.amount, 0);
   const depositsDue = e.deposits.filter((x) => x.due <= now).reduce((a, x) => a + x.amount, 0);
   return { space, packages, service, charges, discount: Number(e.discount) || 0, taxAdded: Math.round(taxAdded), taxIncluded: Math.round(taxIncluded), total, paid,
-    balance: total - paid, depositOwing: Math.max(0, depositsDue - paid), subs };
+    balance: total - paid, depositOwing: Math.max(0, depositsDue - paid), subs,
+    // what the packages cost the hotel, and what is left of the revenue before tax
+    cost: subs.reduce((a, x) => a + x.t.cost, 0), profit: Math.round(net + billed - subs.reduce((a, x) => a + x.t.cost, 0)) };
 }
 /** Another event holding the same space at an overlapping time on the date, if any (cancelled ones do not). */
 export function spaceClash(d: DB, spaceId: string, date: string, start: string, end: string, exceptSub?: string): { event: HotelEvent; sub: SubEvent } | null {
+  // a day the space is blocked out
+  const sp = eventSpaces(d).find((x) => x.id === spaceId);
+  const bl = (sp?.blocks || []).find((x) => x.from <= date && date <= x.to);
+  if (bl) return { event: { name: 'Blocked — ' + (bl.reason || 'not for sale') } as HotelEvent, sub: { start: '00:00', end: '23:59' } as SubEvent };
   for (const e of hotelEvents(d)) {
     if (e.status === 'cancelled') continue;
     for (const s of e.subEvents) {

@@ -46,7 +46,7 @@ export default function PrintingKitchenScreen() {
     const doc = {
       kind: 'Kitchen Order', no: 'T001', ts: new Date().toISOString(), firmName: db!.firm.name, table: 'Table 4', servedBy: 'Sarah',
       lines: [
-        { name: 'Chicken burger', qty: 2, price: 0, mods: ['Large', 'Extra cheese'], note: 'One without onions' },
+        { name: 'Sample dish', qty: 2, price: 0, mods: ['Large', 'Extra cheese'], note: 'One without onions' },
         { name: 'Passion juice', qty: 1, price: 0, mods: ['No ice'] },
       ],
       subtotal: 0, total: 0, note: 'Test ticket',
@@ -69,7 +69,7 @@ export default function PrintingKitchenScreen() {
         {k.showTime ? <Text style={mono}>Time               14 Oct 19:42</Text> : null}
         {k.showServer ? <Text style={mono}>Server                     Sarah</Text> : null}
         <Text style={mono}>================================</Text>
-        <Text style={{ fontFamily: fonts.uiBold, fontSize: k.bigText ? 16 : 12.5, color: '#111' }}>2 x Chicken burger</Text>
+        <Text style={{ fontFamily: fonts.uiBold, fontSize: k.bigText ? 16 : 12.5, color: '#111' }}>2 x Sample dish</Text>
         <Text style={mono}>   + Large</Text>
         <Text style={mono}>   + Extra cheese</Text>
         {k.showNotes ? <Text style={mono}>   * One without onions</Text> : null}
