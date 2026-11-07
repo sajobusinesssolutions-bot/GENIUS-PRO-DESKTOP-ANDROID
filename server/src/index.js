@@ -19,6 +19,8 @@ import adminRoutes, { recordRequest, runBackup } from './admin.js';
 import crashRoutes from './crash.js';
 import summaryRoutes from './summary.js';
 import updateRoutes from './updates.js';
+import privateLinkRoutes from './privatelinks.js';
+import numberRoutes from './numbers.js';
 import transferRoutes from './transfers.js';
 import snapshotPartRoutes from './snapshotparts.js';
 import licensingRoutes from './licensing.js';
@@ -95,6 +97,9 @@ await app.register(businessExtraRoutes);
 await app.register(crashRoutes);
 await app.register(summaryRoutes);
 await app.register(updateRoutes);
+await app.register(privateLinkRoutes);
+// one running number per voucher series for every device (numbers.js); the phones wait on it before syncing
+await app.register(numberRoutes);
 await app.register(transferRoutes);
 await app.register(snapshotPartRoutes);
 await app.register(businessRemoveRoutes);
