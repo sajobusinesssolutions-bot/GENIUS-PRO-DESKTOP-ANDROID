@@ -133,7 +133,7 @@ function WhoSheet({ visible, title, onPick, onCancel }: {
             <View style={{ flex: 1 }}><Button label="Cancel" onPress={close} /></View>
             <View style={{ flex: 2 }}>
               <Button
-                label={chosen ? 'Confirm \u00b7 ' + chosen.name : 'Confirm'}
+                label="Confirm"
                 variant="pri"
                 disabled={!chosen}
                 icon={<Icon name="check" size={17} color={colors.accentInk} />}

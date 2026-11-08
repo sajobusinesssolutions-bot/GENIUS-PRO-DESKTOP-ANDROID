@@ -50,6 +50,7 @@ import SegmentSlider from '../components/SegmentSlider';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { vocab, editionOf, DOSAGE_FORMS } from '../data/editions';
 import type { RootStackParamList } from '../nav/types';
+import { batchSwitchRefusal } from '../data/logic';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProductDetail'>;
 type Tab = 'basics' | 'pricing' | 'stock' | 'more';
@@ -257,6 +258,8 @@ export default function ProductDetailScreen({ route, navigation }: Props) {
   /** Turning batches on from the Basics chip: keep counting on, which batches need. */
   function toggleBatches() {
     const next = !trackBatches;
+    const why = existing && ctx.db ? batchSwitchRefusal(ctx.db, existing.id, next) : null;
+    if (why) { error(why); return; }
     setTrackBatches(next);
     if (next && !trackInventory) setTrackInventory(true);
   }

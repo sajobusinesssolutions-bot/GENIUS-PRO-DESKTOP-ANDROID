@@ -40,7 +40,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'NewSale'>;
 export default function NewSaleScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { db, money, stockOf, commitSale, editSale: editSaleTransaction, addParty, can, partyBalance, markEstimateConverted } = useAppData();
+  const { db, money, stockOf, commitSale, editSale: editSaleTransaction, addParty, can, partyBalance, markEstimateConverted, setSetting } = useAppData();
   const { takeSaleNumber } = useSyncRun();
   /** A quotation being turned into a sale: its lines fill the bill, to change before saving. */
   const fromQuote = db?.estimates.find((e) => e.id === route.params?.fromEstimateId && e.status === 'open');
@@ -260,6 +260,15 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     return [...count.entries()].sort((a, b) => b[1] - a[1])
       .map(([id]) => byId.get(id)).filter((p): p is Product => !!p && p.active !== false).slice(0, 12);
   }, [db?.sales.length]);   // eslint-disable-line react-hooks/exhaustive-deps
+  /* Not while a saved sale is being changed: there the bill is being corrected,
+     not rung up. A shop that does not want them hides them from the heading. */
+  const showQuick = !editingSale && db?.settings.hideBestSellers !== true && topItems.length > 0;
+  function askHideQuick() {
+    Alert.alert('Hide best sellers?', 'They come back in Settings → Selling & the till.', [
+      { text: 'Keep them', style: 'cancel' },
+      { text: 'Hide', onPress: () => setSetting({ hideBestSellers: true }) },
+    ]);
+  }
   function quickAdd(p: Product) {
     // anything needing a batch, an IMEI or another unit goes through the full entry
     if (p.trackBatches || p.trackSerials) { openEntry(p); return; }
@@ -541,9 +550,13 @@ export default function NewSaleScreen({ navigation, route }: Props) {
           </Pressable>
         </View>
 
-        {topItems.length ? (
+        {showQuick ? (
           <View>
-            <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint, marginBottom: 6 }}>Quick add · best sellers</Text>
+            <Pressable onPress={askHideQuick} accessibilityLabel="Hide best sellers" hitSlop={8}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint }}>Quick add · best sellers</Text>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint }}>Hide</Text>
+            </Pressable>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {topItems.map((p) => {
                 const n = cart.filter((l) => l.productId === p.id).reduce((s, l) => s + l.qty, 0);

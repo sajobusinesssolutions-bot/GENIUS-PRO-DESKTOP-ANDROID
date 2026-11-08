@@ -760,6 +760,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     updateProduct: (id, patch) => {
       requirePerm('inventory.edit');
       if (patch.active === false) requirePerm('inventory.delete');
+      if (patch.trackBatches !== undefined && dbRef.current) {
+        const why = logic.batchSwitchRefusal(dbRef.current, id, !!patch.trackBatches);
+        if (why) throw new Refusal(why);
+      }
       commit((d) => {
         const i = d.products.findIndex((p) => p.id === id);
         if (i >= 0) { d.products[i] = { ...d.products[i], ...patch }; logic.enqueue(d, 'product', id); }

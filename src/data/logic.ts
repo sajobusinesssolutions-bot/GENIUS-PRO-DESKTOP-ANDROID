@@ -264,8 +264,24 @@ export function saleFloor(d: DB, series: string): number {
   d.sales.forEach((s) => { if (s.no.startsWith(pre)) top = Math.max(top, numberPart(s.no)); });
   return top;
 }
-/** The text of a sale number in a series: INV + 3187 → INV-03187, as the phone has always written them. */
-export function formatSaleNo(series: string, n: number): string { return series + '-' + String(n).padStart(5, '0'); }
+/**
+ * How many digits a series is written with: as its newest number already is,
+ * so the phone and the computer carry on one width. The phone wrote five
+ * (INV-03189) and the computer six (INV-003190), and a book with both read as
+ * two series. A series with nothing yet takes the computer's six.
+ */
+export function saleWidth(d: DB, series: string): number {
+  const pre = series + '-';
+  let best: { ts: string; w: number } | null = null;
+  d.sales.forEach((s) => {
+    if (!s.no.startsWith(pre) || s.numberPending) return;
+    const digits = s.no.slice(pre.length).match(/^\d+/);
+    if (digits && (!best || s.ts >= best.ts)) best = { ts: s.ts, w: digits[0].length };
+  });
+  return best ? Math.min(10, Math.max(4, (best as { w: number }).w)) : 6;
+}
+/** The text of a sale number in a series: INV + 3190 → INV-003190. */
+export function formatSaleNo(series: string, n: number, width = 6): string { return series + '-' + String(n).padStart(width, '0'); }
 
 /** Gives a sale saved with a temporary number its real one, and points its ledger and stock lines at it. */
 export function setSaleNumber(d: DB, saleId: string, no: string): boolean {
@@ -649,6 +665,23 @@ export function recordPayment(d: DB, o: { partyId: string; amount: number; direc
  * change made in place, so a kept answer is never stale.
  */
 const balanceCache = new WeakMap<object, { key: string; map: Map<string, number> }>();
+/**
+ * Batches can be switched only on an item that has never been sold. Sold
+ * without batches, the stock that went out belonged to no batch, so turning
+ * them on leaves batches that never add up to what is on the shelf; sold with
+ * them, turning them off strands every batch and its expiry. Either way the
+ * answer is a new item. Null when the switch may change.
+ */
+export function batchSwitchRefusal(d: DB, productId: string, want: boolean): string | null {
+  const p = d.products.find((x) => x.id === productId);
+  if (!p || !!p.trackBatches === want) return null;
+  const sold = d.sales.some((s) => s.status !== 'void' && s.lines.some((l) => l.productId === productId));
+  if (!sold) return null;
+  return want
+    ? p.name + ' has already been sold without batches, so batches cannot be switched on for it now. Make a new item to track batches.'
+    : p.name + ' has been sold from its batches, so batches cannot be switched off. Its batches and expiry dates stay.';
+}
+
 export function allPartyBalances(d: DB): Map<string, number> {
   const key = d.sales.length + ':' + d.purchases.length + ':' + d.parties.length + ':' + d.payments.length + ':' + (d.creditNotes || []).length;
   const had = balanceCache.get(d);
@@ -1811,6 +1844,7 @@ export function editSale(
   if (s.numberPending) fresh.numberPending = true; else delete fresh.numberPending;
   fresh.ref = o.ref || ''; fresh.note = o.note || '';
   fresh.editedFrom = s.id; fresh.editedAt = iso(when);
+  fresh.editedBy = d.session.userId; fresh.editCount = (s.editCount || 0) + 1;
 
   /* money already taken stays taken: without a payment choice from the screen,
      as before; with one, what was paid later (separate receipts) still counts */
@@ -1884,6 +1918,7 @@ export function editPurchase(
   fresh.no = oldNo; fresh.ts = oldTs;
   fresh.ref = o.ref || ''; fresh.note = o.note || '';
   fresh.editedFrom = x.id; fresh.editedAt = iso(when);
+  fresh.editedBy = d.session.userId; fresh.editCount = (x.editCount || 0) + 1;
   d.purchases = d.purchases.filter((p) => p.id !== x.id);
   const freshId = fresh.id;
   fresh.id = x.id;
@@ -1993,6 +2028,7 @@ export function editPayment(
   if (patch.note !== undefined) pay.note = patch.note;
   pay.method = d.accounts.find((a) => a.id === pay.accountId)?.type || 'cash';
   pay.editedAt = iso(when);
+  pay.editedBy = d.session.userId; pay.editCount = (pay.editCount || 0) + 1;
 
   const post: JournalLine[] = pay.direction === 'in'
     ? [{ acc: pay.accountId, dr: pay.amount }, { acc: 'n_ar', cr: pay.amount }]

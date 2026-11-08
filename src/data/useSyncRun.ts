@@ -16,7 +16,7 @@ import { useAppData } from './AppDataContext';
 import { useAuth } from './AuthContext';
 import { refreshSession } from './authApi';
 import { ensureWiring, pushQueue, pullOps, uploadSnapshot, nextVoucherNumber, cancelVoucherNumber, newOpId } from './syncClient';
-import { saleSeries, saleFloor, formatSaleNo } from './logic';
+import { saleSeries, saleFloor, formatSaleNo, saleWidth } from './logic';
 import { plural } from './helpers';
 import { needsNewerApp } from './appVersion';
 import { inlineImage } from './docPrint';
@@ -139,7 +139,7 @@ export function useSyncRun() {
         const series = saleSeries(d, s.warehouse);
         const n = await nextVoucherNumber(token, { business: wiring.value.businessId, series, ref: s.id, floor: saleFloor(d, series), device: wiring.value.deviceId });
         if (!n) return { ok: false, sent: 0, message: 'Waiting for the server to number ' + pend.length + ' sale' + (pend.length === 1 ? '' : 's') + ' saved offline.' };
-        setSaleNumber(s.id, formatSaleNo(series, n));
+        setSaleNumber(s.id, formatSaleNo(series, n, saleWidth(d, series)));
       }
 
       const r = await pushQueue(d, token, wiring.value);
@@ -317,7 +317,7 @@ export function useSyncRun() {
     const business = d.sync.businessId;
     const n = await nextVoucherNumber(token, { business, series, ref, floor: saleFloor(d, series), device: d.sync.deviceId || undefined });
     if (!n) return null;
-    return { no: formatSaleNo(series, n), drop: () => { void cancelVoucherNumber(token, business, ref); } };
+    return { no: formatSaleNo(series, n, saleWidth(d, series)), drop: () => { void cancelVoucherNumber(token, business, ref); } };
   }, [accessToken, licFeature]);
 
   return { run, pull, accessToken, takeSaleNumber };

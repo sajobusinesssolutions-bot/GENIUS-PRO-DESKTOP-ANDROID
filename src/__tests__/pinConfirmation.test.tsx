@@ -56,7 +56,7 @@ describe('useWho — "who is recording this?"', () => {
     fireEvent.press(screen.getByText('go'));
     settle();
     fireEvent.press(screen.getByText('Grace')); // switch off the signed-in default
-    fireEvent.press(screen.getByText('Confirm · Grace')); // Grace's till requires a PIN
+    fireEvent.press(screen.getByText('Confirm')); // Grace's till requires a PIN
     type('5678');
     expect(screen.getByTestId('result').children.join('')).toBe('Grace');
   });
@@ -66,7 +66,7 @@ describe('useWho — "who is recording this?"', () => {
     fireEvent.press(screen.getByText('go'));
     settle();
     fireEvent.press(screen.getByText('Grace'));
-    fireEvent.press(screen.getByText('Confirm · Grace'));
+    fireEvent.press(screen.getByText('Confirm'));
     type('0000');
     expect(screen.getByText('That PIN is not right.')).toBeTruthy();
     expect(screen.getByTestId('result').children.join('')).toBe('');

@@ -4,7 +4,7 @@
  * its real one on the next sync — with its ledger and stock lines following.
  */
 import { seed } from '../seed';
-import { commitSale, setSaleNumber, saleFloor, formatSaleNo, numberPart, editSale, PENDING } from '../logic';
+import { commitSale, setSaleNumber, saleFloor, formatSaleNo, saleWidth, numberPart, editSale, PENDING } from '../logic';
 import type { DB } from '../types';
 
 function book(syncOn: boolean): DB {
@@ -74,7 +74,10 @@ describe('sale numbers', () => {
     commitSale(d, { lines: [line(d)], partyId: null, method: 'cash', discount: 0, no: 'INV-00007' });
     commitSale(d, { lines: [line(d)], partyId: null, method: 'cash', discount: 0 });
     expect(saleFloor(d, 'INV')).toBe(41);
-    expect(formatSaleNo('INV', 42)).toBe('INV-00042');
+    expect(formatSaleNo('INV', 42, saleWidth(d, 'INV'))).toBe('INV-00042');   // the series is written five wide: it stays so
+    expect(formatSaleNo('INV', 42)).toBe('INV-000042');                       // a new series takes the computer's six
+    commitSale(d, { lines: [line(d)], partyId: null, method: 'cash', discount: 0, no: 'INV-003190' });
+    expect(saleWidth(d, 'INV')).toBe(6);                                      // the newest number sets the width
     expect(numberPart('INV-000114-P')).toBe(114);
   });
 });

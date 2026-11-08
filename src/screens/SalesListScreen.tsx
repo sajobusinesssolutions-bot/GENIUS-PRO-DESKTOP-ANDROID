@@ -68,6 +68,8 @@ interface Row {
   dim?: boolean;
   /** A tap opens the actions rather than a page. */
   tapMenu?: boolean;
+  /** Who entered it, and what has happened to it since: the History sheet. */
+  hist?: { editedAt?: string; editedBy?: string; edits?: number; deletedAt?: string; deletedBy?: string; reason?: string };
   phone?: string;
   due?: number;
   open?: () => void;
@@ -165,6 +167,8 @@ export default function SalesListScreen({ navigation }: Props) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [datePick, setDatePick] = useState<'from' | 'to' | null>(null);
   const [menu, setMenu] = useState<Row | null>(null);
+  /** The row whose History is open: who entered it, when, and what has happened to it since. */
+  const [histOf, setHistOf] = useState<Row | null>(null);
   const [confirm, setConfirm] = useState(false);
 
   const tone = (t: Tone) => {
@@ -218,6 +222,7 @@ export default function SalesListScreen({ navigation }: Props) {
             : { label: 'Paid via', value: (s.methods || []).length > 1 ? 'Split payment' : methodWord(s.method === 'credit' ? s.receivedVia : s.method) },
         phone: phoneOf(s.partyId),
         userId: s.userId, partyId: s.partyId, status: void_ ? 'void' : s.due <= 0.01 ? 'paid' : s.paid > 0 ? 'partial' : 'unpaid',
+        hist: { editedAt: s.editedAt, editedBy: s.editedBy, edits: s.editCount, deletedAt: s.voidedAt, deletedBy: s.deletedBy, reason: s.voidReason },
         open: () => navigation.navigate('SaleDetail', { saleId: s.id }),
         edit: void_ || !can('sales.edit') ? undefined : () => {
           const ok = canEditSale(s.id);
@@ -255,6 +260,7 @@ export default function SalesListScreen({ navigation }: Props) {
           labelColor: colors.warn,
           foot: void_ ? undefined : pu.due > 0.01 ? owed(pu.due, pu.paid) : { label: 'Paid via', value: methodWord(pu.method) },
           userId: pu.userId, partyId: pu.partyId,
+          hist: { editedAt: pu.editedAt, editedBy: pu.editedBy, edits: pu.editCount, deletedAt: pu.voidedAt, deletedBy: pu.deletedBy, reason: pu.voidReason },
           status: void_ ? 'void' : pu.due <= 0.01 ? 'paid' : pu.paid > 0 ? 'partial' : 'unpaid',
           phone: phoneOf(pu.partyId),
           open: () => navigation.navigate('PurchaseDetail', { purchaseId: pu.id }),
@@ -303,6 +309,8 @@ export default function SalesListScreen({ navigation }: Props) {
         foot: { label: 'Paid via', value: db.accounts?.find((a) => a.id === p.accountId)?.name || methodWord(p.method) },
         phone: phoneOf(p.partyId),
         partyId: p.partyId,
+        userId: p.userId,
+        hist: { editedAt: p.editedAt, editedBy: p.editedBy, edits: p.editCount },
         open: () => navigation.navigate('PaymentDetail', { paymentId: p.id }),
         edit: can('finance.edit') ? () => navigation.navigate('PaymentDetail', { paymentId: p.id }) : undefined,
         doc: () => paymentDoc(p),
@@ -374,6 +382,7 @@ export default function SalesListScreen({ navigation }: Props) {
         amount: c.total,
         amountTone: colors.danger,
         partyId: c.partyId,
+        userId: c.userId,
         badge: { label: 'Applied', tone: 'neutral' },
         label: 'Credit note',
         labelColor: purple,
@@ -426,6 +435,7 @@ export default function SalesListScreen({ navigation }: Props) {
         out.push({
           id: j.id, kind: 'journal', ts: j.ts, tapMenu: true,
           title: j.memo || 'Journal',
+          userId: (j as any).userId,
           sub: j.lines.length + ' line' + (j.lines.length === 1 ? '' : 's'),
           ref: j.ref,
           amount,
@@ -470,12 +480,14 @@ export default function SalesListScreen({ navigation }: Props) {
     return c;
   }, [rows]);
 
-  const list = useMemo(() => {
+  /* Every filter but the type: the totals strip is worked out from this, so it
+     answers for the staff, customer, status and search chosen — and for only
+     the sales this person may see — not for every sale in the book. */
+  const scoped = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const range = { from: new Date(from + 'T00:00:00').getTime(), to: new Date(to + 'T23:59:59').getTime() };
     return rows.filter((r) => {
       if (!inRange(r.ts, range.from, range.to)) return false;
-      if (kind !== 'all' && r.kind !== kind) return false;
       if (userFilter !== 'all' && r.userId !== userFilter) return false;
       if (partyFilter !== 'all' && r.partyId !== partyFilter) return false;
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
@@ -484,7 +496,8 @@ export default function SalesListScreen({ navigation }: Props) {
       if (!needle) return true;
       return r.ref.toLowerCase().includes(needle) || r.title.toLowerCase().includes(needle);
     });
-  }, [rows, kind, q, from, to, userFilter, partyFilter, statusFilter]);
+  }, [rows, q, from, to, userFilter, partyFilter, statusFilter]);
+  const list = useMemo(() => (kind === 'all' ? scoped : scoped.filter((r) => r.kind === kind)), [scoped, kind]);
 
   /** One plain list — no day headings or day totals, which the owner found cluttering. */
   const items = useMemo(
@@ -519,10 +532,11 @@ export default function SalesListScreen({ navigation }: Props) {
   }
 
   // the two figures follow the dates chosen, so they answer "how did this period go"
-  const range = { from: new Date(from + 'T00:00:00').getTime(), to: new Date(to + 'T23:59:59').getTime() };
-  const sales = (db?.sales || []).filter((s) => s.status !== 'void' && inRange(s.ts, range.from, range.to));
-  const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
-  const balanceDue = sales.reduce((sum, s) => sum + Math.max(0, s.due), 0);
+  // and every filter chosen: bills when the list is cut to bills, else sales
+  const bills = kind === 'purchase';
+  const sales = scoped.filter((r) => r.kind === (bills ? 'purchase' : 'sale') && r.status !== 'void');
+  const totalSales = sales.reduce((sum, r) => sum + r.amount, 0);
+  const balanceDue = sales.reduce((sum, r) => sum + Math.max(0, r.due || 0), 0);
 
   const showTotals = can('sales.view_totals');
   const showBalances = can('sales.view_balances');
@@ -542,10 +556,10 @@ export default function SalesListScreen({ navigation }: Props) {
         <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 11, gap: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Icon name="receipt" size={12} color={colors.accent} />
-            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>Total sales</Text>
+            <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>{bills ? 'Total bills' : 'Total sales'}</Text>
           </View>
           <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: colors.ink }}>{money(totalSales)}</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>{sales.length} sale{sales.length === 1 ? '' : 's'} · {periodLabel}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>{sales.length} {bills ? 'bill' : 'sale'}{sales.length === 1 ? '' : 's'} · {periodLabel}</Text>
         </View>
         ) : null}
         {showTotals && showBalances ? <View style={{ width: 1, backgroundColor: colors.line, marginVertical: 12 }} /> : null}
@@ -556,7 +570,7 @@ export default function SalesListScreen({ navigation }: Props) {
             <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>Balance due</Text>
           </View>
           <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: balanceDue ? colors.danger : colors.good }}>{money(balanceDue)}</Text>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>{balanceDue ? 'Still to collect' : 'All collected'}</Text>
+          <Text style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint }}>{balanceDue ? (bills ? 'Still to pay' : 'Still to collect') : (bills ? 'All paid' : 'All collected')}</Text>
         </View>
         ) : null}
       </View>
@@ -651,6 +665,7 @@ export default function SalesListScreen({ navigation }: Props) {
               <View style={{ marginTop: item.first ? 12 : 0 }}>
                 <TxnRow
                   r={r}
+                  by={r.userId ? userName(r.userId) : undefined}
                   money={money}
                   tone={tone(r.badge.tone)}
                   onPrint={r.doc ? () => void quickDoc(r, 'print') : undefined}
@@ -771,6 +786,43 @@ export default function SalesListScreen({ navigation }: Props) {
         ) : null}
       </Sheet>
 
+      {/* History: who entered it and when, whether it was ever edited and by whom, and whether it was deleted */}
+      <Sheet visible={!!histOf} title="History" subtitle={histOf ? KIND_WORD[histOf.kind] + ' #' + histOf.ref + ' · ' + histOf.title : ''} icon="clock" onClose={() => setHistOf(null)}>
+        {histOf ? (() => {
+          const h = histOf.hist || {};
+          const stamp = (t?: string) => (t ? new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '');
+          const edited = !!(h.editedAt || h.edits);
+          /* what this phone noted about it: the edits and deletions it saw made here */
+          const seen = (db?.auditLog || []).filter((a) => histOf.ref && a.details && a.details.split(/[\s—,]+/).includes(histOf.ref)).slice(0, 12);
+          const line = (k: string, v: string, c?: string) => (
+            <View key={k} style={{ flexDirection: 'row', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+              <Text style={{ width: 92, fontFamily: fonts.ui, fontSize: 13, color: colors.faint }}>{k}</Text>
+              <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 13.5, color: c || colors.ink }}>{v}</Text>
+            </View>
+          );
+          return (
+            <View>
+              {line('Entered by', histOf.userId ? userName(histOf.userId) : '—')}
+              {line('When', stamp(histOf.ts))}
+              {line('Edited', edited ? (h.edits && h.edits > 1 ? h.edits + ' times' : 'Yes') + (h.editedBy ? ' — last by ' + userName(h.editedBy) : '') + (h.editedAt ? ', ' + stamp(h.editedAt) : '') : 'Never', edited ? colors.warn : colors.good)}
+              {h.deletedAt || histOf.status === 'void'
+                ? line('Deleted', [h.deletedBy ? userName(h.deletedBy) : '', stamp(h.deletedAt), h.reason || ''].filter(Boolean).join(' · ') || 'Yes', colors.danger)
+                : null}
+              {seen.length ? (
+                <View style={{ marginTop: 14 }}>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12, letterSpacing: 0.6, color: colors.faint, textTransform: 'uppercase', marginBottom: 4 }}>On this phone</Text>
+                  {seen.map((a) => (
+                    <Text key={a.id} style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.soft, paddingVertical: 5 }}>
+                      {stamp(a.ts) + ' · ' + a.userName + ' · ' + a.action}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          );
+        })() : null}
+      </Sheet>
+
       {/* ⋮ actions sheet */}
       <Sheet
         visible={!!menu}
@@ -803,6 +855,7 @@ export default function SalesListScreen({ navigation }: Props) {
             {menu.kind === 'sale' ? <MenuRow title="Payment history" onPress={after(() => setHistoryOf(menu.id))} /> : null}
             {menu.kind === 'sale' ? <MenuRow title="Open" onPress={after(menu.open!)} /> : null}
             {menu.open && menu.kind !== 'sale' ? <MenuRow title="Open" onPress={after(menu.open)} /> : null}
+            <MenuRow title="History" sub="who entered it, when, edits" onPress={after(() => setHistOf(menu))} />
             {menu.remove ? <MenuRow title={menu.remove.label} danger onPress={() => setConfirm(true)} /> : null}
           </View>
         ) : null}
@@ -854,8 +907,8 @@ function MenuRow({ title, sub, onPress, danger }: { title: string; sub?: string;
  * matters for it — how it was paid, what is still owed, until when it holds —
  * with print, share and more at the right.
  */
-function TxnRow({ r, money, tone, onPrint, onShare, onMore }: {
-  r: Row; money: (n: number) => string; tone: { fg: string; bg: string };
+function TxnRow({ r, by, money, tone, onPrint, onShare, onMore }: {
+  r: Row; by?: string; money: (n: number) => string; tone: { fg: string; bg: string };
   onPrint?: () => void; onShare?: () => void; onMore: () => void;
 }) {
   const { colors } = useTheme();
@@ -908,6 +961,8 @@ function TxnRow({ r, money, tone, onPrint, onShare, onMore }: {
         <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint }}>
           {r.foot ? <>{r.foot.label + ' '}<Text style={{ fontFamily: fonts.uiSemi, color: r.foot.tone || colors.soft }}>{r.foot.value}</Text></> : null}
         </Text>
+        {/* who entered it, small, beside the actions */}
+        {by ? <Text numberOfLines={1} style={{ maxWidth: 110, fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, marginRight: 2 }}>{'by ' + by}</Text> : null}
         {onPrint ? icon('print', 'Print', onPrint) : null}
         {onShare ? icon('share', 'Share', onShare) : null}
         {icon('dots', 'More actions', onMore)}

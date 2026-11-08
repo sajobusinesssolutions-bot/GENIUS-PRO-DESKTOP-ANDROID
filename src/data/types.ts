@@ -294,6 +294,8 @@ export interface Sale {
   synced: boolean; fiscal: string; fdn: string | null;
   /** Set when a bill is corrected by void-and-repost — reference editSaleSave, line 17635. */
   ref?: string; note?: string; editedFrom?: string; editedAt?: string;
+  /** Who made the last edit, and how many there have been (History). */
+  editedBy?: string; editCount?: number;
 }
 
 export interface PurchaseLine {
@@ -322,12 +324,13 @@ export interface Purchase {
   /** Removed from Deleted transactions for good. The reversal stays in the books. */
   purgedAt?: string;
   ref?: string; note?: string; editedFrom?: string; editedAt?: string;
+  editedBy?: string; editCount?: number;
 }
 
 export interface Payment {
   id: string; ts: string; partyId: string; amount: number;
   direction: 'in' | 'out'; accountId: string; note: string; method: string;
-  editedAt?: string;
+  editedAt?: string; editedBy?: string; editCount?: number;
   /** Withholding tax kept back: the bills are settled by the money and this together. */
   taxDeducted?: number;
 
@@ -674,6 +677,8 @@ export interface Settings {
   taxEnabled: boolean;
   /** Ask who is recording each posting, so every record carries a name. */
   askWhoOnSave: boolean;
+  /** The best sellers strip on a new sale is hidden (shown when unset). */
+  hideBestSellers?: boolean;
   /** Make that person confirm with their PIN. */
   requirePinOnSave: boolean;
   useSecondaryUnit: boolean;

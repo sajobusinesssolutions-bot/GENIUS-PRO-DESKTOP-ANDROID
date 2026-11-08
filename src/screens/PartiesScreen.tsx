@@ -50,9 +50,12 @@ export default function PartiesScreen({ navigation }: Props) {
   const totals = useMemo(() => {
     let receivable = 0, payable = 0;
     all.forEach((p) => {
+      /* one sign for everyone, as on the party's own page and the computer:
+         above nil they owe you, below nil you owe them — a supplier's bill
+         takes the balance down, so "you owe" is the negative side */
       const bal = partyBalance(p.id);
-      if (p.type === 'customer' && bal > 0) receivable += bal;
-      if (p.type === 'supplier' && bal > 0) payable += bal;
+      if (bal > 0.005) receivable += bal;
+      else if (bal < -0.005) payable += -bal;
     });
     return { receivable, payable, net: receivable - payable };
   }, [db, partyBalance]);
@@ -101,11 +104,11 @@ export default function PartiesScreen({ navigation }: Props) {
               <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 3 }}>{p.phone || 'No phone'}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: owes ? (cust ? colors.good : colors.danger) : credit ? colors.accent : colors.faint }}>
+              <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: owes ? colors.good : credit ? (cust ? colors.accent : colors.danger) : colors.faint }}>
                 {owes || credit ? money(Math.abs(bal)) : 'Settled'}
               </Text>
               <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint, marginTop: 2 }}>
-                {owes ? (cust ? 'Owes you' : 'You owe') : credit ? 'In credit' : 'Nothing owing'}
+                {owes ? 'Owes you' : credit ? (cust ? 'In credit' : 'You owe') : 'Nothing owing'}
               </Text>
             </View>
           </Pressable>
