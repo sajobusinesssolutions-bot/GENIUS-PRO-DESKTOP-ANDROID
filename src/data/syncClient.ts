@@ -475,6 +475,16 @@ export async function pullOps(access: string, businessId: string, since: number,
   return call<{ ops: import('./syncProtocol').StoredOp[]; seq: number; more: boolean }>('/v1/sync/pull?business=' + encodeURIComponent(businessId) + '&since=' + since + '&limit=' + limit, access, undefined, 'GET');
 }
 
+/**
+ * Held open by the server until another device pushes to this business (or
+ * 25 seconds pass): the phone pulls the moment there is something, instead of
+ * asking every few seconds. A server without the route answers 404.
+ */
+export async function waitForChange(access: string, businessId: string, after: number, device: string): Promise<Result<{ seq: number; changed: boolean }>> {
+  return call<{ seq: number; changed: boolean }>('/v1/sync/wait?business=' + encodeURIComponent(businessId) + '&after=' + after + '&device=' + encodeURIComponent(device) + '&timeout=25',
+    access, undefined, 'GET', undefined, 35000, 35000);
+}
+
 /** What the server holds for this business. Used to show a real figure. */
 export async function serverState(access: string): Promise<Result<{ seq: number; ops: number; lastPush: string | null }>> {
   return call('/v1/sync/state', access, undefined, 'GET');

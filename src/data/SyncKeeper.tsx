@@ -46,7 +46,7 @@ const NOTIFY_AFTER_FAILURES = 3;
 export default function SyncKeeper() {
   const { db, ready, licFeature } = useAppData();
   const { account } = useAuth();
-  const { run, pull } = useSyncRun();
+  const { run, pull, waitChange } = useSyncRun() as ReturnType<typeof useSyncRun>;
   const lastPull = useRef(0);
   const { error: toastError } = useToast();
   const last = useRef(0);
@@ -130,10 +130,42 @@ export default function SyncKeeper() {
     lastPull.current = Date.now();
     return pull().catch(() => 0);
   };
+  /* Listening: one request held open on the server, answered the moment
+     another device pushes — the pull then starts at once, about a second
+     after the sale was made there. While that works, the five-second asking
+     below stands down; an older server, or trouble, brings it back. */
+  const listening = useRef(false);
+  const waitRef = useRef(waitChange);
+  const dbNow = useRef(db);
+  dbNow.current = db;
+  waitRef.current = waitChange;
+  useEffect(() => {
+    if (!ready || !on || !online || typeof waitRef.current !== 'function') return;
+    let stop = false;
+    const nap = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+    (async () => {
+      while (!stop) {
+        if (AppState.currentState !== 'active') { listening.current = false; await nap(2000); continue; }
+        const r = await waitRef.current!().catch(() => 'failed' as const);
+        if (stop) break;
+        if (r === 'unsupported') { listening.current = false; return; }
+        if (r === 'failed') { listening.current = false; await nap(5000); continue; }
+        listening.current = true;
+        if (r === 'changed') {
+          const before = dbNow.current?.sync.cursor || 0;
+          await pullNow.current(true);
+          // a pull that could not run (another sync under way) leaves the cursor: a breath before asking again
+          await nap((dbNow.current?.sync.cursor || 0) === before ? 1500 : 150);
+        }
+      }
+    })();
+    return () => { stop = true; listening.current = false; };
+  }, [ready, on, online]);
+
   useEffect(() => {
     const onAsk = (force?: boolean) => pullNow.current(force);
     pullListeners.add(onAsk);
-    const t = setInterval(() => { void pullNow.current(); }, PULL_EVERY_MS);
+    const t = setInterval(() => { if (!listening.current) void pullNow.current(); }, PULL_EVERY_MS);
     return () => { pullListeners.delete(onAsk); clearInterval(t); };
   }, []);
 

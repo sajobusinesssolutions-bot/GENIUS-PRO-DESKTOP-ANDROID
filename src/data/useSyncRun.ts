@@ -15,7 +15,7 @@ import { wholeBook, isPartialBook } from './storage';
 import { useAppData } from './AppDataContext';
 import { useAuth } from './AuthContext';
 import { refreshSession } from './authApi';
-import { ensureWiring, pushQueue, pullOps, uploadSnapshot, nextVoucherNumber, cancelVoucherNumber, newOpId } from './syncClient';
+import { ensureWiring, pushQueue, pullOps, uploadSnapshot, nextVoucherNumber, cancelVoucherNumber, newOpId, waitForChange } from './syncClient';
 import { saleSeries, saleFloor, formatSaleNo, saleWidth } from './logic';
 import { plural } from './helpers';
 import { needsNewerApp } from './appVersion';
@@ -320,5 +320,17 @@ export function useSyncRun() {
     return { no: formatSaleNo(series, n, saleWidth(d, series)), drop: () => { void cancelVoucherNumber(token, business, ref); } };
   }, [accessToken, licFeature]);
 
-  return { run, pull, accessToken, takeSaleNumber };
+  /** Waits on the server for another device's change: 'changed', 'quiet' (nothing in 25 s), 'unsupported' (an older server) or 'failed'. */
+  const waitChange = useCallback(async (): Promise<'changed' | 'quiet' | 'unsupported' | 'failed'> => {
+    const d = dbRef.current;
+    if (!d || !d.sync.on || !d.sync.businessId || !account || account.localOnly || d.session.online === false || !licFeature('sync')) return 'failed';
+    const token = await accessToken().catch(() => null);
+    if (!token) return 'failed';
+    const r = await waitForChange(token, d.sync.businessId, d.sync.cursor || 0, d.sync.deviceId || '');
+    if (r.ok) return r.value.changed ? 'changed' : 'quiet';
+    const why = String((r.error as any)?.failure || '') + ' ' + String(r.error?.message || '');
+    return /not ?found/i.test(why) && !/business/i.test(why) ? 'unsupported' : 'failed';
+  }, [account, accessToken, licFeature]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { run, pull, accessToken, takeSaleNumber, waitChange };
 }

@@ -176,6 +176,23 @@ async function refuseOldApp(req, reply, businessId) {
   return false;
 }
 
+/*
+ * Waiting for a change, rather than asking every few seconds.
+ *
+ * A device calls GET /v1/sync/wait with the last seq it holds. If the log is
+ * already past it, the answer comes at once; otherwise the request is held
+ * until another device pushes to that business (or 25 seconds pass, and the
+ * device simply asks again). A sale on the phone then reaches the computer —
+ * and the computer's reaches the phone — in about a second instead of a poll
+ * interval. One API process holds every waiter, so a push here wakes them.
+ */
+const waiters = new Map();   // business id -> Set of { device, wake }
+function wakeWaiters(businessId, seq, fromDevice) {
+  const set = waiters.get(businessId);
+  if (!set) return;
+  for (const w of [...set]) if (w.device !== fromDevice) w.wake(seq);
+}
+
 export default async function syncRoutes(app) {
   // the small facts' columns, filled once for copies already saved
   await migrateSnapshots();
@@ -559,7 +576,32 @@ export default async function syncRoutes(app) {
     });
 
     const head = await q('select coalesce(max(seq),0)::bigint as seq from ops where business_id = $1', [biz.id]);
+    if (accepted.length) wakeWaiters(biz.id, Number(head.rows[0].seq), ops[0].device);
     return { accepted, rejected, seq: Number(head.rows[0].seq) };
+  });
+
+  app.get('/v1/sync/wait', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const biz = await businessFor(me.id, req.query?.business);
+    if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    const after = Number(req.query?.after || 0);
+    const device = String(req.query?.device || '');
+    const timeout = Math.min(Math.max(Number(req.query?.timeout || 25), 1), 25) * 1000;
+    const head = await q('select coalesce(max(seq),0)::bigint as seq from ops where business_id = $1', [biz.id]);
+    const now = Number(head.rows[0].seq);
+    if (now > after) return { seq: now, changed: true };
+    const seq = await new Promise((resolve) => {
+      const set = waiters.get(biz.id) || new Set();
+      waiters.set(biz.id, set);
+      const w = { device };
+      const done = (v) => { clearTimeout(t); set.delete(w); if (!set.size) waiters.delete(biz.id); resolve(v); };
+      const t = setTimeout(() => done(null), timeout);
+      w.wake = (v) => done(v);
+      set.add(w);
+      reply.raw.on('close', () => done(null));   // the device gave up or went away (a GET's own request 'close' fires once it is read)
+    });
+    return seq == null ? { seq: now, changed: false } : { seq, changed: true };
   });
 
   app.get('/v1/sync/pull', async (req, reply) => {
