@@ -3,7 +3,7 @@
 // directly against a plain DB object without rendering a component tree.
 import { tsMs } from './helpers';
 import {
-  DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, JournalLine, JournalEntry, PayMethod, Product,
+  DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, JournalLine, JournalEntry, PayMethod, Product, Movement,
   StockTake, ProductionRun, RecurringInvoice, InstalmentPlan, InstalmentDue, Revision,
   LicStatus, Subscription, Shift,
 } from './types';
@@ -97,18 +97,20 @@ export function journal(d: DB, when: Date, memo: string, ref: string, lines: Jou
     }
   }
 
-  d.journal.push({
+  const entry: JournalEntry = {
     id: uid('jnl'), ts: iso(when), memo, ref, lines: rounded,
     balanced: Math.abs(cents(dr - cr)) < 0.005,
     // a branch keeps its own books, so the posting is stamped where it happened
     branch: activeBranchId(d),
-  });
-  if (d.sync?.on) enqueue(d, 'journal', d.journal[d.journal.length - 1].id);
+  };
+  d.journal.push(entry);
+  if (d.sync?.on) enqueue(d, 'journal', entry.id);
+  return entry;
 }
 
-export function move(d: DB, productId: string, wh: string, qty: number, type: string, ref: string, when: Date, batchNo?: string, userId?: string) {
+export function move(d: DB, productId: string, wh: string, qty: number, type: string, ref: string, when: Date, batchNo?: string, userId?: string, extra?: Partial<Movement>): Movement | undefined {
   const prod = d.products.find((x) => x.id === productId);
-  if (!prod) return;
+  if (!prod) return undefined;
   prod.stock[wh] = (prod.stock[wh] || 0) + qty;
   if (batchNo && prod.batches) {
     const batch = prod.batches.find((x) => x.no === batchNo);
@@ -116,9 +118,10 @@ export function move(d: DB, productId: string, wh: string, qty: number, type: st
   }
   // a move that named no batch (or one that is gone) still has to land in the batches
   reconcileBatches(prod);
-  const movement = { id: uid('mv'), ts: iso(when), productId, wh, qty, type, ref, batchNo, userId: userId || d.session.userId };
+  const movement: Movement = { id: uid('mv'), ts: iso(when), productId, wh, qty, type, ref, batchNo, userId: userId || d.session.userId, ...(extra || {}) };
   d.movements.push(movement);
   if (d.sync?.on) enqueue(d, 'movement', movement.id);
+  return movement;
 }
 
 export const AUDIT_KEEP = 5000;
@@ -752,14 +755,7 @@ export function adjustStock(d: DB, productId: string, wh: string, count: number,
   const before = batch ? batch.qty : (prod.stock[wh] || 0);
   const delta = count - before;
   if (delta === 0) return 0;
-  move(d, productId, wh, delta, 'adjust', reason, when, batch ? batch.no : undefined, userId);
-  const value = delta * (prod.cost || 0);
-  if (value !== 0) {
-    const jl: JournalLine[] = value > 0
-      ? [{ acc: 'n_inventory', dr: value }, { acc: 'n_income', cr: value }]
-      : [{ acc: 'n_expense', dr: -value }, { acc: 'n_inventory', cr: -value }];
-    journal(d, when, reason + ' — ' + prod.name, productId, jl);
-  }
+  const value = postAdjustment(d, prod, wh, delta, reason, when, batch ? batch.no : undefined, userId);
   audit(
     d,
     'Stock adjusted',
@@ -768,6 +764,77 @@ export function adjustStock(d: DB, productId: string, wh: string, count: number,
       + ' — by ' + (d.users.find((u) => u.id === (userId || d.session.userId))?.name || 'unknown'),
   );
   return value;
+}
+
+/** One adjustment: the movement and its ledger entry, each naming the other. Returns its value. */
+function postAdjustment(d: DB, prod: Product, wh: string, delta: number, reason: string, when: Date, batchNo?: string, userId?: string, extra?: Partial<Movement>): number {
+  const mv = move(d, prod.id, wh, delta, 'adjust', reason, when, batchNo, userId, extra);
+  const value = delta * (prod.cost || 0);
+  if (value !== 0 && mv) {
+    const jl: JournalLine[] = value > 0
+      ? [{ acc: 'n_inventory', dr: value }, { acc: 'n_income', cr: value }]
+      : [{ acc: 'n_expense', dr: -value }, { acc: 'n_inventory', cr: -value }];
+    const je = journal(d, when, reason + ' — ' + prod.name, prod.id, jl);
+    je.moveId = mv.id;
+    mv.journalId = je.id;
+  }
+  return value;
+}
+
+/** Whether a movement is an adjustment that can still be taken back (not a reversal, not already reversed). */
+export function adjustmentOpen(d: DB, moveId: string): Movement | null {
+  const m = d.movements.find((x) => x.id === moveId);
+  if (!m || m.type !== 'adjust' || m.reverses) return null;
+  if (d.movements.some((x) => x.reverses === m.id)) return null;
+  return m;
+}
+
+/**
+ * Take back (delete) a stock adjustment. The shelf goes back to where it was
+ * and the ledger entry is reversed; the pair leaves the item's transactions
+ * and waits in Deleted transactions — the same as the computer's "take back",
+ * so the two show the same thing.
+ */
+export function reverseAdjustment(d: DB, moveId: string, reason = 'Deleted', when = new Date(), userId?: string): Movement {
+  if (!canWith(ensureRoles(d), d.session.role, 'inventory.stock_adjustment')) throw new Refusal('Your role cannot change stock adjustments.');
+  const m = adjustmentOpen(d, moveId);
+  if (!m) throw new Refusal('That adjustment is not there any more, or was already taken back.');
+  const prod = d.products.find((x) => x.id === m.productId);
+  if (!prod) throw new Refusal('The item of that adjustment is gone.');
+  // taking back stock that came IN removes units: refused if they have since been sold
+  if (m.qty > 0 && (prod.stock[m.wh] || 0) + 1e-9 < m.qty) {
+    throw new Refusal('That adjustment put ' + m.qty + ' ' + prod.unit + ' on the shelf and only ' + (prod.stock[m.wh] || 0) + ' are left — taking it back would leave ' + prod.name + ' below zero.');
+  }
+  const back = move(d, m.productId, m.wh, -m.qty, 'adjust', 'Taken back' + (reason ? ' — ' + reason : '') + (m.ref ? ' · ' + m.ref : ''), when, m.batchNo, userId, { reverses: m.id });
+  if (!back) throw new Refusal('The item of that adjustment is gone.');
+  /* the ledger: exactly what the adjustment posted, the other way round */
+  const je = m.journalId ? d.journal.find((x) => x.id === m.journalId) : undefined;
+  const lines: JournalLine[] = je
+    ? je.lines.map((l) => ({ acc: l.acc, ...(l.dr ? { cr: l.dr } : {}), ...(l.cr ? { dr: l.cr } : {}) }))
+    : (() => {
+      const value = -m.qty * (prod.cost || 0);
+      return value === 0 ? [] : value > 0
+        ? [{ acc: 'n_inventory', dr: value }, { acc: 'n_income', cr: value }]
+        : [{ acc: 'n_expense', dr: -value }, { acc: 'n_inventory', cr: -value }];
+    })();
+  if (lines.length) {
+    const rj = journal(d, when, 'Adjustment taken back — ' + prod.name, prod.id, lines);
+    rj.moveId = back.id;
+    back.journalId = rj.id;
+  }
+  audit(d, 'Stock adjustment taken back', prod.name + ' ' + (m.qty > 0 ? '+' : '') + m.qty + (reason ? ' — ' + reason : ''));
+  return back;
+}
+
+/** Change an adjustment's quantity: the old one is taken back and the new one posted, in one step. */
+export function changeAdjustment(d: DB, moveId: string, qty: number, reason?: string, when = new Date(), userId?: string): number {
+  const m = adjustmentOpen(d, moveId);
+  if (!m) throw new Refusal('That adjustment is not there any more, or was already taken back.');
+  const prod = d.products.find((x) => x.id === m.productId)!;
+  if (!Number.isFinite(qty) || qty === 0) throw new Refusal('Enter the quantity the adjustment should be — more than zero to add, less than zero to take off.');
+  if ((prod.stock[m.wh] || 0) - m.qty + qty < -1e-9) throw new Refusal('That would leave ' + prod.name + ' below zero.');
+  reverseAdjustment(d, moveId, 'Changed', when, userId);
+  return postAdjustment(d, prod, m.wh, qty, reason || m.ref || 'Stock adjustment', when, m.batchNo, userId);
 }
 
 export function transferStock(d: DB, productId: string, from: string, to: string, qty: number, reason = 'Stock transfer', when = new Date()): number {
@@ -1697,10 +1764,13 @@ function renumber(d: DB, from: string, to: string) {
 }
 
 /** Void-and-repost a bill — reference A.editSaleSave, line 17612. */
+/** How an edited sale is paid, when the edit screen says (the same choices as a new sale). */
+export type EditPay = Pick<Parameters<typeof commitSale>[1], 'method' | 'methods' | 'received' | 'receivedVia' | 'momoNetwork' | 'momoRef' | 'wht' | 'taxOnTop' | 'additionalCharges' | 'description' | 'terms' | 'showPayment' | 'rx' | 'priceListId'>;
+
 export function editSale(
   d: DB,
   saleId: string,
-  o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string },
+  o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string; pay?: EditPay },
   reason = 'Replaced by an edit',
   when = new Date(),
 ): Sale | null {
@@ -1710,14 +1780,28 @@ export function editSale(
   const s = d.sales.find((x) => x.id === saleId);
   if (!s || s.status === 'void') return null;
   if (!o.lines.length) return null;
-  const oldNo = s.no, oldTs = s.ts, oldMethod = s.method, oldWh = s.warehouse, oldPaid = s.paid;
+  const oldNo = s.no, oldTs = s.ts, oldMethod = s.method, oldWh = s.warehouse, oldPaid = s.paid, oldTill = s.till, oldUser = s.userId;
+  // money paid on the sale after it was made (separate payments) stays with it
+  const paidLater = Math.max(0, (s.paid || 0) - (s.paidAtSale ?? s.paid ?? 0));
 
   voidSale(d, s.id, reason, when);
 
-  const prevWh = d.session.warehouse;
+  const prevWh = d.session.warehouse, prevTill = d.session.till;
   d.session.warehouse = oldWh;
-  const fresh = commitSale(d, { lines: o.lines, partyId: o.partyId, method: oldMethod, discount: o.discount }, new Date(oldTs));
-  d.session.warehouse = prevWh;
+  d.session.till = oldTill || prevTill;
+  let fresh: Sale;
+  try {
+    /* The same posting as a new sale, with what the edit screen chose — the
+       method, what was received, "exact" — so the sale's paid and owed agree
+       with what goes into the cash book. It used to keep the old amount paid
+       while posting the whole new total to cash: an increase showed a balance
+       the books did not have. The person who made the sale stays its seller,
+       so it stays in their list (an edit by someone else used to move it). */
+    fresh = commitSale(d, { ...(o.pay || {}), lines: o.lines, partyId: o.partyId, method: o.pay?.method || oldMethod, discount: o.discount, userId: oldUser }, new Date(oldTs));
+  } finally {
+    d.session.warehouse = prevWh;
+    d.session.till = prevTill;
+  }
 
   /* keep the original number, date and history */
   d.counters.sale -= 1;
@@ -1728,10 +1812,14 @@ export function editSale(
   fresh.ref = o.ref || ''; fresh.note = o.note || '';
   fresh.editedFrom = s.id; fresh.editedAt = iso(when);
 
-  /* money already taken stays taken */
-  if (oldMethod !== 'credit') {
+  /* money already taken stays taken: without a payment choice from the screen,
+     as before; with one, what was paid later (separate receipts) still counts */
+  if (!o.pay && oldMethod !== 'credit') {
     const keep = Math.min(oldPaid, fresh.total);
     fresh.paid = keep; fresh.due = Math.max(0, fresh.total - keep);
+  } else if (paidLater > 0) {
+    const add = Math.min(paidLater, Math.max(0, fresh.due));
+    fresh.paid += add; fresh.due = Math.max(0, fresh.due - add);
   }
   d.sales = d.sales.filter((x) => x.id !== s.id);
   const freshId = fresh.id;
@@ -1821,6 +1909,20 @@ export function deletePurchase(d: DB, purchaseId: string, reason = 'Deleted', wh
 
 /** Reference unapplyPayment, line 17722 — hand the money back to the bills it settled. */
 export function unapplyPayment(d: DB, pay: Payment) {
+  /* A payment that names the bills it settled hands back exactly those: the
+     same record the computer keeps, so both take back the same money. */
+  if (pay.allocations && pay.allocations.length) {
+    pay.allocations.forEach((a) => {
+      const bill: any = pay.direction === 'in' ? d.sales.find((x) => x.id === a.docId) : d.purchases.find((x) => x.id === a.docId);
+      if (!bill) return;
+      bill.paid = cents(Math.max(0, (bill.paid || 0) - a.amount));
+      if (bill.status !== 'void') bill.due = cents((bill.due || 0) + a.amount);
+      if (bill.receipts) bill.receipts = bill.receipts.filter((r: { paymentId: string }) => r.paymentId !== pay.id);
+    });
+    pay.allocations = [];
+    pay.unapplied = 0;
+    return;
+  }
   let left = pay.amount;
   const list: { paid: number; due: number; ts: string }[] = pay.direction === 'in'
     ? d.sales.filter((s) => s.partyId === pay.partyId && s.paid > 0 && s.status !== 'void')
@@ -1835,6 +1937,26 @@ export function unapplyPayment(d: DB, pay: Payment) {
 
 /** Reference applyPayment, line 17734 — oldest bill first. */
 export function applyPayment(d: DB, pay: Payment) {
+  /* oldest bill first, and the bills it settles written on the payment, as a new payment does */
+  let left = pay.amount + (pay.taxDeducted || 0);
+  const bills: any[] = pay.direction === 'in'
+    ? d.sales.filter((x) => x.partyId === pay.partyId && x.due > 0.005 && x.status !== 'void')
+    : d.purchases.filter((x) => x.partyId === pay.partyId && x.due > 0.005 && x.status !== 'void');
+  bills.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
+  const out: Array<{ docId: string; no: string; amount: number }> = [];
+  bills.forEach((bill) => {
+    if (left <= 0.005) return;
+    const take = cents(Math.min(left, bill.due));
+    bill.due = cents(bill.due - take); bill.paid = cents((bill.paid || 0) + take); left = cents(left - take);
+    bill.receipts = [...(bill.receipts || []), { paymentId: pay.id, amount: take, ts: pay.ts }];
+    out.push({ docId: bill.id, no: bill.no, amount: take });
+  });
+  pay.allocations = out;
+  pay.unapplied = left > 0.005 ? cents(left) : 0;
+}
+
+/** The older rule, for a payment that named no bills: oldest first, nothing recorded. */
+export function applyPaymentLoose(d: DB, pay: Payment) {
   let left = pay.amount;
   const list: { paid: number; due: number; ts: string }[] = pay.direction === 'in'
     ? d.sales.filter((s) => s.partyId === pay.partyId && s.due > 0 && s.status !== 'void')
@@ -1878,6 +2000,8 @@ export function editPayment(
   const partyName = d.parties.find((p) => p.id === pay.partyId)?.name || '';
   journal(d, when, (pay.direction === 'in' ? 'Receipt from ' : 'Payment to ') + partyName + ' — edited', 'EDIT', post);
   applyPayment(d, pay);
+  // the payment itself goes to the other devices: its new amount and the bills it now settles
+  enqueue(d, 'payment', pay.id);
   audit(d, 'Payment edited', Math.round(oldAmt) + ' to ' + Math.round(pay.amount));
   touch(d, pay, 'Edited', 'payments');
   return pay;
@@ -1909,8 +2033,16 @@ export function deleteCreditNote(d: DB, id: string, when = new Date()): boolean 
     if (s) { s.due += cn.appliedToSale; enqueue(d, 'sale', s.id); }
   }
   d.creditNotes = d.creditNotes.filter((x) => x.id !== id);
+  tombstone(d, 'creditNote', { ...cn, voided: true, deletedAt: iso(when) });
   audit(d, 'Credit note deleted', cn.no + ' — ' + Math.round(cn.total));
   return true;
+}
+
+/** A record deleted here, kept just long enough to tell the other devices it is gone. */
+function tombstone(d: DB, kind: string, rec: { id: string } & Record<string, unknown>) {
+  if (!d.sync?.on) return;
+  d.tombstones = { ...(d.tombstones || {}), [kind + ':' + rec.id]: rec };
+  enqueue(d, kind, rec.id);
 }
 
 /** An expense, money in or a transfer between accounts, undone. */
@@ -1935,6 +2067,8 @@ export function deleteEntry(d: DB, id: string, when = new Date()): boolean {
     if (rest > 0) journal(d, when, memo, 'DEL', [{ acc: e.accountId, dr: rest }, { acc: exp, cr: rest }]);
   }
   d.entries = d.entries.filter((x) => x.id !== id);
+  // the other devices are told: before, only the reversal went and the computer kept the expense
+  tombstone(d, 'entry', { ...e, voided: true, deletedAt: iso(when) });
   audit(d, 'Entry deleted', e.category + ' — ' + Math.round(e.amount));
   return true;
 }
@@ -1965,6 +2099,9 @@ export function deletePayment(d: DB, payId: string, reason = 'Deleted', when = n
   d.payments = d.payments.filter((x) => x.id !== pay.id);
   // kept in the bin, so it can be put back
   d.deletedPayments = [...(d.deletedPayments || []), { ...pay, deletedAt: iso(when), deletedBy: d.session.userId, deleteReason: reason }];
+  // the other devices are told it is gone (it travels as voided, from the bin): before, only its reversal went,
+  // and the computer kept the payment with its bills marked paid
+  enqueue(d, 'payment', pay.id);
   audit(d, 'Payment deleted', Math.round(pay.amount) + (reason ? ' — ' + reason : ''));
   return true;
 }

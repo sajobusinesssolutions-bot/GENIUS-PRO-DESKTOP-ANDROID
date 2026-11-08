@@ -297,3 +297,50 @@ describe('edits and voids reach the computer', () => {
     expect(queued(d, 'purchase')).toEqual([pu.id]);
   });
 });
+
+describe('an edit paid as chosen on the screen', () => {
+  it('raising a cash sale and taking the exact amount leaves nothing owed, and the cash book agrees', () => {
+    const d = makeDb();
+    const s = logic.commitSale(d, { lines: [lineA(1)], partyId: 'pty_1', method: 'cash', discount: 0 });
+    const out = logic.editSale(d, s.id, { lines: [lineA(3)], partyId: 'pty_1', discount: 0, pay: { method: 'cash' } })!;
+    expect(out.total).toBeCloseTo(s.total * 3, 2);
+    expect(out.due).toBe(0);
+    expect(out.paid).toBeCloseTo(out.total, 2);
+    // the drawer holds exactly the new total: the first posting was reversed, the new one posted
+    expect(journalNet(d, 'acc_cash')).toBeCloseTo(out.total, 2);
+    expect(journalNet(d, 'n_ar')).toBeCloseTo(0, 2);
+  });
+
+  it('a credit edit takes what the screen says was received', () => {
+    const d = makeDb();
+    const s = logic.commitSale(d, { lines: [lineA(1)], partyId: 'pty_1', method: 'credit', discount: 0 });
+    const out = logic.editSale(d, s.id, { lines: [lineA(2)], partyId: 'pty_1', discount: 0, pay: { method: 'credit', received: 100, receivedVia: 'cash' } })!;
+    expect(out.paid).toBeCloseTo(100, 2);
+    expect(out.due).toBeCloseTo(out.total - 100, 2);
+    expect(journalNet(d, 'n_ar')).toBeCloseTo(out.due, 2);
+  });
+
+  it('keeps payments taken after the sale', () => {
+    const d = makeDb();
+    const s = logic.commitSale(d, { lines: [lineA(2)], partyId: 'pty_1', method: 'credit', discount: 0 });
+    logic.recordPayment(d, { partyId: 'pty_1', amount: 150, direction: 'in', accountId: 'acc_cash', allocations: [{ saleId: s.id, amount: 150 }] });
+    expect(d.sales.find((x) => x.id === s.id)!.paid).toBeCloseTo(150, 2);
+    const out = logic.editSale(d, s.id, { lines: [lineA(3)], partyId: 'pty_1', discount: 0, pay: { method: 'credit', received: 0 } })!;
+    expect(out.paid).toBeCloseTo(150, 2);
+    expect(out.due).toBeCloseTo(out.total - 150, 2);
+  });
+
+  it('stays with the person and till that made it, whoever edits it', () => {
+    const d = makeDb();
+    d.users.push({ id: 'u2', name: 'Cashier', role: 'owner', pin: '2222', active: true } as any);
+    const s = logic.commitSale(d, { lines: [lineA(1)], partyId: null, method: 'cash', discount: 0, userId: 'u1' });
+    d.session = { ...d.session, userId: 'u2', till: 'Till 9' };
+    const out = logic.editSale(d, s.id, { lines: [lineA(2)], partyId: null, discount: 0, pay: { method: 'cash' } })!;
+    expect(out.userId).toBe('u1');
+    expect(out.till).toBe('Till 1');
+    expect(out.id).toBe(s.id);
+    expect(out.no).toBe(s.no);
+    expect(d.session.till).toBe('Till 9');
+  });
+});
+

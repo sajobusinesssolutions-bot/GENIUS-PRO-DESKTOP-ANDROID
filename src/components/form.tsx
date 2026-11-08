@@ -105,7 +105,7 @@ export function FieldNote({ children }: { children: React.ReactNode }) {
 export function Field({
   label, value, onChangeText, placeholder, numeric, decimal, multiline, readOnly, right, style,
   compact, error, icon, secure, maxLength, autoCapitalize, onFocus, onBlur, suffix, autoFocus, inputRef, big, keyboard,
-  trailing, returnKeyType, onSubmitEditing, autoCorrect, keepFocus, money, filled,
+  trailing, returnKeyType, onSubmitEditing, autoCorrect, keepFocus, money, filled, keepZero,
 }: {
   label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string;
   numeric?: boolean; decimal?: boolean; multiline?: boolean; readOnly?: boolean; right?: React.ReactNode;
@@ -127,6 +127,8 @@ export function Field({
   keepFocus?: boolean;
   /** An amount: shows the currency and groups the digits. On by itself for amount-like labels. */
   money?: boolean;
+  /** A zero here is an answer, not a blank: a stock count of none. */
+  keepZero?: boolean;
   /** A search box: filled grey with no edge, as on Price lists. */
   filled?: boolean;
 }) {
@@ -145,7 +147,7 @@ export function Field({
   // a lone zero in a number box is a blank, not a value: it clears on focus
   // so the first key typed replaces it instead of landing after it
   const raw = String(value ?? '');
-  const blankZero = numeric && focused && raw !== '' && /^0*(\.0*)?$/.test(raw);
+  const blankZero = numeric && !keepZero && focused && raw !== '' && /^0*(\.0*)?$/.test(raw);
   const shown = blankZero ? '' : isMoney ? groupDigits(raw) : value;
   const hasLabel = !!label;
   /* the label sits where the text goes; it floats up, inside the box, once in use */

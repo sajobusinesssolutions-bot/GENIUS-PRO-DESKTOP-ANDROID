@@ -22,8 +22,10 @@ import { useToast } from '../components/Toast';
 
 /** How often to try while changes are waiting, once nothing has gone wrong. */
 const EVERY_MS = 15 * 1000;
-/** However long the backoff has grown, never wait longer than this between tries. */
-const MAX_BACKOFF_MS = 10 * 60 * 1000;
+/** However long the backoff has grown, never wait longer than this between tries.
+    Ten minutes left a phone a whole ten minutes behind after one bad patch of
+    network; two keeps the server spared and the shop current. */
+const MAX_BACKOFF_MS = 2 * 60 * 1000;
 /** How often to ask the cloud for what other phones recorded. */
 const PULL_EVERY_MS = 5 * 1000;
 /** A screen opening asks at most this often, however fast someone taps around. */
@@ -64,6 +66,8 @@ export default function SyncKeeper() {
       if (outcome.ok) {
         failures.current = 0;
         notified.current = false;
+        // a full page went up (a backlog after time offline): send the next one now, not in fifteen seconds
+        if (outcome.sent >= 200) setTimeout(() => { last.current = Date.now(); attempt.current(); }, 300);
         return;
       }
       // another run held the line; that is not trouble, so no backoff — try again shortly
@@ -74,7 +78,13 @@ export default function SyncKeeper() {
       failures.current += 1;
       if (failures.current >= NOTIFY_AFTER_FAILURES && !notified.current) {
         notified.current = true;
-        toastError('Cloud sync is having trouble: ' + outcome.message);
+        /* the phone itself is online (a run only starts when it is), so a
+           request that could not get through means the server could not be
+           reached — not that this phone has no internet */
+        const msg = /^No internet connection/.test(outcome.message)
+          ? 'The Genius server cannot be reached right now. Your work is kept on this phone and goes up as soon as it answers.'
+          : outcome.message;
+        toastError('Cloud sync is having trouble: ' + msg);
       }
     });
   };
@@ -94,6 +104,9 @@ export default function SyncKeeper() {
   // for the whole backoff, up to ten minutes, showing "7 changes waiting").
   // Saves close together are sent as one run. If the network is truly gone the
   // run fails and the change stays queued, using the offline allowance.
+  // the connection came back: whatever failed while it was gone is no reason to wait
+  useEffect(() => { if (online) failures.current = 0; }, [online]);
+
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!ready || !on || !online) return;
@@ -109,7 +122,10 @@ export default function SyncKeeper() {
   // the quick pull: on request (a screen opening), and every few seconds
   const pullNow = useRef<(force?: boolean) => Promise<unknown>>(() => Promise.resolve());
   pullNow.current = (force) => {
-    if (!ready || !on || !online || failures.current > 0) return Promise.resolve();
+    // Pulls go on even after a failed run: they used to stop until a full run
+    // succeeded, and with the backoff that left the phone up to ten minutes
+    // behind the other tills after one blip. A failed pull is itself silent.
+    if (!ready || !on || !online) return Promise.resolve();
     if (!force && Date.now() - lastPull.current < PULL_GAP_MS) return Promise.resolve();
     lastPull.current = Date.now();
     return pull().catch(() => 0);
@@ -123,7 +139,15 @@ export default function SyncKeeper() {
 
   useEffect(() => {
     const t = setInterval(() => tick.current(), EVERY_MS);
-    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') tick.current(); });
+    // back in front: the network often failed while the app slept, which is no
+    // reason to keep the backoff — start afresh and look at once
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st !== 'active') return;
+      failures.current = 0;
+      last.current = 0;
+      tick.current();
+      void pullNow.current(true);
+    });
     return () => { clearInterval(t); sub.remove(); };
   }, []);
 

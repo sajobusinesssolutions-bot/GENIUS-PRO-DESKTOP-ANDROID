@@ -347,11 +347,27 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     let taken: { no: string; drop: () => void } | null = null;
     try {
       if (editingSale) {
+        /* priced and paid exactly as a new sale would be: the taxed lines, the
+           rounding, and the payment chosen here — "exact" included — so an
+           edit that raises the total and is paid in full owes nothing */
+        const splitE = (methods && methods.length > 1) ? methods : undefined;
+        const stepE = Number(db?.settings.roundTo) || 0;
+        const roundedE = stepE > 0 && method !== 'credit' && !splitE ? Math.round(grandTotal / stepE) * stepE : grandTotal;
         const out = editSaleTransaction(editingSale.id, {
-          lines: cart,
+          lines: taxedLines,
           partyId,
-          discount,
+          discount: discount + Math.max(0, grandTotal - roundedE),
           note: description,
+          pay: {
+            method, methods: splitE, wht: whtAmt || undefined, taxOnTop: !inclusive,
+            additionalCharges: additionalCharges + Math.max(0, roundedE - grandTotal),
+            description, terms, showPayment,
+            received: method === 'credit' ? received : undefined,
+            receivedVia: method === 'credit' ? receivedVia : undefined,
+            momoNetwork: (method === 'momo' || (method === 'credit' && receivedVia === 'momo')) ? momoNetwork : undefined,
+            momoRef: (method === 'momo' || (method === 'credit' && receivedVia === 'momo')) ? momoRef : undefined,
+            priceListId: priceListId || undefined,
+          },
         }, 'Edited on the sale');
         if (!out) throw new Error('That sale can no longer be changed.');
         success(out.no + ' updated by ' + userName);

@@ -20,6 +20,7 @@ import { saleSeries, saleFloor, formatSaleNo } from './logic';
 import { plural } from './helpers';
 import { needsNewerApp } from './appVersion';
 import { inlineImage } from './docPrint';
+import { markServerOk } from './serverContact';
 
 /* The logo and signature live in files on this phone; the computer and other
    phones need the pictures themselves. Made once per picture, under 400 KB
@@ -157,6 +158,7 @@ export function useSyncRun() {
         }
         more = pulled.value.more;
       }
+      markServerOk();
 
       // the copy goes after the push, from the books as they are now — when asked
       // for, or when the last one is old; the changes themselves already went up
@@ -177,16 +179,22 @@ export function useSyncRun() {
       if (!snap.ok && String(snap.error.failure) === 'staleSnapshot') {
         snap = { ok: true as const, value: { bytes: 0, version: keptVersion } };
       }
+      /* The copy of the whole book is a convenience for a phone opening the
+         business afresh; this phone's changes already went up and everyone
+         else's came down. A copy that did not go (a big book on a weak line)
+         used to fail the whole run — which stopped the quick pulls and showed
+         "no internet connection" — so it is now noted and tried again later. */
+      let snapNote = '';
       if (!snap.ok) {
-        return { ok: false, sent: r.value.sent, seq: r.value.seq, message: snap.error.message };
-      }
-      if (snapDue) lastSnapshotAt = Date.now();
+        snapNote = ' · the copy of the books did not go up (' + snap.error.message + ') — it is tried again later';
+        lastSnapshotAt = Date.now();
+        snap = { ok: true as const, value: { bytes: 0, version: keptVersion } };
+      } else if (snapDue) lastSnapshotAt = Date.now();
 
       const now = new Date().toISOString();
       const s = (dbRef.current || d).sync;
       if (dbRef.current) dbRef.current.sync = { ...dbRef.current.sync, snapshotVersion: snap.value.version };
-      const note = (r.value.sent ? plural(r.value.sent, 'change') + ' sent up' : 'Nothing was waiting')
-        + (snap.ok ? '' : ' · the copy of the books did not go up');
+      const note = (r.value.sent ? plural(r.value.sent, 'change') + ' sent up' : 'Nothing was waiting') + snapNote;
       // The background run every 15 seconds usually finds nothing to do. Writing
       // a log line and re-saving the whole book each time made the entire app
       // re-render and stall several times a minute; an idle run now only notes
@@ -199,7 +207,7 @@ export function useSyncRun() {
         return { ok: true, sent: 0, seq: r.value.seq, message: 'Everything is up to date' };
       }
       setSync({
-        ...(snapDue ? { snapshotDue: false, snapshotAt: now, snapshotCursor: Math.max(r.value.seq, cursor) } : {}),
+        ...(snapDue && !snapNote ? { snapshotDue: false, snapshotAt: now, snapshotCursor: Math.max(r.value.seq, cursor) } : {}),
         lastPush: now,
         lastAt: now,
         cursor: Math.max(r.value.seq, cursor),
@@ -283,6 +291,7 @@ export function useSyncRun() {
         }
         more = pulled.value.more;
       }
+      markServerOk();
       if (cursor !== (d.sync.cursor || 0)) setSync({ cursor });
       return down;
     } catch {

@@ -22,7 +22,8 @@ jest.mock('../AppDataContext', () => ({
 jest.mock('../AuthContext', () => ({ useAuth: () => ({ account: { id: 'a1', localOnly: false } }) }));
 
 const mockRun = jest.fn();
-jest.mock('../useSyncRun', () => ({ useSyncRun: () => ({ run: mockRun, pull: jest.fn(() => Promise.resolve(0)) }) }));
+const mockPull = jest.fn(() => Promise.resolve(0));
+jest.mock('../useSyncRun', () => ({ useSyncRun: () => ({ run: mockRun, pull: mockPull }) }));
 
 import { ToastProvider } from '../../components/Toast';
 import SyncKeeper from '../SyncKeeper';
@@ -115,5 +116,26 @@ describe('SyncKeeper backing off after a failure', () => {
     mockRun.mockResolvedValue({ ok: false, sent: 0, message: 'The server did not respond.' });
     await advance(15 * 1000); // back to the normal cadence, not still-doubled
     expect(mockRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps pulling what other tills did while a run is failing', async () => {
+    mockRun.mockResolvedValue({ ok: false, sent: 0, message: 'The server did not respond.' });
+    mockPull.mockClear();
+    setup();
+    await flush();
+    await advance(5 * 1000);
+    await advance(5 * 1000);
+    // the pulls used to stop after the first failure until a full run succeeded
+    expect(mockPull.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('says the server cannot be reached, not that the phone has no internet', async () => {
+    mockRun.mockResolvedValue({ ok: false, sent: 0, message: 'No internet connection. Check the phone is online and try again.' });
+    setup();
+    await flush();
+    await advance(30 * 1000);
+    await advance(60 * 1000);
+    expect(screen.getByText(/server cannot be reached/)).toBeTruthy();
+    expect(screen.queryByText(/No internet connection/)).toBeNull();
   });
 });

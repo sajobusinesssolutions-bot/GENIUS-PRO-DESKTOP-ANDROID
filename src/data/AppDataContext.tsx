@@ -13,6 +13,7 @@ import {
 import { setCostHidden, applyEditionRoles } from './perms';
 import { ensureRoles, setRoleRegistry, canWith, builtinRoles, allPermKeys, permCount } from './perms';
 import { seed, emptyBook } from './seed';
+import { changeNeedsServer } from './serverContact';
 import { loadDB, saveDB, clearDB, scheduleSave, flushSave, migrate, trackedChange, ensureLoaded as ensureOnDisk } from './storage';
 import { defaultSync } from './defaults';
 import { uid, iso } from './uid';
@@ -82,6 +83,10 @@ export interface Ctx {
   }) => Entry;
   updateProduct: (id: string, patch: Partial<Product>) => void;
   adjustStock: (productId: string, warehouse: string, count: number, note?: string, batchNo?: string, userId?: string) => void;
+  /** Delete a stock adjustment: its stock and money are taken back; the pair waits in Deleted transactions. */
+  reverseAdjustment: (moveId: string, reason?: string, userId?: string) => void;
+  /** Change an adjustment's quantity (taken back and posted again, in one step). */
+  changeAdjustment: (moveId: string, qty: number, reason?: string, userId?: string) => void;
   transferStock: (productId: string, from: string, to: string, qty: number, note?: string) => void;
   /** Transfers to/from another business (logic.ts branchSendOut …): this business's stock and books. */
   branchSendOut: (lines: logic.BranchSendLine[], ref: string, toName: string) => { lines: logic.BranchWireLine[]; value: number };
@@ -204,7 +209,7 @@ export interface Ctx {
   canEditSale: (id: string) => { ok: boolean; why: string };
   canEditPurchase: (id: string) => { ok: boolean; why: string };
   canEditPayment: (id: string) => { ok: boolean; why: string };
-  editSale: (saleId: string, o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string }, reason?: string) => Sale | null;
+  editSale: (saleId: string, o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string; pay?: logic.EditPay }, reason?: string) => Sale | null;
   deleteSale: (saleId: string, reason?: string) => boolean;
   editPurchase: (purchaseId: string, o: { partyId: string; lines: PurchaseLine[]; method: PayMethod; ref?: string; note?: string }, reason?: string) => Purchase | null;
   deletePurchase: (purchaseId: string, reason?: string) => boolean;
@@ -494,6 +499,19 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (!keys.some((k) => canWith(d.roles, d.session.role, k))) throw new Refusal('Not allowed for your role', refusalFor(keys[0]));
   }, []);
 
+  /**
+   * An edit or a delete of something already saved needs the server, when the
+   * business syncs: it must reach every other till at once. Made offline it
+   * waited on this phone while another till could edit the same sale — and
+   * then one of the two changes was lost. So it is refused, and the person
+   * tries again once the connection is back. The quick pull reaches the
+   * server every few seconds, so on a working connection this always passes.
+   */
+  const requireReachable = useCallback((what: string) => {
+    const r = changeNeedsServer(dbRef.current, what);
+    if (r) throw new Refusal(r.title, r.why);
+  }, []);
+
   /** Nothing in a closed day changes. */
   const requireOpenDay = useCallback((ts: string | undefined) => {
     const d = dbRef.current;
@@ -746,6 +764,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         const i = d.products.findIndex((p) => p.id === id);
         if (i >= 0) { d.products[i] = { ...d.products[i], ...patch }; logic.enqueue(d, 'product', id); }
       });
+    },
+    reverseAdjustment: (moveId, reason, userId) => {
+      requireRecordable(); requirePerm('inventory.stock_adjustment'); requireReachable('a stock adjustment');
+      commit((d) => { logic.reverseAdjustment(d, moveId, reason || 'Deleted', new Date(), userId); });
+    },
+    changeAdjustment: (moveId, qty, reason, userId) => {
+      requireRecordable(); requirePerm('inventory.stock_adjustment'); requireReachable('a stock adjustment');
+      commit((d) => { logic.changeAdjustment(d, moveId, qty, reason, new Date(), userId); });
     },
     adjustStock: (productId, warehouse, count, note, batchNo, userId) => {
       requireRecordable(); requirePerm('inventory.stock_adjustment');
@@ -1311,20 +1337,20 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     canEditPurchase: (id) => { const d = dbRef.current; return d ? logic.canEditPurchase(d, id) : { ok: false, why: '' }; },
     canEditPayment: (id) => { const d = dbRef.current; return d ? logic.canEditPayment(d, id) : { ok: false, why: '' }; },
     editSale: (saleId, o, reason) => {
-      requireRecordable(); requirePerm('sales.edit'); requireOpenDay(tsOf('sales', saleId));
+      requireRecordable(); requirePerm('sales.edit'); requireOpenDay(tsOf('sales', saleId)); requireReachable('a sale');
       let out: Sale | null = null;
       commit((d) => { out = logic.editSale(d, saleId, o, reason); });
       return out;
     },
     deleteSale: (saleId, reason) => {
-      requireRecordable(); requirePerm('sales.delete'); requireOpenDay(tsOf('sales', saleId));
+      requireRecordable(); requirePerm('sales.delete'); requireOpenDay(tsOf('sales', saleId)); requireReachable('a sale');
       if (dbRef.current?.session.online === false) requirePerm('sales.delete_offline');
       let ok = false;
       commit((d) => { ok = logic.deleteSale(d, saleId, reason); });
       return ok;
     },
     editPurchase: (purchaseId, o, reason) => {
-      requireRecordable(); requirePerm('purchases.edit'); requireOpenDay(tsOf('purchases', purchaseId));
+      requireRecordable(); requirePerm('purchases.edit'); requireOpenDay(tsOf('purchases', purchaseId)); requireReachable('a purchase');
       let out: Purchase | null = null;
       commit((d) => { out = logic.editPurchase(d, purchaseId, o, reason); });
       return out;
@@ -1345,7 +1371,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
     },
     restoreDeleted: (kind, id) => {
-      requireRecordable();
+      requireRecordable(); requireReachable('a deleted record');
       commit((d) => {
         if (kind === 'sale') logic.restoreSale(d, id);
         else if (kind === 'purchase') logic.restorePurchase(d, id);
@@ -1353,17 +1379,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
     },
     purgeDeleted: (kind, id) => commit((d) => logic.purgeDeleted(d, kind, id)),
-    deletePurchase: (purchaseId, reason) => { requireRecordable(); requirePerm('purchases.delete'); requireOpenDay(tsOf('purchases', purchaseId)); let ok = false; commit((d) => { ok = logic.deletePurchase(d, purchaseId, reason); }); return ok; },
+    deletePurchase: (purchaseId, reason) => { requireRecordable(); requirePerm('purchases.delete'); requireOpenDay(tsOf('purchases', purchaseId)); requireReachable('a purchase'); let ok = false; commit((d) => { ok = logic.deletePurchase(d, purchaseId, reason); }); return ok; },
     editPayment: (payId, patch) => {
-      requireRecordable(); requireOpenDay(tsOf('payments', payId));
+      requireRecordable(); requireOpenDay(tsOf('payments', payId)); requireReachable('a payment');
       let out: Payment | null = null;
       commit((d) => { out = logic.editPayment(d, payId, patch); });
       return out;
     },
-    deleteCreditNote: (id) => { requireRecordable(); requirePerm('sales.refund'); let ok = false; commit((d) => { ok = logic.deleteCreditNote(d, id); }); return ok; },
-    deleteEntry: (id) => { requireRecordable(); requirePerm('finance.delete'); let ok = false; commit((d) => { ok = logic.deleteEntry(d, id); }); return ok; },
-    deleteJournal: (id) => { requireRecordable(); requirePerm('finance.delete'); let ok = false; commit((d) => { ok = logic.deleteJournal(d, id); }); return ok; },
-    deletePayment: (payId, reason) => { requireRecordable(); requirePerm('finance.delete'); requireOpenDay(tsOf('payments', payId)); let ok = false; commit((d) => { ok = logic.deletePayment(d, payId, reason); }); return ok; },
+    deleteCreditNote: (id) => { requireRecordable(); requirePerm('sales.refund'); requireReachable('a credit note'); let ok = false; commit((d) => { ok = logic.deleteCreditNote(d, id); }); return ok; },
+    deleteEntry: (id) => { requireRecordable(); requirePerm('finance.delete'); requireReachable('an entry'); let ok = false; commit((d) => { ok = logic.deleteEntry(d, id); }); return ok; },
+    deleteJournal: (id) => { requireRecordable(); requirePerm('finance.delete'); requireReachable('a journal'); let ok = false; commit((d) => { ok = logic.deleteJournal(d, id); }); return ok; },
+    deletePayment: (payId, reason) => { requireRecordable(); requirePerm('finance.delete'); requireOpenDay(tsOf('payments', payId)); requireReachable('a payment'); let ok = false; commit((d) => { ok = logic.deletePayment(d, payId, reason); }); return ok; },
 
     // --- Audit log ---
     openBranch: (plan) => {
@@ -1710,8 +1736,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             }
           }
           else if (op.kind === 'payment.record') {
-            const fresh = put(d.payments, p);
-            if (!fresh) return;
+            /* a payment this phone already has, changed elsewhere (edited, or put
+               back): what the old copy settled is handed back first, then the
+               new copy's bills are settled — so a bill is never paid twice */
+            const old = d.payments.find((x) => x.id === p?.id);
+            if (old) {
+              (old.allocations || []).forEach((a: any) => {
+                const doc: any = d.sales.find((x) => x.id === a.docId) || d.purchases.find((x) => x.id === a.docId);
+                if (doc) { doc.paid = Math.max(0, (doc.paid || 0) - a.amount); if (doc.status !== 'void') doc.due = (doc.due || 0) + a.amount; }
+              });
+            }
+            put(d.payments, p);
             (p?.allocations || []).forEach((a: any) => {
               const sale = d.sales.find((x) => x.id === a.docId);
               if (sale) { sale.due = Math.max(0, sale.due - a.amount); sale.paid += a.amount; return; }

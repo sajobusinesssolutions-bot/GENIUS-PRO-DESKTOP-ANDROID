@@ -383,6 +383,8 @@ export type DeletedPayment = Payment & { deletedAt: string; deletedBy?: string; 
 
 export interface JournalEntry {
   id: string; ts: string; memo: string; ref: string; lines: JournalLine[]; balanced: boolean;
+  /** The stock movement this entry is the money of (a stock adjustment, or taking one back). */
+  moveId?: string;
   /** Set when the entry was deleted: a reversing entry was posted, and it leaves the lists. */
   reversedAt?: string;
   /**
@@ -400,6 +402,10 @@ export interface Movement {
   batchNo?: string;
   /** Who caused the movement, so stock changes can be attributed. */
   userId?: string;
+  /** This movement takes back another (an adjustment deleted): the id of the one it reverses. */
+  reverses?: string;
+  /** An adjustment's ledger entry, so taking it back reverses exactly what it posted. */
+  journalId?: string;
 }
 
 export interface Shift {
@@ -875,6 +881,8 @@ export interface DB {
   payments: Payment[];
   /** Payments that were deleted, kept so they can be restored. */
   deletedPayments?: DeletedPayment[];
+  /** Records deleted here (an expense, a credit note), kept only so the deletion can reach the other devices: kind:id → the record, voided. */
+  tombstones?: Record<string, unknown>;
   bankStatementLines?: BankStatementLine[];
   bankReconciliations?: BankReconciliation[];
   entries: Entry[];

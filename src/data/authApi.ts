@@ -18,6 +18,7 @@
  * on-this-phone-only mode, which is what a development build without a server
  * should do rather than failing in a way that looks like a bug.
  */
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { LicenceClaims } from './syncProtocol';
 
 /**
@@ -116,9 +117,14 @@ async function request<T>(path: string, body: unknown, token?: string, method: '
     });
 
     const text = await res.text();
-    const json = text ? JSON.parse(text) : {};
+    // not JSON: the server's trouble (a gateway page while it restarts), never "no internet"
+    let json: any = {};
+    try { json = text ? JSON.parse(text) : {}; } catch {
+      return fail<T>('server', res.ok ? undefined : 'The server is busy or restarting (' + res.status + '). Try again in a moment.');
+    }
 
     if (res.ok) return { ok: true, value: json as T };
+    if (res.status === 429) return fail<T>('rateLimited');
 
     // the server names its own failure; anything unrecognised is 'server'
     const code = (json && json.error) as AuthFailure | undefined;
@@ -257,8 +263,30 @@ export interface LinkedDevice { id: string; name: string; kind: string; platform
  * `tooManyDevices` — the list is in `error.detail.devices` — when every seat
  * is taken.
  */
-export function registerDevice(access: string, o: { name: string; kind: string; platform: string }) {
-  return request<{ deviceId: string; seats?: number }>('/v1/devices', o, access);
+export async function registerDevice(access: string, o: { name: string; kind: string; platform: string }) {
+  return request<{ deviceId: string; seats?: number }>('/v1/devices', { ...o, installId: (await installId()) || undefined }, access);
+}
+
+/**
+ * This install of the app, kept across sign-ins: the server knows the same
+ * phone signing in again by it, instead of counting it as another device (one
+ * phone used to hold three seats, and a computer was then refused).
+ */
+const INSTALL_KEY = 'genius.installId';
+let installCache = '';
+export async function installId(): Promise<string> {
+  if (installCache) return installCache;
+  try {
+    let v = await AsyncStorage.getItem(INSTALL_KEY);
+    if (!v) {
+      v = 'ins_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8);
+      await AsyncStorage.setItem(INSTALL_KEY, v);
+    }
+    installCache = v;
+    return v;
+  } catch {
+    return '';
+  }
 }
 
 /** Whether this device is still linked. A removed one is refused with `deviceRemoved`. */

@@ -191,6 +191,13 @@ export default async function syncRoutes(app) {
    * more (it used to drop the oldest device silently). The answer is
    * `tooManyDevices` with the list, and the phone asks which one to remove.
    */
+  let installColumn = false;
+  const ensureInstallColumn = async (db) => {
+    if (installColumn) return;
+    await db.query('alter table devices add column if not exists install_id text');
+    installColumn = true;
+  };
+
   app.post('/v1/devices', async (req, reply) => {
     const me = await whoami(req, reply);
     if (!me) return;
@@ -216,6 +223,24 @@ export default async function syncRoutes(app) {
         await db.query('update devices set last_seen = now() where id = $1', [mine.rows[0].id]);
         return { deviceId: mine.rows[0].id };
       }
+      /* The same device signing in again (after an update, a reinstall, a
+         sign-out) is a new session but not a new device. Each sign-in used to
+         add a row, so one phone held three seats and a computer on the same
+         account was refused for "all devices in use" — and synced nothing.
+         Matched by the install id the app keeps, or, from an app too old to
+         send one, by the same name and kind. */
+      await ensureInstallColumn(db);
+      const installId = String(req.body?.installId || '').slice(0, 80) || null;
+      const again = installId
+        ? await db.query('select id from devices where account_id = $1 and install_id = $2 and revoked_at is null order by last_seen desc nulls last limit 1', [me.id, installId])
+        : await db.query(
+          `select id from devices where account_id = $1 and revoked_at is null and name = $2 and kind = $3 and coalesce(platform,'') = coalesce($4,'')
+            order by last_seen desc nulls last limit 1`,
+          [me.id, req.body?.name || 'a device', req.body?.kind || 'phone', req.body?.platform || null]);
+      if (again.rows[0]) {
+        await db.query('update devices set session_id = $2, last_seen = now(), install_id = coalesce($3, install_id) where id = $1', [again.rows[0].id, me.sid, installId]);
+        return { deviceId: again.rows[0].id };
+      }
       const active = await db.query(
         `select id, name, kind, platform, last_seen, created_at from devices
           where account_id = $1 and revoked_at is null order by created_at`,
@@ -223,9 +248,9 @@ export default async function syncRoutes(app) {
       );
       if (active.rows.length >= seats) return { full: active.rows };
       const inserted = await db.query(
-        `insert into devices (account_id, name, kind, platform, refresh_hash, last_seen, session_id)
-         values ($1, $2, $3, $4, '', now(), $5) returning id`,
-        [me.id, req.body?.name || 'a device', req.body?.kind || 'phone', req.body?.platform || null, me.sid],
+        `insert into devices (account_id, name, kind, platform, refresh_hash, last_seen, session_id, install_id)
+         values ($1, $2, $3, $4, '', now(), $5, $6) returning id`,
+        [me.id, req.body?.name || 'a device', req.body?.kind || 'phone', req.body?.platform || null, me.sid, installId],
       );
       return { deviceId: inserted.rows[0].id };
     });

@@ -13,6 +13,8 @@ import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useOlderRows, withOlder } from '../data/useOnDisk';
 import type { Movement } from '../data/types';
+import { itemHistory, type HistoryRow } from '../data/itemHistory';
+import * as logic from '../data/logic';
 import { useToast } from '../components/Toast';
 import {
   Panel, Badge, DetailRow, StatGrid, SectionLabel, InfoBanner, ActionGrid, StickyBar,
@@ -40,7 +42,7 @@ function moveTone(type: string, qty: number) {
 
 export default function ItemDetailScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, stockOf, adjustStock, can } = useAppData();
+  const { db, money, stockOf, adjustStock, reverseAdjustment, changeAdjustment, can } = useAppData();
   const { success, error } = useToast();
   const who = useWho('Who counted this?');
 
@@ -48,6 +50,8 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   const p = db?.products.find((x) => x.id === id);
 
   const [filter, setFilter] = useState<'all' | 'in' | 'out'>('all');
+  /** An adjustment being changed: its movement, and the quantity typed. */
+  const [changing, setChanging] = useState<{ move: Movement; qty: string } | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [counted, setCounted] = useState('');
@@ -70,45 +74,60 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
 
   /* with only recent trade in memory, the item's older movements come from disk */
   const older = useOlderRows<Movement>(db, 'movements', id);
-  /* A deleted sale or bill is reversed, not erased: its stock move and the move
-     undoing it both stay in the books. Neither is a transaction of this item any
-     more, so both leave its list (they are in More → Deleted transactions). */
-  const allMoves = useMemo(() => {
-    const gone = new Set<string>();
-    (db?.sales || []).forEach((x) => { if (x.deletedAt) { gone.add(x.no); gone.add(x.id); } });
-    (db?.purchases || []).forEach((x) => { if ((x as any).deletedAt) { gone.add(x.no); gone.add(x.id); } });
-    const all = withOlder(db?.movements || [], older);
-    return gone.size ? all.filter((m) => !(m.ref && gone.has(m.ref))) : all;
-  }, [db, older]);
-  /* a movement opens the document it came from: the sale, the purchase, the stock take, the transfer */
-  const openMove = (m: Movement) => {
-    const sale = db?.sales.find((x) => x.no === m.ref || x.id === m.ref);
-    const purchase = db?.purchases.find((x) => x.no === m.ref || x.id === m.ref);
-    if ((m.type === 'sale' || m.type === 'void' || m.type === 'return') && sale) return navigation.navigate('SaleDetail', { saleId: sale.id });
-    if (m.type === 'purchase' && purchase) return navigation.navigate('PurchaseDetail', { purchaseId: purchase.id });
+  /* An adjustment tapped: change its quantity, or delete it (taken back —
+     its stock and money return, and the pair waits in Deleted transactions). */
+  const openAdjustment = (m: Movement) => {
+    const when = new Date(m.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+    const by = db?.users.find((u) => u.id === m.userId)?.name;
+    const info = (m.qty > 0 ? '+' : '−') + Math.abs(m.qty) + ' ' + (p?.unit || '') + ' · ' + when + (by ? ' · by ' + by : '') + (m.ref ? '\n' + m.ref : '');
+    if (!db || !logic.adjustmentOpen(db, m.id) || !can('inventory.stock_adjustment')) { Alert.alert('Stock adjustment', info); return; }
+    Alert.alert('Stock adjustment', info, [
+      { text: 'Close', style: 'cancel' },
+      { text: 'Change', onPress: () => setChanging({ move: m, qty: String(m.qty) }) },
+      { text: 'Delete', style: 'destructive', onPress: () => Alert.alert('Delete this adjustment?', 'Its stock and its money are taken back. It moves to Deleted transactions.', [
+        { text: 'Keep it', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => who.ask((server) => {
+          try { reverseAdjustment(m.id, 'Deleted by ' + server.userName, server.userId); success('Adjustment deleted'); } catch (e: any) { error(e?.why || e?.message || 'Not deleted'); }
+        }) },
+      ]) },
+    ]);
+  };
+  const saveChange = () => {
+    if (!changing) return;
+    const n = Number(String(changing.qty).replace(/[^0-9.-]/g, ''));
+    if (!Number.isFinite(n) || n === 0) { error('Enter how much the adjustment should be — a minus for stock taken off.'); return; }
+    const m = changing.move;
+    setChanging(null);
+    who.ask((server) => {
+      try { changeAdjustment(m.id, n, (m.ref || 'Stock adjustment') + ' — changed by ' + server.userName, server.userId); success('Adjustment changed to ' + (n > 0 ? '+' : '') + n); } catch (e: any) { error(e?.why || e?.message || 'Not changed'); }
+    });
+  };
+
+  /* One row per document, as the computer shows it (data/itemHistory): an
+     edited sale is one row with its final quantity, not sale + void + sale;
+     a voided or deleted sale or bill, and an adjustment taken back, are not
+     transactions of the item any more — they are in Deleted transactions. */
+  const history = useMemo(() => (db ? itemHistory(db, id, withOlder(db.movements || [], older)) : []), [db, older, id]);
+  /* a row opens the document it came from: the sale, the purchase, the stock take, the transfer */
+  const openMove = (m: HistoryRow) => {
+    if (m.doc?.kind === 'sale') return navigation.navigate('SaleDetail', { saleId: m.doc.id });
+    if (m.doc?.kind === 'purchase') return navigation.navigate('PurchaseDetail', { purchaseId: m.doc.id });
     if (m.type === 'return' && (db?.creditNotes || []).some((c) => c.no === m.ref)) return navigation.navigate('CreditNotes');
     if (m.type === 'stocktake') { const st = (db?.stockTakes || []).find((x) => x.id === m.ref || (x as any).no === m.ref); if (st) return navigation.navigate('StockTakeDetail', { stockTakeId: st.id }); }
     if (m.type === 'transfer') return navigation.navigate(String(m.ref || '').startsWith('trf-') || String(m.ref || '').startsWith('ph-') ? 'BranchTransfers' : 'StockTransfer');
-    if (sale) return navigation.navigate('SaleDetail', { saleId: sale.id });
-    if (purchase) return navigation.navigate('PurchaseDetail', { purchaseId: purchase.id });
-    Alert.alert(m.type.charAt(0).toUpperCase() + m.type.slice(1), (m.ref ? m.ref + ' · ' : '') + (m.qty > 0 ? '+' : '−') + Math.abs(m.qty) + ' on ' + new Date(m.ts).toLocaleString('en-GB')
-      + (m.type === 'adjust' ? '\nA stock adjustment — it has no document of its own.' : ''));
+    if (m.type === 'adjust' && m.move) return openAdjustment(m.move);
+    Alert.alert(m.type.charAt(0).toUpperCase() + m.type.slice(1), (m.ref ? m.ref + ' · ' : '') + (m.qty > 0 ? '+' : '−') + Math.abs(m.qty) + ' on ' + new Date(m.ts).toLocaleString('en-GB'));
   };
   const moves = useMemo(() => {
-    const rows = allMoves.filter((m) => m.productId === id);
-    rows.sort((a, b) => tsMs(b.ts) - tsMs(a.ts));
-    if (filter === 'in') return rows.filter((m) => m.qty > 0);
-    if (filter === 'out') return rows.filter((m) => m.qty < 0);
-    return rows;
-  }, [allMoves, id, filter]);
+    if (filter === 'in') return history.filter((m) => m.qty > 0);
+    if (filter === 'out') return history.filter((m) => m.qty < 0);
+    return history;
+  }, [history, filter]);
 
-  const totals = useMemo(() => {
-    const rows = allMoves.filter((m) => m.productId === id);
-    return {
-      in: rows.filter((m) => m.qty > 0).reduce((s, m) => s + m.qty, 0),
-      out: rows.filter((m) => m.qty < 0).reduce((s, m) => s - m.qty, 0),
-    };
-  }, [allMoves, id]);
+  const totals = useMemo(() => ({
+    in: history.filter((m) => m.qty > 0).reduce((s, m) => s + m.qty, 0),
+    out: history.filter((m) => m.qty < 0).reduce((s, m) => s - m.qty, 0),
+  }), [history]);
 
   if (!db || !p) return null;
 
@@ -182,8 +201,8 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   );
   const biggest = Math.max(1, ...batches.map((b) => b.qty));
   const shown = showAll ? moves : moves.slice(0, 5);
-  const allCount = allMoves.filter((m) => m.productId === id).length;
-  const inCount = allMoves.filter((m) => m.productId === id && m.qty > 0).length;
+  const allCount = history.length;
+  const inCount = history.filter((m) => m.qty > 0).length;
   const outCount = allCount - inCount;
 
   return (
@@ -286,7 +305,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
                   </Text>
                   <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>
                     {new Date(m.ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                    {m.batchNo ? ' · batch ' + m.batchNo : ''}
+                    {m.move?.batchNo ? ' · batch ' + m.move.batchNo : ''}
                   </Text>
                 </View>
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: fg }}>{m.qty > 0 ? '+' : '−'}{Math.abs(m.qty)}</Text>
@@ -326,6 +345,19 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
       </StickyBar>
 
       {who.sheet}
+
+      <Sheet
+        visible={!!changing}
+        title="Change the adjustment"
+        subtitle={p.name}
+        icon="swap"
+        iconTone="warn"
+        onClose={() => setChanging(null)}
+        footer={<Button label="Save" variant="pri" onPress={saveChange} />}
+      >
+        <InfoBanner tone="accent" text="How much this adjustment should have been: more than zero for stock found, less than zero (a minus) for stock taken off. The old one is taken back and this one posted in its place." />
+        <Field icon="box" label={'Adjustment (' + p.unit + ')'} value={changing?.qty || ''} onChangeText={(v) => setChanging((c) => (c ? { ...c, qty: v } : c))} numeric decimal keepZero />
+      </Sheet>
 
       <Sheet
         visible={adjustOpen}
@@ -403,6 +435,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
           onChangeText={setCounted}
           numeric
           decimal
+          keepZero
         />
         <Field icon="doc" label="Reason" value={note} onChangeText={setNote} placeholder="Breakage, recount, theft…" />
 

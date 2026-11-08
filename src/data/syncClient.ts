@@ -16,7 +16,7 @@
  */
 import type { DB } from './types';
 import { Op, buildOp, OpKind, WIRE_SCHEMA } from './syncProtocol';
-import { SERVER_URL, serverConfigured, Result, authError, AuthError } from './authApi';
+import { SERVER_URL, serverConfigured, Result, authError, AuthError, installId } from './authApi';
 import { APP_VERSION } from './appVersion';
 import { activeBranchId } from './branch';
 import * as Crypto from 'expo-crypto';
@@ -88,8 +88,16 @@ async function call<T>(path: string, access: string, body?: unknown, method = 'P
       if (totalMs > stallMs) clearTimeout(timer);
       text = await res.text();
     }
-    const json = text ? JSON.parse(text) : {};
+    /* A reply that is not JSON (a proxy's error page while the server
+       restarts, an overloaded gateway) is the server's trouble, not the
+       phone's connection: it used to fall into the catch below and read
+       "No internet connection" while the internet worked perfectly. */
+    let json: any = {};
+    try { json = text ? JSON.parse(text) : {}; } catch {
+      return { ok: false, error: authError('server', res.ok ? 'The server sent a reply this app could not read. Try again in a moment.' : 'The server is busy or restarting (' + res.status + '). Try again in a moment.') };
+    }
     if (res.ok) return { ok: true, value: json as T };
+    if (res.status === 429) return { ok: false, error: authError('rateLimited', 'The server asked this phone to slow down. It will try again shortly.') };
     return { ok: false, error: authError(json?.error || 'server', json?.message) };
   } catch (e: any) {
     return { ok: false, error: authError(e?.name === 'AbortError' ? 'timeout' : 'offline') };
@@ -144,6 +152,8 @@ export async function ensureWiring(d: DB, access: string, linkedDeviceId?: strin
     name: d.session.till || 'This phone',
     kind: 'phone',
     platform: 'app',
+    // never a reason to fail the link: without it the server matches by name
+    installId: (typeof installId === 'function' ? await installId().catch(() => '') : '') || undefined,
   });
   if (!dev.ok) return dev;
 
@@ -315,13 +325,19 @@ function recordFor(d: DB, kind: string, ref: string): unknown {
   switch (kind) {
     case 'sale': return d.sales.find((x) => x.id === ref);
     case 'purchase': return d.purchases.find((x) => x.id === ref);
-    case 'payment': return d.payments.find((x) => x.id === ref);
+    case 'payment': {
+      const live = d.payments.find((x) => x.id === ref);
+      if (live) return live;
+      // deleted: it is in the bin, and goes as voided so every device takes it out
+      const gone = (d.deletedPayments || []).find((x) => x.id === ref);
+      return gone ? { ...gone, voided: true } : undefined;
+    }
     case 'shift.open':
     case 'shift.close': return d.shifts.find((x) => x.id === ref);
-    case 'entry': return d.entries.find((x) => x.id === ref);
+    case 'entry': return d.entries.find((x) => x.id === ref) || (d.tombstones || {})['entry:' + ref];
     case 'journal': return d.journal.find((x) => x.id === ref);
     case 'movement': return d.movements.find((x) => x.id === ref);
-    case 'creditNote': return (d.creditNotes || []).find((x) => x.id === ref);
+    case 'creditNote': return (d.creditNotes || []).find((x) => x.id === ref) || (d.tombstones || {})['creditNote:' + ref];
     case 'product': return d.products.find((x) => x.id === ref);
     case 'party': return d.parties.find((x) => x.id === ref);
     case 'estimate': return (d.estimates || []).find((x) => x.id === ref);
