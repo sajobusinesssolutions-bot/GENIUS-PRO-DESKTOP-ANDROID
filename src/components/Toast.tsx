@@ -20,6 +20,8 @@ interface ToastContextType {
   error: (message: string) => void;
   success: (message: string) => void;
   info: (message: string) => void;
+  /** Done already, with a way back: "Sale INV-12 deleted · Undo" for a few seconds. */
+  undo: (message: string, onUndo: () => void, seconds?: number) => void;
 }
 
 interface HostContextType {
@@ -75,7 +77,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     error: (msg) => show(msg, 'error', 6000),
     success: (msg) => show(msg, 'success', 2600),
     info: (msg) => show(msg, 'info', 3000),
-  }), [show]);
+    undo: (msg, onUndo, seconds = 8) => {
+      const id = Math.random().toString(36);
+      setToasts((prev) => [...prev.filter((t) => t.message !== msg), { id, message: msg, type: 'success' as ToastType, duration: seconds * 1000,
+        action: { label: 'Undo', onPress: () => { dismiss(id); onUndo(); } } }].slice(-3));
+      setTimeout(() => dismiss(id), seconds * 1000);
+    },
+  }), [show, dismiss]);
 
   return (
     <ToastContext.Provider value={value}>
@@ -147,7 +155,12 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
           <Icon name={tone.icon} size={17} color={tone.fg} />
         </View>
         <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 14, lineHeight: 19, color: tone.fg }}>{toast.message}</Text>
-        <Icon name="x" size={16} color={tone.fg} />
+        {toast.action ? (
+          <Pressable onPress={toast.action.onPress} hitSlop={10} accessibilityRole="button" accessibilityLabel={toast.action.label}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.22)' }}>
+            <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: tone.fg }}>{toast.action.label}</Text>
+          </Pressable>
+        ) : <Icon name="x" size={16} color={tone.fg} />}
       </Pressable>
     </Animated.View>
   );

@@ -80,6 +80,8 @@ interface Row {
   /** What settling the balance is called and where it goes. */
   settle?: { label: string; run: () => void };
   remove?: { label: string; text: string; run: () => void };
+  /** Set when Deleted transactions can bring it back: the delete happens at once, with Undo. */
+  restore?: { kind: 'sale' | 'purchase' | 'payment'; doneText: string };
 }
 
 const KIND_ICON: Record<Exclude<Kind, 'all'>, IconName> = {
@@ -109,11 +111,11 @@ function dayLabel(ts: string) {
 
 export default function SalesListScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party, deleteSale, deletePayment, deletePurchase, deleteCreditNote, deleteEntry, deleteJournal, voidEstimate, canEditSale, can, user } = useAppData();
+  const { db, money, party, deleteSale, deletePayment, deletePurchase, deleteCreditNote, deleteEntry, deleteJournal, voidEstimate, canEditSale, can, user, restoreDeleted } = useAppData();
   const { saleDoc, paymentDoc, purchaseDoc, creditNoteDoc, entryDoc } = useDocBuilder();
   /** A document being sent as a message, and to whom. */
   const [sending, setSending] = useState<{ doc: DocMeta; phone?: string; email?: string } | null>(null);
-  const { success, error } = useToast();
+  const { success, error, undo } = useToast();
 
   /** Print or share a row's document straight from the list, with the same printer and template rules as its own screen. */
   /* Payment history: what was paid at the till, then each payment taken against the sale later */
@@ -237,6 +239,7 @@ export default function SalesListScreen({ navigation }: Props) {
           text: 'It leaves your activity. Stock and money are reversed, and you can restore it from More → Deleted transactions.',
           run: () => { if (deleteSale(s.id, 'Deleted from sales overview')) success(s.no + ' deleted'); },
         } : undefined,
+        restore: { kind: 'sale', doneText: 'Sale ' + s.no + ' deleted' },
       });
     });
 
@@ -274,6 +277,7 @@ export default function SalesListScreen({ navigation }: Props) {
             text: 'It leaves your activity. Stock and money are reversed, and you can restore it from More → Deleted transactions.',
             run: () => { if (deletePurchase(pu.id, 'Deleted from transactions')) success(pu.no + ' deleted'); },
           } : undefined,
+          restore: { kind: 'purchase', doneText: 'Bill ' + (pu.ref || pu.no) + ' deleted' },
         });
       });
       (db.purchaseOrders || []).forEach((po) => {
@@ -319,6 +323,7 @@ export default function SalesListScreen({ navigation }: Props) {
           text: 'The payment will be reversed and stay in the audit trail.',
           run: () => { if (deletePayment(p.id, 'Deleted from sales overview')) success('Payment deleted'); },
         } : undefined,
+        restore: { kind: 'payment', doneText: 'Payment of ' + money(p.amount) + ' deleted' },
       });
     });
 
@@ -856,7 +861,23 @@ export default function SalesListScreen({ navigation }: Props) {
             {menu.kind === 'sale' ? <MenuRow title="Open" onPress={after(menu.open!)} /> : null}
             {menu.open && menu.kind !== 'sale' ? <MenuRow title="Open" onPress={after(menu.open)} /> : null}
             <MenuRow title="History" sub="who entered it, when, edits" onPress={after(() => setHistOf(menu))} />
-            {menu.remove ? <MenuRow title={menu.remove.label} danger onPress={() => setConfirm(true)} /> : null}
+            {menu.remove ? <MenuRow title={menu.remove.label} danger onPress={() => {
+              /* Act first, with a way back: what Deleted transactions can restore goes at
+                 once, and the toast offers Undo; the rest still asks before it goes. */
+              const r = menu, rs = menu.restore;
+              if (!rs) { setConfirm(true); return; }
+              closeMenu();
+              try {
+                const before = rs.kind === 'sale' ? db?.sales.find((x) => x.id === r.id)?.deletedAt
+                  : rs.kind === 'purchase' ? db?.purchases.find((x) => x.id === r.id)?.deletedAt : undefined;
+                if (before) return;
+                if (rs.kind === 'sale' ? deleteSale(r.id, 'Deleted from activity') : rs.kind === 'purchase' ? deletePurchase(r.id, 'Deleted from activity') : deletePayment(r.id, 'Deleted from activity')) {
+                  undo(rs.doneText, () => {
+                    try { restoreDeleted(rs.kind, r.id); success('Brought back'); } catch (e: any) { error(e?.message || 'It could not be brought back — it is in More → Deleted transactions.'); }
+                  });
+                }
+              } catch (e: any) { error(e?.message || 'Not deleted.'); }
+            }} /> : null}
           </View>
         ) : null}
       </Sheet>
