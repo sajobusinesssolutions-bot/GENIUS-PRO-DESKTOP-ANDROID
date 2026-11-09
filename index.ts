@@ -1,4 +1,7 @@
 import { registerRootComponent } from 'expo';
+// before anything calls the server: api.saljoe.tech first, api.saljoetech.tech as the backup
+import { installServerFailover } from './src/data/serverFailover';
+installServerFailover();
 
 import App from './App';
 // the background check is defined at the top level, before anything runs (notify.ts)

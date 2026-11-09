@@ -155,7 +155,7 @@ export function licenceFromToken(
 
   return {
     key: claims.jti,
-    server: 'https://api.saljoetech.tech',
+    server: 'https://api.saljoe.tech',
     status,
     checkedAt: now.toISOString(),
     reason: '',

@@ -20,7 +20,7 @@ export default function UpdatePrompt() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { account } = useAuth();
-  const { state, download, install } = useAppUpdate(account?.localOnly ? undefined : account?.refresh);
+  const { state, download, install, manual } = useAppUpdate(account?.localOnly ? undefined : account?.refresh);
   const [waitUntil, setWaitUntil] = React.useState<Record<string, number> | null>(null);
   const [more, setMore] = React.useState(false);
   const [laterReady, setLaterReady] = React.useState(false);
@@ -32,7 +32,8 @@ export default function UpdatePrompt() {
   if (state.stage === 'none' || !waitUntil) return null;
   const info = state.info;
   const code = String(info.versionCode);
-  const waiting = (waitUntil[code] || 0) > Date.now();
+  // asked for from Settings: shown even if Wait had put it off
+  const waiting = !manual && (waitUntil[code] || 0) > Date.now();
   const mb = info.size ? Math.round(info.size / 1e6) + ' MB' : '';
   const notes = String(info.notes || '').split(/\n|•|;\s+/).map((x) => x.replace(/^[-*\s]+/, '').trim()).filter(Boolean);
 

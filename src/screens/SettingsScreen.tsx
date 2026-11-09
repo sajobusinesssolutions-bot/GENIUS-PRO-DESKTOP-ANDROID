@@ -32,6 +32,7 @@ import { NUMBER_LABEL, BUILD } from '../data/defaults';
 import { resetTips } from '../components/FirstTimeTip';
 import type { NumberingKey, Settings, BelowCost, Costing } from '../data/types';
 import { editionOf } from '../data/editions';
+import { updatesEnabled, loadAutoUpdates, setAutoUpdates, checkForUpdatesNow } from '../data/appUpdate';
 
 const num = (v: string) => Number(String(v).replace(/[^0-9.]/g, '')) || 0;
 
@@ -49,6 +50,19 @@ export default function SettingsScreen() {
   } = useAppData();
   const [sheet, setSheet] = useState<SheetName | null>(null);
   const [tab, setTab] = useState<SettingsTab>('general');
+  /* this phone's own choice about updating itself (appUpdate.ts) */
+  const [autoUpd, setAutoUpd] = useState(true);
+  const [checkingUpd, setCheckingUpd] = useState(false);
+  React.useEffect(() => { void loadAutoUpdates().then(setAutoUpd); }, []);
+  async function checkUpdatesNow() {
+    setCheckingUpd(true);
+    const r = await checkForUpdatesNow().catch(() => 'failed' as const);
+    setCheckingUpd(false);
+    if (r === 'current') Alert.alert('Up to date', 'This phone has the newest Genius POS (' + BUILD + ').');
+    else if (r === 'failed') Alert.alert('Could not check', 'The update server could not be reached. Check the internet and try again.');
+    else if (r === 'unavailable') Alert.alert('Updates', 'Sign in with your account to check for updates.');
+    // 'newer': the update pop-up opens by itself
+  }
 
   if (!db) return null;
   const s = db.settings;
@@ -285,6 +299,12 @@ export default function SettingsScreen() {
 
             <SettingGroup title="About">
               <SettingRow label="Version" value={BUILD} onPress={() => go('About')} />
+              {updatesEnabled ? (
+                <>
+                  <SettingToggle label="Check for updates automatically" on={autoUpd} onChange={(v) => { setAutoUpd(v); void setAutoUpdates(v); }} />
+                  <SettingRow label="Check for updates now" value={checkingUpd ? 'Checking…' : autoUpd ? '' : 'Updates are off'} onPress={() => { if (!checkingUpd) void checkUpdatesNow(); }} />
+                </>
+              ) : null}
             </SettingGroup>
 
             {/* the version card at the foot, reference 6790 */}

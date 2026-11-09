@@ -1,5 +1,5 @@
 /**
- * Updates for the APK handed out from saljoetech.tech (not the Play build —
+ * Updates for the APK handed out from saljoe.tech (not the Play build —
  * Play forbids an app installing updates of itself, and updates it anyway).
  *
  * The API names the newest build (server/src/updates.js):
@@ -23,8 +23,38 @@ import Constants from 'expo-constants';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { PLAY_BUILD } from './store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SERVER_URL, refreshSession } from './authApi';
 import { showNow, CHANNEL_UPDATES } from './notify';
+import { usingBackup, BACKUP } from './serverFailover';
+
+/* ── Automatic updates: on unless this phone's owner switches them off ──────
+   Off, the app never looks for a new version by itself and never pops one
+   up; Settings → Check for updates now still finds and offers it. Kept on the
+   phone, not in the books: it is about this device, not the business. */
+const AUTO_KEY = 'genius.autoUpdates';
+let autoOn = true;
+let autoLoaded: Promise<void> | null = null;
+const autoListeners = new Set<(on: boolean) => void>();
+export function loadAutoUpdates(): Promise<boolean> {
+  autoLoaded = autoLoaded || AsyncStorage.getItem(AUTO_KEY).then((v) => { autoOn = v !== '0'; }).catch(() => {});
+  return autoLoaded.then(() => autoOn);
+}
+export function autoUpdatesOn(): boolean { return autoOn; }
+export async function setAutoUpdates(on: boolean) {
+  autoOn = on;
+  autoListeners.forEach((fn) => fn(on));
+  await AsyncStorage.setItem(AUTO_KEY, on ? '1' : '0').catch(() => {});
+}
+export function onAutoUpdates(fn: (on: boolean) => void): () => void { autoListeners.add(fn); return () => { autoListeners.delete(fn); }; }
+
+/* "Check for updates now": the one open UpdatePrompt answers it. */
+type CheckResult = 'newer' | 'current' | 'failed' | 'unavailable';
+const manualChecks = new Set<() => Promise<CheckResult>>();
+export async function checkForUpdatesNow(): Promise<CheckResult> {
+  const fn = [...manualChecks][0];
+  return fn ? fn() : 'unavailable';
+}
 
 export const UPDATE_PATH = '/v1/app/latest';
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -51,7 +81,9 @@ export async function fetchUpdate(access: string): Promise<UpdateInfo | null> {
   if (!res.ok) return null;
   const info = (await res.json()) as UpdateInfo;
   if (!info || typeof info.versionCode !== 'number' || typeof info.url !== 'string' || !/^\/v1\/app\/apk\//.test(info.url)) return null;
-  return info.versionCode > currentVersionCode() ? { ...info, url: SERVER_URL + info.url } : null;
+  // the APK comes down from whichever address is answering (serverFailover.ts)
+  const base = usingBackup() && SERVER_URL.startsWith('https://') ? BACKUP : SERVER_URL;
+  return info.versionCode > currentVersionCode() ? { ...info, url: base + info.url } : null;
 }
 
 function updatesDir(): Directory {
@@ -117,6 +149,8 @@ async function freshAccess(refresh: string | undefined): Promise<string | null> 
  */
 export function useAppUpdate(refresh: string | undefined) {
   const [state, setState] = useState<UpdateState>({ stage: 'none' });
+  /** Found by "Check for updates now": offered even if Wait put it off. */
+  const [manual, setManual] = useState(false);
   const lastCheck = useRef(0);
   const busy = useRef(false);
 
@@ -137,32 +171,40 @@ export function useAppUpdate(refresh: string | undefined) {
     }
   }, [refresh]);
 
-  const check = useCallback(async () => {
-    if (!updatesEnabled || busy.current || !refresh) return;
+  const check = useCallback(async (): Promise<CheckResult> => {
+    if (!updatesEnabled || !refresh) return 'unavailable';
+    if (busy.current) return 'newer';
     lastCheck.current = Date.now();
     try {
       const access = await freshAccess(refresh);
-      if (!access) return;
+      if (!access) return 'failed';
       const info = await fetchUpdate(access);
-      if (!info) { clearOld(); setState({ stage: 'none' }); return; }
+      if (!info) { clearOld(); setState({ stage: 'none' }); return 'current'; }
       const file = apkFor(info);
-      if (file.exists && (!info.size || file.size === info.size)) { setState({ stage: 'ready', info, file }); return; }
+      if (file.exists && (!info.size || file.size === info.size)) { setState({ stage: 'ready', info, file }); return 'newer'; }
       setState({ stage: 'available', info });
-    } catch { /* offline or server down — try again later */ }
+      return 'newer';
+    } catch { return 'failed'; /* offline or server down — try again later */ }
   }, [refresh]);
 
   useEffect(() => {
     if (!updatesEnabled) return;
-    check();
+    let alive = true;
+    // by itself only while automatic updates are on
+    void loadAutoUpdates().then((on) => { if (alive && on) void check(); });
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active' && Date.now() - lastCheck.current > CHECK_EVERY_MS) check();
+      if (s === 'active' && autoUpdatesOn() && Date.now() - lastCheck.current > CHECK_EVERY_MS) void check();
     });
-    return () => sub.remove();
+    // switched off: an offer already on screen goes away (a download under way carries on)
+    const off = onAutoUpdates((on) => { if (!on) setState((st) => (st.stage === 'available' ? { stage: 'none' } : st)); });
+    const ask = async () => { setManual(true); return check(); };
+    manualChecks.add(ask);
+    return () => { alive = false; sub.remove(); off(); manualChecks.delete(ask); };
   }, [check]);
 
   const install = useCallback(async () => {
     if (state.stage === 'ready') await installUpdate(state.file).catch(() => setState({ stage: 'failed', info: state.info }));
   }, [state]);
 
-  return { state, download, install };
+  return { state, download, install, manual };
 }

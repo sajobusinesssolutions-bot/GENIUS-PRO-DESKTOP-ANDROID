@@ -20,6 +20,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { PRIMARY } from './serverFailover';
 import type { LicenceClaims } from './syncProtocol';
 
 /**
@@ -33,7 +34,7 @@ export const SERVER_URL = Platform.OS === 'web'
      passes /__api through to the real server (metro.config.js), as the server
      does not answer web pages directly. A phone build always uses the line below. */
   ? '/__api'
-  : 'https://api.saljoetech.tech';
+  : PRIMARY;   // api.saljoe.tech; api.saljoetech.tech takes over if it cannot be reached (serverFailover.ts)
 
 export const REQUEST_TIMEOUT_MS = 20000;
 
