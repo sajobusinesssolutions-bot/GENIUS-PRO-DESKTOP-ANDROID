@@ -638,6 +638,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const till = dbRef.current?.session.till || restored.session.till;
       restored.session = { ...restored.session, till };
       restored.demo = false;
+      /* A backup carries the sync link of the business it was taken from —
+         which may since have been deleted from the account, or be another
+         business altogether. Syncing on it sent every change to a business the
+         server no longer has ("not on this account") while the screen still
+         said connected. The restored books take this phone's link instead (the
+         business it is in now), start reading that business from the top, and
+         send a whole copy up; a phone with no link links afresh on the next sync. */
+      const here = dbRef.current?.sync;
+      restored.sync = {
+        ...restored.sync,
+        on: here?.businessId ? here.on : restored.sync.on,
+        businessId: here?.businessId || undefined,
+        deviceId: here?.deviceId || undefined,
+        cursor: 0,
+        snapshotVersion: here?.snapshotVersion || 0,
+        snapshotDue: true,
+        pending: [],
+      } as DB['sync'];
+      restored.queue = [];
       ensureRoles(restored);
       dbRef.current = restored;
       setRoleRegistry(restored.roles);

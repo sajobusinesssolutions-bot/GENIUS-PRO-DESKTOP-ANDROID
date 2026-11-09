@@ -48,24 +48,43 @@ function licenceTone(o: Owner): 'good' | 'warn' | 'danger' | 'accent' | 'neutral
   return 'neutral';
 }
 
-/** Retail, Restaurant or Pharmacy, with what each one is and costs. */
-function EditionPick({ value, onChange, plan }: { value: Edition; onChange: (e: Edition) => void; plan: string }) {
+/** A licence's editions as a list: "retail,restaurant" → ['retail', 'restaurant']. */
+function editionsOf(v?: string | null): Edition[] {
+  const list = String(v || 'retail').split(',').map((x) => x.trim()).filter((x): x is Edition => (EDITION_LIST as string[]).includes(x));
+  return list.length ? list : ['retail'];
+}
+const editionNames = (list: Edition[]) => list.map((e) => EDITIONS[e]?.name || e).join(' + ');
+
+/**
+ * Retail, Restaurant, Pharmacy, Hotel — one or several. A shop with a café and
+ * a shop holds one licence for both. Tap to add or take off; one always
+ * stays. The first chosen is the edition a new business starts as.
+ */
+function EditionPick({ value, onChange, plan }: { value: Edition[]; onChange: (e: Edition[]) => void; plan: string }) {
   const { colors } = useTheme();
+  const flip = (e: Edition) => {
+    if (value.includes(e)) { if (value.length > 1) onChange(value.filter((x) => x !== e)); }
+    else onChange([...value, e]);
+  };
   return (
     <View style={{ gap: 8, marginBottom: 6 }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Choose one or more. The first is what a new business starts as.</Text>
       {EDITION_LIST.map((e) => {
         const d = EDITIONS[e];
-        const on = value === e;
+        const on = value.includes(e);
         const p = d.plans[plan === 'starter' ? 'starter' : 'pro'];
         return (
-          <Pressable key={e} onPress={() => onChange(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 4, borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}>
+          <Pressable key={e} onPress={() => flip(e)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 4, borderWidth: 1.4, borderColor: on ? colors.accent : colors.line, backgroundColor: on ? colors.accentSoft : colors.surface }}>
             <Icon name={d.icon} size={20} color={colors.ink} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{d.name}</Text>
               <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 2 }}>{d.tagline}</Text>
               {plan !== 'trial' ? <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.soft, marginTop: 2 }}>{p.name}: {money0(p.prices.month)}/month · {money0(p.prices.year)}/year</Text> : null}
             </View>
-            {on ? <Icon name="check" size={18} color={colors.accent} /> : null}
+            {on ? <>
+              {value.length > 1 && value[0] === e ? <Text style={{ fontFamily: fonts.uiSemi, fontSize: 11, color: colors.accent }}>FIRST</Text> : null}
+              <Icon name="check" size={18} color={colors.accent} />
+            </> : null}
           </Pressable>
         );
       })}
@@ -77,7 +96,7 @@ function licenceLabel(o: Owner): string {
   if (o.blocked) return 'Blocked';
   if (!o.licence) return 'No licence';
   const l = o.licence;
-  const name = (EDITIONS[(l.edition || 'retail') as Edition]?.name || 'Retail') + ' ' + l.plan.charAt(0).toUpperCase() + l.plan.slice(1);
+  const name = editionNames(editionsOf(l.edition)) + ' ' + l.plan.charAt(0).toUpperCase() + l.plan.slice(1);
   if (l.status === 'expired') return name + ' · expired';
   if (l.daysLeft === null) return name + ' · lifetime';
   return name + ' · ' + l.daysLeft + 'd left';
@@ -558,7 +577,7 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [plan, setPlan] = useState('pro');
-  const [edition, setEdition] = useState<Edition>('retail');
+  const [edition, setEdition] = useState<Edition[]>(['retail']);
   const [period, setPeriod] = useState('365');
   const [seats, setSeats] = useState('2');
   const [businesses, setBusinesses] = useState('');
@@ -566,7 +585,7 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (visible) { setEmail(''); setName(''); setPlan('pro'); setEdition('retail'); setPeriod('365'); setSeats('2'); setInvite(true); }
+    if (visible) { setEmail(''); setName(''); setPlan('pro'); setEdition(['retail']); setPeriod('365'); setSeats('2'); setInvite(true); }
   }, [visible]);
 
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -577,7 +596,7 @@ function AddOwnerSheet({ visible, onClose, access, onAdded }: {
     const a = await access();
     if (!a) return;
     setBusy(true);
-    const r = await dev.addOwner(a, { email: email.trim().toLowerCase(), name: name.trim() || undefined, plan, days, seats: n, invite, edition, businesses: businesses.trim() ? Number(businesses) : null });
+    const r = await dev.addOwner(a, { email: email.trim().toLowerCase(), name: name.trim() || undefined, plan, days, seats: n, invite, edition: edition.join(','), businesses: businesses.trim() ? Number(businesses) : null });
     setBusy(false);
     if (!r.ok) { error(r.error.message); return; }
     const who = email.trim().toLowerCase();
@@ -649,7 +668,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
   const { colors } = useTheme();
   const { success, error } = useToast();
   const [plan, setPlan] = useState('pro');
-  const [edition, setEdition] = useState<Edition>('retail');
+  const [edition, setEdition] = useState<Edition[]>(['retail']);
   const [period, setPeriod] = useState('365');
   const [seats, setSeats] = useState('2');
   const [businesses, setBusinesses] = useState('');
@@ -660,7 +679,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
     if (!owner) return;
     setPlan(owner.licence?.plan === 'trial' ? 'pro' : owner.licence?.plan || 'pro');
     setSeats(String(owner.licence?.seats || 2));
-    setEdition(((owner.licence?.edition || 'retail') as Edition));
+    setEdition(editionsOf(owner.licence?.edition));
     setPeriod('365');
     setReason(owner.blockedReason || '');
   }, [owner?.id]);
@@ -671,7 +690,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
   async function grant() {
     const days = PERIODS.find((p) => p.v === period)?.days ?? 365;
     const n = Math.max(1, Math.min(100, Number(seats) || 1));
-    const what = EDITIONS[edition].name + ' ' + plan.toUpperCase() + ', ' + (days === null ? 'lifetime' : PERIODS.find((p) => p.v === period)!.l) + ', ' + n + ' device' + (n === 1 ? '' : 's');
+    const what = editionNames(edition) + ' ' + plan.toUpperCase() + ', ' + (days === null ? 'lifetime' : PERIODS.find((p) => p.v === period)!.l) + ', ' + n + ' device' + (n === 1 ? '' : 's');
     Alert.alert('License ' + o.email + '?', what, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -680,7 +699,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
           const a = await access();
           if (!a) return;
           setBusy(true);
-          const r = await dev.grantLicence(a, o.id, { plan, days, seats: n, edition, businesses: businesses.trim() ? Number(businesses) : null });
+          const r = await dev.grantLicence(a, o.id, { plan, days, seats: n, edition: edition.join(','), businesses: businesses.trim() ? Number(businesses) : null });
           setBusy(false);
           if (!r.ok) { error(r.error.message); return; }
           success(o.email + ' licensed — ' + what + '. Their phones pick it up at their next check-in.');
@@ -752,7 +771,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
       <View style={{ height: 14 }} />
       <SectionLabel>Current licence</SectionLabel>
       <Panel>
-        <DetailRow label="Edition" value={o.licence ? EDITIONS[(o.licence.edition || 'retail') as Edition]?.name || 'Retail' : '—'} />
+        <DetailRow label="Edition" value={o.licence ? editionNames(editionsOf(o.licence.edition)) : '—'} />
         <DetailRow label="Plan" value={o.licence ? o.licence.plan + ' · ' + o.licence.term : 'None'} />
         <DetailRow label="Status" value={o.blocked ? 'Blocked' : o.licence?.status || '—'} />
         <DetailRow label="Devices allowed" value={String(o.licence?.seats ?? '—')} />

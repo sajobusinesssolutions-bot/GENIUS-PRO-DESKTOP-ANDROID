@@ -125,6 +125,15 @@ export function useSyncRun() {
 
       // the server refuses an app older than the books: show the Update screen
       const stopIfOld = (e: { failure: string; message: string }) => {
+        /* The business was removed from the account (or these books were linked
+           to one that is not on it): sync stops and drops the dead link, rather
+           than showing "connected" while every change is refused. Switching sync
+           on again links the books afresh. */
+        if (String(e.failure) === 'unknownBusiness') {
+          setSync({ on: false, businessId: undefined, cursor: 0, snapshotDue: true } as any);
+          e.message = 'This business is no longer on your account, so sync has been switched off. Turn it on again in Settings → Cloud sync to send these books up as a business on your account.';
+          return;
+        }
         if (String(e.failure) !== 'updateRequired') return;
         const need = /Pro ([\d.]+)/.exec(e.message)?.[1];
         if (need) applyRemoteOps([{ kind: 'record.upsert', payload: { coll: 'firm', doc: { minAppVersion: need } } } as any]);

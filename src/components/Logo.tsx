@@ -1,18 +1,22 @@
 /**
- * The Genius mark, drawn from its vector path so it is sharp at any size and
- * takes the theme's ink: black on light, white on dark.
+ * The Genius POS mark: the white "g" with the orange price tag on navy — the
+ * same as the app icon and the website (assets/genius-mark.png, 256 px). It
+ * carries its own colours, so it reads on light, dark and the welcome
+ * gradient alike; `color` is kept for the callers that pass one.
  */
 import React from 'react';
-import Svg, { Path } from 'react-native-svg';
-import { useTheme } from '../theme';
-import { LOGO_PATH, LOGO_VIEWBOX } from './logoPath';
+import { Image } from 'react-native';
 
-export function Logo({ size = 64, color }: { size?: number; color?: string }) {
-  const { colors } = useTheme();
+const MARK = require('../../assets/genius-mark.png');
+
+export function Logo({ size = 64 }: { size?: number; color?: string }) {
   return (
-    <Svg width={size} height={size} viewBox={LOGO_VIEWBOX} accessibilityLabel="Genius">
-      <Path d={LOGO_PATH} fill={color || colors.ink} fillRule="evenodd" />
-    </Svg>
+    <Image
+      source={MARK}
+      style={{ width: size, height: size }}
+      resizeMode="contain"
+      accessibilityLabel="Genius POS"
+    />
   );
 }
 
