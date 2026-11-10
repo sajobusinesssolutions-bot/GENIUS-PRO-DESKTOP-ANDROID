@@ -56,7 +56,7 @@ import PaymentDetailScreen from '../screens/PaymentDetailScreen';
 import EstimatesScreen from '../screens/EstimatesScreen';
 import EstimateNewScreen from '../screens/EstimateNewScreen';
 import EstimateDetailScreen from '../screens/EstimateDetailScreen';
-import ChallansScreen, { ChallanNewScreen } from '../screens/ChallansScreen';
+import ChallansScreen, { ChallanNewScreen, ChallanDetailScreen } from '../screens/ChallansScreen';
 import CreditNotesScreen, { CreditNoteNewScreen } from '../screens/CreditNotesScreen';
 import OffersScreen, { OfferNewScreen } from '../screens/OffersScreen';
 import StockTakesScreen, { StockTakeDetailScreen } from '../screens/StockTakesScreen';
@@ -237,7 +237,8 @@ export default function RootNavigator() {
         <Stack.Screen name="EstimateNew" component={EstimateNewScreen} options={({ route }) => ({ title: route.params?.editEstimateId ? 'Edit quotation' : 'New quotation' })} />
         <Stack.Screen name="EstimateDetail" component={EstimateDetailScreen} options={{ title: 'Quotation' }} />
         <Stack.Screen name="Challans" component={ChallansScreen} options={{ title: 'Delivery notes' }} />
-        <Stack.Screen name="ChallanNew" component={ChallanNewScreen} options={{ title: 'New delivery note' }} />
+        <Stack.Screen name="ChallanNew" component={ChallanNewScreen} options={({ route }) => ({ title: route.params?.editChallanId ? 'Edit delivery note' : 'New delivery note' })} />
+        <Stack.Screen name="ChallanDetail" component={ChallanDetailScreen} options={{ title: 'Delivery note' }} />
         <Stack.Screen name="CreditNotes" component={CreditNotesScreen} options={{ title: 'Returns' }} />
         <Stack.Screen name="CreditNoteNew" component={CreditNoteNewScreen} options={{ title: 'Return goods' }} />
         <Stack.Screen name="Offers" component={OffersScreen} options={{ title: 'Offers' }} />

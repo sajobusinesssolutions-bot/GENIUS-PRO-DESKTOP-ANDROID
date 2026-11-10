@@ -126,6 +126,8 @@ export interface Ctx {
 
   // Delivery challans
   createChallan: (o: { saleId: string | null; partyId: string | null; lines: ChallanLine[]; driver?: string; vehicle?: string }) => Challan;
+  /** A delivery note still out: its customer, goods, driver or vehicle changed. It moves no stock, so nothing else changes. */
+  updateChallan: (challanId: string, o: { partyId: string | null; lines: ChallanLine[]; driver?: string; vehicle?: string }) => boolean;
   markChallanDelivered: (challanId: string) => void;
 
   // Credit notes / returns
@@ -1046,6 +1048,22 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
       return ch;
     },
+    updateChallan: (challanId, o) => {
+      requireCreate();
+      requirePerm('challans.create');
+      let ok = false;
+      commit((d) => {
+        const c = d.challans.find((x) => x.id === challanId);
+        if (!c || c.status !== 'dispatched') return;
+        c.partyId = o.partyId; c.lines = o.lines;
+        if (o.driver) c.driver = o.driver; else delete c.driver;
+        if (o.vehicle) c.vehicle = o.vehicle; else delete c.vehicle;
+        audit(d, 'Delivery challan edited', c.no);
+        logic.enqueue(d, 'challan', c.id);
+        ok = true;
+      });
+      return ok;
+    },
     markChallanDelivered: (challanId) => { requirePerm('challans.deliver'); commit((d) => {
       const c = d.challans.find((x) => x.id === challanId);
       if (c) { c.status = 'delivered'; audit(d, 'Challan delivered', c.no); logic.enqueue(d, 'challan', c.id); }
@@ -1206,7 +1224,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       commit((d) => {
         const next = new Date();
         if (o.frequency === 'weekly') next.setDate(next.getDate() + 7); else next.setMonth(next.getMonth() + 1);
-        ri = { id: uid('rec'), partyId: o.partyId, lines: o.lines, discount: o.discount, frequency: o.frequency, nextDue: iso(next), lastRun: null, active: true };
+        ri = { id: uid('rec'), partyId: o.partyId, lines: o.lines, discount: o.discount, frequency: o.frequency, nextDue: iso(next), lastRun: null, active: true, createdAt: iso(new Date()) };
         d.recurringInvoices.push(ri);
         audit(d, 'Recurring invoice scheduled', o.frequency);
         logic.enqueue(d, 'recurring', ri.id);

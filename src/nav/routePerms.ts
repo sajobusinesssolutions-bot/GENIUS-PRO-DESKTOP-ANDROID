@@ -35,6 +35,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   EstimateDetail: 'quotes.view',
   Challans: 'challans.view',
   ChallanNew: 'challans.create',
+  ChallanDetail: 'challans.view',
   CreditNotes: 'sales.view',
   CreditNoteNew: 'sales.refund',
   Offers: 'sales.offers',

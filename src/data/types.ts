@@ -820,6 +820,8 @@ export interface ProductionRun {
 export interface RecurringInvoice {
   id: string; partyId: string; lines: SaleLine[]; discount: number;
   frequency: 'weekly' | 'monthly'; nextDue: string; lastRun: string | null; active: boolean;
+  /** When it was set up: where it sits in Activity until it first runs. */
+  createdAt?: string;
 }
 
 // --- Audit log ---

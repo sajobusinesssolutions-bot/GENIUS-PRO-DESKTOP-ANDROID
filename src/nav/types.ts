@@ -21,7 +21,8 @@ export type RootStackParamList = {
   EstimateNew: { editEstimateId?: string } | undefined;
   EstimateDetail: { estimateId: string };
   Challans: undefined;
-  ChallanNew: { saleId?: string } | undefined;
+  ChallanNew: { saleId?: string; editChallanId?: string } | undefined;
+  ChallanDetail: { challanId: string };
   CreditNotes: undefined;
   CreditNoteNew: { saleId?: string; editCreditNoteId?: string; free?: boolean } | undefined;
   Offers: undefined;
@@ -74,7 +75,7 @@ export type RootStackParamList = {
   Reconciliation: undefined;
   ChartOfAccounts: undefined;
   LedgerDetail: { ledgerId: string };
-  JournalEntry: undefined;
+  JournalEntry: { editJournalId?: string } | undefined;
   TrialBalance: undefined;
   BatchMovement: { batchNo?: string } | undefined;
   StockTakes: undefined;

@@ -41,7 +41,7 @@ import { isRestaurant, words } from '../data/restaurant';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 type Props = NativeStackScreenProps<RootStackParamList, any>;
-type Kind = 'all' | 'sale' | 'purchase' | 'order' | 'payment' | 'expense' | 'income' | 'transfer' | 'journal' | 'quote' | 'note' | 'return' | 'plan';
+type Kind = 'all' | 'sale' | 'purchase' | 'order' | 'payment' | 'expense' | 'income' | 'transfer' | 'journal' | 'quote' | 'note' | 'return' | 'plan' | 'recurring';
 type Tone = 'good' | 'warn' | 'danger' | 'accent' | 'neutral';
 const day = (n: number) => new Date(n).toISOString().slice(0, 10);
 
@@ -85,19 +85,19 @@ interface Row {
 }
 
 const KIND_ICON: Record<Exclude<Kind, 'all'>, IconName> = {
-  sale: 'receipt', purchase: 'cart', order: 'box', payment: 'cash', quote: 'doc', note: 'swap', return: 'arrow', plan: 'calendar', expense: 'up', income: 'down', transfer: 'swap', journal: 'doc',
+  sale: 'receipt', purchase: 'cart', order: 'box', payment: 'cash', quote: 'doc', note: 'swap', return: 'arrow', plan: 'calendar', expense: 'up', income: 'down', transfer: 'swap', journal: 'doc', recurring: 'calendar',
 };
 /** The short word on a row's pill: "BILL · PAID". */
 const KIND_WORD: Record<Exclude<Kind, 'all'>, string> = {
-  sale: 'Sale', purchase: 'Bill', order: 'PO', payment: 'Payment', expense: 'Expense', income: 'Money in', transfer: 'Transfer', journal: 'Journal', quote: 'Quote', note: 'Delivery', return: 'Return', plan: 'Plan',
+  sale: 'Sale', purchase: 'Bill', order: 'PO', payment: 'Payment', expense: 'Expense', income: 'Money in', transfer: 'Transfer', journal: 'Journal', quote: 'Quote', note: 'Delivery', return: 'Return', plan: 'Plan', recurring: 'Recurring',
 };
 const KIND_TONE: Record<Exclude<Kind, 'all'>, Exclude<Tone, 'neutral'>> = {
-  sale: 'accent', purchase: 'warn', order: 'accent', payment: 'good', expense: 'danger', income: 'good', transfer: 'accent', journal: 'accent', quote: 'accent', note: 'warn', return: 'danger', plan: 'warn',
+  sale: 'accent', purchase: 'warn', order: 'accent', payment: 'good', expense: 'danger', income: 'good', transfer: 'accent', journal: 'accent', quote: 'accent', note: 'warn', return: 'danger', plan: 'warn', recurring: 'accent',
 };
 const KINDS: [Kind, string][] = [
   ['all', 'All'], ['sale', 'Sales'], ['purchase', 'Bills'], ['order', 'Orders'], ['payment', 'Payments'],
   ['expense', 'Expenses'], ['income', 'Money in'], ['transfer', 'Transfers'], ['journal', 'Journals'], ['quote', 'Quotes'],
-  ['note', 'Delivery'], ['return', 'Returns'], ['plan', 'Plans'],
+  ['note', 'Delivery'], ['return', 'Returns'], ['plan', 'Plans'], ['recurring', 'Recurring'],
 ];
 
 function dayLabel(ts: string) {
@@ -169,6 +169,8 @@ export default function SalesListScreen({ navigation }: Props) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [datePick, setDatePick] = useState<'from' | 'to' | null>(null);
   const [menu, setMenu] = useState<Row | null>(null);
+  /** A journal opened from the list: its lines, debit and credit. */
+  const [journalOf, setJournalOf] = useState<string | null>(null);
   /** The row whose History is open: who entered it, when, and what has happened to it since. */
   const [histOf, setHistOf] = useState<Row | null>(null);
   const [confirm, setConfirm] = useState(false);
@@ -372,8 +374,8 @@ export default function SalesListScreen({ navigation }: Props) {
         label: 'Delivery note',
         labelColor: colors.warn,
         foot: { label: 'Pieces', value: String(c.lines.reduce((s, l) => s + l.qty, 0)) },
-        open: () => navigation.navigate('Challans'),
-        edit: () => navigation.navigate('Challans'),
+        open: () => navigation.navigate('ChallanDetail', { challanId: c.id }),
+        edit: c.status === 'dispatched' && can('challans.create') ? () => navigation.navigate('ChallanNew', { editChallanId: c.id }) : undefined,
       });
     });
 
@@ -438,7 +440,8 @@ export default function SalesListScreen({ navigation }: Props) {
         if (j.reversedAt || !/^(JNL|JV|JE)\b|^J[EV]-?\d/i.test(j.ref || '')) return;
         const amount = j.lines.reduce((s, l) => s + (l.dr || 0), 0);
         out.push({
-          id: j.id, kind: 'journal', ts: j.ts, tapMenu: true,
+          id: j.id, kind: 'journal', ts: j.ts,
+          edit: can('finance.edit') || can('finance.delete') ? () => navigation.navigate('JournalEntry', { editJournalId: j.id }) : undefined,
           title: j.memo || 'Journal',
           userId: (j as any).userId,
           sub: j.lines.length + ' line' + (j.lines.length === 1 ? '' : 's'),
@@ -452,7 +455,7 @@ export default function SalesListScreen({ navigation }: Props) {
             text: 'An opposite entry is posted, so every ledger it touched is back where it was.',
             run: () => { if (deleteJournal(j.id)) success('Journal deleted'); },
           } : undefined,
-          open: () => navigation.navigate('Journals'),
+          open: () => setJournalOf(j.id),
         });
       });
     }
@@ -472,6 +475,29 @@ export default function SalesListScreen({ navigation }: Props) {
         foot: { label: 'Paid', value: done + ' of ' + pl.schedule.length },
         open: () => navigation.navigate('PlanDetail', { planId: pl.id }),
         edit: () => navigation.navigate('PlanDetail', { planId: pl.id }),
+      });
+    });
+
+    /* recurring sales: the schedule itself, dated by its next run, so it is
+       there the day it is set up (each sale it makes is a sale of its own) */
+    (db.recurringInvoices || []).forEach((r) => {
+      const total = r.lines.reduce((sum, l) => sum + l.qty * l.price, 0) - (r.discount || 0);
+      const runs = db.sales.filter((s) => (s.note || '').includes(r.id) || (s as any).recurringId === r.id).length;
+      out.push({
+        id: r.id, kind: 'recurring', ts: r.lastRun || r.createdAt || (tsMs(r.nextDue) > Date.now() ? new Date().toISOString() : r.nextDue),
+        title: nameOf(r.partyId),
+        sub: r.lines.length + ' item' + (r.lines.length === 1 ? '' : 's') + ' · ' + r.frequency,
+        ref: 'Every ' + (r.frequency === 'weekly' ? 'week' : 'month'),
+        amount: total,
+        partyId: r.partyId,
+        dim: !r.active,
+        badge: { label: r.active ? 'Running' : 'Stopped', tone: r.active ? 'accent' : 'neutral' },
+        label: 'Recurring sale',
+        labelColor: colors.accent,
+        foot: r.active ? { label: 'Next on', value: shortDay(r.nextDue) } : { label: 'Made', value: runs + ' sale' + (runs === 1 ? '' : 's') },
+        open: () => navigation.navigate('Recurring'),
+        edit: () => navigation.navigate('Recurring'),
+        tapMenu: false,
       });
     });
 
@@ -789,6 +815,44 @@ export default function SalesListScreen({ navigation }: Props) {
             )}
           </View>
         ) : null}
+      </Sheet>
+
+      {/* a journal: what it posted, line by line */}
+      <Sheet visible={!!journalOf} title="Journal" icon="doc" onClose={() => setJournalOf(null)}
+        subtitle={(() => { const j = (db?.journal || []).find((x) => x.id === journalOf); return j ? (j.ref || 'JNL') + ' · ' + dayTime(j.ts) : ''; })()}>
+        {(() => {
+          const j = (db?.journal || []).find((x) => x.id === journalOf);
+          if (!j) return null;
+          const acc = (id: string) => (db?.coa || []).find((a) => a.id === id)?.name || (db?.accounts || []).find((a) => a.id === id)?.name || id;
+          const dr = j.lines.reduce((sum, l) => sum + (l.dr || 0), 0), cr = j.lines.reduce((sum, l) => sum + (l.cr || 0), 0);
+          return (
+            <View>
+              {j.memo ? <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: colors.ink, marginBottom: 10 }}>{j.memo}</Text> : null}
+              <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+                <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 11.5, color: colors.faint }}>LEDGER</Text>
+                <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 11.5, color: colors.faint }}>DEBIT</Text>
+                <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 11.5, color: colors.faint }}>CREDIT</Text>
+              </View>
+              {j.lines.map((l, i) => (
+                <View key={i} style={{ flexDirection: 'row', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+                  <Text numberOfLines={2} style={{ flex: 1, fontFamily: fonts.ui, fontSize: 13.5, color: colors.ink, paddingLeft: l.cr ? 14 : 0 }}>{acc(l.acc)}</Text>
+                  <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.ui, fontSize: 13.5, color: colors.ink }}>{l.dr ? money(l.dr) : ''}</Text>
+                  <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.ui, fontSize: 13.5, color: colors.ink }}>{l.cr ? money(l.cr) : ''}</Text>
+                </View>
+              ))}
+              <View style={{ flexDirection: 'row', paddingVertical: 9 }}>
+                <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>Total</Text>
+                <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{money(dr)}</Text>
+                <Text style={{ width: 92, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }}>{money(cr)}</Text>
+              </View>
+              {can('finance.edit') || can('finance.delete') ? (
+                <View style={{ marginTop: 12 }}>
+                  <Button label="Edit this journal" variant="pri" onPress={() => { setJournalOf(null); setTimeout(() => navigation.navigate('JournalEntry', { editJournalId: j.id }), 150); }} />
+                </View>
+              ) : null}
+            </View>
+          );
+        })()}
       </Sheet>
 
       {/* History: who entered it and when, whether it was ever edited and by whom, and whether it was deleted */}

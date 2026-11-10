@@ -921,43 +921,6 @@ type Builder = (db: DB, from: number, to: number, money: (n: number) => string) 
 
 const RPT: Record<string, Builder> = {};
 
-/* --- Z report / end of day — reference RPT['day-close'], 3684 --- */
-RPT['day-close'] = (db, _f, _t, money) => {
-  const title = 'Z report · end of day';
-  const sh = openShift(db);
-  if (!sh) {
-    return empty(title, [{ h: 'Line' }, { h: 'Amount', r: true }],
-      'No open shift. Open a shift from the till to run a day close.');
-  }
-  const z = shiftTotals(db, sh);
-  const rows: Cell[][] = [
-    ['Opening float', m(sh.openingFloat)],
-    ['Cash sales', m(z.cash)],
-    ['Mobile money', m(z.momo)],
-    ['Bank', m(z.bank)],
-    ['On credit', m(z.credit)],
-    ['Receipts into drawer', m(z.recv)],
-    ['Cash paid out', { text: '(' + money0(z.paidOut) + ')', n: -z.paidOut, tone: 'danger' }],
-    [{ text: 'Money received on debts (all accounts)' + (z.recvCount ? ' · ' + z.recvCount : ''), tone: 'good' }, m(z.recvAll || 0)],
-  ];
-  if (isRestaurant(db)) {
-    byMenuOf(db, shiftSalesOf(db, sh)).forEach(([k, v]) => rows.push([{ text: 'Menu · ' + k, tone: 'accent' }, m(v.amount)]));
-  }
-  return {
-    title,
-    stats: [
-      { k: 'Opening float', v: money(sh.openingFloat) },
-      { k: 'Cash sales', v: money(z.cash), tone: 'g' },
-      { k: 'Expected in drawer', v: money(z.expected), tone: 'a' },
-      { k: 'Money received', v: money(z.recvAll || 0), tone: 'g' },
-      { k: 'Sales', v: String(z.count) },
-    ],
-    cols: [{ h: 'Line' }, { h: 'Amount', r: true }],
-    rows,
-    foot: ['Expected cash', m(z.expected)],
-  };
-};
-
 /* ------------------------------------------------------------------ */
 /* Restaurant and pharmacy — see reportsRestaurant.ts                  */
 /* ------------------------------------------------------------------ */
@@ -967,22 +930,123 @@ function shiftSalesOf(db: DB, sh: Shift): Sale[] { return logicShiftSales(db, sh
 
 Object.assign(RPT, restaurantReports({ salesBetween, m, sumCol, within, shortDay, partyName, pad2, money0 }));
 
+/* --- X and Z: the till's day, as a cashier and an owner read it ---------
+   Takings first — total sales, how they were paid (cash, mobile money, bank
+   and card, on credit), returns and refunds, and the cash that should be in
+   the drawer — then every item sold with its quantity and amount. The X report
+   reads it so far without closing anything; the Z report is the same with the
+   drawer's own lines, and closes the shift (Quick add → Z report). Printed,
+   previewed or exported, each carries all of it. */
+function tillBody(db: DB, ss: Sale[], fromMs: number, toMs: number, sh: Shift | null | undefined): { rows: Cell[][]; kinds: RowKind[]; totals: { total: number; cash: number; momo: number; bank: number; credit: number; cn: number; refunds: number; qty: number } } {
+  let cash = 0, momo = 0, bank = 0, credit = 0;
+  const add = (how: string | undefined, amt: number) => {
+    if (!(amt > 0)) return;
+    if (how === 'momo') momo += amt; else if (how === 'bank' || how === 'card') bank += amt; else if (how === 'credit') credit += amt; else cash += amt;
+  };
+  ss.forEach((s) => {
+    if (s.methods && s.methods.length) s.methods.forEach((x) => add(x.method, x.amount));
+    else if (s.method === 'credit') { add('credit', s.total - (s.paidAtSale || 0)); add(s.receivedVia || 'cash', s.paidAtSale || 0); }
+    else add(s.method, s.total);
+  });
+  const total = ss.reduce((a, s) => a + s.total, 0);
+  const notes = (db.creditNotes || []).filter((c) => { const t = tsMs(c.ts); return t >= fromMs && t <= toMs; });
+  const cn = notes.reduce((a, c) => a + c.total, 0);
+  const refunds = notes.filter((c) => c.refund && c.refund !== 'account' && !c.onAccount).reduce((a, c) => a + c.total - (c.charges || 0), 0);
+
+  const items = new Map<string, { name: string; unit: string; qty: number; amount: number }>();
+  ss.forEach((s) => s.lines.forEach((l) => {
+    const k = l.productId || l.name;
+    const it = items.get(k) || { name: l.name, unit: l.unit || '', qty: 0, amount: 0 };
+    it.qty += l.qty * (l.unitFactor || 1);
+    it.amount += l.qty * l.price - ((l as any).discount || 0);
+    items.set(k, it);
+  }));
+  const sold = [...items.values()].sort((a, b) => b.amount - a.amount);
+  const qty = sold.reduce((a, x) => a + x.qty, 0);
+
+  const rows: Cell[][] = [];
+  const kinds: RowKind[] = [];
+  const push = (r: Cell[], k: RowKind = 'line') => { rows.push(r); kinds.push(k); };
+  push(['Takings', '', ''], 'head');
+  push(['Total sales', ss.length + ' bill' + (ss.length === 1 ? '' : 's'), m(total)]);
+  push(['Cash sales', '', m(cash)]);
+  push(['Mobile money', '', m(momo)]);
+  push(['Bank & card', '', m(bank)]);
+  push(['Credit sales', '', m(credit)]);
+  push(['Credit notes (returns)', notes.length ? String(notes.length) : '', m(cn)]);
+  push(['Refunds paid out', '', refunds ? { text: '(' + money0(refunds) + ')', n: -refunds, tone: 'danger' } : m(0)]);
+  if (sh) {
+    const z = shiftTotals(db, sh);
+    push(['Opening float', '', m(sh.openingFloat)]);
+    push(['Receipts into the drawer', '', m(z.recv)]);
+    push(['Cash paid out', '', z.paidOut ? { text: '(' + money0(z.paidOut) + ')', n: -z.paidOut, tone: 'danger' } : m(0)]);
+    push(['Cash in drawer (expected)', '', m(z.expected)], 'sub');
+  } else {
+    push(['Cash in drawer', '', m(cash - refunds)], 'sub');
+  }
+  push(['Items sold', '', ''], 'head');
+  if (!sold.length) push(['Nothing sold yet', '', '']);
+  sold.forEach((x) => push([x.name, { text: groupQty(x.qty) + (x.unit ? ' ' + x.unit : ''), n: x.qty }, m(x.amount)]));
+  push(['Items total', { text: groupQty(qty), n: qty }, m(sold.reduce((a, x) => a + x.amount, 0))], 'sub');
+  return { rows, kinds, totals: { total, cash, momo, bank, credit, cn, refunds, qty } };
+}
+const groupQty = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-GB');
+
+/* --- Z report / end of day — reference RPT['day-close'], 3684 --- */
+RPT['day-close'] = (db, _f, _t, money) => {
+  const title = 'Z report · end of day';
+  const sh = openShift(db);
+  if (!sh) {
+    return empty(title, [{ h: 'Line' }, { h: 'Qty', r: true }, { h: 'Amount', r: true }],
+      'No open shift. Open a shift from the till to run a day close.');
+  }
+  const z = shiftTotals(db, sh);
+  const ss = shiftSalesOf(db, sh);
+  const body = tillBody(db, ss, tsMs(sh.openedAt), Date.now(), sh);
+  if (isRestaurant(db)) {
+    body.rows.push(['By menu', '', '']); body.kinds.push('head');
+    byMenuOf(db, ss).forEach(([k, v]) => { body.rows.push([{ text: k, tone: 'accent' }, '', m(v.amount)]); body.kinds.push('line'); });
+  }
+  if (z.recvAll) { body.rows.push([{ text: 'Money received on debts (all accounts)' + (z.recvCount ? ' · ' + z.recvCount : ''), tone: 'good' }, '', m(z.recvAll)]); body.kinds.push('line'); }
+  return {
+    title,
+    stats: [
+      { k: 'Total sales', v: money(body.totals.total), tone: 'g' },
+      { k: 'Cash sales', v: money(body.totals.cash) },
+      { k: 'Expected in drawer', v: money(z.expected), tone: 'a' },
+      { k: 'Items sold', v: groupQty(body.totals.qty) },
+      { k: 'Bills', v: String(z.count) },
+    ],
+    cols: [{ h: 'Line' }, { h: 'Qty', r: true }, { h: 'Amount', r: true }],
+    rows: body.rows,
+    rowKinds: body.kinds,
+    foot: ['Expected cash', '', m(z.expected)],
+    note: 'Closing the shift (Quick add → Z report, or Shift → Close) ends the day on these figures.',
+  };
+};
+
 /* --- X report — reference RPT['x-report'], 3696 --- */
 RPT['x-report'] = (db, _f, _t, money) => {
-  const ss = salesBetween(db, startOfDay(), endOfDay());
-  const byMethod: Record<string, number> = {};
-  ss.forEach((s) => { byMethod[s.method] = (byMethod[s.method] || 0) + s.total; });
-  const total = ss.reduce((a, s) => a + s.total, 0);
+  // the open shift's figures when there is one, else the day so far
+  const sh = openShift(db);
+  const from = sh ? tsMs(sh.openedAt) : startOfDay();
+  const to = Date.now();
+  const ss = sh ? shiftSalesOf(db, sh) : salesBetween(db, startOfDay(), endOfDay());
+  const body = tillBody(db, ss, from, to, sh);
   return {
     title: 'X report',
     stats: [
-      { k: 'Bills today', v: String(ss.length) },
-      { k: 'Taken today', v: money(total), tone: 'g' },
+      { k: 'Total sales', v: money(body.totals.total), tone: 'g' },
+      { k: 'Cash sales', v: money(body.totals.cash) },
+      { k: 'Mobile money', v: money(body.totals.momo) },
+      { k: 'Credit sales', v: money(body.totals.credit), tone: body.totals.credit ? 'w' : undefined },
+      { k: 'Items sold', v: groupQty(body.totals.qty) },
     ],
-    cols: [{ h: 'Tender' }, { h: 'Amount', r: true }],
-    rows: Object.keys(byMethod).map((k) => [k, m(byMethod[k])]),
-    foot: ['Total', m(total)],
-    note: 'The X report reads the day so far. It does not close the shift.',
+    cols: [{ h: 'Line' }, { h: 'Qty', r: true }, { h: 'Amount', r: true }],
+    rows: body.rows,
+    rowKinds: body.kinds,
+    foot: ['Total sales', String(ss.length), m(body.totals.total)],
+    note: (sh ? 'This shift so far' : 'Today so far') + '. The X report closes nothing.',
   };
 };
 

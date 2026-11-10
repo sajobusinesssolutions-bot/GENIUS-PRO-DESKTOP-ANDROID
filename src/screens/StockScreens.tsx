@@ -76,9 +76,14 @@ export function StockAdjustScreen() {
               </View>
             ) : null}
             {editing === p.id ? (
-              <View style={{ flexDirection: 'row', gap: 9, marginTop: 10, alignItems: 'center' }}>
-                <Field label="Counted" value={value} onChangeText={setValue} numeric decimal autoFocus style={{ flex: 1, marginBottom: 0 }} />
-                <Button size="sm" variant="pri" label={batchNo ? 'Set batch count' : 'Set count'} onPress={() => apply(p.id)} />
+              /* the count gets the room: the button keeps to the width of its word */
+              <View style={{ flexDirection: 'row', gap: 9, marginTop: 10, alignItems: 'flex-end' }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Field label="Counted" value={value} onChangeText={setValue} numeric decimal keepZero autoFocus style={{ marginBottom: 0 }} />
+                </View>
+                <View style={{ flexShrink: 0, width: batchNo ? 118 : 86 }}>
+                  <Button size="sm" variant="pri" label={batchNo ? 'Set batch' : 'Set'} onPress={() => apply(p.id)} />
+                </View>
               </View>
             ) : null}
           </View>

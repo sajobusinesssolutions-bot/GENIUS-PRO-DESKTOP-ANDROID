@@ -11,6 +11,7 @@ import { Pressable } from './Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { canFor } from '../data/perms';
+import { permFor } from '../nav/routePerms';
 import { QuickGroup, QuickTone, quickFor, COMMON_FOR } from '../data/quick';
 import { editionOf } from '../data/editions';
 import { Grid, Tile, Cap, Chip, Search, ListRow, EmptyBlock } from './ui';
@@ -27,10 +28,18 @@ export function useToneColor() {
 function useVisibleQuick(): QuickGroup[] {
   const { db } = useAppData();
   const role = db?.session.role;
-  return quickFor(editionOf(db)).filter((g) => canFor(role, g.perm)).map((g) => ({
+  /* Each tile shows when its own screen would open for this person: the
+     tile's permission where it names one, else the screen's (nav/routePerms) —
+     so a cashier given Open and Close shift sees those two, even in a group
+     whose other tiles stay closed to them. A group shows when any tile does. */
+  return quickFor(editionOf(db)).map((g) => ({
     ...g,
-    items: g.items.filter((it) => canFor(role, it.perm)),
-  }));
+    items: g.items.filter((it) => {
+      if (it.perm) return canFor(role, it.perm);
+      const screen = permFor(it.route, it.params);
+      return screen ? canFor(role, screen) : canFor(role, g.perm);
+    }),
+  })).filter((g) => g.items.length > 0);
 }
 
 function ActionTiles({ group, onPick }: { group: QuickGroup; onPick: (route: string, params?: any) => void }) {

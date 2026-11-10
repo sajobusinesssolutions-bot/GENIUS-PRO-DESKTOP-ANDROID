@@ -88,7 +88,7 @@ export const QUICK: QuickGroup[] = [
     g: 'Day', i: 'clock', tone: 'danger', perm: 'sell', items: [
       { n: 'Open shift', i: 'clock', route: 'Shift', params: { open: true } },
       { n: 'Close shift', i: 'check', route: 'Shift', params: { close: true } },
-      { n: 'Z report', i: 'receipt', route: 'Reports', params: { id: 'day-close' } },
+      { n: 'Z report', i: 'receipt', route: 'Shift', params: { close: true } },
       { n: 'X report', i: 'receipt', route: 'Reports', params: { id: 'x-report' } },
       { n: 'Backup now', i: 'cloud', route: 'DataTools', params: { backup: true } },
       { n: 'Reports', i: 'chart', route: 'Reports', perm: 'reports' },
@@ -141,7 +141,7 @@ const RESTAURANT_QUICK: QuickGroup[] = [
       { n: 'Day close', i: 'lock', route: 'Shift', params: { close: true } },
       { n: 'Menu mix', i: 'chart', route: 'Reports', params: { id: 'rest-menu-mix' }, perm: 'reports' },
       { n: 'Busy hours', i: 'clock', route: 'Reports', params: { id: 'rest-hours' }, perm: 'reports' },
-      { n: 'Z report', i: 'receipt', route: 'Reports', params: { id: 'day-close' } },
+      { n: 'Z report', i: 'receipt', route: 'Shift', params: { close: true } },
       { n: 'Backup now', i: 'cloud', route: 'DataTools', params: { backup: true } },
     ],
   },
@@ -184,7 +184,7 @@ const PHARMACY_QUICK: QuickGroup[] = [
     g: 'Day', i: 'clock', tone: 'danger', perm: 'sell', items: [
       { n: 'Open shift', i: 'clock', route: 'Shift', params: { open: true } },
       { n: 'Day close', i: 'lock', route: 'Shift', params: { close: true } },
-      { n: 'Z report', i: 'receipt', route: 'Reports', params: { id: 'day-close' } },
+      { n: 'Z report', i: 'receipt', route: 'Shift', params: { close: true } },
       { n: 'Reports', i: 'chart', route: 'Reports', perm: 'reports' },
       { n: 'Backup now', i: 'cloud', route: 'DataTools', params: { backup: true } },
     ],

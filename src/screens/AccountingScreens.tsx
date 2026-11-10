@@ -401,29 +401,34 @@ export function JournalEntryScreen(p: any) {
   return <JournalEntryScreenBody {...p} />;
 }
 
-function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStackParamList, 'JournalEntry'>) {
+function JournalEntryScreenBody({ navigation, route }: NativeStackScreenProps<RootStackParamList, 'JournalEntry'>) {
   const { colors } = useTheme();
-  const { db, money, postJournal } = useAppData();
+  const { db, money, postJournal, deleteJournal } = useAppData();
+  /* a journal being changed: its lines filled in; saving posts the corrected
+     entry and reverses the old one, so the books keep both (Activity → a journal → Edit) */
+  const editing = (db?.journal || []).find((j) => j.id === route?.params?.editJournalId && !j.reversedAt);
   const { success, error } = useToast();
   const who = useWho('Who is posting this entry?');
 
   /** Simple posts one ledger against a contra account; advanced is free-form. */
-  const [mode, setMode] = useState<'simple' | 'advanced'>('simple');
+  const [mode, setMode] = useState<'simple' | 'advanced'>(editing ? 'advanced' : 'simple');
   const [side, setSide] = useState<'credit' | 'debit'>('debit');
 
   const [ledger, setLedger] = useState('');
   const [contra, setContra] = useState('');
   const [amount, setAmount] = useState('');
-  const [memo, setMemo] = useState('');
+  const [memo, setMemo] = useState(editing?.memo || '');
   const [partyName, setPartyName] = useState('');
   const [notes, setNotes] = useState('');
-  const [at, setAt] = useState(() => new Date());
+  const [at, setAt] = useState(() => (editing ? new Date(editing.ts) : new Date()));
   const [picking, setPicking] = useState(false);
 
-  const [lines, setLines] = useState<DraftLine[]>([
-    { acc: '', dr: '', cr: '' },
-    { acc: '', dr: '', cr: '' },
-  ]);
+  const [lines, setLines] = useState<DraftLine[]>(() => (editing
+    ? editing.lines.map((l) => ({ acc: l.acc, dr: l.dr ? String(l.dr) : '', cr: l.cr ? String(l.cr) : '' }))
+    : [
+      { acc: '', dr: '', cr: '' },
+      { acc: '', dr: '', cr: '' },
+    ]));
 
   const active = (db?.coa || []).filter((l) => l.active);
   const cashish = active.filter((l) => l.type === 'asset');
@@ -465,10 +470,13 @@ function JournalEntryScreenBody({ navigation }: NativeStackScreenProps<RootStack
     const full = [memo.trim(), partyName.trim(), notes.trim()].filter(Boolean).join(' · ');
 
     who.ask((server) => {
-      const ok = postJournal({ memo: full, ref: 'JNL', ts: at.toISOString(), lines: jl, userId: server.userId });
-      if (!ok) { error('That entry does not balance.'); return; }
-      success('Posted by ' + server.userName);
-      navigation.goBack();
+      try {
+        const ok = postJournal({ memo: full, ref: editing ? editing.ref || 'JNL' : 'JNL', ts: at.toISOString(), lines: jl, userId: server.userId });
+        if (!ok) { error('That entry does not balance.'); return; }
+        if (editing) deleteJournal(editing.id);
+        success((editing ? 'Changed by ' : 'Posted by ') + server.userName);
+        navigation.goBack();
+      } catch (e: any) { error(e?.message || 'Not saved.'); }
     });
   }
 
