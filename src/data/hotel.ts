@@ -235,9 +235,10 @@ export const chargeTypeOf = (d: DB, id?: string): ChargeType => {
 };
 export const roomTypes = (d: DB | null | undefined): RoomType[] => (d as any)?.roomTypes || [];
 export const rooms = (d: DB | null | undefined): Room[] => ((d as any)?.rooms || []).slice().sort((a: Room, b: Room) => a.no.localeCompare(b.no, undefined, { numeric: true }));
-export const ratePlans = (d: DB | null | undefined): RatePlan[] => (d as any)?.ratePlans || [];
-export const seasons = (d: DB | null | undefined): Season[] => (d as any)?.seasons || [];
-export const stayOffers = (d: DB | null | undefined): StayOffer[] => (d as any)?.stayOffers || [];
+/* a deleted one is kept marked (so the delete reaches every device) and left out */
+export const ratePlans = (d: DB | null | undefined): RatePlan[] => ((d as any)?.ratePlans || []).filter((x: any) => !x.deleted);
+export const seasons = (d: DB | null | undefined): Season[] => ((d as any)?.seasons || []).filter((x: any) => !x.deleted);
+export const stayOffers = (d: DB | null | undefined): StayOffer[] => ((d as any)?.stayOffers || []).filter((x: any) => !x.deleted);
 export const bookings = (d: DB | null | undefined): Booking[] => (d as any)?.hotelBookings || [];
 
 /** Bookings that hold a room: not cancelled, not a no-show, not yet gone. */
