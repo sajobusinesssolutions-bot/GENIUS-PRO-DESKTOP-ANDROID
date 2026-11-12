@@ -100,7 +100,8 @@ export const runBackup = (a: string) => call<{ ok: true; backup: Backup & { ms: 
 export const addOwner = (a: string, o: { email: string; name?: string; plan: string; days: number | null; seats: number; invite: boolean; edition?: string; businesses?: number | null }) =>
   call<{ ok: true; id: string; created: boolean; invited: boolean; inviteError: string | null }>('/v1/admin/owners', a, o);
 
-export const grantLicence = (a: string, ownerId: string, o: { plan: string; days: number | null; seats: number; edition?: string; businesses?: number | null }) =>
+/** mode: extend adds to a paid subscription's time left (a recharge), change keeps its end date, fresh starts today. */
+export const grantLicence = (a: string, ownerId: string, o: { plan: string; days: number | null; seats: number; edition?: string; businesses?: number | null; mode?: 'extend' | 'change' | 'fresh' }) =>
   call<{ ok: true }>('/v1/admin/owners/' + ownerId + '/licence', a, o);
 
 export const setBlocked = (a: string, ownerId: string, blocked: boolean, reason?: string) =>

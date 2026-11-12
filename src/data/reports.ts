@@ -111,14 +111,14 @@ export const REPORTS: ReportDef[] = [
   { id: 'quote-details', cat: 'Receivables', name: 'Quote details', sub: 'Quotations with their status' },
   { id: 'customer-balance-summary', cat: 'Receivables', name: 'Customer balance summary', sub: 'Invoiced, paid and still owing' },
   { id: 'receivable-summary', cat: 'Receivables', name: 'Receivable summary', sub: 'The debtors book in age buckets' },
-  { id: 'receivable-statement', cat: 'Receivables', name: 'Receivable statement', sub: 'Every customer: opening, sales, payments and closing balance' },
+  { id: 'receivable-statement', cat: 'Receivables', name: 'Customer statement', sub: 'Every customer: opening, sales, payments, returns and closing balance' },
   { id: 'receivable-details', cat: 'Receivables', name: 'Receivable details', sub: 'Everything owed to you, oldest first' },
   // Payables
   { id: 'ap-aging-summary', cat: 'Payables', name: 'AP ageing summary', sub: 'What you owe each supplier' },
   { id: 'ap-aging-details', cat: 'Payables', name: 'AP ageing details', sub: 'Every open supplier bill with its age' },
   { id: 'supplier-balance-summary', cat: 'Payables', name: 'Supplier balance summary', sub: 'Billed, paid and still owing' },
   { id: 'payable-summary', cat: 'Payables', name: 'Payable summary', sub: 'The creditors book in age buckets' },
-  { id: 'payable-statement', cat: 'Payables', name: 'Payable statement', sub: 'Every supplier: opening, bills, payments and closing balance' },
+  { id: 'payable-statement', cat: 'Payables', name: 'Supplier statement', sub: 'Every supplier: opening, purchases, payments and closing balance' },
   { id: 'payable-details', cat: 'Payables', name: 'Payable details', sub: 'Everything you owe, oldest first' },
   // Stock
   { id: 'stock-summary', cat: 'Stock', name: 'Stock summary', sub: 'Quantity and value of every item' },
@@ -897,15 +897,27 @@ function partyLedgerRows(db: DB, id: string): LedgerRow[] {
   });
   db.payments.forEach((x) => {
     if (x.partyId === id) {
+      // tax the customer kept back (withholding) settles the bill as much as the money does
+      const settled = x.amount + (x.taxDeducted || 0);
       rows.push({
         ts: x.ts,
-        memo: (x.direction === 'in' ? 'Receipt' : 'Payment') + (x.note ? ' — ' + x.note : ''),
-        debit: x.direction === 'out' ? x.amount : 0,
-        credit: x.direction === 'in' ? x.amount : 0,
+        memo: (x.direction === 'in' ? 'Receipt' : 'Payment') + (x.taxDeducted ? ' (incl. ' + Math.round(x.taxDeducted) + ' withheld)' : '') + (x.note ? ' — ' + x.note : ''),
+        debit: x.direction === 'out' ? settled : 0,
+        credit: x.direction === 'in' ? settled : 0,
         balance: 0,
         ref: { kind: 'payment', id: x.id },
       });
     }
+  });
+  /* returns: what a credit note took off a bill or left on the account. Cash
+     handed back changes nothing owed; a return from before the account kept
+     them is already inside the opening balance. Before, the ledger left
+     returns out while the party's balance counted them, so the statement and
+     the Parties list disagreed. */
+  (db.creditNotes || []).forEach((c) => {
+    if (c.partyId !== id) return;
+    const off = (c.appliedToSale || 0) + (c.onAccount ? c.total : c.held || 0);
+    if (off > 0.005) rows.push({ ts: c.ts, memo: 'Return ' + c.no + (c.reason ? ' — ' + c.reason : ''), debit: 0, credit: off, balance: 0 });
   });
   rows.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   let run = 0;
@@ -1146,16 +1158,25 @@ RPT['daybook'] = (db, from, to) => {
   (db.creditNotes || []).filter((c) => within(c.ts, from, to)).forEach((c) => {
     txns.push({ ts: c.ts, type: 'Credit note', no: c.no, particulars: partyName(db, c.partyId) || 'Walk-in', debit: 0, credit: c.total, ref: { kind: 'creditNote', id: c.id } });
   });
+  /* money in and out on its own, by what it is: an expense, other income, or
+     money moved between accounts (Tally's contra). It all said "Entry". */
   (db.entries || []).filter((e) => within(e.ts, from, to)).forEach((e) => {
+    const type = e.direction === 'out' ? 'Expense' : e.direction === 'in' ? 'Income' : 'Contra';
+    const acc = (id?: string) => (db.accounts || []).find((x) => x.id === id)?.name || '';
     txns.push({
       ts: e.ts,
-      type: 'Entry',
-      no: e.id.slice(0, 8).toUpperCase(),
-      particulars: e.note || e.category || 'Entry',
-      debit: e.direction === 'out' ? e.amount : 0,
+      type,
+      no: (type === 'Expense' ? 'EXP-' : type === 'Income' ? 'INC-' : 'CNT-') + e.id.slice(-6).toUpperCase(),
+      particulars: type === 'Contra' ? acc(e.accountId) + ' → ' + acc(e.toId) : [e.category, e.note].filter(Boolean).join(' · ') || type,
+      debit: e.direction === 'out' || e.direction === 'transfer' ? e.amount : 0,
       credit: e.direction === 'in' ? e.amount : 0,
       ref: { kind: 'entry', id: e.id },
     });
+  });
+  /* journals written by hand */
+  (db.journal || []).filter((j) => j.ref === 'JNL' && !j.reversedAt && within(j.ts, from, to)).forEach((j) => {
+    const amt = j.lines.reduce((t, l) => t + (l.dr || 0), 0);
+    txns.push({ ts: j.ts, type: 'Journal', no: 'JV-' + j.id.slice(-6).toUpperCase(), particulars: j.memo || 'Journal', debit: amt, credit: amt, ref: { kind: 'voucher', id: j.id } });
   });
 
   txns.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
@@ -2393,7 +2414,7 @@ RPT['tax-summary'] = (db, from, to, money) => {
  * supplier.
  */
 function statementReport(db: DB, from: number, to: number, type: 'customer' | 'supplier'): ReportResult {
-  const title = type === 'customer' ? 'Receivable statement' : 'Payable statement';
+  const title = type === 'customer' ? 'Customer statement' : 'Supplier statement';
   const cols: ReportCol[] = [
     { h: 'Date' }, { h: type === 'customer' ? 'Customer' : 'Supplier' }, { h: 'Detail' },
     { h: type === 'customer' ? 'Billed' : 'Paid', r: true }, { h: type === 'customer' ? 'Received' : 'Billed', r: true }, { h: 'Balance', r: true },
@@ -2420,7 +2441,7 @@ function statementReport(db: DB, from: number, to: number, type: 'customer' | 's
       rows.push([shortDay(r.ts), p.name, r.memo, dash(a, 'accent'), dash(b, 'good'), m(run)]);
       refs.push(r.ref || null);
     });
-    rows.push(['', p.name, 'Closing balance', '', '', { text: money0(run), n: run, tone: run > 0 ? 'warn' : 'good' }]);
+    rows.push(['', { text: p.name, tone: type === 'customer' ? 'good' : 'danger' }, 'Closing balance', '', '', { text: money0(run), n: run, tone: type === 'customer' ? 'good' : 'danger' }]);
     refs.push(null);
     totalClose += run;
   });
@@ -2461,7 +2482,7 @@ RPT['party-statement'] = (db, from, to) => {
     })
     .sort((a, b) => Math.abs(b.closing) - Math.abs(a.closing))
     .forEach(({ p, dr, cr, closing }) => {
-      rows.push([p.name, p.type === 'supplier' ? 'Supplier' : 'Customer', dash(dr, 'accent'), dash(cr, 'good'), {
+      rows.push([p.name, p.type === 'supplier' ? { text: 'Supplier', tone: 'danger' } : { text: 'Customer', tone: 'good' }, dash(dr, 'accent'), dash(cr, 'good'), {
         text: money0(Math.abs(closing)) + (closing >= 0 ? ' Dr' : ' Cr'), n: closing, tone: closing > 0 ? 'warn' : closing < 0 ? 'good' : 'muted',
       }]);
       rowRefs.push({ kind: 'party', id: p.id });

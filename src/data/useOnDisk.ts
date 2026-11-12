@@ -51,3 +51,21 @@ export function useOlderCount(live: DB | null, coll: string, eq: Record<string, 
   }, [partial, coll, key]); // eslint-disable-line react-hooks/exhaustive-deps
   return n;
 }
+
+/**
+ * One party's older sales, purchases and payments left on disk by a window.
+ * A customer whose trading is all older than the window showed an empty
+ * history on the phone while the computer listed every bill.
+ */
+export function useOlderOfParty(live: DB | null, partyId: string | undefined): { sales: any[]; purchases: any[]; payments: any[] } {
+  const partial = isPartialBook(live);
+  const [rows, setRows] = useState<{ sales: any[]; purchases: any[]; payments: any[] }>({ sales: [], purchases: [], payments: [] });
+  useEffect(() => {
+    if (!partial || !partyId) { setRows({ sales: [], purchases: [], payments: [] }); return undefined; }
+    let alive = true;
+    Promise.all(['sales', 'purchases', 'payments'].map((c) => rowsOnDisk<any>(live, c, { eq: { partyId } }).catch(() => [])))
+      .then(([sales, purchases, payments]) => { if (alive) setRows({ sales, purchases, payments }); });
+    return () => { alive = false; };
+  }, [partial, partyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  return rows;
+}

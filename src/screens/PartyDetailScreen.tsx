@@ -9,6 +9,7 @@ import { View, Text, FlatList, Linking } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import { useOlderOfParty, withOlder } from '../data/useOnDisk';
 import { FilterChips, EmptyBlock, StickyBar, ActionGrid } from '../components/ui';
 import { Icon, IconName } from '../components/icons';
 import { IconBtn } from '../components/AppBar';
@@ -49,6 +50,8 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
   const id = route.params.partyId;
   const pt = id ? party(id) : undefined;
   const [kind, setKind] = useState<Kind>('all');
+  /* the older history a big book keeps on disk, joined to what is in memory */
+  const older = useOlderOfParty(db, pt?.id);
 
   useEffect(() => {
     navigation.setOptions({
@@ -68,7 +71,7 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
     if (!db || !pt) return [];
     const out: Row[] = [];
 
-    db.sales.forEach((s) => {
+    withOlder(db.sales, older.sales).forEach((s) => {
       if (s.partyId !== pt.id || s.deletedAt) return;
       out.push({
         id: s.id, kind: 'sale', ts: s.ts,
@@ -85,7 +88,7 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
       });
     });
 
-    db.purchases.forEach((x) => {
+    withOlder(db.purchases, older.purchases).forEach((x) => {
       if (x.partyId !== pt.id || x.deletedAt) return;
       out.push({
         id: x.id, kind: 'purchase', ts: x.ts,
@@ -101,7 +104,7 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
       });
     });
 
-    db.payments.forEach((p) => {
+    withOlder(db.payments, older.payments).forEach((p) => {
       if (p.partyId !== pt.id) return;
       out.push({
         id: p.id, kind: 'payment', ts: p.ts,
@@ -133,7 +136,7 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
 
     out.sort((a, b) => tsMs(b.ts) - tsMs(a.ts));
     return kind === 'all' ? out : out.filter((r) => r.kind === kind);
-  }, [db, pt, kind, navigation, saleDoc, purchaseDoc, paymentDoc]);
+  }, [db, pt, kind, navigation, saleDoc, purchaseDoc, paymentDoc, older]);
 
 
   if (!db || !pt) return null;

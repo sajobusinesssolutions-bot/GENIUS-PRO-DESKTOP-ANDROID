@@ -50,6 +50,7 @@ const PURPOSE_WORDS = {
   reset: 'reset your password',
   pin: 'reset your owner PIN',
   signout: 'sign a device out of your Genius account',
+  signin: 'finish signing in to Genius POS on a computer',
   delete: 'permanently delete your Genius account and everything on it',
 };
 

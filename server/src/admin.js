@@ -263,7 +263,12 @@ function licenceTerms(body, reply) {
   // what the subscription costs: the renewal each period, a one-off installation, and VAT on both
   const money = (v) => (v === null || v === undefined || v === '' ? null : Math.max(0, Math.round(Number(v) || 0)));
   const vat = body?.vatRate === undefined || body?.vatRate === null || body?.vatRate === '' ? 18 : Math.max(0, Math.min(100, Number(body.vatRate) || 0));
-  return { plan, days, seats, term, edition, maxBusinesses: max,
+  /* How the period is counted:
+       extend — on top of what is left of a paid subscription still running (a recharge loses nothing)
+       fresh  — from today, as it always was
+       change — the plan, editions, devices or businesses change; the end date stays */
+  const mode = ['extend', 'fresh', 'change'].includes(body?.mode) ? body.mode : 'extend';
+  return { plan, days, seats, term, edition, maxBusinesses: max, mode,
     renewalFee: money(body?.renewalFee), installationFee: money(body?.installationFee), vatRate: vat,
     currency: String(body?.currency || 'UGX').slice(0, 8).toUpperCase() };
 }
@@ -275,13 +280,28 @@ function licenceTerms(body, reply) {
  */
 async function grant(accountId, t, by) {
   const status = t.plan === 'trial' ? 'trial' : 'active';
+  /* the subscription held now: a recharge counts from its end, a change keeps it */
+  const { rows: cur } = await q(
+    `select plan, status, term, expires_at from licences where account_id = $1 order by started_at desc limit 1`, [accountId]);
+  const now = cur[0];
+  const running = now && now.status === 'active' && now.plan !== 'trial' && (now.expires_at === null || new Date(now.expires_at) > new Date());
+  let expires;   // a timestamp, or null for lifetime
+  let term = t.term;
+  if (t.mode === 'change' && now) {
+    expires = now.expires_at;
+    term = now.term || term;
+  } else if (t.days === null) {
+    expires = null;
+  } else {
+    const from = t.mode === 'extend' && running && now.expires_at ? new Date(now.expires_at) : new Date();
+    expires = new Date(from.getTime() + t.days * 86400000).toISOString();
+  }
   const { rows } = await q(
     `insert into licences (account_id, plan, term, seats, status, expires_at, issued_by, edition, max_businesses,
                            renewal_fee, installation_fee, vat_rate, currency)
-     values ($1, $2, $3, $4, $5,
-             case when $6::int is null then null else now() + ($6::int * interval '1 day') end, $7, $8, $9, $10, $11, $12, $13)
+     values ($1, $2, $3, $4, $5, $6::timestamptz, $7, $8, $9, $10, $11, $12, $13)
      returning expires_at`,
-    [accountId, t.plan, t.term, t.seats, status, t.days, by, t.edition || 'retail', t.maxBusinesses ?? null,
+    [accountId, t.plan, term, t.seats, status, expires, by, t.edition || 'retail', t.maxBusinesses ?? null,
      t.renewalFee ?? null, t.installationFee ?? null, t.vatRate ?? 18, t.currency || 'UGX'],
   );
   return rows[0]?.expires_at || null;

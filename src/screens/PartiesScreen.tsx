@@ -49,7 +49,8 @@ export default function PartiesScreen({ navigation }: Props) {
 
   const totals = useMemo(() => {
     let receivable = 0, payable = 0;
-    all.forEach((p) => {
+    /* the totals follow the chip: All, only customers, or only suppliers */
+    all.filter((p) => type === 'all' || p.type === type).forEach((p) => {
       /* one sign for everyone, as on the party's own page and the computer:
          above nil they owe you, below nil you owe them — a supplier's bill
          takes the balance down, so "you owe" is the negative side */
@@ -58,7 +59,7 @@ export default function PartiesScreen({ navigation }: Props) {
       else if (bal < -0.005) payable += -bal;
     });
     return { receivable, payable, net: receivable - payable };
-  }, [db, partyBalance]);
+  }, [db, partyBalance, type]);
 
   const customers = all.filter((p) => p.type === 'customer').length;
   const suppliers = all.filter((p) => p.type === 'supplier').length;

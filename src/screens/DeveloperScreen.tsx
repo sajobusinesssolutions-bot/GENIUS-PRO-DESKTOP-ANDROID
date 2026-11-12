@@ -669,6 +669,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
   const { success, error } = useToast();
   const [plan, setPlan] = useState('pro');
   const [edition, setEdition] = useState<Edition[]>(['retail']);
+  const [mode, setMode] = useState<'extend' | 'change' | 'fresh'>('extend');
   const [period, setPeriod] = useState('365');
   const [seats, setSeats] = useState('2');
   const [businesses, setBusinesses] = useState('');
@@ -690,7 +691,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
   async function grant() {
     const days = PERIODS.find((p) => p.v === period)?.days ?? 365;
     const n = Math.max(1, Math.min(100, Number(seats) || 1));
-    const what = editionNames(edition) + ' ' + plan.toUpperCase() + ', ' + (days === null ? 'lifetime' : PERIODS.find((p) => p.v === period)!.l) + ', ' + n + ' device' + (n === 1 ? '' : 's');
+    const what = editionNames(edition) + ' ' + plan.toUpperCase() + ', ' + (mode === 'change' ? 'same end date' : (days === null ? 'lifetime' : PERIODS.find((p) => p.v === period)!.l) + (mode === 'extend' ? ' added to the time left' : ' from today')) + ', ' + n + ' device' + (n === 1 ? '' : 's');
     Alert.alert('License ' + o.email + '?', what, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -699,7 +700,7 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
           const a = await access();
           if (!a) return;
           setBusy(true);
-          const r = await dev.grantLicence(a, o.id, { plan, days, seats: n, edition: edition.join(','), businesses: businesses.trim() ? Number(businesses) : null });
+          const r = await dev.grantLicence(a, o.id, { plan, days, seats: n, edition: edition.join(','), businesses: businesses.trim() ? Number(businesses) : null, mode });
           setBusy(false);
           if (!r.ok) { error(r.error.message); return; }
           success(o.email + ' licensed — ' + what + '. Their phones pick it up at their next check-in.');
@@ -795,10 +796,18 @@ function OwnerSheet({ owner, onClose, access, onChanged }: {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {['trial', 'starter', 'pro'].map((p) => chip(p.charAt(0).toUpperCase() + p.slice(1), plan === p, () => setPlan(p)))}
         </View>
-        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginTop: 14, marginBottom: 8 }}>For how long, from today</Text>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginTop: 14, marginBottom: 8 }}>What this does</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {PERIODS.map((p) => chip(p.l, period === p.v, () => setPeriod(p.v)))}
+          {chip('Recharge — add to time left', mode === 'extend', () => setMode('extend'))}
+          {chip('Change plan or editions only', mode === 'change', () => setMode('change'))}
+          {chip('Start from today', mode === 'fresh', () => setMode('fresh'))}
         </View>
+        {mode !== 'change' ? <>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.faint, marginTop: 14, marginBottom: 8 }}>{mode === 'extend' ? 'How long to add' : 'For how long, from today'}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {PERIODS.map((p) => chip(p.l, period === p.v, () => setPeriod(p.v)))}
+          </View>
+        </> : <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 8 }}>The end date stays as it is; only the plan, editions, devices and businesses change.</Text>}
         <View style={{ height: 14 }} />
         <Field icon="phone" label="Devices allowed" value={seats} onChangeText={setSeats} numeric maxLength={3} />
       <Field icon="home" label={'Businesses allowed · blank = ' + (plan === 'pro' ? '5 (Pro)' : '1 (' + plan + ')')} value={businesses} onChangeText={setBusinesses} numeric money={false} maxLength={2} />

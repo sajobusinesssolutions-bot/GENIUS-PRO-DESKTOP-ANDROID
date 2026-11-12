@@ -237,10 +237,12 @@ export async function loadBook(opts: LoadOptions = {}): Promise<Record<string, u
               SUM(CASE WHEN COALESCE(json_extract(doc,'$.status'),'') <> 'void' AND json_extract(doc,'$.method') <> 'credit' THEN json_extract(doc,'$.total') ELSE 0 END) lpt
          FROM docs WHERE coll = 'purchases' AND day < ? AND ${notOpen('purchases')} AND party IS NOT NULL
         GROUP BY party`, [since])) { add(r.party, 'purTotalAll', r.t); add(r.party, 'purPaidAll', r.p); add(r.party, 'purTotal', r.lt); add(r.party, 'purPaidThen', r.lpt); }
-    for (const r of await d.all<{ party: string; i: number; o: number }>(
-      `SELECT party, SUM(CASE WHEN json_extract(doc,'$.direction') = 'in' THEN json_extract(doc,'$.amount') ELSE 0 END) i,
-              SUM(CASE WHEN json_extract(doc,'$.direction') = 'out' THEN json_extract(doc,'$.amount') ELSE 0 END) o
-         FROM docs WHERE coll = 'payments' AND day < ? AND party IS NOT NULL GROUP BY party`, [since])) { add(r.party, 'payIn', r.i); add(r.party, 'payOut', r.o); }
+    for (const r of await d.all<{ party: string; i: number; o: number; ui: number; uo: number }>(
+      `SELECT party, SUM(CASE WHEN json_extract(doc,'$.direction') = 'in' THEN json_extract(doc,'$.amount') + COALESCE(json_extract(doc,'$.taxDeducted'),0) ELSE 0 END) i,
+              SUM(CASE WHEN json_extract(doc,'$.direction') = 'out' THEN json_extract(doc,'$.amount') + COALESCE(json_extract(doc,'$.taxDeducted'),0) ELSE 0 END) o,
+              SUM(CASE WHEN json_extract(doc,'$.direction') = 'in' THEN COALESCE(json_extract(doc,'$.unapplied'),0) ELSE 0 END) ui,
+              SUM(CASE WHEN json_extract(doc,'$.direction') = 'out' THEN COALESCE(json_extract(doc,'$.unapplied'),0) ELSE 0 END) uo
+         FROM docs WHERE coll = 'payments' AND day < ? AND party IS NOT NULL GROUP BY party`, [since])) { add(r.party, 'payIn', r.i); add(r.party, 'payOut', r.o); add(r.party, 'payUnIn', r.ui); add(r.party, 'payUnOut', r.uo); }
     /* Items that moved before the window: their stock at the window start is
        history, not a first delivery (reports.ts stock-out days). */
     const movedBefore = (await d.all<{ item: string }>("SELECT DISTINCT item FROM docs WHERE coll = 'movements' AND day < ? AND item IS NOT NULL", [since])).map((r) => r.item);

@@ -2,7 +2,7 @@
 // Kept separate (no React/AsyncStorage imports) so they can be unit-tested
 // directly against a plain DB object without rendering a component tree.
 import { tsMs } from './helpers';
-import {
+import { BillReceipt,
   DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, JournalLine, JournalEntry, PayMethod, Product, Movement,
   StockTake, ProductionRun, RecurringInvoice, InstalmentPlan, InstalmentDue, Revision,
   LicStatus, Subscription, Shift,
@@ -692,13 +692,27 @@ export function allPartyBalances(d: DB): Map<string, number> {
   d.payments.forEach((p) => { if (p.unapplied && map.has(p.partyId)) map.set(p.partyId, map.get(p.partyId)! + (p.direction === 'in' ? -p.unapplied : p.unapplied)); });
   (d.creditNotes || []).forEach((c) => { const h = c.onAccount ? c.total : c.held || 0; if (h && c.partyId && map.has(c.partyId)) map.set(c.partyId, map.get(c.partyId)! - h); });
   d.purchases.forEach((x) => { if (x.partyId && x.status !== 'void' && map.has(x.partyId)) map.set(x.partyId, map.get(x.partyId)! - x.due); });
+  map.forEach((v, id) => map.set(id, v + olderUnapplied(d, id)));
   balanceCache.set(d, { key, map });
   return map;
 }
 
+/**
+ * With only recent trade in memory (a big book, store/bookstore.ts), an older
+ * payment that settled no bill — an advance, money on account — stays on disk
+ * and its amount came in only as a total. Its effect on the balance: money in
+ * takes the balance down, money out takes it up. The party statement counted
+ * it and the Parties list did not, so the two showed different balances.
+ */
+function olderUnapplied(d: DB, id: string): number {
+  const w = (d as any).__window;
+  const c = w && w.parties && w.parties[id];
+  return c ? (c.payUnOut || 0) - (c.payUnIn || 0) : 0;
+}
+
 export function partyBalance(d: DB, id: string): number {
   const pt = d.parties.find((p) => p.id === id); if (!pt) return 0;
-  let b = pt.openingBalance || 0;
+  let b = (pt.openingBalance || 0) + olderUnapplied(d, id);
   d.sales.forEach((s) => { if (s.partyId === id && s.status !== 'void') b += s.due; });
   d.purchases.forEach((x) => { if (x.partyId === id && x.status !== 'void') b -= x.due; });
   d.payments.forEach((p) => { if (p.partyId === id && p.unapplied) b += p.direction === 'in' ? -p.unapplied : p.unapplied; });
@@ -1867,12 +1881,43 @@ export function editSale(
 }
 
 /** Reference A.deleteSale, line 17654 — a delete is a reversal, never a splice. */
+/**
+ * A bill being deleted gives back the money paid on it afterwards (separate
+ * receipts or payments): that money was received and stays received, now on
+ * the party's account as an advance. Before, the delete treated it as handed
+ * back in cash — the cash book went down, the payment still named the gone
+ * bill, and the party's balance did not move although the bill had gone.
+ * Returns the amount freed; the bill then owes it, so its void reverses it
+ * from what is owed, not from the till.
+ */
+function releaseLaterReceipts(d: DB, bill: { id: string; paid: number; due: number; receipts?: BillReceipt[] }): number {
+  let freed = 0;
+  (bill.receipts || []).forEach((r) => {
+    const pay = d.payments.find((x) => x.id === r.paymentId);
+    if (!pay || !(r.amount > 0)) return;
+    const a = (pay.allocations || []).find((x) => x.docId === bill.id);
+    const amt = Math.min(r.amount, a ? a.amount : r.amount);
+    if (a) a.amount = cents(a.amount - amt);
+    pay.allocations = (pay.allocations || []).filter((x) => x.amount > 0.005);
+    pay.unapplied = cents((pay.unapplied || 0) + amt);
+    enqueue(d, 'payment', pay.id);
+    freed += amt;
+  });
+  if (freed > 0) {
+    bill.paid = cents(bill.paid - freed);
+    bill.due = cents(bill.due + freed);
+    bill.receipts = (bill.receipts || []).filter((r) => !d.payments.some((x) => x.id === r.paymentId));
+  }
+  return freed;
+}
+
 export function deleteSale(d: DB, saleId: string, reason = 'Deleted', when = new Date()): boolean {
   if (!canWith(ensureRoles(d), d.session.role, 'sales.delete')) {
     throw new Refusal('Permission denied: sales.delete');
   }
   const s = d.sales.find((x) => x.id === saleId);
   if (!s || s.status === 'void') return false;
+  releaseLaterReceipts(d, s);
   voidSale(d, s.id, reason, when);
   s.deletedAt = iso(when); s.deletedBy = d.session.userId;
   enqueue(d, 'sale', s.id);
@@ -1935,6 +1980,7 @@ export function deletePurchase(d: DB, purchaseId: string, reason = 'Deleted', wh
   }
   const x = d.purchases.find((p) => p.id === purchaseId);
   if (!x || x.status === 'void') return false;
+  releaseLaterReceipts(d, x as any);
   voidPurchase(d, x.id, reason, when);
   x.deletedAt = iso(when); x.deletedBy = d.session.userId;
   enqueue(d, 'purchase', x.id);

@@ -109,7 +109,9 @@ async function spendCode(email, purpose, code) {
 
 /** Which kind of code is being asked for; anything unknown is a sign-up code. */
 function purposeOf(p) {
-  return p === 'reset' || p === 'pin' || p === 'delete' || p === 'signout' ? p : 'signup';
+  /* signin: the computer's second step after the password, for a computer that
+     cannot send email itself (the desktop asks this server to send its code) */
+  return p === 'reset' || p === 'pin' || p === 'delete' || p === 'signout' || p === 'signin' ? p : 'signup';
 }
 
 export default async function authRoutes(app) {
