@@ -71,6 +71,10 @@ export interface Season {
   id: string; name: string; from: string; to: string;
   /** +20 is 20% dearer, -15 is 15% off. */
   pct: number; active: boolean;
+  /** The shortest stay touching these dates, in nights. */
+  minStay?: number;
+  /** No arrivals on these dates (guests already in may stay on). */
+  noArrival?: boolean;
 }
 export interface StayOffer {
   id: string; name: string; from: string; to: string;
@@ -155,6 +159,12 @@ export interface HotelSettings {
   taxes: TaxType[];
   chargeTypes: ChargeType[];
   cancellationPolicy: string;
+  /** Weekend nights (Friday and Saturday unless weekendDays says) cost this % more. */
+  weekendPct?: number;
+  weekendDays?: number[];
+  /** A stay this long or longer has longStayPct off its room nights. */
+  longStayNights?: number;
+  longStayPct?: number;
 }
 
 /** A tax or levy on the bill: a percentage (VAT 18%), or an amount per room a night (a tourism levy). */
@@ -282,6 +292,30 @@ export function freeRooms(d: DB, arrive: string, depart: string, typeId?: string
 export function seasonOn(d: DB, day: string): Season | undefined {
   return seasons(d).filter((s) => s.active && s.from <= day && day <= s.to).slice(-1)[0];
 }
+/** Friday and Saturday nights, unless the hotel says otherwise (0 = Sunday). */
+export const weekendDays = (d: DB): number[] => { const w = hotelSettings(d).weekendDays; return Array.isArray(w) && w.length ? w : [5, 6]; };
+export const isWeekend = (d: DB, day: string) => weekendDays(d).includes(new Date(day + 'T12:00:00').getDay());
+/** A room's rate for one night: its season, then the weekend. */
+export function nightRate(d: DB, rate: number, day: string): number {
+  const s = seasonOn(d, day);
+  const w = isWeekend(d, day) ? (Number(hotelSettings(d).weekendPct) || 0) : 0;
+  return Math.round(rate * (1 + (s ? s.pct : 0) / 100) * (1 + w / 100));
+}
+/**
+ * What a stay breaks of the hotel's rules: a season closed to arrivals on the
+ * arrival day, or a season's shortest stay. Said, not enforced — the desk may
+ * still book it, after being told.
+ */
+export function stayRules(d: DB, arrive: string, depart: string): string[] {
+  const a = String(arrive).slice(0, 10), z = String(depart).slice(0, 10);
+  const n = nightsOf(a, z);
+  const out: string[] = [];
+  for (const s of seasons(d).filter((x) => x.active && x.noArrival && x.from <= a && a <= x.to)) out.push(s.name + ' is closed to arrivals on ' + a + '.');
+  const nights = nightsList(a, z);
+  const need = seasons(d).filter((x) => x.active && Number(x.minStay) > 1 && nights.some((d2) => x.from <= d2 && d2 <= x.to)).sort((x, y) => Number(y.minStay) - Number(x.minStay))[0];
+  if (need && n < Number(need.minStay)) out.push(need.name + ' needs a stay of at least ' + need.minStay + ' nights (this one is ' + n + ').');
+  return out;
+}
 
 export interface StayPrice {
   nights: number;
@@ -301,8 +335,7 @@ export function priceStay(d: DB, b: Pick<Booking, 'arrive' | 'depart' | 'rooms' 
   for (const r of b.rooms) {
     const room = rooms(d).find((x) => x.id === r.roomId);
     const each = nights.map((n) => {
-      const s = seasonOn(d, n);
-      const base = Math.round(r.rate * (1 + (s ? s.pct : 0) / 100));
+      const base = nightRate(d, r.rate, n);
       return base + planNight(plan, r.adults, r.children);
     });
     const sum = each.reduce((a, v) => a + v, 0);
@@ -314,6 +347,12 @@ export function priceStay(d: DB, b: Pick<Booking, 'arrive' | 'depart' | 'rooms' 
       const off = each.slice().sort((x, y) => x - y).slice(0, free).reduce((a, v) => a + v, 0);
       if (off) { offerTotal += off; lines.push({ desc: offer.name + ' · ' + free + ' night' + (free === 1 ? '' : 's') + ' free', amount: -off }); }
     }
+  }
+  /* a long stay: a percentage off the room nights once it reaches the hotel's length */
+  const ls = hotelSettings(d);
+  if (Number(ls.longStayNights) > 1 && Number(ls.longStayPct) > 0 && nights.length >= Number(ls.longStayNights)) {
+    const off = Math.round((roomsTotal - offerTotal) * Number(ls.longStayPct) / 100);
+    if (off) { offerTotal += off; lines.push({ desc: 'Long stay · ' + nights.length + ' nights · ' + ls.longStayPct + '% off', amount: -off }); }
   }
   return { nights: nights.length, lines, rooms: roomsTotal, offer: offerTotal, total: roomsTotal - offerTotal };
 }
@@ -445,8 +484,7 @@ export function hotelReport(d: DB, from: string, to: string) {
     for (const b of sold) {
       if (!(b.arrive.slice(0, 10) <= day && day < b.depart.slice(0, 10))) continue;
       for (const r of b.rooms) {
-        const s = seasonOn(d, day);
-        const rate = Math.round(r.rate * (1 + (s ? s.pct : 0) / 100));
+        const rate = nightRate(d, r.rate, day);
         occupied++; revenue += rate;
         const t = roomTypes(d).find((x) => x.id === r.typeId);
         const k = byType.get(r.typeId) || { name: t?.name || 'Room', nights: 0, revenue: 0 };
@@ -591,8 +629,7 @@ export function nightly(d: DB, b: Pick<Booking, 'arrive' | 'depart' | 'rooms' | 
   for (const r of b.rooms) {
     const no = rooms(d).find((x) => x.id === r.roomId)?.no || '?';
     for (const n of nightsList(b.arrive, b.depart)) {
-      const s = seasonOn(d, n);
-      out.push({ day: n, roomId: r.roomId, room: no, amount: Math.round(r.rate * (1 + (s ? s.pct : 0) / 100)) + planNight(plan, r.adults, r.children) });
+      out.push({ day: n, roomId: r.roomId, room: no, amount: nightRate(d, r.rate, n) + planNight(plan, r.adults, r.children) });
     }
   }
   return out;
@@ -718,6 +755,25 @@ export function allTransactions(d: DB, from: string, to: string, kinds?: FolioLi
 }
 
 /** A company's invoice: every stay billed to it in a period, as one statement. */
+export interface CashRow { ts: string; source: string; no: string; who: string; method: string; amount: number; by: string; note: string }
+/**
+ * The desk's cash-up: every payment taken in the dates — on stays, groups,
+ * events and the computer's walk-in sales — with how it was paid and who
+ * took it, and the totals by method and by person. A refund is a payment less.
+ */
+export function cashUp(d: DB, from: string, to: string) {
+  const rows: CashRow[] = [];
+  const inDates = (ts: any) => { const x = String(ts || '').slice(0, 10); return x >= from && x <= to; };
+  for (const b of bookings(d)) {
+    const grp = (b as any).blockId ? groupBlocks(d).find((g) => g.id === (b as any).blockId) : null;
+    for (const p of b.payments || []) if (inDates(p.ts)) rows.push({ ts: p.ts, source: grp ? 'Group ' + grp.no : 'Stay', no: b.no, who: b.guests[0]?.name || '', method: p.method || 'cash', amount: Number(p.amount) || 0, by: p.by || '', note: p.note || '' });
+  }
+  for (const e of hotelEvents(d)) for (const p of (e as any).payments || []) if (inDates(p.ts)) rows.push({ ts: p.ts, source: 'Event', no: e.no, who: e.name, method: p.method || 'cash', amount: Number(p.amount) || 0, by: p.by || '', note: p.note || '' });
+  for (const w of ((d as any).hotelWalkins || []).filter((x: any) => !x.voided)) if (inDates(w.ts)) rows.push({ ts: w.ts, source: 'Walk-in', no: w.no, who: w.guest || w.desc, method: w.method || 'cash', amount: Number(w.amount) || 0, by: w.by || '', note: w.desc || '' });
+  rows.sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+  const sum = (key: 'method' | 'by') => { const m: Record<string, number> = {}; for (const r of rows) m[r[key] || '—'] = (m[r[key] || '—'] || 0) + r.amount; return m; };
+  return { rows, byMethod: sum('method'), byPerson: sum('by'), total: rows.reduce((a, r) => a + r.amount, 0) };
+}
 export function companyStays(d: DB, companyIds: string[], from: string, to: string) {
   return bookings(d)
     .filter((b) => b.companyId && companyIds.includes(b.companyId) && (b.status === 'out' || b.status === 'in') && b.depart.slice(0, 10) >= from && b.arrive.slice(0, 10) <= to)

@@ -28,7 +28,7 @@ import {
   type Booking, type BookingKind, type BookedRoom, type Guest, type RoomStatus, type FolioPayment,
   KIND_WORD, ROOM_WORD, SOURCES, STATUS_WORD, addDays, bookingOn, bookings, checkInMissing, dayAtDesk, folioOf,
   freeRooms, guestRegister, hotelSettings, nightsOf, priceStay, ratePlans, roomTypes, rooms, seasons, stayOffers, today,
-  breakfastList, forecast, guestMessage, hotelReport, nightly, planMeals, MEAL_WORD, guestFlags,
+  breakfastList, forecast, guestMessage, hotelReport, nightly, planMeals, MEAL_WORD, guestFlags, stayRules, weekendDays, cashUp,
 } from '../data/hotel';
 import { sendVia } from '../data/messages';
 
@@ -467,6 +467,12 @@ export function BookingEditScreen({ route, navigation }: any) {
   const setG = (i: number, p: Partial<Guest>) => setGuests(guests.map((g, j) => (j === i ? { ...g, ...p } : g)));
 
   const save = () => {
+    const broken = stayRules(db, arrive, depart);
+    const same = existing && existing.arrive.slice(0, 10) === arrive && existing.depart.slice(0, 10) === depart;
+    if (broken.length && !same) { Alert.alert('This stay breaks a rate rule', broken.join('\n'), [{ text: 'Back', style: 'cancel' }, { text: 'Book it anyway', onPress: saveNow }]); return; }
+    saveNow();
+  };
+  const saveNow = () => {
     try {
       const b = hotel.saveBooking({
         id: existing?.id, kind, source, arrive, depart, rooms: picked, ratePlanId: plan || null,
@@ -510,6 +516,7 @@ export function BookingEditScreen({ route, navigation }: any) {
           <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft }}>
             {nights} night{nights === 1 ? '' : 's'} · in from {set0.checkInTime}, out by {set0.checkOutTime}
           </Text>
+          {stayRules(db, arrive, depart).map((m) => <Text key={m} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.warn }}>{m}</Text>)}
         </Card>
 
         <Card style={{ padding: 14, gap: 10 }}>
@@ -857,7 +864,8 @@ export function HotelSetupScreen() {
   const [tab, setTab] = useState<SetupTab>(() => (roomTypes(db).length ? 'rooms' : 'types'));
   const [edit, setEdit] = useState<any>(null);
   const settings = hotelSettings(db);
-  const [times, setTimes] = useState({ checkInTime: settings.checkInTime, checkOutTime: settings.checkOutTime, depositPct: String(settings.depositPct || '') });
+  const [times, setTimes] = useState({ checkInTime: settings.checkInTime, checkOutTime: settings.checkOutTime, depositPct: String(settings.depositPct || ''),
+    weekendPct: String(settings.weekendPct || ''), weekendDays: weekendDays(db as any), longStayNights: String(settings.longStayNights || ''), longStayPct: String(settings.longStayPct || '') });
   if (!db) return null;
   const types = roomTypes(db);
   const run = (fn: () => void, ok: string) => { try { fn(); setEdit(null); success(ok); } catch (e: any) { Alert.alert('Cannot save', e.message); } };
@@ -908,7 +916,7 @@ export function HotelSetupScreen() {
           <>
             <Cap style={{ marginBottom: 8 }}>Seasons — dearer or cheaper dates</Cap>
             <Card>
-              {seasons(db).map((s) => <Row key={s.id} off={!s.active} title={s.name} sub={short(s.from) + ' – ' + short(s.to) + ' · ' + (s.pct > 0 ? '+' : '') + s.pct + '%'} onPress={() => setEdit({ k: 'season', ...s, pct: String(s.pct) })} />)}
+              {seasons(db).map((s) => <Row key={s.id} off={!s.active} title={s.name} sub={short(s.from) + ' – ' + short(s.to) + ' · ' + (s.pct > 0 ? '+' : '') + s.pct + '%' + (Number(s.minStay) > 1 ? ' · ' + s.minStay + ' nights at least' : '') + (s.noArrival ? ' · no arrivals' : '')} onPress={() => setEdit({ k: 'season', ...s, pct: String(s.pct) })} />)}
               {add('Season', () => setEdit({ k: 'season', name: 'Festive season', from: today(), to: addDays(today(), 14), pct: '20', active: true }))}
             </Card>
             <Cap style={{ marginTop: 18, marginBottom: 8 }}>Stay offers</Cap>
@@ -925,7 +933,14 @@ export function HotelSetupScreen() {
               <Field style={{ flex: 1 }} label="Check-out by" value={times.checkOutTime} onChangeText={(v) => setTimes({ ...times, checkOutTime: v })} placeholder="10:00" />
             </View>
             <Field label="Deposit asked on booking" numeric money={false} suffix="%" value={times.depositPct} onChangeText={(v) => setTimes({ ...times, depositPct: v })} />
-            <Button variant="pri" label="Save" onPress={() => run(() => hotel.saveHotelSettings({ checkInTime: times.checkInTime, checkOutTime: times.checkOutTime, depositPct: Number(times.depositPct) || 0 }), 'Saved')} />
+            <Cap>Weekends and long stays</Cap>
+            <Field label="Weekend nights cost more by" numeric decimal money={false} suffix="%" value={times.weekendPct} onChangeText={(v) => setTimes({ ...times, weekendPct: v })} />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((n, i) => <Chip key={n} label={n} on={times.weekendDays.includes(i)} onPress={() => setTimes({ ...times, weekendDays: times.weekendDays.includes(i) ? times.weekendDays.filter((x) => x !== i) : [...times.weekendDays, i].sort() })} />)}</View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Field style={{ flex: 1 }} label="Long stay from, nights" numeric money={false} value={times.longStayNights} onChangeText={(v) => setTimes({ ...times, longStayNights: v })} placeholder="7" />
+              <Field style={{ flex: 1 }} label="Long stay discount" numeric decimal money={false} suffix="%" value={times.longStayPct} onChangeText={(v) => setTimes({ ...times, longStayPct: v })} placeholder="10" />
+            </View>
+            <Button variant="pri" label="Save" onPress={() => run(() => hotel.saveHotelSettings({ checkInTime: times.checkInTime, checkOutTime: times.checkOutTime, depositPct: Number(times.depositPct) || 0, weekendPct: Number(times.weekendPct) || 0, weekendDays: times.weekendDays, longStayNights: Number(times.longStayNights) || 0, longStayPct: Number(times.longStayPct) || 0 }), 'Saved')} />
           </Card>
         ) : null}
       </ScrollView>
@@ -940,8 +955,8 @@ export function HotelSetupScreen() {
             if (!(a > 0 && z >= a && z - a < 200)) throw new Error('Give a first and last room number, such as 101 and 120.');
             for (let n = a; n <= z; n++) if (!rooms(db).some((r) => r.no === String(n))) hotel.saveRoom({ no: String(n), typeId: e.typeId, floor: e.floor, active: true });
           }, 'Rooms added');
-          else if (e.k === 'plan') run(() => hotel.saveRatePlan({ id: e.id, code: (e.code || '').trim().toUpperCase(), name: e.name, meals: e.meals || [], perNight: Number(e.perNight) || 0, perPerson: Number(e.perPerson) || 0, perChild: Number(e.perChild) || 0, active: e.active !== false }), 'Meal plan saved');
-          else if (e.k === 'season') run(() => hotel.saveSeason({ id: e.id, name: e.name, from: e.from, to: e.to, pct: Number(e.pct) || 0, active: e.active !== false }), 'Season saved');
+          else if (e.k === 'plan') run(() => hotel.saveRatePlan({ id: e.id, code: (e.code || '').trim().toUpperCase(), name: e.name, meals: e.meals || [], perNight: Number(e.perNight) || 0, perPerson: Number(e.perPerson) || 0, perChild: Number(e.perChild) || 0, perStay: Number(e.perStay) || 0, description: e.description || '', active: e.active !== false } as any), 'Meal plan saved');
+          else if (e.k === 'season') run(() => hotel.saveSeason({ id: e.id, name: e.name, from: e.from, to: e.to, pct: Number(e.pct) || 0, minStay: Number(e.minStay) > 1 ? Number(e.minStay) : 0, noArrival: !!e.noArrival, active: e.active !== false }), 'Season saved');
           else run(() => hotel.saveStayOffer({ id: e.id, name: e.name, from: e.from, to: e.to, stay: Number(e.stay) || 0, pay: Number(e.pay) || 0, active: e.active !== false }), 'Offer saved');
         }} /> : null}>
         {edit ? (
@@ -980,7 +995,11 @@ export function HotelSetupScreen() {
                 <DateField label="To" value={edit.to} onChange={(v) => setEdit({ ...edit, to: v })} />
               </View>
               {edit.k === 'season'
-                ? <Field label="Price change, % (minus for cheaper)" numeric decimal money={false} suffix="%" value={edit.pct} onChangeText={(v) => setEdit({ ...edit, pct: v })} />
+                ? <>
+                    <Field label="Price change, % (minus for cheaper)" numeric decimal money={false} suffix="%" value={edit.pct} onChangeText={(v) => setEdit({ ...edit, pct: v })} />
+                    <Field label="Shortest stay, nights (blank for any)" numeric money={false} value={edit.minStay ? String(edit.minStay) : ''} onChangeText={(v) => setEdit({ ...edit, minStay: v })} />
+                    <ToggleRow bare label="Closed to arrivals" on={!!edit.noArrival} onChange={(v) => setEdit({ ...edit, noArrival: v })} />
+                  </>
                 : <View style={{ flexDirection: 'row', gap: 10 }}>
                     <Field style={{ flex: 1 }} label="Stay nights" numeric money={false} value={edit.stay} onChangeText={(v) => setEdit({ ...edit, stay: v })} />
                     <Field style={{ flex: 1 }} label="Pay for" numeric money={false} value={edit.pay} onChangeText={(v) => setEdit({ ...edit, pay: v })} />
@@ -1041,7 +1060,8 @@ export function HotelReportsScreen() {
   const [to, setTo] = useState(today());
   const r = useMemo(() => (db ? hotelReport(db, from, to) : null), [db, from, to]);
   const fc = useMemo(() => (db ? forecast(db, 30) : []), [db]);
-  if (!db || !r) return null;
+  const cu = useMemo(() => (db ? cashUp(db, from, to) : null), [db, from, to]);
+  if (!db || !r || !cu) return null;
   const Kpi = ({ l, v, sub }: { l: string; v: string; sub?: string }) => (
     <View style={{ flex: 1, minWidth: '45%', padding: 12, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
       <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{l}</Text>
@@ -1091,6 +1111,10 @@ export function HotelReportsScreen() {
           </View>
         </ScrollView>
       </Card>
+      <Table title={'Desk cash-up · ' + money(cu.total) + ' taken'} rows={[
+        ...Object.entries(cu.byMethod).map(([m, v]) => [({ cash: 'Cash', momo: 'Mobile money', bank: 'Bank / card', card: 'Card' } as Record<string, string>)[m] || m, money(v), 'by method'] as [string, string, string]),
+        ...Object.entries(cu.byPerson).map(([p, v]) => [p === '—' ? 'Not recorded' : p, money(v), 'taken by'] as [string, string, string]),
+      ]} />
       <Table title="By room type" rows={r.byType.map((t) => [t.name, money(t.revenue), t.nights + ' nights'])} />
       <Table title="Where bookings came from" rows={r.bySource.map((x) => [x.source, money(x.revenue), x.bookings + ' bkg · ' + x.nights + ' n'])} />
       <Table title="Guests by nationality" rows={r.byNation.map((x) => [x.nation, String(x.guests)])} />
