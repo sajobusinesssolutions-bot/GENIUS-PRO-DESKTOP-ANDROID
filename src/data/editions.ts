@@ -18,7 +18,19 @@ import type { DB } from './types';
 export type Edition = 'retail' | 'restaurant' | 'pharmacy' | 'hotel';
 
 export function editionOf(d: Pick<DB, 'firm'> | null | undefined): Edition {
-  return editionOfType(d?.firm?.businessType);
+  return isHotel(d) ? 'hotel' : editionOfType(d?.firm?.businessType);
+}
+
+/**
+ * A hotel: its type says so, or its books hold rooms or bookings. On the
+ * computer a hotel is a restaurant with the reception switched on, and a
+ * business set up there reaches the phone as "restaurant" — so the reception
+ * and everything under it stayed hidden on the phone. Only a hotel has rooms.
+ */
+export function isHotel(d: any): boolean {
+  if (!d) return false;
+  if (d.firm?.businessType === 'hotel') return true;
+  return (d.rooms || []).length > 0 || (d.roomTypes || []).length > 0 || (d.hotelBookings || []).length > 0;
 }
 
 /** A hotel runs the whole restaurant too: every restaurant feature is on for it. */

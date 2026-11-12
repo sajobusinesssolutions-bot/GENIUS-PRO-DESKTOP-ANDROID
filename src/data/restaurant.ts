@@ -1,3 +1,4 @@
+import { isHotel } from './editions';
 /**
  * RESTAURANT MODE.
  *
@@ -66,7 +67,7 @@ export function kitchenOf(d: Pick<DB, 'printer'> | null | undefined): KitchenSet
 
 export function isRestaurant(d: Pick<DB, 'firm'> | null | undefined): boolean {
   // a hotel runs the full restaurant as well
-  return d?.firm?.businessType === 'restaurant' || d?.firm?.businessType === 'hotel';
+  return d?.firm?.businessType === 'restaurant' || isHotel(d);
 }
 
 /** The words the till uses: "Order" and "Ticket" in a restaurant, "Sale" and "Cart" elsewhere. */

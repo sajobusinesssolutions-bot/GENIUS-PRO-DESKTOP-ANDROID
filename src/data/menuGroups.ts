@@ -1,3 +1,4 @@
+import { isHotel } from './editions';
 /**
  * MENU_GROUPS — what the Menu tab offers, grouped by the job being done.
  *
@@ -107,11 +108,12 @@ export const MENU_GROUPS: MenuGroupDef[] = [
     b: (c) => plural(liveSales(c.db).length, 'sale'),
     items: [
       // the hotel's reception, first for a hotel
-      { route: 'FrontDesk', i: 'chair', n: 'Reception', b: (c) => plural(((c.db as any).hotelBookings || []).filter((b: any) => b.status === 'in').length, 'guest booking') + ' in house', show: (d) => d?.firm?.businessType === 'hotel', alt: 'hotel front desk rooms bookings check in check out reservations' },
-      { route: 'HotelGroups', i: 'user', n: 'Groups', b: (c) => plural(((c.db as any).groupBlocks || []).filter((g: any) => g.status === 'tentative' || g.status === 'definite').length, 'group block'), show: (d) => d?.firm?.businessType === 'hotel', alt: 'group block allotment conference tour rooming list' },
-      { route: 'HotelEvents', i: 'calendar', n: 'Events and halls', b: (c) => plural(((c.db as any).hotelEvents || []).filter((e: any) => e.status === 'confirmed' || e.status === 'tentative').length, 'event') + ' coming', show: (d) => d?.firm?.businessType === 'hotel', alt: 'events conference meeting wedding hall banquet' },
-      { route: 'GuestRegister', i: 'doc', n: 'Guest register', b: () => 'Everyone who stayed, with ID and nationality', show: (d) => d?.firm?.businessType === 'hotel', alt: 'hotel guests police register' },
-      { route: 'HotelSetup', i: 'cog', n: 'Rooms & rates', b: (c) => plural(((c.db as any).rooms || []).length, 'room'), show: (d) => d?.firm?.businessType === 'hotel', alt: 'hotel room types rates seasons offers' },
+      { route: 'FrontDesk', i: 'chair', n: 'Reception', b: (c) => plural(((c.db as any).hotelBookings || []).filter((b: any) => b.status === 'in').length, 'guest booking') + ' in house', show: (d) => isHotel(d), alt: 'hotel front desk rooms bookings check in check out reservations' },
+      { route: 'HotelGroups', i: 'user', n: 'Groups', b: (c) => plural(((c.db as any).groupBlocks || []).filter((g: any) => g.status === 'tentative' || g.status === 'definite').length, 'group block'), show: (d) => isHotel(d), alt: 'group block allotment conference tour rooming list' },
+      { route: 'HotelEvents', i: 'calendar', n: 'Events and halls', b: (c) => plural(((c.db as any).hotelEvents || []).filter((e: any) => e.status === 'confirmed' || e.status === 'tentative').length, 'event') + ' coming', show: (d) => isHotel(d), alt: 'events conference meeting wedding hall banquet' },
+      { route: 'HotelReports', i: 'chart', n: 'Front office reports', b: () => 'Occupancy, revenue, meal count and more', show: (d) => isHotel(d), alt: 'hotel reports occupancy adr revenue meal count front office' },
+      { route: 'GuestRegister', i: 'doc', n: 'Guest register', b: () => 'Everyone who stayed, with ID and nationality', show: (d) => isHotel(d), alt: 'hotel guests police register' },
+      { route: 'HotelSetup', i: 'cog', n: 'Rooms & rates', b: (c) => plural(((c.db as any).rooms || []).length, 'room'), show: (d) => isHotel(d), alt: 'hotel room types rates seasons offers' },
       { route: 'KitchenDisplay', i: 'food', n: 'Kitchen display', b: (c) => plural((c.db.kitchenOrders || []).filter((k) => k.status !== 'served').length, 'order') + ' in the kitchen', show: (d) => isRestaurant(d), alt: 'kds kitchen screen cooks orders ready' },
       { route: 'Order', i: 'food', n: 'Take an order', b: (c) => plural((c.db.tickets || []).filter((t) => t.status === 'open').length, 'open ticket'), show: (d) => isRestaurant(d), alt: 'restaurant table ticket kitchen order' },
       { route: 'ReportDetail', i: 'doc', n: 'Day book', b: () => 'Every transaction, with debit and credit', params: { id: 'daybook' }, perm: 'reports', alt: 'daybook all transactions journal register' },

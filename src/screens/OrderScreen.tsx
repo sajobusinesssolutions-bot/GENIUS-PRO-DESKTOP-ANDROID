@@ -1,3 +1,4 @@
+import { isHotel } from '../data/editions';
 /**
  * TAKING AN ORDER — the restaurant till (Loyverse-style).
  *
@@ -73,9 +74,9 @@ export default function OrderScreen({ navigation, route }: Props) {
   const [method, setMethod] = useState<PayMethod>('cash');
   /* a hotel: the meal can go on an in-house guest's room bill instead of being paid now */
   const [toRoom, setToRoom] = useState<string | null>(null);
-  const inHouse = db?.firm?.businessType === 'hotel' ? hotelBookings(db).filter((b) => b.status === 'in') : [];
+  const inHouse = isHotel(db) ? hotelBookings(db).filter((b) => b.status === 'in') : [];
   // today's events: a meal or the bar for an event goes on the event's bill
-  const eventsToday = db?.firm?.businessType === 'hotel' ? hotelEvents(db).filter((e) => (e.status === 'confirmed' || e.status === 'tentative') && e.from.slice(0, 10) <= today() && e.to.slice(0, 10) >= today()) : [];
+  const eventsToday = isHotel(db) ? hotelEvents(db).filter((e) => (e.status === 'confirmed' || e.status === 'tentative') && e.from.slice(0, 10) <= today() && e.to.slice(0, 10) >= today()) : [];
   const [received, setReceived] = useState('');
   const [orderNote, setOrderNote] = useState('');
   /** Splitting the bill: how many of each line this payer takes; null when not splitting. */
