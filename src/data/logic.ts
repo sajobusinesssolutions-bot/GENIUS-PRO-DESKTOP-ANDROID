@@ -516,19 +516,32 @@ export function voidSale(d: DB, saleId: string, reason?: string, when = new Date
     if (!(l.fromRecipe ?? !p?.madeAhead)) return;
     (p?.recipe || []).forEach((r) => move(d, r.productId, s.warehouse, r.qty * stockQty(l), 'void', s.no, when));
   });
+  /* The sale's own posting, turned back line for line (commitSale): the money
+     taken at the counter out of the account it went into — for a credit sale
+     with something paid down that is receivedVia, which used to be skipped,
+     leaving the books out of balance by it — points and tax withheld back to
+     their own ledgers, and what is owed off the debtors. Money paid on the
+     bill afterwards (a receipt of its own) is still received: it comes off the
+     debtors too, and stays on the customer's account — it was never in this
+     sale's till, so it is not taken out of it. Before, it was credited to the
+     till (or, on a credit sale, nowhere at all). */
   const jl: JournalLine[] = [];
-  const paidNow = s.paid - (s.redeemed || 0);
+  const redeemed = s.redeemed || 0, wht = s.wht || 0;
+  const atSale = s.paidAtSale ?? (s.method === 'credit' ? 0 : s.paid);
+  const later = Math.max(0, cents(s.paid - atSale));
+  const tillPaid = Math.max(0, cents(atSale - redeemed - wht));
   if (s.methods && s.methods.length > 1) {
     s.methods.forEach((m) => {
       const acc = m.method === 'cash' ? 'acc_cash' : m.method === 'momo' ? 'acc_momo' : m.method === 'bank' ? 'acc_bank' : null;
       if (m.amount > 0 && acc) jl.push({ acc, cr: m.amount });
     });
-  } else {
-    const acc = s.method === 'cash' ? 'acc_cash' : s.method === 'momo' ? 'acc_momo' : s.method === 'bank' ? 'acc_bank' : null;
-    if (paidNow > 0 && acc) jl.push({ acc, cr: paidNow });
+  } else if (tillPaid > 0) {
+    const via = s.method === 'credit' ? (s.receivedVia || 'cash') : s.method;
+    jl.push({ acc: via === 'momo' ? 'acc_momo' : via === 'bank' ? 'acc_bank' : 'acc_cash', cr: tillPaid });
   }
-  if (s.due > 0) jl.push({ acc: 'n_ar', cr: s.due });
-  if (s.redeemed) jl.push({ acc: 'n_loyalty', cr: s.redeemed });
+  if (s.due + later > 0.005) jl.push({ acc: 'n_ar', cr: cents(s.due + later) });
+  if (redeemed) jl.push({ acc: 'n_loyalty', cr: redeemed });
+  if (wht) jl.push({ acc: 'n_wht_credit', cr: wht });
   jl.push({ acc: 'n_sales', dr: s.total - s.tax + s.discount });
   if (s.tax > 0) jl.push({ acc: 'n_tax', dr: s.tax });
   if (s.discount > 0) jl.push({ acc: 'n_discount', cr: s.discount });
@@ -1864,7 +1877,16 @@ export function editSale(
      as before; with one, what was paid later (separate receipts) still counts */
   if (!o.pay && oldMethod !== 'credit') {
     const keep = Math.min(oldPaid, fresh.total);
-    fresh.paid = keep; fresh.due = Math.max(0, fresh.total - keep);
+    /* The new sale was posted as paid in full; only what was taken stays taken.
+       The rest is owed, in the books as on the bill: before, the bill said
+       owed while the till was credited with money nobody handed over — and a
+       later delete of it took that money back out, unbalancing the books. */
+    const extra = cents(fresh.paid - keep);
+    if (extra > 0.005 && !(fresh.methods && fresh.methods.length > 1)) {
+      const via = fresh.method === 'credit' ? (fresh.receivedVia || 'cash') : fresh.method;
+      journal(d, when, 'Owed on edited ' + oldNo, oldNo, [{ acc: 'n_ar', dr: extra }, { acc: via === 'momo' ? 'acc_momo' : via === 'bank' ? 'acc_bank' : 'acc_cash', cr: extra }]);
+    }
+    fresh.paid = keep; fresh.paidAtSale = keep; fresh.due = Math.max(0, fresh.total - keep);
   } else if (paidLater > 0) {
     const add = Math.min(paidLater, Math.max(0, fresh.due));
     fresh.paid += add; fresh.due = Math.max(0, fresh.due - add);
@@ -2252,9 +2274,11 @@ export function restorePayment(d: DB, payId: string, when = new Date()): Payment
   if (!held) throw new Refusal('That payment is not in Deleted transactions.');
   if (held.direction === 'out') guardCash(d, [{ acc: held.accountId, amount: held.amount }]);
   const { deletedAt: _a, deletedBy: _b, deleteReason: _c, purgedAt: _d, ...pay } = held;
+  // as recordPayment posts it: the tax withheld settled the bill as much as the money did
+  const wht = pay.taxDeducted || 0;
   const lines: JournalLine[] = pay.direction === 'in'
-    ? [{ acc: pay.accountId, dr: pay.amount }, { acc: 'n_ar', cr: pay.amount }]
-    : [{ acc: 'n_ap', dr: pay.amount }, { acc: pay.accountId, cr: pay.amount }];
+    ? [{ acc: pay.accountId, dr: pay.amount }, ...(wht ? [{ acc: 'n_wht_credit', dr: wht }] : []), { acc: 'n_ar', cr: pay.amount + wht }]
+    : [{ acc: 'n_ap', dr: pay.amount + wht }, { acc: pay.accountId, cr: pay.amount }, ...(wht ? [{ acc: 'n_tax', cr: wht }] : [])];
   journal(d, when, 'Restore ' + (pay.direction === 'in' ? 'receipt' : 'payment'), 'RST', lines);
   d.payments.push(pay as Payment);
   applyPayment(d, pay as Payment);
