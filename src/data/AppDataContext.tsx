@@ -97,6 +97,8 @@ export interface Ctx {
   addParty: (p: Omit<Party, 'id'>) => Party;
   resetAll: () => Promise<void>;
   startFinancialYear: (when?: Date) => logic.FinancialYearStart;
+  /** Puts right what older deletes left in the books (logic.checkBooks); returns what was done. */
+  repairBooks: () => logic.BookIssue[];
   importBankStatement: (accountId: string, lines: StatementInput[]) => BankStatementLine[];
   matchBankStatementLine: (lineId: string, journalId: string) => BankStatementLine | null;
   bankReconciliationSummary: (accountId: string, from: string, to: string, closing: number) => ReconciliationSummary;
@@ -316,7 +318,7 @@ const GATED_ACTIONS = [
   'startStockTake', 'setStockTakeCount', 'setStockTakeBatchCount', 'receivePurchaseOrder', 'scheduleRecurring', 'updateRecurring',
   'runRecurring', 'openShift', 'addUnit', 'removeUnit', 'addCategory', 'removeCategory', 'saveModifierGroup', 'removeModifierGroup',
   'saveTicket', 'saveMenuGroup', 'removeMenuGroup', 'moveMenuGroup', 'saveMenu', 'removeMenu', 'voidTicket', 'purgeDeleted',
-  'addLedger', 'updateLedger', 'payInstalment', 'applyBulkPlan', 'addWarehouse', 'removeWarehouse', 'startFinancialYear',
+  'addLedger', 'updateLedger', 'payInstalment', 'applyBulkPlan', 'addWarehouse', 'removeWarehouse', 'startFinancialYear', 'repairBooks',
   'matchBankStatementLine', 'completeBankReconciliation', 'addFirm', 'savePriceList',
 ];
 
@@ -864,6 +866,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       dbRef.current = fresh;
       setDb(fresh);
       await saveDB(fresh);
+    },
+    repairBooks: () => {
+      let done: logic.BookIssue[] = [];
+      commit((d) => { done = logic.repairBooks(d); });
+      return done;
     },
     startFinancialYear: (when) => {
       let result!: logic.FinancialYearStart;

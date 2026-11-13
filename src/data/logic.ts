@@ -2198,6 +2198,73 @@ export function deleteEntry(d: DB, id: string, when = new Date()): boolean {
   return true;
 }
 
+/* ============================================================
+   THE BOOKS THEMSELVES — find, and put right, what old deletes left wrong.
+
+   Everything a deleted sale or purchase posted under its number, together
+   with its reversal, nets to nothing on every account: that is what a delete
+   is. Older versions missed a line — the money taken at the counter on a
+   credit sale was never taken back out, money paid on a bill afterwards was
+   taken out of the till instead of off the debtors — so some deleted
+   documents still leave a balance on an account. Each one found is put right
+   with one entry under its own number; a second run finds nothing more.
+   ============================================================ */
+export interface BookIssue { kind: 'fixable' | 'look'; what: string; detail: string; amount: number; ref?: string }
+interface BookFix { ref: string; memo: string; lines: JournalLine[] }
+
+function leftOver(d: DB, ref: string): JournalLine[] {
+  const net = new Map<string, number>();
+  d.journal.filter((e) => e.ref === ref).forEach((e) => e.lines.forEach((l) => net.set(l.acc, (net.get(l.acc) || 0) + (l.dr || 0) - (l.cr || 0))));
+  const out: JournalLine[] = [];
+  net.forEach((v, acc) => { const c = cents(v); if (Math.abs(c) >= 0.01) out.push(c > 0 ? { acc, cr: c } : { acc, dr: -c }); });
+  return out;
+}
+
+export function checkBooks(d: DB): { issues: BookIssue[]; fixes: BookFix[] } {
+  const issues: BookIssue[] = [];
+  const fixes: BookFix[] = [];
+  const accName = (id: string) => (d.coa || []).find((l) => l.id === id)?.name || d.accounts.find((a) => a.id === id)?.name || id;
+  const docs: Array<{ no: string; kind: string; ts: string }> = [
+    ...d.sales.filter((x) => x.status === 'void').map((x) => ({ no: x.no, kind: 'Sale', ts: x.ts })),
+    ...d.purchases.filter((x) => x.status === 'void').map((x) => ({ no: x.no, kind: 'Purchase', ts: x.ts })),
+  ];
+  // a number a live document still uses (an edited one keeps its number) is not a deleted document's alone
+  const live = new Set([...d.sales.filter((x) => x.status !== 'void').map((x) => x.no), ...d.purchases.filter((x) => x.status !== 'void').map((x) => x.no)]);
+  docs.forEach((doc) => {
+    if (live.has(doc.no)) return;
+    const lines = leftOver(d, doc.no);
+    if (!lines.length) return;
+    const amount = lines.reduce((a, l) => a + (l.dr || 0), 0);
+    fixes.push({ ref: doc.no, memo: 'Repair ' + doc.no + ' — what its delete left behind', lines });
+    issues.push({ kind: 'fixable', ref: doc.no, amount,
+      what: doc.kind + ' ' + doc.no + ' was deleted but still leaves money in the books',
+      detail: lines.map((l) => accName(l.acc) + ' ' + (l.dr ? '+' : '−') + Math.round(l.dr || l.cr || 0).toLocaleString('en-US')).join(' · ') });
+  });
+  // a document's entries whose debits and credits differ (taken together under its number; none should)
+  const byRef = new Map<string, { dr: number; cr: number; memo: string }>();
+  d.journal.forEach((e) => {
+    const k = byRef.get(e.ref) || { dr: 0, cr: 0, memo: e.memo };
+    e.lines.forEach((l) => { k.dr += l.dr || 0; k.cr += l.cr || 0; });
+    byRef.set(e.ref, k);
+  });
+  byRef.forEach((k, ref) => {
+    if (Math.abs(k.dr - k.cr) >= 0.01 && !fixes.some((f) => f.ref === ref)) {
+      issues.push({ kind: 'look', ref, amount: cents(Math.abs(k.dr - k.cr)), what: 'Entries that do not balance: ' + (k.memo || ref), detail: 'Debits ' + Math.round(k.dr).toLocaleString('en-US') + ', credits ' + Math.round(k.cr).toLocaleString('en-US') });
+    }
+  });
+  return { issues, fixes };
+}
+
+/** Posts every fix checkBooks found. Returns what was put right. */
+export function repairBooks(d: DB, when = new Date()): BookIssue[] {
+  if (!canWith(ensureRoles(d), d.session.role, 'settings.edit')) throw new Refusal('Permission denied: settings.edit');
+  const { issues, fixes } = checkBooks(d);
+  fixes.forEach((f) => journal(d, when, f.memo, f.ref, f.lines));
+  const done = issues.filter((i) => i.kind === 'fixable');
+  if (done.length) audit(d, 'Books repaired', done.map((i) => i.ref + ': ' + i.detail).join('; '));
+  return done;
+}
+
 /** A journal written by hand, undone by its opposite; both leave the lists. */
 export function deleteJournal(d: DB, id: string, when = new Date()): boolean {
   const j = d.journal.find((x) => x.id === id);

@@ -5,8 +5,11 @@
  * twice, or has not synced yet — so the owner finds out from this screen, not
  * from a customer's statement.
  */
-import React, { useMemo } from 'react';
-import { View, Text } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, Alert } from 'react-native';
+import { Button } from '../components/ui';
+import { checkBooks, type BookIssue } from '../data/logic';
+import { canWith, ensureRoles } from '../data/perms';
 import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
@@ -20,6 +23,16 @@ const WORD: Record<Kind, string> = { sales: 'Sales', purchases: 'Purchases', exp
 export default function BooksCheckScreen() {
   const { colors } = useTheme();
   const { db, money } = useAppData();
+  const { repairBooks } = useAppData() as any;
+  /* the books themselves: what older deletes left behind, and anything that does not balance */
+  const health = useMemo(() => (db ? checkBooks(db) : null), [db]);
+  const [done, setDone] = useState<BookIssue[] | null>(null);
+  const mayFix = !!db && canWith(ensureRoles(db), db.session.role, 'settings.edit');
+  const fixable = (health?.issues || []).filter((i) => i.kind === 'fixable');
+  const look = (health?.issues || []).filter((i) => i.kind === 'look');
+  const putRight = () => Alert.alert('Put the books right?',
+    fixable.length + ' deleted document' + (fixable.length === 1 ? '' : 's') + ' still leave money in the books. One correcting entry is posted under each one\'s number, and the list of what changed is kept in the audit log.',
+    [{ text: 'Not now', style: 'cancel' }, { text: 'Put it right', onPress: () => { try { setDone(repairBooks()); } catch (e: any) { Alert.alert('Could not put it right', e.message); } } }]);
 
   const rows = useMemo(() => {
     const pc = db?.firm.pcCheck;
@@ -53,6 +66,30 @@ export default function BooksCheckScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 14, gap: 12, paddingBottom: 40 }}>
+      <SectionLabel>The books themselves</SectionLabel>
+      {done && done.length ? (
+        <Panel>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.good, marginBottom: 6 }}>Put right: {done.length}</Text>
+          {done.map((i) => <Text key={i.ref} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.soft, marginBottom: 3 }}>{i.ref} · {i.detail}</Text>)}
+        </Panel>
+      ) : null}
+      {!fixable.length && !look.length ? (
+        <InfoBanner tone="good" icon="check" text="Every entry balances, and nothing deleted leaves money behind." />
+      ) : null}
+      {fixable.length ? (
+        <Panel>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink, marginBottom: 6 }}>{fixable.length} deleted document{fixable.length === 1 ? '' : 's'} still leave money in the books (an older version missed part of the delete)</Text>
+          {fixable.slice(0, 12).map((i) => <Text key={i.ref} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.soft, marginBottom: 3 }}>{i.ref} · {i.detail}</Text>)}
+          {mayFix ? <Button variant="pri" label="Put it right" onPress={putRight} /> : <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 6 }}>Someone who may change settings can put this right.</Text>}
+        </Panel>
+      ) : null}
+      {look.length ? (
+        <Panel>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.danger, marginBottom: 6 }}>To look at: {look.length}</Text>
+          {look.slice(0, 12).map((i) => <Text key={i.ref + i.what} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.soft, marginBottom: 3 }}>{i.what} · {i.detail}</Text>)}
+        </Panel>
+      ) : null}
+      <SectionLabel>Phone and computer</SectionLabel>
       {!pc ? (
         <InfoBanner tone="accent" icon="alert" text="The computer has not sent its figures yet. Make sure Sync is on in Genius POS on the computer (1.83 or newer); they arrive with the next sync." />
       ) : (
