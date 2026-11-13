@@ -19,7 +19,7 @@
  * the readers below also treat an unstamped record as the first branch's so a
  * book that has not been migrated still adds up.
  */
-import type { DB, Warehouse } from './types';
+import type { DB, Warehouse, JournalEntry, JournalLine } from './types';
 
 /**
  * The branch the signed-in person is working in.
@@ -65,9 +65,41 @@ export function inBranch(d: DB, recordBranch: string | undefined, want: string |
 }
 
 /** The journal entries belonging to one branch, or all of them. */
+/**
+ * The parties' opening balances as one entry dated before everything else:
+ * what customers owed (debtors) and what was owed to suppliers (creditors)
+ * when they were added, against opening-balance equity. They were never
+ * posted, so the trial balance, balance sheet and general ledger left them out
+ * while every party screen counted them — debtors and creditors did not match
+ * the parties, and changing a party from "to pay" to "to receive" showed
+ * nowhere in the accounts. Read from the parties each time, so an edit to an
+ * opening balance (or which way it runs) is in the books at once.
+ */
+export const OPENING_ENTRY_ID = '__party_openings';
+export function partyOpeningEntry(d: DB): JournalEntry | null {
+  const lines: JournalLine[] = [];
+  let net = 0;
+  for (const p of d.parties || []) {
+    const v = Math.round((Number(p.openingBalance) || 0) * 100) / 100;
+    if (!v) continue;
+    const acc = p.type === 'supplier' ? 'n_ap' : 'n_ar';
+    lines.push(v > 0 ? { acc, dr: v } : { acc, cr: -v });
+    net += v;
+  }
+  if (!lines.length) return null;
+  net = Math.round(net * 100) / 100;
+  if (net) lines.push(net > 0 ? { acc: 'n_equity', cr: net } : { acc: 'n_equity', dr: -net });
+  return { id: OPENING_ENTRY_ID, ts: new Date(0).toISOString(), memo: 'Opening balances of customers and suppliers', ref: 'OPENING', lines, balanced: true } as JournalEntry;
+}
+/** The journal with the parties' opening balances in front of it. */
+export function booksJournal(d: DB): JournalEntry[] {
+  const o = partyOpeningEntry(d);
+  return o ? [o, ...(d.journal || [])] : (d.journal || []);
+}
+
 export function branchJournal(d: DB, want: string | null | undefined) {
-  if (!want) return d.journal || [];
-  return (d.journal || []).filter((e) => inBranch(d, e.branch, want));
+  if (!want) return booksJournal(d);
+  return booksJournal(d).filter((e) => inBranch(d, e.branch, want));
 }
 
 /**

@@ -166,7 +166,7 @@ describe('batch reports', () => {
   it('shows all items first, with item drill-down to monthly movement', () => {
     const { db } = seeded();
     const r = runReport(db, 'stock-movement', startOfDay(daysAgo(30)), endOfDay());
-    expect(r.cols.map((c) => c.h)).toEqual(['Item', 'Stock In', 'Stock Out', 'Closing']);
+    expect(r.cols.map((c) => c.h)).toEqual(['Item', 'Opening', 'Stock In', 'Stock Out', 'Closing']);
     expect(r.rows.some((row) => cellText(row[0]) === 'Widget A')).toBe(true);
     expect(r.rows.some((row) => cellText(row[0]) === 'Gadget B')).toBe(true);
     expect(r.rowRefs?.some((ref) => ref && ref.kind === 'product')).toBe(true);

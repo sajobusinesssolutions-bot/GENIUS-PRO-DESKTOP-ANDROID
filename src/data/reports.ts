@@ -1,3 +1,4 @@
+import { booksJournal } from './branch';
 /**
  * The report engine — pure functions over a plain DB object, no React.
  *
@@ -685,13 +686,27 @@ function within(ts: string, from: number, to: number): boolean {
   return (!from || t >= from) && (!to || t <= to);
 }
 
-interface SoldLine { s: Sale; l: SaleLine; value: number; cost: number }
+/** value: the line's share of what the bill came to (its discount taken off, VAT in);
+    net: the same without VAT — what the profit and loss counts as sales. */
+interface SoldLine { s: Sale; l: SaleLine; value: number; net: number; cost: number }
 
-/** Reference soldLines(), 3437. */
+/**
+ * Every line sold, at its share of the bill. A line's own qty × price is
+ * before the bill's discount and, where prices include VAT, with the VAT in:
+ * the item reports added those up as "revenue" and "profit", which came to
+ * more than the sales themselves and more than the profit and loss.
+ */
 function soldLines(db: DB, from: number, to: number): SoldLine[] {
   const out: SoldLine[] = [];
   salesBetween(db, from, to).forEach((s) => {
-    s.lines.forEach((l) => out.push({ s, l, value: l.qty * l.price, cost: l.qty * (l.cost || 0) }));
+    const gross = s.lines.reduce((a, l) => a + l.qty * l.price, 0);
+    const billed = s.total - (s.additionalCharges || 0);
+    const k = gross > 0 ? billed / gross : 0;
+    const vatK = billed > 0 ? s.tax / billed : 0;
+    s.lines.forEach((l) => {
+      const value = l.qty * l.price * k;
+      out.push({ s, l, value, net: value * (1 - vatK), cost: l.qty * (l.cost || 0) });
+    });
   });
   return out;
 }
@@ -772,7 +787,8 @@ function creditNoteTax(c: { lines: CreditNoteLine[] }): number {
   }, 0);
 }
 function purchasesBetween(db: DB, from: number, to: number) {
-  return db.purchases.filter((x) => within(x.ts, from, to));
+  // a deleted (voided) bill is not a purchase: it counted in every purchase report and the tax summary
+  return db.purchases.filter((x) => x.status !== 'void' && within(x.ts, from, to));
 }
 
 /* ---- ledger helpers — reference NOMINAL/accName/accountBalance, 872-890 ---- */
@@ -789,7 +805,7 @@ function accName(db: DB, id: string): string {
 function allAccountIds(db: DB): string[] {
   const ids = db.accounts.map((a) => a.id);
   Object.keys(NOMINAL).forEach((k) => { if (ids.indexOf(k) < 0) ids.push(k); });
-  db.journal.forEach((e) => e.lines.forEach((l) => { if (ids.indexOf(l.acc) < 0) ids.push(l.acc); }));
+  booksJournal(db).forEach((e) => e.lines.forEach((l) => { if (ids.indexOf(l.acc) < 0) ids.push(l.acc); }));
   return ids;
 }
 /** Reference accType(), 1134 — no chart of accounts here, so classify by nominal id. */
@@ -809,7 +825,7 @@ function accType(db: DB, id: string): AccType {
 }
 function accountBalance(db: DB, id: string, from = 0, to = 0): number {
   let b = 0;
-  db.journal.forEach((e) => {
+  booksJournal(db).forEach((e) => {
     if ((from || to) && !within(e.ts, from, to)) return;
     e.lines.forEach((l) => { if (l.acc === id) b += (l.dr || 0) - (l.cr || 0); });
   });
@@ -1233,11 +1249,12 @@ RPT['invoice-list'] = (db, from, to) => {
 /* --- Item list — reference RPT['item-sales'], 3508 --- */
 RPT['item-sales'] = (db, from, to) => {
   const groups = groupRows(soldLines(db, from, to), (x) => x.l.productId,
-    (x) => ({ n: x.l.name, u: x.l.unit, q: 0, v: 0, c: 0 }),
-    (g, x) => { g.q += x.l.qty; g.v += x.value; g.c += x.cost; })
+    (x) => ({ n: x.l.name, u: x.l.unit, q: 0, v: 0, nt: 0, c: 0 }),
+    (g, x) => { g.q += x.l.qty; g.v += x.value; g.nt += x.net; g.c += x.cost; })
     .sort((a, b) => b.v - a.v);
+  // revenue as billed; profit on the sales net of VAT, as the profit and loss counts it
   const rows: Cell[][] = groups.map((g) => [
-    g.n, { text: g.q + ' ' + g.u, n: g.q }, m(g.v), m(g.v - g.c),
+    g.n, { text: g.q + ' ' + g.u, n: g.q }, m(g.v), m(g.nt - g.c),
   ]);
   return {
     title: 'Item list (units sold)',
@@ -1324,7 +1341,7 @@ RPT['sale-summary-by-category-item'] = (db, from, to) => {
     const e = cat[x.l.productId] || (cat[x.l.productId] = { n: x.l.name, q: 0, v: 0, t: 0 });
     e.q += x.l.qty;
     e.v += x.value;
-    e.t += x.value - x.value / (1 + (x.l.taxRate || 0) / 100);
+    e.t += x.value - x.net;
   });
   const rows: Cell[][] = [];
   Object.keys(byCat).sort().forEach((c) => {
@@ -1453,7 +1470,7 @@ RPT['sales-by-items'] = (db, from, to) => {
 RPT['profit-margin'] = (db, from, to) => {
   const groups = groupRows(soldLines(db, from, to), (x) => x.l.productId,
     (x) => ({ n: x.l.name, v: 0, c: 0 }),
-    (g, x) => { g.v += x.value; g.c += x.cost; })
+    (g, x) => { g.v += x.net; g.c += x.cost; })
     .sort((a, b) => (b.v - b.c) - (a.v - a.c));
   const rows: Cell[][] = groups.map((g) => [
     g.n, m(g.v), m(g.c), m(g.v - g.c), pct(g.v ? (g.v - g.c) / g.v * 100 : 0),
@@ -1461,6 +1478,7 @@ RPT['profit-margin'] = (db, from, to) => {
   const rev = sumCol(rows, 1);
   const cost = sumCol(rows, 2);
   return {
+    note: 'Revenue is net of VAT and of each bill\'s discount, as the profit and loss counts it.',
     title: 'Profit & margin',
     cols: [{ h: 'Item' }, { h: 'Revenue', r: true }, { h: 'Cost', r: true }, { h: 'Profit', r: true }, { h: 'Margin', r: true }],
     rows,
@@ -1622,7 +1640,7 @@ RPT['purchase-by-supplier'] = (db, from, to) => {
 
 /* --- Unpaid purchases — reference 3738; ignores the range, like the prototype --- */
 RPT['unpaid-purchases'] = (db) => {
-  const ps = db.purchases.filter((x) => x.due > 0)
+  const ps = db.purchases.filter((x) => x.due > 0 && x.status !== 'void')
     .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   const rows: Cell[][] = ps.map((x) => {
     const a = ageOf(x.ts);
@@ -1692,10 +1710,11 @@ const METHOD_NAMES: Record<string, string> = {
 RPT['payment-types'] = (db, from, to) => {
   const ss = salesBetween(db, from, to);
   const map: Record<string, { c: number; v: number }> = {};
-  ss.forEach((s) => {
-    const e = map[s.method] || (map[s.method] = { c: 0, v: 0 });
-    e.c++; e.v += s.total;
-  });
+  ss.forEach((s) => tenderOf(s).forEach(([k, v], i, all) => {
+    const e = map[k] || (map[k] = { c: 0, v: 0 });
+    if (i === all.length - 1 || all.length === 1) e.c++;
+    e.v += v;
+  }));
   const tot = ss.reduce((a, s) => a + s.total, 0);
   return {
     title: 'Payment types',
@@ -1707,13 +1726,27 @@ RPT['payment-types'] = (db, from, to) => {
   };
 };
 
+/**
+ * How a sale was paid, tender by tender: a split as split; a credit sale with
+ * something paid down, that part under how it was paid and only the rest on
+ * credit (it all went under credit before).
+ */
+function tenderOf(s: Sale): [string, number][] {
+  if (s.methods && s.methods.length > 1) return s.methods.map((m) => [m.method, m.amount] as [string, number]);
+  if (s.method === 'credit') {
+    const down = Math.max(0, (s.paidAtSale ?? 0) - (s.redeemed || 0) - (s.wht || 0));
+    return down > 0.005 ? [[s.receivedVia || 'cash', down], ['credit', s.total - down]] : [['credit', s.total]];
+  }
+  return [[s.method, s.total]];
+}
+
 /** The shared body of the two tender-split reports — reference 3781 and 3792. */
 function tenderSplit(db: DB, from: number, to: number, title: string, head: string, nameOf: (s: Sale) => string): ReportResult {
   const map: Record<string, Record<string, number>> = {};
   salesBetween(db, from, to).forEach((s) => {
     const n = nameOf(s);
     const row = map[n] || (map[n] = { cash: 0, momo: 0, bank: 0, credit: 0 });
-    row[s.method] = (row[s.method] || 0) + s.total;
+    tenderOf(s).forEach(([k, v]) => { row[k] = (row[k] || 0) + v; });
   });
   const rows: Cell[][] = Object.keys(map).sort().map((n) => [
     n, m(map[n].cash), m(map[n].momo), m(map[n].bank), m(map[n].credit),
@@ -1797,6 +1830,48 @@ function arRows(db: DB): Sale[] {
     .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
 }
 
+/**
+ * What each customer (or supplier) owes, as items that add up to their
+ * balance: every open bill, the opening balance they were added with, and
+ * the credits against them — money paid in advance or on account, returns
+ * credited to the account, older advances a big book keeps on disk. The
+ * ageing reports used to list open bills only, so a party's opening balance
+ * and any advance were left out and the totals did not match the Parties
+ * list or the statements. A positive amount is owed (to you, or by you to a
+ * supplier); a credit is negative.
+ */
+interface OwedItem { ts: string; due: number; partyId: string; name: string; no: string; what: string; ref: RowRef | null }
+function owedItems(db: DB, type: 'customer' | 'supplier'): OwedItem[] {
+  const sign = type === 'customer' ? 1 : -1;
+  const parties = new Map(db.parties.filter((p) => p.type === type).map((p) => [p.id, p]));
+  const out: OwedItem[] = [];
+  const add = (partyId: string | null | undefined, ts: string, amount: number, no: string, what: string, ref: RowRef | null) => {
+    const p = partyId ? parties.get(partyId) : undefined;
+    if (!p || Math.abs(amount) < 0.005) return;
+    out.push({ ts, due: amount, partyId: p.id, name: p.name, no, what, ref });
+  };
+  parties.forEach((p) => add(p.id, (p as any).createdAt || new Date(0).toISOString(), sign * (p.openingBalance || 0), 'Opening', 'Opening balance', { kind: 'party', id: p.id }));
+  if (type === 'customer') {
+    db.sales.filter((s) => s.due > 0 && s.status !== 'void').forEach((s) => add(s.partyId, s.ts, s.due, s.no, 'Sale', { kind: 'sale', id: s.id }));
+    (db.creditNotes || []).forEach((c) => { const h = c.onAccount ? c.total : c.held || 0; add(c.partyId, c.ts, -h, c.no, 'Return credited', null); });
+  } else {
+    db.purchases.filter((x) => x.due > 0 && x.status !== 'void').forEach((x) => add(x.partyId, x.ts, x.due, x.ref || x.no, 'Purchase', { kind: 'purchase', id: x.id }));
+  }
+  const dir = type === 'customer' ? 'in' : 'out';
+  db.payments.filter((x) => x.direction === dir && (x.unapplied || 0) > 0.005)
+    .forEach((x) => add(x.partyId, x.ts, -(x.unapplied || 0), (dir === 'in' ? 'RCT-' : 'PAY-') + x.id.slice(-6).toUpperCase(), 'Paid in advance', { kind: 'payment', id: x.id }));
+  // money the other way: a refund to a customer, a refund from a supplier, left unapplied
+  db.payments.filter((x) => x.direction !== dir && (x.unapplied || 0) > 0.005)
+    .forEach((x) => add(x.partyId, x.ts, x.unapplied || 0, x.id.slice(-6).toUpperCase(), 'Refund', { kind: 'payment', id: x.id }));
+  parties.forEach((p) => {
+    const w = windowTotals(db, p.id);
+    if (!w) return;
+    const older = type === 'customer' ? (w.payUnOut || 0) - (w.payUnIn || 0) : (w.payUnOut || 0) - (w.payUnIn || 0);
+    add(p.id, windowStart(db) + 'T00:00:00.000Z', sign * older, 'Older', 'Older advances', null);
+  });
+  return out.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
+}
+
 function emptyBuckets(): Record<Bucket, number> {
   return { '0–30': 0, '31–60': 0, '61–90': 0, '90+': 0 };
 }
@@ -1855,8 +1930,10 @@ function bucketSummary(
   };
 }
 
-RPT['ar-aging-summary'] = (db) => withPartyRefs(db,
-  agingSummary(db, arRows(db), (x) => partyName(db, (x as Sale).partyId), 'AR ageing summary', 'Customer'));
+RPT['ar-aging-summary'] = (db) => withPartyRefs(db, {
+  ...agingSummary(db, owedItems(db, 'customer'), (x) => x.name, 'AR ageing summary', 'Customer'),
+  note: 'Each customer\'s balance by age: open bills by their date, the opening balance by the date the customer was added, and money paid in advance taken off.',
+});
 
 /** A list of parties by name: each row opens that party's statement. */
 function withPartyRefs(db: DB, r: ReportResult): ReportResult {
@@ -1866,17 +1943,17 @@ function withPartyRefs(db: DB, r: ReportResult): ReportResult {
 
 /* --- AR ageing details — reference 3846 --- */
 RPT['ar-aging-details'] = (db) => {
-  const ss = arRows(db);
+  const ss = owedItems(db, 'customer');
   const rows: Cell[][] = ss.map((s) => {
     const a = ageOf(s.ts);
-    return [s.no, partyName(db, s.partyId), shortDay(s.ts), { text: a + 'd', n: a }, bucketOf(a), mTone(s.due, a > 90 ? 'danger' : 'warn')];
+    return [s.what === 'Sale' ? s.no : s.what + (s.no && s.no !== 'Opening' ? ' ' + s.no : ''), s.name, s.no === 'Opening' ? '—' : shortDay(s.ts), { text: a + 'd', n: a }, bucketOf(a), mTone(s.due, s.due < 0 ? 'good' : a > 90 ? 'danger' : 'warn')];
   });
   return {
     title: 'AR ageing details',
     cols: [{ h: 'Sale' }, { h: 'Customer' }, { h: 'Date' }, { h: 'Age', r: true }, { h: 'Bucket' }, { h: 'Due', r: true }],
     rows,
     foot: ['Total', '', '', '', '', m(sumCol(rows, 5))],
-    rowRefs: ss.map((s) => ({ kind: 'sale' as const, id: s.id })),
+    rowRefs: ss.map((s) => s.ref),
   };
 };
 
@@ -1916,28 +1993,32 @@ RPT['quote-details'] = (db, from, to) => {
 };
 
 /* --- Customer balance summary — reference 3867 --- */
+/* Opening + invoiced − paid and credited = owing, on every row: before, the
+   opening balance had no column and money paid on account was not in "Paid",
+   so a row did not add up and a customer with only an opening balance was left out. */
 RPT['customer-balance-summary'] = (db) => {
   const rows: Cell[][] = db.parties.filter((p) => p.type === 'customer' && p.active)
     .map((p) => {
       const older = windowTotals(db, p.id);
-      let inv = older ? older.salesTotal || 0 : 0; let paid = older ? older.salesPaid || 0 : 0;
-      db.sales.forEach((s) => {
-        if (s.partyId === p.id && s.status !== 'void') { inv += s.total; paid += s.paid; }
-      });
-      return { p, inv, paid };
+      let inv = older ? older.salesTotal || 0 : 0;
+      db.sales.forEach((s) => { if (s.partyId === p.id && s.status !== 'void') inv += s.total; });
+      const owing = partyBalance(db, p.id);
+      const open = p.openingBalance || 0;
+      return { p, open, inv, paid: open + inv - owing, owing };
     })
-    .filter((x) => x.inv > 0)
-    .map((x) => [x.p.name, m(x.inv), m(x.paid), dash(partyBalance(db, x.p.id))]);
+    .filter((x) => Math.abs(x.inv) > 0.005 || Math.abs(x.owing) > 0.005 || Math.abs(x.open) > 0.005)
+    .map((x) => [x.p.name, m(x.open), m(x.inv), m(x.paid), { text: money0(x.owing), n: x.owing, tone: x.owing > 0 ? 'good' as CellTone : x.owing < 0 ? 'accent' as CellTone : 'muted' as CellTone }]);
   return withPartyRefs(db, {
     title: 'Customer balance summary',
-    cols: [{ h: 'Customer' }, { h: 'Invoiced', r: true }, { h: 'Paid', r: true }, { h: 'Owing', r: true }],
+    cols: [{ h: 'Customer' }, { h: 'Opening', r: true }, { h: 'Invoiced', r: true }, { h: 'Paid & credited', r: true }, { h: 'Owing', r: true }],
     rows,
-    foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3))],
+    foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4))],
+    note: 'Owing below nil: the customer has paid ahead.',
   });
 };
 
 RPT['receivable-summary'] = (db, _f, _t, money) =>
-  bucketSummary(arRows(db), 'Receivable summary', 'Total owed to you', money);
+  bucketSummary(owedItems(db, 'customer'), 'Receivable summary', 'Total owed to you', money);
 
 /* --- `RPT['receivable-details'] = RPT['ar-aging-details']`, 3888 --- */
 RPT['receivable-details'] = (db, from, to, money) => ({
@@ -1955,28 +2036,24 @@ function apRows(db: DB) {
     .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
 }
 
-RPT['ap-aging-summary'] = (db) => {
-  return agingSummary(
-    db,
-    apRows(db).map((x) => ({ ts: x.ts, due: x.due, name: supplierName(db, x.partyId) })),
-    (x) => x.name,
-    'AP ageing summary', 'Supplier',
-  );
-};
+RPT['ap-aging-summary'] = (db) => withPartyRefs(db, {
+  ...agingSummary(db, owedItems(db, 'supplier'), (x) => x.name, 'AP ageing summary', 'Supplier'),
+  note: 'What you owe each supplier by age: open bills, the opening balance (to pay), less payments made in advance.',
+});
 
 /* --- AP ageing details — reference 3906 --- */
 RPT['ap-aging-details'] = (db) => {
-  const ps = apRows(db);
+  const ps = owedItems(db, 'supplier');
   const rows: Cell[][] = ps.map((x) => {
     const a = ageOf(x.ts);
-    return [x.no, supplierName(db, x.partyId), shortDay(x.ts), { text: a + 'd', n: a }, mTone(x.due, a > 90 ? 'danger' : 'warn')];
+    return [x.what === 'Purchase' ? x.no : x.what + (x.no && x.no !== 'Opening' ? ' ' + x.no : ''), x.name, x.no === 'Opening' ? '—' : shortDay(x.ts), { text: a + 'd', n: a }, mTone(x.due, x.due < 0 ? 'good' : a > 90 ? 'danger' : 'warn')];
   });
   return {
     title: 'AP ageing details',
     cols: [{ h: 'Bill' }, { h: 'Supplier' }, { h: 'Date' }, { h: 'Age', r: true }, { h: 'Owing', r: true }],
     rows,
     foot: ['Total', '', '', '', m(sumCol(rows, 4))],
-    rowRefs: ps.map((x) => ({ kind: 'purchase' as const, id: x.id })),
+    rowRefs: ps.map((x) => x.ref),
   };
 };
 
@@ -1984,22 +2061,24 @@ RPT['ap-aging-details'] = (db) => {
 RPT['supplier-balance-summary'] = (db) => {
   const rows: Cell[][] = db.parties.filter((p) => p.type === 'supplier' && p.active).map((p) => {
     const older = windowTotals(db, p.id);
-    let billed = older ? older.purTotalAll || 0 : 0; let paid = older ? older.purPaidAll || 0 : 0;
-    db.purchases.forEach((x) => {
-      if (x.partyId === p.id) { billed += x.total; paid += x.paid || 0; }
-    });
-    return [p.name, m(billed), m(paid), dash(Math.max(0, -partyBalance(db, p.id)))];
-  });
-  return {
+    let billed = older ? older.purTotal || 0 : 0;
+    // deleted bills are not bills
+    db.purchases.forEach((x) => { if (x.partyId === p.id && x.status !== 'void') billed += x.total; });
+    const owing = -partyBalance(db, p.id);
+    const open = -(p.openingBalance || 0);
+    return [p.name, m(open), m(billed), m(open + billed - owing), { text: money0(owing), n: owing, tone: owing > 0 ? 'danger' as CellTone : owing < 0 ? 'accent' as CellTone : 'muted' as CellTone }];
+  }).filter((r) => [1, 2, 4].some((i) => Math.abs((r[i] as CellObj).n || 0) > 0.005));
+  return withPartyRefs(db, {
     title: 'Supplier balance summary',
-    cols: [{ h: 'Supplier' }, { h: 'Billed', r: true }, { h: 'Paid', r: true }, { h: 'Owing', r: true }],
+    cols: [{ h: 'Supplier' }, { h: 'Opening (to pay)', r: true }, { h: 'Billed', r: true }, { h: 'Paid & returned', r: true }, { h: 'Owing', r: true }],
     rows,
-    foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3))],
-  };
+    foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4))],
+    note: 'Owing below nil: you have paid the supplier ahead.',
+  });
 };
 
 RPT['payable-summary'] = (db, _f, _t, money) =>
-  bucketSummary(apRows(db), 'Payable summary', 'Total you owe', money);
+  bucketSummary(owedItems(db, 'supplier'), 'Payable summary', 'Total you owe', money);
 
 /* --- `RPT['payable-details'] = RPT['ap-aging-details']`, 3933 --- */
 RPT['payable-details'] = (db, from, to, money) => ({
@@ -2031,12 +2110,21 @@ RPT['stock-movement'] = (db, from, to) => {
   const rowRefs: RowRef[] = [];
 
   db.products.filter((p) => p.active).forEach((p) => {
-    const ms = db.movements.filter((x) => x.productId === p.id && within(x.ts, from, to));
-    const inQty = ms.reduce((a, x) => a + Math.max(0, x.qty), 0);
-    const outQty = ms.reduce((a, x) => a + Math.max(0, -x.qty), 0);
-    const closing = stockOf(p);
+    const all = db.movements.filter((x) => x.productId === p.id);
+    const ms = all.filter((x) => within(x.ts, from, to));
+    /* A sale deleted or edited puts its stock back with a 'void' movement:
+       that undoes the sale's "out", it is not stock coming in (and a deleted
+       purchase undoes its "in"). Counted as in and out they inflated both. */
+    const undo = (x: { type?: string }) => x.type === 'void' || x.type === 'restore';
+    const inQty = ms.reduce((a, x) => a + (undo(x) ? (x.qty < 0 ? x.qty : 0) : Math.max(0, x.qty)), 0);
+    const outQty = ms.reduce((a, x) => a + (undo(x) ? (x.qty > 0 ? -x.qty : 0) : Math.max(0, -x.qty)), 0);
+    // stock at the end of the period, not today; opening is what it was at the start
+    const after = all.filter((x) => to && tsMs(x.ts) > to).reduce((a, x) => a + x.qty, 0);
+    const closing = stockOf(p) - after;
+    const opening = closing - (inQty - outQty);
     rows.push([
       p.name,
+      { text: String(opening), n: opening },
       { text: String(inQty), n: inQty, tone: inQty ? 'good' as CellTone : undefined },
       { text: String(outQty), n: outQty, tone: outQty ? 'danger' as CellTone : undefined },
       { text: String(closing), n: closing, tone: 'accent' as CellTone },
@@ -2045,10 +2133,10 @@ RPT['stock-movement'] = (db, from, to) => {
   });
   return {
     title: 'Stock movement',
-    cols: [{ h: 'Item' }, { h: 'Stock In', r: true }, { h: 'Stock Out', r: true }, { h: 'Closing', r: true }],
+    cols: [{ h: 'Item' }, { h: 'Opening', r: true }, { h: 'Stock In', r: true }, { h: 'Stock Out', r: true }, { h: 'Closing', r: true }],
     rows,
     rowRefs,
-    foot: ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, { text: String(sumCol(rows, 3)), n: sumCol(rows, 3) }],
+    foot: ['Total', { text: String(sumCol(rows, 1)), n: sumCol(rows, 1) }, { text: String(sumCol(rows, 2)), n: sumCol(rows, 2) }, { text: String(sumCol(rows, 3)), n: sumCol(rows, 3) }, { text: String(sumCol(rows, 4)), n: sumCol(rows, 4) }],
     note: 'Tap an item to open its monthly stock movement, then tap a month to see the item’s movements for that month.',
   };
 };
@@ -2381,9 +2469,12 @@ RPT['tax-summary'] = (db, from, to, money) => {
   const output = ss.reduce((a, s) => a + s.tax, 0);
   const credits = (db.creditNotes || []).filter((c) => within(c.ts, from, to))
     .reduce((a, c) => a + creditNoteTax(c), 0);
-  const rate = db.settings.taxRate || 0;
+  /* Input VAT as the books hold it: only what a purchase recorded (bills
+     from the computer carry it). It used to be worked out at the standard
+     rate on every purchase — VAT-free goods included — claiming VAT the
+     ledger never posted and making the VAT payable look smaller than it is. */
   const ps = purchasesBetween(db, from, to);
-  const input = ps.reduce((a, x) => a + (x.total - x.total / (1 + rate / 100)), 0);
+  const input = ps.reduce((a, x) => a + (Number((x as any).tax) || 0), 0);
   const net = output - credits - input;
   const purchaseGross = ps.reduce((a, x) => a + x.total, 0);
   return {
@@ -2403,6 +2494,7 @@ RPT['tax-summary'] = (db, from, to, money) => {
       ['Input VAT', { text: '(' + money0(input) + ')', n: -input, tone: 'muted' }],
     ],
     foot: ['Net VAT payable', m(net)],
+    note: input ? undefined : 'Purchases entered on the phone carry no VAT of their own, so no input VAT is claimed here; enter it with a journal if you reclaim it.',
   };
 };
 
@@ -2425,8 +2517,9 @@ function statementReport(db: DB, from: number, to: number, type: 'customer' | 's
   let totalDr = 0; let totalCr = 0; let totalClose = 0; let parties = 0;
   db.parties.filter((p) => p.type === type).forEach((p) => {
     const all = partyLedgerRows(db, p.id);
-    const before = all.filter((r) => from && new Date(r.ts).getTime() < from);
-    const inRange = all.filter((r) => within(r.ts, from, to));
+    // the party's own opening balance (dated before everything) is part of the opening row, not a line of its own
+    const before = all.filter((r) => (from && new Date(r.ts).getTime() < from) || (!from && r.memo === 'Opening balance' && tsMs(r.ts) <= 0));
+    const inRange = all.filter((r) => within(r.ts, from, to) && !(r.memo === 'Opening balance' && tsMs(r.ts) <= 0 && !from));
     const opening = sign * (before.length ? before[before.length - 1].balance : 0);
     if (!inRange.length && Math.abs(opening) < 0.5) return;
     parties++;
@@ -2491,7 +2584,13 @@ RPT['party-statement'] = (db, from, to) => {
     title: 'Party statement',
     cols,
     rows,
-    foot: ['Total', '', m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4))],
+    // customers' and suppliers' balances netted against each other meant nothing as one figure
+    stats: (() => {
+      let owed = 0, owe = 0;
+      parties.forEach((p) => { const b = partyBalance(db, p.id); if (p.type === 'supplier') owe -= b; else owed += b; });
+      return [{ k: 'Customers owe you', v: money0(owed), tone: 'g' as const }, { k: 'You owe suppliers', v: money0(owe), tone: 'd' as const }];
+    })(),
+    foot: ['Total', '', m(sumCol(rows, 2)), m(sumCol(rows, 3)), ''],
     rowRefs,
     searchable: true,
     note: 'Tap a customer or supplier for their statement over the range.',
@@ -2572,7 +2671,7 @@ RPT['chart-of-accounts'] = (db) => {
     let groupDr = 0; let groupCr = 0; let groupBalance = 0;
     group.forEach((l) => {
       let dr = 0; let cr = 0;
-      db.journal.forEach((e) => e.lines.forEach((line) => {
+      booksJournal(db).forEach((e) => e.lines.forEach((line) => {
         if (line.acc === l.id) { dr += line.dr || 0; cr += line.cr || 0; }
       }));
       const balance = dr - cr;
@@ -2597,7 +2696,7 @@ RPT['chart-of-accounts'] = (db) => {
 /* --- Trial balance — reference 4085 --- */
 RPT['trial-balance'] = (db, _f, _t, money) => {
   const accs: Record<string, { d: number; c: number }> = {};
-  db.journal.forEach((e) => e.lines.forEach((l) => {
+  booksJournal(db).forEach((e) => e.lines.forEach((l) => {
     const a = accs[l.acc] || (accs[l.acc] = { d: 0, c: 0 });
     a.d += l.dr || 0; a.c += l.cr || 0;
   }));
@@ -2650,7 +2749,7 @@ RPT['general-ledger'] = (db) => {
   const ids = orderedLedgerIds(db);
   const rows: Cell[][] = ids.map((id) => {
     let dr = 0; let cr = 0;
-    db.journal.forEach((e) => e.lines.forEach((l) => {
+    booksJournal(db).forEach((e) => e.lines.forEach((l) => {
       if (l.acc === id) { dr += l.dr || 0; cr += l.cr || 0; }
     }));
     return [accName(db, id), m(dr), m(cr), { text: money0(Math.abs(dr - cr)) + (dr - cr >= 0 ? ' Dr' : ' Cr'), n: dr - cr }];
@@ -2940,7 +3039,7 @@ export function ledgerDrill(db: DB, accId: string, from: number, to: number): Re
   const name = accName(db, accId);
   let opening = 0;
   const lines: { ts: string; ref: string; memo: string; dr: number; cr: number }[] = [];
-  db.journal.forEach((e) => {
+  booksJournal(db).forEach((e) => {
     const at = new Date(e.ts).getTime();
     e.lines.forEach((l) => {
       if (l.acc !== accId) return;
@@ -3136,7 +3235,7 @@ function detailedLedgers(db: DB, from: number, to: number, title: string, types:
   const ids = orderedLedgerIds(db);
   // every ledger's figures in one pass over the journal
   const fig = new Map<string, { o: number; d: number; c: number }>();
-  db.journal.forEach((e) => {
+  booksJournal(db).forEach((e) => {
     const at = new Date(e.ts).getTime();
     if (at > to) return;
     e.lines.forEach((l) => {
