@@ -292,3 +292,62 @@ describe('more edits', () => {
     expect(check(d, 'deleted')).toEqual(before);
   });
 });
+
+describe('money in and out, and returns: made and deleted, the books as they were', () => {
+  const cnLine = (qty: number) => ({ productId: 'p_a', name: 'Widget A', qty, price: 200, cost: 100, taxRate: 0 }) as any;
+  const cases: [string, (d: DB) => () => void][] = [
+    ['an expense from the till', (d) => { const e = logic.recordEntry(d, { direction: 'out', accountId: 'acc_cash', category: 'Transport', amount: 300 }); return () => logic.deleteEntry(d, e.id); }],
+    ['money in (other income)', (d) => { const e = logic.recordEntry(d, { direction: 'in', accountId: 'acc_bank', category: 'Rent received', amount: 900 }); return () => logic.deleteEntry(d, e.id); }],
+    ['an expense the customer settled, set against their bill', (d) => {
+      const s = logic.commitSale(d, { lines: [line(3)], partyId: 'c1', method: 'credit', discount: 0 });
+      const e = logic.recordEntry(d, { direction: 'out', accountId: 'acc_cash', category: 'Delivery', amount: 150, offsetSaleId: s.id });
+      expect(s.due).toBe(450);
+      return () => { logic.deleteEntry(d, e.id); expect(s.due).toBe(600); logic.deleteSale(d, s.id); };
+    }],
+    ['a return against a bill, credited to the account', (d) => {
+      const s = logic.commitSale(d, { lines: [line(3)], partyId: 'c1', method: 'credit', discount: 0 });
+      const cn = logic.createCreditNote(d, { saleId: s.id, partyId: 'c1', lines: [cnLine(1)], reason: 'Damaged', refund: 'account' });
+      expect(s.due).toBe(400);
+      return () => { logic.deleteCreditNote(d, cn.id); expect(s.due).toBe(600); logic.deleteSale(d, s.id); };
+    }],
+    ['a return refunded in cash', (d) => {
+      const s = logic.commitSale(d, { lines: [line(3)], partyId: 'c1', method: 'cash', discount: 0 });
+      const cn = logic.createCreditNote(d, { saleId: s.id, partyId: 'c1', lines: [cnLine(1)], reason: 'Wrong size', refund: 'cash' });
+      return () => { logic.deleteCreditNote(d, cn.id); logic.deleteSale(d, s.id); };
+    }],
+    ['a return with no bill, held on the account', (d) => {
+      const cn = logic.createCreditNote(d, { saleId: null, partyId: 'c1', lines: [cnLine(2)], reason: 'Old stock back', refund: 'account' });
+      expect(logic.partyBalance(d, 'c1')).toBe(200 - 400);
+      return () => logic.deleteCreditNote(d, cn.id);
+    }],
+    ['a return bigger than what the bill still owed', (d) => {
+      const s = logic.commitSale(d, { lines: [line(2)], partyId: 'c1', method: 'credit', discount: 0, received: 300, receivedVia: 'cash' });
+      const cn = logic.createCreditNote(d, { saleId: s.id, partyId: 'c1', lines: [cnLine(2)], reason: 'All back', refund: 'account' });
+      expect([s.due, cn.held]).toEqual([0, 300]);
+      return () => { logic.deleteCreditNote(d, cn.id); logic.deleteSale(d, s.id); };
+    }],
+  ];
+  for (const [name, make] of cases) {
+    it(name, () => {
+      const d = makeDb();
+      logic.commitSale(d, { lines: [line(1)], partyId: 'c1', method: 'credit', discount: 0 });
+      const before = check(d, 'before');
+      const undo = make(d);
+      check(d, name + ' made');
+      undo();
+      expect(check(d, name + ' deleted')).toEqual(before);
+    });
+  }
+});
+
+describe('a bill with an expense set against it', () => {
+  it('deleted: the books still agree, and what the customer paid towards it is their credit', () => {
+    const d = makeDb();
+    const s = logic.commitSale(d, { lines: [line(3)], partyId: 'c1', method: 'credit', discount: 0 });
+    logic.recordEntry(d, { direction: 'out', accountId: 'acc_cash', category: 'Delivery', amount: 150, offsetSaleId: s.id });
+    check(d, 'made');
+    logic.deleteSale(d, s.id);
+    const b = check(d, 'deleted');
+    expect(b.cust).toBe(-150);
+  });
+});

@@ -925,6 +925,14 @@ function partyLedgerRows(db: DB, id: string): LedgerRow[] {
       });
     }
   });
+  /* an expense the customer settled, set against their bill: it came off what they owe */
+  (db.entries || []).forEach((e) => {
+    if (!e.offsetSaleId) return;
+    const s = db.sales.find((x) => x.id === e.offsetSaleId);
+    if (!s || s.partyId !== id) return;
+    const off = e.offset ?? Math.min(e.amount, s.total);
+    if (off > 0.005) rows.push({ ts: e.ts, memo: e.category + ' — set against ' + s.no, debit: 0, credit: off, balance: 0, ref: { kind: 'entry', id: e.id } });
+  });
   /* returns: what a credit note took off a bill or left on the account. Cash
      handed back changes nothing owed; a return from before the account kept
      them is already inside the opening balance. Before, the ledger left
@@ -1854,6 +1862,11 @@ function owedItems(db: DB, type: 'customer' | 'supplier'): OwedItem[] {
   if (type === 'customer') {
     db.sales.filter((s) => s.due > 0 && s.status !== 'void').forEach((s) => add(s.partyId, s.ts, s.due, s.no, 'Sale', { kind: 'sale', id: s.id }));
     (db.creditNotes || []).forEach((c) => { const h = c.onAccount ? c.total : c.held || 0; add(c.partyId, c.ts, -h, c.no, 'Return credited', null); });
+    // what they paid towards a bill since deleted (an expense set against it): their credit
+    (db.entries || []).forEach((e) => {
+      const sv = e.offsetSaleId ? db.sales.find((x) => x.id === e.offsetSaleId) : undefined;
+      if (sv && sv.status === 'void' && (e.offset || 0) > 0) add(sv.partyId, e.ts, -(e.offset || 0), sv.no, 'Paid towards a deleted bill', { kind: 'entry', id: e.id });
+    });
   } else {
     db.purchases.filter((x) => x.due > 0 && x.status !== 'void').forEach((x) => add(x.partyId, x.ts, x.due, x.ref || x.no, 'Purchase', { kind: 'purchase', id: x.id }));
   }

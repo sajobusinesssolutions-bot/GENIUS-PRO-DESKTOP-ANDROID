@@ -2,7 +2,7 @@
 // Kept separate (no React/AsyncStorage imports) so they can be unit-tested
 // directly against a plain DB object without rendering a component tree.
 import { tsMs } from './helpers';
-import { BillReceipt,
+import { BillReceipt, Entry, CreditNote, CreditNoteLine,
   DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, JournalLine, JournalEntry, PayMethod, Product, Movement,
   StockTake, ProductionRun, RecurringInvoice, InstalmentPlan, InstalmentDue, Revision,
   LicStatus, Subscription, Shift,
@@ -727,6 +727,8 @@ export function allPartyBalances(d: DB): Map<string, number> {
   (d.creditNotes || []).forEach((c) => { const h = c.onAccount ? c.total : c.held || 0; if (h && c.partyId && map.has(c.partyId)) map.set(c.partyId, map.get(c.partyId)! - h); });
   d.purchases.forEach((x) => { if (x.partyId && x.status !== 'void' && map.has(x.partyId)) map.set(x.partyId, map.get(x.partyId)! - x.due); });
   map.forEach((v, id) => map.set(id, v + olderUnapplied(d, id)));
+  // an expense the customer paid towards a bill since deleted: theirs, as credit
+  (d.entries || []).forEach((e) => { const pid = deletedOffsetParty(d, e); if (pid && map.has(pid)) map.set(pid, map.get(pid)! - (e.offset ?? 0)); });
   balanceCache.set(d, { key, map });
   return map;
 }
@@ -738,6 +740,17 @@ export function allPartyBalances(d: DB): Map<string, number> {
  * takes the balance down, money out takes it up. The party statement counted
  * it and the Parties list did not, so the two showed different balances.
  */
+/**
+ * An expense the customer settled was taken off their bill; while the bill
+ * stands it is inside what the bill owes. With the bill deleted it is money
+ * of theirs we used: credit on their account. The party it belongs to, then.
+ */
+function deletedOffsetParty(d: DB, e: Entry): string | null {
+  if (!e.offsetSaleId || !(e.offset && e.offset > 0)) return null;
+  const s = d.sales.find((x) => x.id === e.offsetSaleId);
+  return s && s.status === 'void' && s.partyId ? s.partyId : null;
+}
+
 function olderUnapplied(d: DB, id: string): number {
   const w = (d as any).__window;
   const c = w && w.parties && w.parties[id];
@@ -751,6 +764,7 @@ export function partyBalance(d: DB, id: string): number {
   d.purchases.forEach((x) => { if (x.partyId === id && x.status !== 'void') b -= x.due; });
   d.payments.forEach((p) => { if (p.partyId === id && p.unapplied) b += p.direction === 'in' ? -p.unapplied : p.unapplied; });
   (d.creditNotes || []).forEach((c) => { if (c.partyId === id) b -= c.onAccount ? c.total : c.held || 0; });
+  (d.entries || []).forEach((e) => { if (deletedOffsetParty(d, e) === id) b -= e.offset ?? 0; });
   return b;
 }
 
@@ -2204,7 +2218,7 @@ export function deleteEntry(d: DB, id: string, when = new Date()): boolean {
     const exp = e.ledgerId || 'n_expense';
     const s = e.offsetSaleId ? d.sales.find((x) => x.id === e.offsetSaleId) : undefined;
     // charged to a customer's bill: the part that came off the bill goes back on it
-    const offset = s ? Math.min(e.amount, s.paid) : 0;
+    const offset = s ? Math.min(e.offset ?? e.amount, s.paid) : 0;
     if (s && offset > 0) {
       s.due += offset; s.paid -= offset; enqueue(d, 'sale', s.id);
       journal(d, when, memo, 'DEL', [{ acc: 'n_ar', dr: offset }, { acc: exp, cr: offset }]);
@@ -2326,6 +2340,111 @@ export function repairBooks(d: DB, when = new Date()): BookIssue[] {
   const done = issues.filter((i) => i.kind === 'fixable');
   if (done.length) audit(d, 'Books repaired', done.map((i) => i.ref + ': ' + i.detail).join('; '));
   return done;
+}
+
+
+/* ============================================================
+   MONEY IN AND OUT, AND RETURNS — kept here, beside sales and payments,
+   so the screens and the tests go through the same rules.
+   ============================================================ */
+
+/** An expense, or money in: the entry, its ledger lines, and a bill it is set against. */
+export function recordEntry(d: DB, o: { direction: 'in' | 'out' | 'transfer'; accountId: string; category: string; amount: number; note?: string; ledgerId?: string; userId?: string; offsetSaleId?: string; toId?: string }): Entry {
+  let e!: Entry;
+  const when = new Date();
+  const sale = o.offsetSaleId ? d.sales.find((x) => x.id === o.offsetSaleId) : undefined;
+  // only a bill with a balance can absorb one, and only up to what is left
+  const split = sale && o.direction === 'out'
+    ? splitExpenseOffset(sale.due, o.amount)
+    : { offset: 0, rest: o.amount };
+  const offset = split.offset;
+
+  e = {
+    id: uid('ent'), ts: iso(when), direction: o.direction, accountId: o.accountId,
+    branch: activeBranchId(d),
+    category: o.category, amount: o.amount, note: o.note || '',
+    ...(o.ledgerId ? { ledgerId: o.ledgerId } : {}),
+    userId: o.userId || d.session.userId,
+    ...(offset > 0 ? { offsetSaleId: sale!.id, offset } : {}),
+  };
+  d.entries.push(e);
+  enqueue(d, 'entry', e.id);
+  if (offset > 0) enqueue(d, 'sale', sale!.id);
+
+  const memo = o.category + (o.note ? ' — ' + o.note : '');
+  const expLedger = o.ledgerId || 'n_expense';
+  const incLedger = o.ledgerId || 'n_income';
+
+  if (offset > 0) {
+    // the customer settled it, so the cost is ours but the debt is theirs less
+    sale!.due -= offset;
+    sale!.paid += offset;
+    journal(d, when, memo + ' — against ' + sale!.no, sale!.no, [
+      { acc: expLedger, dr: offset },
+      { acc: 'n_ar', cr: offset },
+    ]);
+    // anything above the outstanding balance still leaves the drawer
+    const rest = split.rest;
+    if (rest > 0) {
+      journal(d, when, memo, 'EXP', [{ acc: expLedger, dr: rest }, { acc: o.accountId, cr: rest }]);
+    }
+    audit(d, 'Expense offset', memo + ' — ' + Math.round(offset) + ' off ' + sale!.no);
+  } else if (o.direction === 'out') {
+    journal(d, when, memo, 'EXP', [{ acc: expLedger, dr: o.amount }, { acc: o.accountId, cr: o.amount }]);
+  } else {
+    journal(d, when, memo, 'INC', [{ acc: o.accountId, dr: o.amount }, { acc: incLedger, cr: o.amount }]);
+  }
+  return e;
+}
+
+/** A return: the goods back on the shelf, the sale reversed, and the customer made good. */
+export function createCreditNote(d: DB, o: { saleId: string | null; partyId: string | null; lines: CreditNoteLine[]; reason: string; refund?: 'cash' | 'bank' | 'momo' | 'account'; charges?: number; userId?: string }): CreditNote {
+  let cn!: CreditNote;
+  d.counters.creditNote += 1;
+  const when = new Date();
+  const gross = o.lines.reduce((s, l) => s + l.qty * l.price, 0);
+  const charges = Math.max(0, Math.min(Number(o.charges) || 0, gross));
+  // the customer is made good for the goods less whatever is withheld
+  const total = gross - charges;
+  const refund = o.refund || (o.partyId ? 'account' : 'cash');
+  cn = {
+    id: uid('crn'), no: 'CN-' + String(100000 + d.counters.creditNote).slice(1), ts: iso(when),
+    saleId: o.saleId, partyId: o.partyId, lines: o.lines, total, reason: o.reason,
+    refund, charges, userId: o.userId || d.session.userId,
+  };
+  d.creditNotes.push(cn);
+  enqueue(d, 'creditNote', cn.id);
+  const wh = d.session.warehouse || 'w1';
+  o.lines.forEach((l) => move(d, l.productId, wh, l.qty, 'return', cn.no, when));
+  const cost = o.lines.reduce((s, l) => s + l.qty * (l.cost || 0), 0);
+  // sales are reversed by the full value of the goods; the charge is income kept
+  const jl: JournalLine[] = [{ acc: 'n_sales', dr: gross }];
+  if (charges > 0) jl.push({ acc: 'n_income', cr: charges });
+  const back = refund === 'account' ? 'n_ar'
+    : refund === 'bank' ? 'acc_bank'
+      : refund === 'momo' ? 'acc_momo' : 'acc_cash';
+  jl.push({ acc: back, cr: total });
+  journal(d, when, 'Credit note ' + cn.no, cn.no, jl);
+  if (cost > 0) journal(d, when, 'Return to stock ' + cn.no, cn.no, [{ acc: 'n_inventory', dr: cost }, { acc: 'n_cogs', cr: cost }]);
+  if (o.partyId && !o.saleId && refund === 'account') {
+    // no bill named: held on their account, which the balance counts — the opening balance is left alone,
+    // or the ledger (which shows the return itself) counted it twice
+    cn.onAccount = true;
+  } else if (o.saleId && refund === 'account') {
+    // only a credit to the account takes it off what the bill owes; cash handed back leaves the bill as it was
+    const s = d.sales.find((x) => x.id === o.saleId);
+    const take = s && s.due > 0 ? Math.min(s.due, total) : 0;
+    if (s && take > 0) { s.due -= take; cn.appliedToSale = take; }
+    // more than the bill still owed: the rest is held on their account
+    if (total - take > 0.005) cn.held = total - take;
+  }
+  audit(
+    d,
+    'Credit note issued',
+    cn.no + ' — ' + Math.round(total) + (charges ? ' (charge ' + Math.round(charges) + ')' : '')
+      + ' by ' + (d.users.find((u) => u.id === cn.userId)?.name || 'unknown'),
+  );
+  return cn;
 }
 
 /** A journal written by hand, undone by its opposite; both leave the lists. */

@@ -379,6 +379,8 @@ export interface Entry {
    * drawer, so the money never moves through an account.
    */
   offsetSaleId?: string;
+  /** How much of it came off that bill (the rest left the drawer). */
+  offset?: number;
 }
 
 export interface JournalLine { acc: string; dr?: number; cr?: number; }

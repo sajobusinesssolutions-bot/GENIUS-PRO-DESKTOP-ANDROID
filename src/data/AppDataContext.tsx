@@ -741,51 +741,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       requireRecordable(); requirePerm('expenses.create');
       if (o.direction === 'out' && !o.offsetSaleId && dbRef.current) logic.guardCash(dbRef.current, [{ acc: o.accountId, amount: o.amount }]);
       let e!: Entry;
-      commit((d) => {
-        const when = new Date();
-        const sale = o.offsetSaleId ? d.sales.find((x) => x.id === o.offsetSaleId) : undefined;
-        // only a bill with a balance can absorb one, and only up to what is left
-        const split = sale && o.direction === 'out'
-          ? logic.splitExpenseOffset(sale.due, o.amount)
-          : { offset: 0, rest: o.amount };
-        const offset = split.offset;
-
-        e = {
-          id: uid('ent'), ts: iso(when), direction: o.direction, accountId: o.accountId,
-          branch: activeBranchId(d),
-          category: o.category, amount: o.amount, note: o.note || '',
-          ...(o.ledgerId ? { ledgerId: o.ledgerId } : {}),
-          userId: o.userId || d.session.userId,
-          ...(offset > 0 ? { offsetSaleId: sale!.id } : {}),
-        };
-        d.entries.push(e);
-        logic.enqueue(d, 'entry', e.id);
-        if (offset > 0) logic.enqueue(d, 'sale', sale!.id);
-
-        const memo = o.category + (o.note ? ' — ' + o.note : '');
-        const expLedger = o.ledgerId || 'n_expense';
-        const incLedger = o.ledgerId || 'n_income';
-
-        if (offset > 0) {
-          // the customer settled it, so the cost is ours but the debt is theirs less
-          sale!.due -= offset;
-          sale!.paid += offset;
-          journal(d, when, memo + ' — against ' + sale!.no, sale!.no, [
-            { acc: expLedger, dr: offset },
-            { acc: 'n_ar', cr: offset },
-          ]);
-          // anything above the outstanding balance still leaves the drawer
-          const rest = split.rest;
-          if (rest > 0) {
-            journal(d, when, memo, 'EXP', [{ acc: expLedger, dr: rest }, { acc: o.accountId, cr: rest }]);
-          }
-          audit(d, 'Expense offset', memo + ' — ' + Math.round(offset) + ' off ' + sale!.no);
-        } else if (o.direction === 'out') {
-          journal(d, when, memo, 'EXP', [{ acc: expLedger, dr: o.amount }, { acc: o.accountId, cr: o.amount }]);
-        } else {
-          journal(d, when, memo, 'INC', [{ acc: o.accountId, dr: o.amount }, { acc: incLedger, cr: o.amount }]);
-        }
-      });
+      commit((d) => { e = logic.recordEntry(d, o); });
       return e;
     },
     updateProduct: (id, patch) => {
@@ -1088,52 +1044,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     createCreditNote: (o) => {
       requireRecordable(); requirePerm('sales.refund');
       let cn!: CreditNote;
-      commit((d) => {
-        d.counters.creditNote += 1;
-        const when = new Date();
-        const gross = o.lines.reduce((s, l) => s + l.qty * l.price, 0);
-        const charges = Math.max(0, Math.min(Number(o.charges) || 0, gross));
-        // the customer is made good for the goods less whatever is withheld
-        const total = gross - charges;
-        const refund = o.refund || (o.partyId ? 'account' : 'cash');
-        cn = {
-          id: uid('crn'), no: 'CN-' + String(100000 + d.counters.creditNote).slice(1), ts: iso(when),
-          saleId: o.saleId, partyId: o.partyId, lines: o.lines, total, reason: o.reason,
-          refund, charges, userId: o.userId || d.session.userId,
-        };
-        d.creditNotes.push(cn);
-        logic.enqueue(d, 'creditNote', cn.id);
-        const wh = d.session.warehouse || 'w1';
-        o.lines.forEach((l) => move(d, l.productId, wh, l.qty, 'return', cn.no, when));
-        const cost = o.lines.reduce((s, l) => s + l.qty * (l.cost || 0), 0);
-        // sales are reversed by the full value of the goods; the charge is income kept
-        const jl: JournalLine[] = [{ acc: 'n_sales', dr: gross }];
-        if (charges > 0) jl.push({ acc: 'n_income', cr: charges });
-        const back = refund === 'account' ? 'n_ar'
-          : refund === 'bank' ? 'acc_bank'
-            : refund === 'momo' ? 'acc_momo' : 'acc_cash';
-        jl.push({ acc: back, cr: total });
-        journal(d, when, 'Credit note ' + cn.no, cn.no, jl);
-        if (cost > 0) journal(d, when, 'Return to stock ' + cn.no, cn.no, [{ acc: 'n_inventory', dr: cost }, { acc: 'n_cogs', cr: cost }]);
-        if (o.partyId && !o.saleId && refund === 'account') {
-          // no bill named: held on their account, which the balance counts — the opening balance is left alone,
-          // or the ledger (which shows the return itself) counted it twice
-          cn.onAccount = true;
-        } else if (o.saleId && refund === 'account') {
-          // only a credit to the account takes it off what the bill owes; cash handed back leaves the bill as it was
-          const s = d.sales.find((x) => x.id === o.saleId);
-          const take = s && s.due > 0 ? Math.min(s.due, total) : 0;
-          if (s && take > 0) { s.due -= take; cn.appliedToSale = take; }
-          // more than the bill still owed: the rest is held on their account
-          if (total - take > 0.005) cn.held = total - take;
-        }
-        audit(
-          d,
-          'Credit note issued',
-          cn.no + ' — ' + Math.round(total) + (charges ? ' (charge ' + Math.round(charges) + ')' : '')
-            + ' by ' + (d.users.find((u) => u.id === cn.userId)?.name || 'unknown'),
-        );
-      });
+      commit((d) => { cn = logic.createCreditNote(d, o); });
       return cn;
     },
 
