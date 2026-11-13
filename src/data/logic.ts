@@ -1549,6 +1549,20 @@ function diffOf(before: Record<string, unknown> | null, after: Record<string, un
   return changed;
 }
 
+/**
+ * An edit is a void and a fresh document under the same id: the fresh one
+ * takes the old one's place in its history — compared with how it stood
+ * before, so "Total 400 → 790, Due 0 → 390" shows — and the void the edit
+ * made on the way is not a version of its own.
+ */
+function carryHistory(d: DB, id: string, fresh: unknown, wasSnap: Record<string, unknown>, wasV: number) {
+  const f = fresh as Stamped;
+  f._snap = wasSnap;
+  f._v = wasV;
+  const i = (d.revisions || []).map((r) => r.rec === id && /^Voided/.test(r.why || '')).lastIndexOf(true);
+  if (i >= 0) d.revisions.splice(i, 1);
+}
+
 /** Stamp a record as changed and write the revision. The heart of version history. */
 export function touch(d: DB, rec: unknown, why: string, coll: string): void {
   if (!rec || typeof rec !== 'object') return;
@@ -1862,6 +1876,8 @@ export function editSale(
   if (!s || s.status === 'void') return null;
   if (!o.lines.length) return null;
   const oldNo = s.no, oldTs = s.ts, oldMethod = s.method, oldWh = s.warehouse, oldPaid = s.paid, oldTill = s.till, oldUser = s.userId;
+  // the sale as it stood, so its history shows what the edit changed (total, paid, owed, customer)
+  const wasSnap = snapshotOf(s as unknown as Record<string, unknown>), wasV = (s as any)._v || 0;
   // money paid on the sale after it was made (separate payments) stays with it
   const paidLater = Math.max(0, (s.paid || 0) - (s.paidAtSale ?? s.paid ?? 0));
 
@@ -1919,6 +1935,7 @@ export function editSale(
   d.queue = d.queue.filter((q: any) => !(q.kind === 'sale' && q.ref === freshId));
   enqueue(d, 'sale', s.id);
   audit(d, 'Sale edited', oldNo + ' — now ' + Math.round(fresh.total));
+  carryHistory(d, s.id, fresh, wasSnap, wasV);
   touch(d, fresh, 'Edited' + (reason ? ' — ' + reason : ''), 'sales');
   return fresh;
 }
@@ -1999,6 +2016,7 @@ export function editPurchase(
   if (!x || x.status === 'void') return null;
   if (!o.lines.length) return null;
   const oldNo = x.no, oldTs = x.ts;
+  const wasSnap = snapshotOf(x as unknown as Record<string, unknown>), wasV = (x as any)._v || 0;
   voidPurchase(d, x.id, reason, when);
   const fresh = createPurchase(d, o.partyId, o.lines, o.method, new Date(oldTs));
   d.counters.purchase -= 1;
@@ -2013,6 +2031,7 @@ export function editPurchase(
   d.queue = d.queue.filter((q: any) => !(q.kind === 'purchase' && q.ref === freshId));
   enqueue(d, 'purchase', x.id);
   audit(d, 'Purchase edited', oldNo + ' — now ' + Math.round(fresh.total));
+  carryHistory(d, x.id, fresh, wasSnap, wasV);
   touch(d, fresh, 'Edited' + (reason ? ' — ' + reason : ''), 'purchases');
   return fresh;
 }

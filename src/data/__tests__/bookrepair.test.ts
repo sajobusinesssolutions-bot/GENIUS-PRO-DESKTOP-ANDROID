@@ -65,3 +65,18 @@ describe('what a delete will do, said before it goes', () => {
     expect(t).toMatch(/credit of 100 goes/);
   });
 });
+
+describe('edit history shows the money', () => {
+  it('an edited sale records its total, paid and owed before and after', () => {
+    const d = makeDb();
+    d.products[0].stock.w1 = 10;
+    const s = logic.commitSale(d, { lines: [line('p_a', 2, 200)], partyId: 'c1', method: 'credit', discount: 0 });
+    logic.editSale(d, s.id, { lines: [line('p_a', 5, 200)], partyId: 'c1', discount: 0 });
+    const revs = logic.revisionsFor(d, s.id);
+    expect(revs[0].why).toMatch(/^Edited/);
+    const ch = Object.fromEntries(revs[0].changed.map((c: any) => [c.f, [c.from, c.to]]));
+    expect(ch.total).toEqual([400, 1000]);
+    expect(ch.due).toEqual([400, 1000]);
+    expect(revs.some((r) => /^Voided/.test(r.why))).toBe(false);
+  });
+});
