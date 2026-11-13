@@ -1960,6 +1960,8 @@ function releaseLaterReceipts(d: DB, bill: { id: string; paid: number; due: numb
     if (a) a.amount = cents(a.amount - amt);
     pay.allocations = (pay.allocations || []).filter((x) => x.amount > 0.005);
     pay.unapplied = cents((pay.unapplied || 0) + amt);
+    // remembered, so putting the bill back sets the money against it again
+    (pay as any).freedFrom = [...(((pay as any).freedFrom) || []).filter((f: any) => f.docId !== bill.id), { docId: bill.id, amount: amt }];
     enqueue(d, 'payment', pay.id);
     freed += amt;
   });
@@ -2368,6 +2370,27 @@ export function deletePayment(d: DB, payId: string, reason = 'Deleted', when = n
    the delete, with both steps on the record.
    ============================================================ */
 
+/**
+ * A bill put back takes back the payments its delete freed (as far as they
+ * are still free and the bill still owes): restored as it was, not with its
+ * payments left as credit on the account.
+ */
+function relinkFreed(d: DB, bill: { id: string; no: string; ts?: string; paid: number; due: number; receipts?: BillReceipt[] }) {
+  d.payments.forEach((pay) => {
+    const fr = ((pay as any).freedFrom || []) as { docId: string; amount: number }[];
+    const mine = fr.find((f) => f.docId === bill.id);
+    if (!mine) return;
+    const take = cents(Math.min(mine.amount, pay.unapplied || 0, bill.due));
+    (pay as any).freedFrom = fr.filter((f) => f.docId !== bill.id);
+    if (take <= 0.004) return;
+    pay.unapplied = cents((pay.unapplied || 0) - take);
+    pay.allocations = [...(pay.allocations || []), { docId: bill.id, no: bill.no, amount: take }];
+    bill.due = cents(bill.due - take); bill.paid = cents(bill.paid + take);
+    bill.receipts = [...(bill.receipts || []), { paymentId: pay.id, amount: take, ts: pay.ts }];
+    enqueue(d, 'payment', pay.id);
+  });
+}
+
 /** Every journal entry a delete wrote for a document. */
 function voidEntries(d: DB, ref: string, at?: string): JournalEntry[] {
   return (d.journal || []).filter((e) => e.ref === ref && (e.memo.startsWith('Void ') || e.memo.startsWith('Reverse cost '))
@@ -2393,6 +2416,7 @@ export function restoreSale(d: DB, saleId: string, when = new Date()): Sale {
   s.lines.forEach((l) => move(d, l.productId, s.warehouse, -stockQty(l), 'restore', s.no, when, l.batchNo));
   s.status = 'complete';
   delete s.voidedAt; delete s.voidReason; delete s.deletedAt; delete s.deletedBy;
+  relinkFreed(d, s);
   enqueue(d, 'sale', s.id);
   audit(d, 'Sale restored', s.no);
   touch(d, s, 'Restored', 'sales');
@@ -2411,6 +2435,7 @@ export function restorePurchase(d: DB, purchaseId: string, when = new Date()): P
   x.lines.forEach((l) => move(d, l.productId, wh, l.qty, 'restore', x.no, when));
   x.status = 'complete';
   delete x.voidedAt; delete x.voidReason; delete x.deletedAt; delete x.deletedBy;
+  relinkFreed(d, x as any);
   enqueue(d, 'purchase', x.id);
   audit(d, 'Purchase restored', x.no);
   touch(d, x, 'Restored', 'purchases');

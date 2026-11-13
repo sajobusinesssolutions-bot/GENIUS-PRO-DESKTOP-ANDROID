@@ -80,3 +80,29 @@ describe('edit history shows the money', () => {
     expect(revs.some((r) => /^Voided/.test(r.why))).toBe(false);
   });
 });
+
+describe('put back in place', () => {
+  it('a deleted sale put back takes back the payment made on it', () => {
+    const d = makeDb();
+    d.products[0].stock.w1 = 10;
+    const s = logic.commitSale(d, { lines: [line('p_a', 5, 200)], partyId: 'c1', method: 'credit', discount: 0 });
+    const p = logic.recordPayment(d, { partyId: 'c1', amount: 600, direction: 'in', accountId: 'acc_cash', allocations: [{ saleId: s.id, amount: 600 }] });
+    logic.deleteSale(d, s.id);
+    expect(p.unapplied).toBe(600);
+    logic.restoreSale(d, s.id);
+    expect([s.due, s.paid, p.unapplied]).toEqual([400, 600, 0]);
+    expect(p.allocations!.some((a) => a.docId === s.id && a.amount === 600)).toBe(true);
+    expect(logic.partyBalance(d, 'c1')).toBe(400);
+  });
+  it('unless the money was used for another bill meanwhile', () => {
+    const d = makeDb();
+    d.products[0].stock.w1 = 10;
+    const s = logic.commitSale(d, { lines: [line('p_a', 5, 200)], partyId: 'c1', method: 'credit', discount: 0 });
+    const p = logic.recordPayment(d, { partyId: 'c1', amount: 600, direction: 'in', accountId: 'acc_cash', allocations: [{ saleId: s.id, amount: 600 }] });
+    logic.deleteSale(d, s.id);
+    const s2 = logic.commitSale(d, { lines: [line('p_a', 2, 200)], partyId: 'c1', method: 'credit', discount: 0 });
+    p.unapplied = 200; s2.due = 0; s2.paid = 400;   // 400 of it set against the new bill
+    logic.restoreSale(d, s.id);
+    expect([s.due, p.unapplied]).toEqual([800, 0]);
+  });
+});
