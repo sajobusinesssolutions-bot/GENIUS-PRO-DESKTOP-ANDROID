@@ -651,8 +651,8 @@ export function recordPayment(d: DB, o: { partyId: string; amount: number; direc
   audit(d, o.direction === 'in' ? 'Payment received' : 'Payment made', Math.round(o.amount) + ' via ' + (acc?.name || o.accountId));
   const partyName = party.name;
   // withholding: a customer who kept tax back leaves us a tax credit; tax we keep back from a supplier is owed to the tax office
-  if (o.direction === 'in') journal(d, when, 'Receipt from ' + partyName, 'RCT', [{ acc: o.accountId, dr: o.amount }, ...(wht ? [{ acc: 'n_wht_credit', dr: wht }] : []), { acc: 'n_ar', cr: o.amount + wht }]);
-  else journal(d, when, 'Payment to ' + partyName, 'PAY', [{ acc: 'n_ap', dr: o.amount + wht }, { acc: o.accountId, cr: o.amount }, ...(wht ? [{ acc: 'n_tax', cr: wht }] : [])]);
+  if (o.direction === 'in') journal(d, when, 'Receipt from ' + partyName, 'RCT', [{ acc: o.accountId, dr: o.amount }, ...(wht ? [{ acc: 'n_wht_credit', dr: wht }] : []), { acc: ctrlOf(d, o.partyId, o.direction), cr: o.amount + wht }]);
+  else journal(d, when, 'Payment to ' + partyName, 'PAY', [{ acc: ctrlOf(d, o.partyId, o.direction), dr: o.amount + wht }, { acc: o.accountId, cr: o.amount }, ...(wht ? [{ acc: 'n_tax', cr: wht }] : [])]);
   // Which bills this pays. The bills the person picked, in the amounts they
   // picked; otherwise the oldest first. Before, the picks were thrown away and
   // nothing recorded which bills a payment had settled, so a receipt could not
@@ -2128,6 +2128,16 @@ export function applyPaymentLoose(d: DB, pay: Payment) {
   });
 }
 
+/** Money to or from a customer is set against debtors, to or from a supplier
+ *  against creditors, whichever way it goes — a refund to a guest lowers what
+ *  the guest is owed, not what we owe suppliers. Anyone else: by direction. */
+export function ctrlOf(d: DB, partyId: string | null | undefined, direction: string): 'n_ar' | 'n_ap' {
+  const t = partyId ? d.parties.find((p) => p.id === partyId)?.type : undefined;
+  if (t === 'supplier') return 'n_ap';
+  if (t === 'customer') return 'n_ar';
+  return direction === 'in' ? 'n_ar' : 'n_ap';
+}
+
 /** Reference repostPayment, line 17700 — reverse what the old one did, then post the new one. */
 export function editPayment(
   d: DB,
@@ -2142,8 +2152,8 @@ export function editPayment(
   if (!pay || !(patch.amount > 0)) return null;
   const oldAmt = pay.amount, oldAcc = pay.accountId;
   const rev: JournalLine[] = pay.direction === 'in'
-    ? [{ acc: oldAcc, cr: oldAmt }, { acc: 'n_ar', dr: oldAmt }]
-    : [{ acc: 'n_ap', cr: oldAmt }, { acc: oldAcc, dr: oldAmt }];
+    ? [{ acc: oldAcc, cr: oldAmt }, { acc: ctrlOf(d, pay.partyId, pay.direction), dr: oldAmt }]
+    : [{ acc: ctrlOf(d, pay.partyId, pay.direction), cr: oldAmt }, { acc: oldAcc, dr: oldAmt }];
   journal(d, when, 'Reverse ' + (pay.direction === 'in' ? 'receipt' : 'payment') + ' — edit', 'EDIT', rev);
   unapplyPayment(d, pay);
 
@@ -2155,8 +2165,8 @@ export function editPayment(
   pay.editedBy = d.session.userId; pay.editCount = (pay.editCount || 0) + 1;
 
   const post: JournalLine[] = pay.direction === 'in'
-    ? [{ acc: pay.accountId, dr: pay.amount }, { acc: 'n_ar', cr: pay.amount }]
-    : [{ acc: 'n_ap', dr: pay.amount }, { acc: pay.accountId, cr: pay.amount }];
+    ? [{ acc: pay.accountId, dr: pay.amount }, { acc: ctrlOf(d, pay.partyId, pay.direction), cr: pay.amount }]
+    : [{ acc: ctrlOf(d, pay.partyId, pay.direction), dr: pay.amount }, { acc: pay.accountId, cr: pay.amount }];
   const partyName = d.parties.find((p) => p.id === pay.partyId)?.name || '';
   journal(d, when, (pay.direction === 'in' ? 'Receipt from ' : 'Payment to ') + partyName + ' — edited', 'EDIT', post);
   applyPayment(d, pay);
@@ -2466,8 +2476,8 @@ export function deletePayment(d: DB, payId: string, reason = 'Deleted', when = n
   // the withholding tax kept back comes out with it
   const wht = pay.taxDeducted || 0;
   const rev: JournalLine[] = pay.direction === 'in'
-    ? [{ acc: pay.accountId, cr: pay.amount }, ...(wht ? [{ acc: 'n_wht_credit', cr: wht }] : []), { acc: 'n_ar', dr: pay.amount + wht }]
-    : [{ acc: 'n_ap', cr: pay.amount + wht }, { acc: pay.accountId, dr: pay.amount }, ...(wht ? [{ acc: 'n_tax', dr: wht }] : [])];
+    ? [{ acc: pay.accountId, cr: pay.amount }, ...(wht ? [{ acc: 'n_wht_credit', cr: wht }] : []), { acc: ctrlOf(d, pay.partyId, pay.direction), dr: pay.amount + wht }]
+    : [{ acc: ctrlOf(d, pay.partyId, pay.direction), cr: pay.amount + wht }, { acc: pay.accountId, dr: pay.amount }, ...(wht ? [{ acc: 'n_tax', dr: wht }] : [])];
   journal(d, when, 'Reverse ' + (pay.direction === 'in' ? 'receipt' : 'payment') + ' — deleted', 'DEL', rev);
   unapplyPayment(d, pay);
   d.payments = d.payments.filter((x) => x.id !== pay.id);
@@ -2570,8 +2580,8 @@ export function restorePayment(d: DB, payId: string, when = new Date()): Payment
   // as recordPayment posts it: the tax withheld settled the bill as much as the money did
   const wht = pay.taxDeducted || 0;
   const lines: JournalLine[] = pay.direction === 'in'
-    ? [{ acc: pay.accountId, dr: pay.amount }, ...(wht ? [{ acc: 'n_wht_credit', dr: wht }] : []), { acc: 'n_ar', cr: pay.amount + wht }]
-    : [{ acc: 'n_ap', dr: pay.amount + wht }, { acc: pay.accountId, cr: pay.amount }, ...(wht ? [{ acc: 'n_tax', cr: wht }] : [])];
+    ? [{ acc: pay.accountId, dr: pay.amount }, ...(wht ? [{ acc: 'n_wht_credit', dr: wht }] : []), { acc: ctrlOf(d, pay.partyId, pay.direction), cr: pay.amount + wht }]
+    : [{ acc: ctrlOf(d, pay.partyId, pay.direction), dr: pay.amount + wht }, { acc: pay.accountId, cr: pay.amount }, ...(wht ? [{ acc: 'n_tax', cr: wht }] : [])];
   journal(d, when, 'Restore ' + (pay.direction === 'in' ? 'receipt' : 'payment'), 'RST', lines);
   d.payments.push(pay as Payment);
   applyPayment(d, pay as Payment);
