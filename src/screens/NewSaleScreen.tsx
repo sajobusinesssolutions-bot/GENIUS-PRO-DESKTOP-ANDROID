@@ -320,7 +320,10 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     // Settings → "Below cost": warn, block, or allow
     /* the line's own cost, or the item's when the line carries none (items made on the PC) */
     const costOf = (l: SaleLine) => l.cost || ((db?.products || []).find((x) => x.id === l.productId)?.cost || 0) * (l.unitFactor || 1);
-    const under = cart.filter((l) => costOf(l) > 0 && l.price < costOf(l));
+    // the bill discount comes off every line in proportion, and can take one below cost
+    const grossCart = cart.reduce((a, l) => a + l.qty * l.price, 0);
+    const kCart = grossCart > 0 ? Math.max(0, 1 - Math.min(Number(discount) || 0, grossCart) / grossCart) : 1;
+    const under = cart.filter((l) => costOf(l) > 0 && l.price * kCart < costOf(l) - 0.005);
     const belowCost = (st as any)?.belowCost || 'warn';
     /* "Stop selling below cost" stops everyone, the owner too, as on the PC */
     if (under.length && belowCost === 'block') {

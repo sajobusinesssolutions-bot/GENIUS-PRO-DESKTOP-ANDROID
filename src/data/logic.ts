@@ -9,7 +9,7 @@ import { BillReceipt,
 } from './types';
 import { uid, iso } from './uid';
 import { Refusal } from './refusal';
-import { reconcileBatches } from './batches';
+import { reconcileBatches, liveBatches, isExpired } from './batches';
 import { activeBranchId, branchPrefix } from './branch';
 import { ensureCoa } from './coa';
 import { addDays, PLANS, LIC_GRACE } from './defaults';
@@ -185,7 +185,7 @@ export function stockQty(l: { qty: number; unitFactor?: number }): number {
  * quotation becomes a sale, so the person reads the reasons instead of the sale
  * failing half way. Empty when the lines can be sold.
  */
-export function saleBlockers(d: DB, lines: SaleLine[]): string[] {
+export function saleBlockers(d: DB, lines: SaleLine[], discount = 0): string[] {
   const out: string[] = [];
   const wh = d.session.warehouse || 'w1';
   const needed = new Map<string, number>();
@@ -201,10 +201,13 @@ export function saleBlockers(d: DB, lines: SaleLine[]): string[] {
   const trusted = d.session.role === 'owner' || d.session.role === 'manager';
   void trusted;   // "block" holds for everyone, the owner too (as on the PC)
   if (d.settings.belowCost === 'block') {
+    // the bill's discount comes off every line in proportion: it can take a line below cost too
+    const gross = lines.reduce((a, l) => a + l.qty * l.price, 0);
+    const k = gross > 0 ? Math.max(0, 1 - Math.min(discount || 0, gross) / gross) : 1;
     lines.forEach((l) => {
       const prod = d.products.find((p) => p.id === l.productId);
       const cost = (prod ? prod.cost * (l.unitFactor || 1) : 0) || l.cost;
-      if (cost > 0 && l.price < cost) out.push(l.name + ' is priced below its cost.');
+      if (cost > 0 && l.price * k < cost - 0.005) out.push(l.name + ' is priced below its cost' + (k < 1 && l.price >= cost ? ' once the bill discount is taken off' : '') + '.');
     });
   }
   return out;
@@ -335,6 +338,24 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     if (!r || !r.length || l.cost) return l;
     const cost = r.reduce((n, x) => n + (d.products.find((p) => p.id === x.productId)?.cost || 0) * x.qty, 0);
     return { ...l, cost: Math.round(cost * (l.unitFactor || 1) * 100) / 100 };
+  }) };
+  /* A line of a batch-tracked item with no batch named (a quick sale, an
+     order, a quotation turned into a sale) is drawn from its batches,
+     soonest expiry first and skipping expired ones — split into a line per
+     batch. Before, it took the item's stock but no batch's, so the batches
+     no longer added up to what was on the shelf. */
+  o = { ...o, lines: o.lines.flatMap((l) => {
+    const p = d.products.find((x) => x.id === l.productId);
+    if (l.batchNo || !p || !p.trackBatches || !(p.batches || []).length || (l.unitFactor && l.unitFactor !== 1) || !(l.qty > 0)) return [l];
+    let left = l.qty;
+    const out: SaleLine[] = [];
+    for (const b of liveBatches(p).filter((x) => !isExpired(x))) {
+      if (left <= 0) break;
+      const take = Math.min(b.qty, left);
+      if (take > 0) { out.push({ ...l, qty: take, batchNo: b.no, expiry: b.expiry } as SaleLine); left -= take; }
+    }
+    if (left > 0.0001) out.push({ ...l, qty: left });
+    return out.length ? out : [l];
   }) };
   // With tax switched off for the shop, nothing is charged or reported.
   const taxable = d.settings.taxEnabled === false

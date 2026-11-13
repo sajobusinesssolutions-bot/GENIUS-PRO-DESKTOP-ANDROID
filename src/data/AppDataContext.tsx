@@ -695,6 +695,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (d0 && d0.settings.requireShift && !d0.shifts.some((sh) => !sh.closedAt)) {
         throw new Refusal('No shift is open. Open one from the cash register before selling, or switch off "A shift must be open to sell" in Settings.');
       }
+      /* The shop's rules hold for every way a sale is made — the quick sale,
+         an order, a quotation turned into a sale — not only on the New sale
+         screen: no more than is in stock when that is refused, and nothing
+         below cost when that is refused (a bill discount counted). */
+      if (d0) {
+        const stop = logic.saleBlockers(d0, o.lines, o.discount || 0);
+        if (stop.length) throw new Refusal('This sale cannot be made', stop.join(' '));
+      }
       let sale!: Sale;
       commit((d) => { sale = logic.commitSale(d, o); });
       return sale;
