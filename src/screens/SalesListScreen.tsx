@@ -10,6 +10,7 @@
  *      Delete — kept apart, in red, with a confirm step.
  *  - Transactions / Parties switch sits in the header.
  */
+import { deleteEffects } from '../data/logic';
 import { DeleteConfirm } from '../components/DeleteConfirm';
 import React, { useMemo, useState } from 'react';
 import { View, FlatList, Text, RefreshControl } from 'react-native';
@@ -238,7 +239,7 @@ export default function SalesListScreen({ navigation }: Props) {
         settle: !void_ && s.due > 0.01 ? { label: 'Receive payment', run: () => navigation.navigate('PaymentNew', { direction: 'in', partyId: s.partyId || undefined }) } : undefined,
         remove: can('sales.delete') && !void_ ? {
           label: 'Delete sale',
-          text: 'It leaves your activity. Stock and money are reversed, and you can restore it from More → Deleted transactions.',
+          text: ['It leaves your activity.', ...(db ? deleteEffects(db, 'sale', s.id) : [])].join(' '),
           run: () => { if (deleteSale(s.id, 'Deleted from sales overview')) success(s.no + ' deleted'); },
         } : undefined,
         restore: { kind: 'sale', doneText: 'Sale ' + s.no + ' deleted' },
@@ -276,7 +277,7 @@ export default function SalesListScreen({ navigation }: Props) {
           edit: void_ || !can('purchases.edit') ? undefined : () => navigation.navigate('PurchaseNew', { editPurchaseId: pu.id }),
           remove: can('purchases.delete') && !void_ ? {
             label: 'Delete purchase',
-            text: 'It leaves your activity. Stock and money are reversed, and you can restore it from More → Deleted transactions.',
+            text: ['It leaves your activity.', ...(db ? deleteEffects(db, 'purchase', pu.id) : [])].join(' '),
             run: () => { if (deletePurchase(pu.id, 'Deleted from transactions')) success(pu.no + ' deleted'); },
           } : undefined,
           restore: { kind: 'purchase', doneText: 'Bill ' + (pu.ref || pu.no) + ' deleted' },
@@ -322,7 +323,7 @@ export default function SalesListScreen({ navigation }: Props) {
         doc: () => paymentDoc(p),
         remove: can('finance.delete') ? {
           label: 'Delete payment',
-          text: 'The payment will be reversed and stay in the audit trail.',
+          text: ['The payment is reversed.', ...(db ? deleteEffects(db, 'payment', p.id) : [])].join(' '),
           run: () => { if (deletePayment(p.id, 'Deleted from sales overview')) success('Payment deleted'); },
         } : undefined,
         restore: { kind: 'payment', doneText: 'Payment of ' + money(p.amount) + ' deleted' },

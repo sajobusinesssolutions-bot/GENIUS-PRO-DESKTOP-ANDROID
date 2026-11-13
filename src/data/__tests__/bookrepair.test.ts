@@ -41,3 +41,27 @@ describe('check the books', () => {
     expect(() => logic.repairBooks(d)).toThrow(/Permission denied/);
   });
 });
+
+describe('what a delete will do, said before it goes', () => {
+  it('a part-paid credit sale paid again later', () => {
+    const d = makeDb();
+    d.products[0].stock.w1 = 10;
+    const s = logic.commitSale(d, { lines: [line('p_a', 3, 200)], partyId: 'c1', method: 'credit', discount: 0, received: 100, receivedVia: 'momo' });
+    logic.recordPayment(d, { partyId: 'c1', amount: 200, direction: 'in', accountId: 'acc_cash', allocations: [{ saleId: s.id, amount: 200 }] });
+    const t = logic.deleteEffects(d, 'sale', s.id).join(' ');
+    expect(t).toMatch(/3 items go back on the shelf/);
+    expect(t).toMatch(/100 taken at the counter comes out of Mobile money/);
+    expect(t).toMatch(/payment of 200 made on it afterwards stays as credit for Cust One/);
+    expect(t).toMatch(/Cust One no longer owes 300/);
+  });
+  it('a receipt that settled a bill', () => {
+    const d = makeDb();
+    d.products[0].stock.w1 = 10;
+    const s = logic.commitSale(d, { lines: [line('p_a', 2, 200)], partyId: 'c1', method: 'credit', discount: 0 });
+    const p = logic.recordPayment(d, { partyId: 'c1', amount: 500, direction: 'in', accountId: 'acc_cash' });
+    const t = logic.deleteEffects(d, 'payment', p.id).join(' ');
+    expect(t).toMatch(/500 comes out of Cash/);
+    expect(t).toMatch(new RegExp(s.no + ' is owed 400 again'));
+    expect(t).toMatch(/credit of 100 goes/);
+  });
+});

@@ -1,3 +1,4 @@
+import { deleteEffects } from '../data/logic';
 import React from 'react';
 import { View, Text, Alert } from 'react-native';
 import ScrollView from '../components/KeyScroll';
@@ -46,7 +47,7 @@ export default function PurchaseDetailScreen({ route, navigation }: Props) {
     if (!gate.ok) return refuse(gate.why);
     Alert.alert(
       'Delete ' + x!.no + '?',
-      'The purchase is reversed, not erased: the goods come back off the shelf and ' + money(x!.total) + ' comes off what you owe ' + (supplier?.name || 'them') + '. The reversal stays in the audit log.',
+      ['The purchase is reversed, not erased.', ...deleteEffects(db!, 'purchase', x!.id)].join('\n\n'),
       [
         { text: 'Keep it', style: 'cancel' },
         {

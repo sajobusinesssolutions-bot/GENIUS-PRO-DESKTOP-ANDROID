@@ -1,3 +1,4 @@
+import { deleteEffects } from '../data/logic';
 import React from 'react';
 import { View, Text, Alert, Image } from 'react-native';
 import ScrollView from '../components/KeyScroll';
@@ -72,7 +73,7 @@ export default function SaleDetailScreen({ route, navigation }: Props) {
   function confirmDelete() {
     Alert.alert(
       'Delete ' + sale!.no + '?',
-      'The sale is reversed, not erased: ' + money(sale!.total) + ' comes off the books and the stock goes back on the shelf. The reversal stays in the audit log.',
+      ['The sale is reversed, not erased: ' + money(sale!.total) + ' comes off the books.', ...deleteEffects(db!, 'sale', sale!.id)].join('\n\n'),
       [
         { text: 'Keep it', style: 'cancel' },
         {

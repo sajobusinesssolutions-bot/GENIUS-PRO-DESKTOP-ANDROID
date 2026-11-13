@@ -1,3 +1,4 @@
+import { deleteEffects } from '../data/logic';
 import React, { useState } from 'react';
 import { View, Text, Alert } from 'react-native';
 import ScrollView from '../components/KeyScroll';
@@ -92,7 +93,7 @@ export default function PaymentDetailScreen({ route, navigation }: Props) {
     if (!gate.ok) return refuse(gate.why);
     Alert.alert(
       'Delete this payment?',
-      money(pay!.amount) + ' is reversed: ' + (pt?.name || 'their') + ' balance goes back up and the bills it settled reopen. The reversal stays in the audit log.',
+      [money(pay!.amount) + ' is reversed.', ...deleteEffects(db!, 'payment', pay!.id)].join('\n\n'),
       [
         { text: 'Keep it', style: 'cancel' },
         {

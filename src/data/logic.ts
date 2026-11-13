@@ -2198,6 +2198,48 @@ export function deleteEntry(d: DB, id: string, when = new Date()): boolean {
   return true;
 }
 
+/**
+ * What deleting a document will do, in words, for the question asked before
+ * it goes: stock back or off the shelf, money out of or into an account,
+ * what the party owes, and payments made on it afterwards — which stay, as
+ * credit on the party's account.
+ */
+export function deleteEffects(d: DB, kind: 'sale' | 'purchase' | 'payment', id: string): string[] {
+  const out: string[] = [];
+  const n = (v: number) => Math.round(v).toLocaleString('en-US');
+  const pname = (pid?: string | null) => d.parties.find((p) => p.id === pid)?.name || '';
+  const accName = (aid: string) => d.accounts.find((a) => a.id === aid)?.name || aid;
+  if (kind === 'sale' || kind === 'purchase') {
+    const doc: any = kind === 'sale' ? d.sales.find((x) => x.id === id) : d.purchases.find((x) => x.id === id);
+    if (!doc) return out;
+    const units = (doc.lines || []).reduce((a: number, l: any) => a + (Number(l.qty) || 0), 0);
+    if (units) out.push(kind === 'sale' ? n(units) + ' item' + (units === 1 ? '' : 's') + ' go back on the shelf.' : n(units) + ' item' + (units === 1 ? '' : 's') + ' come off the shelf.');
+    const atDoc = kind === 'sale' ? (doc.paidAtSale ?? (doc.method === 'credit' ? 0 : doc.paid)) : (doc.method === 'credit' ? 0 : doc.total);
+    const till = Math.max(0, atDoc - (doc.redeemed || 0) - (doc.wht || 0));
+    if (till > 0.5) {
+      const via = doc.method === 'credit' ? (doc.receivedVia || 'cash') : doc.method;
+      const acc = via === 'momo' ? 'Mobile money' : via === 'bank' ? 'Bank' : 'Cash';
+      out.push(kind === 'sale' ? n(till) + ' taken at the counter comes out of ' + acc + '.' : n(till) + ' paid with it goes back into ' + acc + '.');
+    }
+    const later = (doc.receipts || []).filter((r: any) => d.payments.some((p) => p.id === r.paymentId)).reduce((a: number, r: any) => a + (Number(r.amount) || 0), 0);
+    if (later > 0.5) out.push((kind === 'sale' ? 'A payment of ' + n(later) + ' made on it afterwards stays as credit for ' : 'A payment of ' + n(later) + ' made on it afterwards stays as an advance to ') + (pname(doc.partyId) || 'the party') + '.');
+    if (doc.due > 0.5) out.push((pname(doc.partyId) || (kind === 'sale' ? 'The customer' : 'The supplier')) + (kind === 'sale' ? ' no longer owes ' : ' is no longer owed ') + n(doc.due) + '.');
+    if (kind === 'sale') {
+      const cns = (d.creditNotes || []).filter((c) => c.saleId === id);
+      if (cns.length) out.push('Its return' + (cns.length === 1 ? ' ' + cns[0].no + ' stays' : 's ' + cns.map((c) => c.no).join(', ') + ' stay') + ' — delete separately if it should go too.');
+    }
+    out.push('It can be brought back from Deleted transactions.');
+  } else {
+    const p = d.payments.find((x) => x.id === id);
+    if (!p) return out;
+    out.push(n(p.amount) + (p.direction === 'in' ? ' comes out of ' : ' goes back into ') + accName(p.accountId) + '.');
+    (p.allocations || []).forEach((a) => out.push((a.no || 'A bill') + ' is owed ' + n(a.amount) + ' again.'));
+    if ((p.unapplied || 0) > 0.5) out.push((pname(p.partyId) || 'The party') + "'s credit of " + n(p.unapplied || 0) + ' goes.');
+    out.push('It can be brought back from Deleted transactions.');
+  }
+  return out;
+}
+
 /* ============================================================
    THE BOOKS THEMSELVES — find, and put right, what old deletes left wrong.
 
