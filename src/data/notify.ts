@@ -24,6 +24,7 @@ import { alertsOf, type Alert } from './alerts';
 import { stockOfImpl } from './logic';
 import { SERVER_URL, refreshSession } from './authApi';
 import { loadAccount } from './account';
+import { localDay } from './uid';
 
 const SHOWN_KEY = 'notify.shown';
 const ADS_KEY = 'notify.ads';
@@ -70,7 +71,7 @@ export async function showNow(id: string, title: string, body: string, data: Rec
 /** The bell's list in the bar: new or changed alerts, each kind at most once a day. */
 export async function notifyAlerts(alerts: Alert[], business: string, now = new Date()): Promise<void> {
   const shown = await readMap(SHOWN_KEY);
-  const today = now.toISOString().slice(0, 10);
+  const today = localDay(now);
   const next: Record<string, string> = {};
   for (const a of alerts) {
     // shown as "YYYY-MM-DD:count"; again only on a new day, or when more have come up today

@@ -40,11 +40,12 @@ import { listRange, inRange, tsMs, dayTime } from '../data/helpers';
 import SegmentSlider from '../components/SegmentSlider';
 import { isRestaurant, words } from '../data/restaurant';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { localDay } from '../data/uid';
 
 type Props = NativeStackScreenProps<RootStackParamList, any>;
 type Kind = 'all' | 'sale' | 'purchase' | 'order' | 'payment' | 'expense' | 'income' | 'transfer' | 'journal' | 'quote' | 'note' | 'return' | 'plan' | 'recurring';
 type Tone = 'good' | 'warn' | 'danger' | 'accent' | 'neutral';
-const day = (n: number) => new Date(n).toISOString().slice(0, 10);
+const day = (n: number) => localDay(n);
 
 interface Row {
   id: string;

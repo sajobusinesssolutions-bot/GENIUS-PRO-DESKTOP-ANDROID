@@ -7,6 +7,7 @@
 import type { DB, Product } from './types';
 import { ageOfDays } from './helpers';
 import { dueRecurring } from './logic';
+import { localDay } from './uid';
 
 export type AlertTone = 'warn' | 'danger' | 'accent';
 export interface Alert {
@@ -20,7 +21,7 @@ export interface Alert {
 }
 
 const plural = (n: number, w: string) => n + ' ' + w + (n === 1 ? '' : 's');
-const day = (d: Date) => d.toISOString().slice(0, 10);
+const day = (d: Date) => localDay(d);
 
 export function alertsOf(db: DB, stockOf: (p: Product) => number, now = new Date()): Alert[] {
   const st = db.settings;

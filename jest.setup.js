@@ -56,3 +56,16 @@ jest.mock('react-native-reanimated', () => {
     withTiming: (value) => value,
   };
 });
+
+// TEST_NOW=2026-11-14T22:30:00Z runs the tests as if started at that moment (the
+// clock keeps running from there): with TZ=Africa/Kampala that is 01:30, when
+// the local day and the UTC day differ — the hour a day mix-up shows.
+if (process.env.TEST_NOW) {
+  const RealDate = Date;
+  const shift = new RealDate(process.env.TEST_NOW).getTime() - RealDate.now();
+  class ShiftedDate extends RealDate {
+    constructor(...a) { if (a.length) super(...a); else super(RealDate.now() + shift); }
+    static now() { return RealDate.now() + shift; }
+  }
+  global.Date = ShiftedDate;
+}

@@ -2327,6 +2327,11 @@ export function checkBooks(d: DB): { issues: BookIssue[]; fixes: BookFix[] } {
       what: doc.kind + ' ' + doc.no + ' was deleted but still leaves money in the books',
       detail: lines.map((l) => accName(l.acc) + ' ' + (l.dr ? '+' : '−') + Math.round(l.dr || l.cr || 0).toLocaleString('en-US')).join(' · ') });
   });
+  refundsOnCreditors(d).forEach(({ pay, amount }) => {
+    issues.push({ kind: 'fixable', ref: 'Refund', amount,
+      what: 'Money paid back to ' + (d.parties.find((p) => p.id === pay.partyId)?.name || 'a customer') + ' was taken off creditors',
+      detail: 'Debtors +' + Math.round(amount).toLocaleString('en-US') + ' · Creditors −' + Math.round(amount).toLocaleString('en-US') });
+  });
   // a document's entries whose debits and credits differ (taken together under its number; none should)
   const byRef = new Map<string, { dr: number; cr: number; memo: string }>();
   d.journal.forEach((e) => {
@@ -2342,11 +2347,48 @@ export function checkBooks(d: DB): { issues: BookIssue[]; fixes: BookFix[] } {
   return { issues, fixes };
 }
 
+/**
+ * Money paid back to a customer (a cancelled guest's refund) used to be taken
+ * off creditors instead of debtors. Each such payment still in the book gets
+ * one entry moving it across. The entry's id is made from the payment's, so a
+ * second phone on the business, or a second run, adds nothing.
+ */
+export function refundsOnCreditors(d: DB): Array<{ pay: Payment; amount: number; branch?: string }> {
+  const out: Array<{ pay: Payment; amount: number; branch?: string }> = [];
+  const have = new Set((d.journal || []).map((e) => e.id));
+  (d.payments || []).forEach((pay) => {
+    if (pay.direction !== 'out' || have.has('jnl_ctl_' + pay.id)) return;
+    if (d.parties.find((p) => p.id === pay.partyId)?.type !== 'customer') return;
+    // only where this phone's own entry for it sits on creditors (one made on the computer never did)
+    const first = (d.journal || []).find((e) => e.ref === 'PAY' && e.ts === pay.ts && e.lines.some((l) => l.acc === 'n_ap' && (l.dr || 0) > 0));
+    if (!first) return;
+    // what sits on creditors for it now: the money and any tax kept back (an edit moved the money, never the tax)
+    const amount = cents(pay.amount + (pay.taxDeducted || 0));
+    if (amount > 0) out.push({ pay, amount, branch: first.branch });
+  });
+  return out;
+}
+
+export function repairRefundControl(d: DB, when = new Date()): number {
+  const list = refundsOnCreditors(d);
+  list.forEach(({ pay, amount, branch }) => {
+    const name = d.parties.find((p) => p.id === pay.partyId)?.name || '';
+    const entry: JournalEntry = {
+      id: 'jnl_ctl_' + pay.id, ts: iso(when), memo: 'Refund to ' + name + ' — moved from creditors to debtors', ref: 'FIX',
+      lines: [{ acc: 'n_ar', dr: amount }, { acc: 'n_ap', cr: amount }], balanced: true, branch,
+    };
+    d.journal.push(entry);
+    if (d.sync?.on) enqueue(d, 'journal', entry.id);
+  });
+  return list.length;
+}
+
 /** Posts every fix checkBooks found. Returns what was put right. */
 export function repairBooks(d: DB, when = new Date()): BookIssue[] {
   if (!canWith(ensureRoles(d), d.session.role, 'settings.edit')) throw new Refusal('Permission denied: settings.edit');
   const { issues, fixes } = checkBooks(d);
   fixes.forEach((f) => journal(d, when, f.memo, f.ref, f.lines));
+  repairRefundControl(d, when);
   const done = issues.filter((i) => i.kind === 'fixable');
   if (done.length) audit(d, 'Books repaired', done.map((i) => i.ref + ': ' + i.detail).join('; '));
   return done;

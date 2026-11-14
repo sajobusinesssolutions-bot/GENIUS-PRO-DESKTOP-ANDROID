@@ -15,6 +15,7 @@ import { Field } from './ui';
 import { Icon } from './icons';
 import { expiryState, daysToExpiry } from '../data/batches';
 import type { ProductBatch } from '../data/types';
+import { localDay } from '../data/uid';
 
 function fmt(iso: string) {
   const d = new Date(iso);
@@ -145,7 +146,7 @@ export default function BatchEditor({ batches, onChange, unit = 'pcs', suggestNo
                 onDismiss={() => setPicking(null)}
                 onValueChange={(_e, date) => {
                   if (Platform.OS !== 'ios') setPicking(null);
-                  if (date) patch(i, { expiry: date.toISOString().slice(0, 10) });
+                  if (date) patch(i, { expiry: localDay(date) });
                 }}
               />
             ) : null}

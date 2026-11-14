@@ -127,4 +127,23 @@ describe('hotel bills in the books', () => {
     expect(r2(logic.partyBalance(d, pid))).toBe(0);
     expect(taken(d) - cash0).toBe(30000);
   });
+
+  it('a refund an older version took off creditors is moved to debtors once, however often the book is opened', () => {
+    const { d, h, dbl, r1 } = setup();
+    const a = today();
+    const bk = h.saveBooking({ kind: 'individual', status: 'confirmed', source: 'Phone', arrive: addDays(a, 3), depart: addDays(a, 5), rooms: [{ roomId: r1.id, typeId: dbl.id, rate: 100000, adults: 1, children: 0 }], roomsPaidBy: 'guest', guests: [guest], discount: 0 });
+    h.takeBookingPayment(bk.id, { amount: 100000, method: 'cash' });
+    h.endBooking(bk.id, { status: 'cancelled', fee: 30000, refund: 70000, method: 'cash', reason: 'Plans changed' });
+    // as the older version left it
+    const pay = d.payments.find((p) => p.direction === 'out' && p.amount === 70000)!;
+    const e = d.journal.find((x) => x.ref === 'PAY' && x.ts === pay.ts)!;
+    e.lines.forEach((l) => { if (l.acc === 'n_ar') l.acc = 'n_ap'; });
+    const ap0 = net(d, 'n_ap');
+    expect(logic.checkBooks(d).issues.filter((i) => i.ref === 'Refund')).toHaveLength(1);
+    expect(logic.repairRefundControl(d)).toBe(1);
+    expect(logic.repairRefundControl(d)).toBe(0);
+    books(d, 'repaired');
+    expect(net(d, 'n_ap') - ap0).toBe(-70000);
+    expect(logic.checkBooks(d).issues.filter((i) => i.ref === 'Refund')).toHaveLength(0);
+  });
 });

@@ -7,6 +7,7 @@ import {
 } from './defaults';
 import { ensureRoles } from './perms';
 import { ensureCoa } from './coa';
+import { repairRefundControl } from './logic';
 import { reconcileBatches } from './batches';
 import { hashPin, isPinHashed } from './pinHash';
 import { hasBook, loadBook, writeBook, clearBook, storeSet, noteChanges, COLLS, sqliteAvailable, readFullBook, faultIn, olderRows, countOlder, storeGet } from './store/bookstore';
@@ -223,6 +224,8 @@ export function migrate(d: any): any {
   d.bankReconciliations = d.bankReconciliations || [];
   d.archivedFinancialYears = d.archivedFinancialYears || [];
   ensureCoa(d);
+  // refunds to customers that an older version took off creditors are moved to debtors, once
+  try { if (Array.isArray(d.payments) && Array.isArray(d.journal) && Array.isArray(d.parties)) repairRefundControl(d); } catch { /* the book still opens */ }
   // repair items whose batches drifted from their stock before moves kept them in step
   (d.products || []).forEach((p: any) => reconcileBatches(p));
   (d.warehouses || []).forEach((w: any) => {

@@ -19,6 +19,7 @@ import { copyLabels } from './docDefaults';
 
 export { numberToWords };
 import type { Paper, PrintTemplate, DocKind, Printer, SoldSerial, KitchenSettings } from './types';
+import { localDay } from './uid';
 
 /**
  * Renders a PDF and returns a URI in this app's own cache that sharing can read.
@@ -246,7 +247,7 @@ export function codeText(d: DocMeta, tpl: PrintTemplate, money: (n: number) => s
   switch (tpl.codeData) {
     case 'total': return d.no + ' ' + money(d.total);
     case 'party': return d.partyName ? d.partyName + ' · ' + d.no : d.no;
-    case 'verify': return [d.firmName, d.kind + ' ' + d.no, new Date(d.ts).toISOString().slice(0, 10), 'Total ' + money(d.total), d.firmTin ? 'TIN ' + d.firmTin : ''].filter(Boolean).join('\n');
+    case 'verify': return [d.firmName, d.kind + ' ' + d.no, localDay(d.ts), 'Total ' + money(d.total), d.firmTin ? 'TIN ' + d.firmTin : ''].filter(Boolean).join('\n');
     case 'custom': return d.footer || d.no;
     default: return d.no;
   }

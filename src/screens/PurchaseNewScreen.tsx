@@ -23,13 +23,14 @@ import { useConfirmLeave } from '../components/useConfirmLeave';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 import { PurchaseLine, PurchaseBatchAllocation, PayMethod, Product } from '../data/types';
+import { localDay } from '../data/uid';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PurchaseNew'>;
 
 function defaultExpiry(months = 12) {
   const d = new Date();
   d.setMonth(d.getMonth() + months);
-  return d.toISOString().slice(0, 10);
+  return localDay(d);
 }
 
 function newBatchNo(p: Product) {

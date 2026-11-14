@@ -33,6 +33,7 @@ import type { JournalLine } from '../data/types';
 import { candidateJournalEntries, importStatementCsv } from '../data/reconciliation';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
+import { localDay } from '../data/uid';
 
 const TYPE_ICON: Record<LedgerType, IconName> = {
   asset: 'box', liability: 'card', equity: 'owner', income: 'coins', expense: 'money',
@@ -733,7 +734,7 @@ export function ReconciliationScreen() {
   const { db, money, importBankStatement, matchBankStatementLine, bankReconciliationSummary, completeBankReconciliation } = useAppData();
   const { success, error } = useToast();
   const [accountId, setAccountId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localDay());
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [closing, setClosing] = useState('');

@@ -6,6 +6,7 @@ import { useTheme, fonts, radius } from '../theme';
 import { Button, SelectField } from './ui';
 import { Sheet } from './Sheet';
 import { Icon } from './icons';
+import { localDay } from '../data/uid';
 
 export interface ListFilterOption { v: string; l: string }
 
@@ -15,7 +16,7 @@ function parseDate(value: string): Date {
 }
 
 function dateText(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return localDay(d);
 }
 
 export function ListFilters({

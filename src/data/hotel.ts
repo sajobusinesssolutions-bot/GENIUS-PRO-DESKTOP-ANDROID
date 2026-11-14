@@ -23,6 +23,7 @@
  * and the computer by the latest copy.
  */
 import type { DB } from './types';
+import { localDay } from './uid';
 
 export type RoomStatus = 'clean' | 'dirty' | 'inspected' | 'ooo';
 export interface RoomType {
@@ -210,7 +211,8 @@ export const KIND_WORD: Record<BookingKind, string> = { individual: 'Individual'
 export const SOURCES = ['Walk-in', 'Phone', 'WhatsApp', 'Email', 'Travel agent', 'Booking.com', 'Expedia', 'Airbnb', 'Company'];
 
 const DAY = 864e5;
-export const dayOf = (s: string | Date) => (typeof s === 'string' ? s.slice(0, 10) : new Date(s.getTime() - s.getTimezoneOffset() * 6e4).toISOString().slice(0, 10));
+/** The day at the hotel: a saved time (kept in UTC) falls on the local day, so a check-in at one in the morning is today's. */
+export const dayOf = (s: string | Date) => localDay(s);
 export const today = () => dayOf(new Date());
 export function addDays(day: string, n: number): string {
   const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);
