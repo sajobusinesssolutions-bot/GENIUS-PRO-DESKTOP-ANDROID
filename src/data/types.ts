@@ -381,6 +381,10 @@ export interface Entry {
   offsetSaleId?: string;
   /** How much of it came off that bill (the rest left the drawer). */
   offset?: number;
+  /** The part of `offset` that is not on the bill any more (the bill was edited below it, or moved to another customer): the customer's credit. */
+  offsetHeld?: number;
+  /** The customer who settled it, when the bill has since gone to someone else: all of `offset` is then their credit. */
+  offsetPartyId?: string;
 }
 
 export interface JournalLine { acc: string; dr?: number; cr?: number; }

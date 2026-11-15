@@ -38,14 +38,20 @@ export function saleTotals(lines: SaleLine[], discount: number, inclusive = true
     gross += line; cost += l.qty * (l.cost || 0);
     tax += inclusive ? line - line / (1 + rate) : line * rate;
   });
-  const disc = Math.min(discount || 0, gross);
-  const taxAfter = tax * (gross ? (gross - disc) / gross : 0);
+  /* To the cent, here, once. A quantity of 1.25 at 377.50 is 471.875: the bill
+     kept that while the ledger, which posts in cents, held 471.88 — and what
+     the customer owed and what the debtors ledger said drifted a cent apart
+     with every such bill. Every figure of a bill is now a whole number of
+     cents, and they add up: total = gross − discount, net = total − tax. */
+  gross = cents(gross); cost = cents(cost);
+  const disc = cents(Math.min(discount || 0, gross));
+  const taxAfter = cents(tax * (gross ? (gross - disc) / gross : 0));
   if (inclusive) {
-    const total = gross - disc;
-    return { gross, discount: disc, total, tax: taxAfter, net: total - taxAfter, cost };
+    const total = cents(gross - disc);
+    return { gross, discount: disc, total, tax: taxAfter, net: cents(total - taxAfter), cost };
   }
-  const net = gross - disc;
-  return { gross, discount: disc, total: net + taxAfter, tax: taxAfter, net, cost };
+  const net = cents(gross - disc);
+  return { gross, discount: disc, total: cents(net + taxAfter), tax: taxAfter, net, cost };
 }
 
 /** Whether a book's prices already include tax. Absent means yes, as it always behaved. */
@@ -114,7 +120,14 @@ export function move(d: DB, productId: string, wh: string, qty: number, type: st
   prod.stock[wh] = (prod.stock[wh] || 0) + qty;
   if (batchNo && prod.batches) {
     const batch = prod.batches.find((x) => x.no === batchNo);
-    if (batch) batch.qty += qty;
+    if (batch) {
+      batch.qty += qty;
+      /* A batch holds what is in it, never less than nothing, where the shop
+         does not sell below zero: goods taken back out of a batch that has
+         since been sold from (a deleted purchase, a count) come off the item,
+         and the batch is empty. */
+      if (batch.qty < 0 && !mayGoBelowZero(d)) batch.qty = 0;
+    }
   }
   // a move that named no batch (or one that is gone) still has to land in the batches
   reconcileBatches(prod);
@@ -344,6 +357,11 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
      soonest expiry first and skipping expired ones — split into a line per
      batch. Before, it took the item's stock but no batch's, so the batches
      no longer added up to what was on the shelf. */
+  /* what the lines of this bill have already drawn from each batch: the same
+     item twice on one bill used to draw both lines from the same batch as it
+     stood, and the batch went below nothing */
+  const drawn = new Map<string, number>();
+  o.lines.forEach((l) => { if (l.batchNo) drawn.set(l.productId + '|' + l.batchNo, (drawn.get(l.productId + '|' + l.batchNo) || 0) + stockQty(l)); });
   o = { ...o, lines: o.lines.flatMap((l) => {
     const p = d.products.find((x) => x.id === l.productId);
     if (l.batchNo || !p || !p.trackBatches || !(p.batches || []).length || (l.unitFactor && l.unitFactor !== 1) || !(l.qty > 0)) return [l];
@@ -351,8 +369,9 @@ export function commitSale(d: DB, o: { lines: SaleLine[]; partyId: string | null
     const out: SaleLine[] = [];
     for (const b of liveBatches(p).filter((x) => !isExpired(x))) {
       if (left <= 0) break;
-      const take = Math.min(b.qty, left);
-      if (take > 0) { out.push({ ...l, qty: take, batchNo: b.no, expiry: b.expiry } as SaleLine); left -= take; }
+      const k = p.id + '|' + b.no;
+      const take = Math.min(Math.max(0, b.qty - (drawn.get(k) || 0)), left);
+      if (take > 0) { out.push({ ...l, qty: take, batchNo: b.no, expiry: b.expiry } as SaleLine); left -= take; drawn.set(k, (drawn.get(k) || 0) + take); }
     }
     if (left > 0.0001) out.push({ ...l, qty: left });
     return out.length ? out : [l];
@@ -560,7 +579,13 @@ export function voidSale(d: DB, saleId: string, reason?: string, when = new Date
     const via = s.method === 'credit' ? (s.receivedVia || 'cash') : s.method;
     jl.push({ acc: via === 'momo' ? 'acc_momo' : via === 'bank' ? 'acc_bank' : 'acc_cash', cr: tillPaid });
   }
-  if (s.due + later > 0.005) jl.push({ acc: 'n_ar', cr: cents(s.due + later) });
+  /* A return credited against the bill took that much off what it owes
+     (createCreditNote), so it is in neither `due` nor `paid`. The sale put it
+     on the debtors all the same, and it comes off with the rest: the return
+     stands, and is then the customer's credit (returnCredit). Left out, the
+     reversal's debits and credits differed by the return. */
+  const returned = (d.creditNotes || []).reduce((t, c) => t + (c.saleId === s.id ? c.appliedToSale || 0 : 0), 0);
+  if (s.due + later + returned > 0.005) jl.push({ acc: 'n_ar', cr: cents(s.due + later + returned) });
   if (redeemed) jl.push({ acc: 'n_loyalty', cr: redeemed });
   if (wht) jl.push({ acc: 'n_wht_credit', cr: wht });
   jl.push({ acc: 'n_sales', dr: s.total - s.tax + s.discount });
@@ -588,7 +613,7 @@ export function createPurchase(d: DB, partyId: string, lines: PurchaseLine[], me
   }
 
   d.counters.purchase += 1;
-  const total = lines.reduce((s, l) => s + l.qty * l.cost, 0);
+  const total = cents(lines.reduce((s, l) => s + l.qty * l.cost, 0));
   const wh = d.session.warehouse || 'w1';
   const pu: Purchase = { id: uid('pur'), no: (no || '').trim() || 'PUR-' + String(100000 + d.counters.purchase).slice(1), ts: iso(when), partyId, lines, total, method, paid: method === 'credit' ? 0 : total, due: method === 'credit' ? total : 0, status: 'complete', userId: userId || d.session.userId, branch: activeBranchId(d) };
   d.purchases.push(pu);
@@ -717,18 +742,20 @@ export function batchSwitchRefusal(d: DB, productId: string, want: boolean): str
 }
 
 export function allPartyBalances(d: DB): Map<string, number> {
-  const key = d.sales.length + ':' + d.purchases.length + ':' + d.parties.length + ':' + d.payments.length + ':' + (d.creditNotes || []).length;
+  /* Every change to what someone owes posts to the journal, so its length is in the key: an edit, a delete or a payment set against a bill
+     changes no list's length, and the balances were read back as they stood before it (found by the random-use test). */
+  const key = d.sales.length + ':' + d.purchases.length + ':' + d.parties.length + ':' + d.payments.length + ':' + (d.creditNotes || []).length + ':' + (d.journal || []).length + ':' + (d.entries || []).length;
   const had = balanceCache.get(d);
   if (had && had.key === key) return had.map;
   const map = new Map<string, number>();
   d.parties.forEach((p) => map.set(p.id, p.openingBalance || 0));
   d.sales.forEach((s) => { if (s.partyId && s.status !== 'void' && map.has(s.partyId)) map.set(s.partyId, map.get(s.partyId)! + s.due); });
   d.payments.forEach((p) => { if (p.unapplied && map.has(p.partyId)) map.set(p.partyId, map.get(p.partyId)! + (p.direction === 'in' ? -p.unapplied : p.unapplied)); });
-  (d.creditNotes || []).forEach((c) => { const h = c.onAccount ? c.total : c.held || 0; if (h && c.partyId && map.has(c.partyId)) map.set(c.partyId, map.get(c.partyId)! - h); });
+  (d.creditNotes || []).forEach((c) => { const h = returnCredit(d, c); if (h && c.partyId && map.has(c.partyId)) map.set(c.partyId, map.get(c.partyId)! - h); });
   d.purchases.forEach((x) => { if (x.partyId && x.status !== 'void' && map.has(x.partyId)) map.set(x.partyId, map.get(x.partyId)! - x.due); });
   map.forEach((v, id) => map.set(id, v + olderUnapplied(d, id)));
   // an expense the customer paid towards a bill since deleted: theirs, as credit
-  (d.entries || []).forEach((e) => { const pid = deletedOffsetParty(d, e); if (pid && map.has(pid)) map.set(pid, map.get(pid)! - (e.offset ?? 0)); });
+  (d.entries || []).forEach((e) => { const c = offsetCredit(d, e); if (c && map.has(c.partyId)) map.set(c.partyId, map.get(c.partyId)! - c.amount); });
   balanceCache.set(d, { key, map });
   return map;
 }
@@ -745,10 +772,31 @@ export function allPartyBalances(d: DB): Map<string, number> {
  * stands it is inside what the bill owes. With the bill deleted it is money
  * of theirs we used: credit on their account. The party it belongs to, then.
  */
-function deletedOffsetParty(d: DB, e: Entry): string | null {
+export function offsetCredit(d: DB, e: Entry): { partyId: string; amount: number } | null {
   if (!e.offsetSaleId || !(e.offset && e.offset > 0)) return null;
+  // the bill went to another customer after this was settled: all of it is the first one's credit
+  if (e.offsetPartyId) return { partyId: e.offsetPartyId, amount: e.offset };
   const s = d.sales.find((x) => x.id === e.offsetSaleId);
-  return s && s.status === 'void' && s.partyId ? s.partyId : null;
+  if (!s || !s.partyId) return null;
+  // the bill is deleted: all of it; the bill stands: only what no longer fits on it (it was edited below it)
+  const amount = s.status === 'void' ? e.offset : e.offsetHeld || 0;
+  return amount > 0.004 ? { partyId: s.partyId, amount } : null;
+}
+
+/**
+ * What a return leaves on the customer's account as credit: all of it when no
+ * bill was named, the part beyond what the bill owed, and — once that bill has
+ * been deleted — the part that had come off the bill too, since there is no
+ * bill left for it to have reduced.
+ */
+export function returnCredit(d: DB, c: CreditNote): number {
+  if (c.onAccount) return c.total;
+  let h = c.held || 0;
+  if (c.appliedToSale && c.saleId) {
+    const s = d.sales.find((x) => x.id === c.saleId);
+    if (s && s.status === 'void') h += c.appliedToSale;
+  }
+  return h;
 }
 
 function olderUnapplied(d: DB, id: string): number {
@@ -763,8 +811,8 @@ export function partyBalance(d: DB, id: string): number {
   d.sales.forEach((s) => { if (s.partyId === id && s.status !== 'void') b += s.due; });
   d.purchases.forEach((x) => { if (x.partyId === id && x.status !== 'void') b -= x.due; });
   d.payments.forEach((p) => { if (p.partyId === id && p.unapplied) b += p.direction === 'in' ? -p.unapplied : p.unapplied; });
-  (d.creditNotes || []).forEach((c) => { if (c.partyId === id) b -= c.onAccount ? c.total : c.held || 0; });
-  (d.entries || []).forEach((e) => { if (deletedOffsetParty(d, e) === id) b -= e.offset ?? 0; });
+  (d.creditNotes || []).forEach((c) => { if (c.partyId === id) b -= returnCredit(d, c); });
+  (d.entries || []).forEach((e) => { const c = offsetCredit(d, e); if (c && c.partyId === id) b -= c.amount; });
   return b;
 }
 
@@ -1876,6 +1924,24 @@ function renumber(d: DB, from: string, to: string) {
 /** How an edited sale is paid, when the edit screen says (the same choices as a new sale). */
 export type EditPay = Pick<Parameters<typeof commitSale>[1], 'method' | 'methods' | 'received' | 'receivedVia' | 'momoNetwork' | 'momoRef' | 'wht' | 'taxOnTop' | 'additionalCharges' | 'description' | 'terms' | 'showPayment' | 'rx' | 'priceListId'>;
 
+/**
+ * All of it or none of it. An edit takes the old document out of the books and
+ * puts the changed one in; if the second half is refused (not enough stock for
+ * the new quantity, a credit limit, a closed day) the first half must not
+ * stand — the sale used to be left deleted by an edit that failed. The book is
+ * put back exactly as it was and the refusal goes on to the screen.
+ */
+function allOrNothing<T>(d: DB, fn: () => T): T {
+  const before = JSON.stringify(d);
+  try { return fn(); } catch (e) {
+    const was = JSON.parse(before) as Record<string, unknown>;
+    const book = d as unknown as Record<string, unknown>;
+    Object.keys(book).forEach((k) => { if (!(k in was)) delete book[k]; });
+    Object.keys(was).forEach((k) => { book[k] = was[k]; });
+    throw e;
+  }
+}
+
 export function editSale(
   d: DB,
   saleId: string,
@@ -1886,14 +1952,40 @@ export function editSale(
   if (!canWith(ensureRoles(d), d.session.role, 'sales.edit')) {
     throw new Refusal('Permission denied: sales.edit');
   }
+  return allOrNothing(d, () => editSaleSteps(d, saleId, o, reason, when));
+}
+
+function editSaleSteps(
+  d: DB,
+  saleId: string,
+  o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string; pay?: EditPay },
+  reason: string,
+  when: Date,
+): Sale | null {
   const s = d.sales.find((x) => x.id === saleId);
   if (!s || s.status === 'void') return null;
   if (!o.lines.length) return null;
   const oldNo = s.no, oldTs = s.ts, oldMethod = s.method, oldWh = s.warehouse, oldPaid = s.paid, oldTill = s.till, oldUser = s.userId;
   // the sale as it stood, so its history shows what the edit changed (total, paid, owed, customer)
   const wasSnap = snapshotOf(s as unknown as Record<string, unknown>), wasV = (s as any)._v || 0;
-  // money paid on the sale after it was made (separate payments) stays with it
-  const paidLater = Math.max(0, (s.paid || 0) - (s.paidAtSale ?? s.paid ?? 0));
+  /* Money received on the bill afterwards (its own receipts) and returns
+     credited against it are taken off it first, and set against the edited
+     bill once it stands — as far as it then owes; the rest stays with the
+     customer as credit. Before, the edited bill simply kept "paid" up to its
+     new total: edited down below what had been received, the difference was
+     nowhere — the receipts still named the bill in full, the bill said
+     settled, and the customer's balance was short of the ledger by it. A bill
+     moved to another customer kept the first one's receipts. */
+  releaseLaterReceipts(d, s);
+  const returns = (d.creditNotes || []).filter((c) => c.saleId === s.id && (c.appliedToSale || 0) > 0);
+  returns.forEach((c) => { s.due = cents(s.due + (c.appliedToSale || 0)); c.held = cents((c.held || 0) + (c.appliedToSale || 0)); c.appliedToSale = 0; });
+  /* expenses the customer settled towards the bill come off it too, and go back as far as the edited bill owes */
+  const offsets = (d.entries || []).filter((e) => e.offsetSaleId === s.id && (e.offset || 0) > 0 && !e.offsetPartyId);
+  const offsetsOn = offsets.reduce((t, e) => t + Math.max(0, (e.offset || 0) - (e.offsetHeld || 0)), 0);
+  // anything else that had come off the bill without a receipt of its own
+  const paidLater = Math.max(0, cents((s.paid || 0) - (s.paidAtSale ?? s.paid ?? 0) - offsetsOn));
+  // what was taken at the counter when it was sold
+  const atCounter = s.paidAtSale ?? Math.max(0, cents((s.paid || 0) - offsetsOn));
 
   voidSale(d, s.id, reason, when);
 
@@ -1926,8 +2018,9 @@ export function editSale(
 
   /* money already taken stays taken: without a payment choice from the screen,
      as before; with one, what was paid later (separate receipts) still counts */
-  if (!o.pay && oldMethod !== 'credit') {
-    const keep = Math.min(oldPaid, fresh.total);
+  /* a walk-in sale has nobody to owe the difference: it is paid in full, as it was posted */
+  if (!o.pay && oldMethod !== 'credit' && fresh.partyId) {
+    const keep = Math.min(atCounter, fresh.total);
     /* The new sale was posted as paid in full; only what was taken stays taken.
        The rest is owed, in the books as on the bill: before, the bill said
        owed while the till was credited with money nobody handed over — and a
@@ -1945,6 +2038,24 @@ export function editSale(
   d.sales = d.sales.filter((x) => x.id !== s.id);
   const freshId = fresh.id;
   fresh.id = s.id;
+  /* the returns, then the receipts, back against the bill as it now stands — for the same customer only */
+  const sameParty = (fresh.partyId || null) === (s.partyId || null);
+  returns.forEach((c) => {
+    const take = sameParty ? cents(Math.min(c.held || 0, Math.max(0, fresh.due))) : 0;
+    if (take > 0.004) { fresh.due = cents(fresh.due - take); c.appliedToSale = take; c.held = cents((c.held || 0) - take); }
+    if (!(c.held && c.held > 0.004)) delete c.held;
+    enqueue(d, 'creditNote', c.id);
+  });
+  offsets.forEach((e) => {
+    const take = sameParty ? cents(Math.min(e.offset || 0, Math.max(0, fresh.due))) : 0;
+    if (take > 0.004) { fresh.due = cents(fresh.due - take); fresh.paid = cents(fresh.paid + take); }
+    const held = cents((e.offset || 0) - take);
+    if (!sameParty && s.partyId) { e.offsetPartyId = s.partyId; delete e.offsetHeld; }
+    else if (held > 0.004) e.offsetHeld = held; else delete e.offsetHeld;
+    enqueue(d, 'entry', e.id);
+  });
+  if (sameParty) relinkFreed(d, fresh);
+  else d.payments.forEach((pay) => { const fr = (pay as any).freedFrom as { docId: string }[] | undefined; if (fr && fr.some((f) => f.docId === s.id)) (pay as any).freedFrom = fr.filter((f) => f.docId !== s.id); });
   (d.warranties || []).forEach((w) => { if (w.saleId === freshId) w.saleId = s.id; });
   d.queue = d.queue.filter((q: any) => !(q.kind === 'sale' && q.ref === freshId));
   enqueue(d, 'sale', s.id);
@@ -2028,11 +2139,23 @@ export function editPurchase(
   if (!canWith(ensureRoles(d), d.session.role, 'purchases.edit')) {
     throw new Refusal('Permission denied: purchases.edit');
   }
+  return allOrNothing(d, () => editPurchaseSteps(d, purchaseId, o, reason, when));
+}
+
+function editPurchaseSteps(
+  d: DB,
+  purchaseId: string,
+  o: { partyId: string; lines: PurchaseLine[]; method: PayMethod; ref?: string; note?: string },
+  reason: string,
+  when: Date,
+): Purchase | null {
   const x = d.purchases.find((p) => p.id === purchaseId);
   if (!x || x.status === 'void') return null;
   if (!o.lines.length) return null;
   const oldNo = x.no, oldTs = x.ts;
   const wasSnap = snapshotOf(x as unknown as Record<string, unknown>), wasV = (x as any)._v || 0;
+  /* payments made on the bill afterwards come off it first and go back against the changed bill, as far as it owes (the rest stays as an advance) */
+  releaseLaterReceipts(d, x);
   voidPurchase(d, x.id, reason, when);
   const fresh = createPurchase(d, o.partyId, o.lines, o.method, new Date(oldTs));
   d.counters.purchase -= 1;
@@ -2044,6 +2167,8 @@ export function editPurchase(
   d.purchases = d.purchases.filter((p) => p.id !== x.id);
   const freshId = fresh.id;
   fresh.id = x.id;
+  if (fresh.partyId === x.partyId) relinkFreed(d, fresh);
+  else d.payments.forEach((pay) => { const fr = (pay as any).freedFrom as { docId: string }[] | undefined; if (fr && fr.some((f) => f.docId === x.id)) (pay as any).freedFrom = fr.filter((f) => f.docId !== x.id); });
   d.queue = d.queue.filter((q: any) => !(q.kind === 'purchase' && q.ref === freshId));
   enqueue(d, 'purchase', x.id);
   audit(d, 'Purchase edited', oldNo + ' — now ' + Math.round(fresh.total));
@@ -2070,7 +2195,13 @@ export function deletePurchase(d: DB, purchaseId: string, reason = 'Deleted', wh
 export function unapplyPayment(d: DB, pay: Payment) {
   /* A payment that names the bills it settled hands back exactly those: the
      same record the computer keeps, so both take back the same money. */
-  if (pay.allocations && pay.allocations.length) {
+  /* A payment that names its bills — or names none, because it settled none
+     (money on account, an advance, a refund paid out) — takes back only what
+     it set against them. Before, one that had settled nothing fell through to
+     the old rule below and "took back" its whole amount from the party's most
+     recent bills: bills other money had paid were shown owing again, and the
+     debtors ledger and the customer's balance parted company. */
+  if (pay.allocations) {
     pay.allocations.forEach((a) => {
       const bill: any = pay.direction === 'in' ? d.sales.find((x) => x.id === a.docId) : d.purchases.find((x) => x.id === a.docId);
       if (!bill) return;
@@ -2082,7 +2213,9 @@ export function unapplyPayment(d: DB, pay: Payment) {
     pay.unapplied = 0;
     return;
   }
-  let left = pay.amount;
+  /* an old payment that kept no list of its bills: what it settled is its amount less what was left over */
+  let left = Math.max(0, pay.amount + (pay.taxDeducted || 0) - (pay.unapplied || 0));
+  pay.unapplied = 0;
   const list: { paid: number; due: number; ts: string }[] = pay.direction === 'in'
     ? d.sales.filter((s) => s.partyId === pay.partyId && s.paid > 0 && s.status !== 'void')
     : d.purchases.filter((x) => x.partyId === pay.partyId && x.paid > 0 && x.status !== 'void');
@@ -2228,9 +2361,16 @@ export function deleteEntry(d: DB, id: string, when = new Date()): boolean {
     const exp = e.ledgerId || 'n_expense';
     const s = e.offsetSaleId ? d.sales.find((x) => x.id === e.offsetSaleId) : undefined;
     // charged to a customer's bill: the part that came off the bill goes back on it
-    const offset = s ? Math.min(e.offset ?? e.amount, s.paid) : 0;
+    /* A bill since deleted is corrected too: it no longer counts, but it is
+       what comes back if it is restored, and it must come back without the
+       part this expense had taken off it. */
+    /* What was taken off the debtors when it was recorded goes back on, all of
+       it; the bill gets back only the part that is still on it (the rest had
+       become the customer's credit, which goes with the expense). */
+    const onBill = s && !e.offsetPartyId ? Math.min(Math.max(0, (e.offset ?? e.amount) - (e.offsetHeld || 0)), s.paid) : 0;
+    const offset = s ? (e.offset !== undefined ? e.offset : onBill) : 0;
     if (s && offset > 0) {
-      s.due += offset; s.paid -= offset; enqueue(d, 'sale', s.id);
+      if (onBill > 0) { s.due += onBill; s.paid -= onBill; enqueue(d, 'sale', s.id); }
       journal(d, when, memo, 'DEL', [{ acc: 'n_ar', dr: offset }, { acc: exp, cr: offset }]);
     }
     const rest = e.amount - offset;
@@ -2299,9 +2439,15 @@ export function deleteEffects(d: DB, kind: 'sale' | 'purchase' | 'payment', id: 
 export interface BookIssue { kind: 'fixable' | 'look'; what: string; detail: string; amount: number; ref?: string }
 interface BookFix { ref: string; memo: string; lines: JournalLine[] }
 
-function leftOver(d: DB, ref: string): JournalLine[] {
+function leftOver(d: DB, ref: string, saleId?: string): JournalLine[] {
   const net = new Map<string, number>();
-  d.journal.filter((e) => e.ref === ref).forEach((e) => e.lines.forEach((l) => net.set(l.acc, (net.get(l.acc) || 0) + (l.dr || 0) - (l.cr || 0))));
+  /* An expense the customer settled towards this bill is posted under the
+     bill's number but is not part of the bill: it outlives it (the cost is
+     still the shop's, the money the customer's credit) and is undone on its
+     own when the expense is deleted. It is not something the delete left
+     behind, and "putting it right" would take the customer's credit away. */
+  const own = (e: JournalEntry) => !(saleId && e.memo.includes(' — against ' + ref));
+  d.journal.filter((e) => e.ref === ref && own(e)).forEach((e) => e.lines.forEach((l) => net.set(l.acc, (net.get(l.acc) || 0) + (l.dr || 0) - (l.cr || 0))));
   const out: JournalLine[] = [];
   net.forEach((v, acc) => { const c = cents(v); if (Math.abs(c) >= 0.01) out.push(c > 0 ? { acc, cr: c } : { acc, dr: -c }); });
   return out;
@@ -2311,15 +2457,15 @@ export function checkBooks(d: DB): { issues: BookIssue[]; fixes: BookFix[] } {
   const issues: BookIssue[] = [];
   const fixes: BookFix[] = [];
   const accName = (id: string) => (d.coa || []).find((l) => l.id === id)?.name || d.accounts.find((a) => a.id === id)?.name || id;
-  const docs: Array<{ no: string; kind: string; ts: string }> = [
-    ...d.sales.filter((x) => x.status === 'void').map((x) => ({ no: x.no, kind: 'Sale', ts: x.ts })),
+  const docs: Array<{ no: string; kind: string; ts: string; saleId?: string }> = [
+    ...d.sales.filter((x) => x.status === 'void').map((x) => ({ no: x.no, kind: 'Sale', ts: x.ts, saleId: x.id })),
     ...d.purchases.filter((x) => x.status === 'void').map((x) => ({ no: x.no, kind: 'Purchase', ts: x.ts })),
   ];
   // a number a live document still uses (an edited one keeps its number) is not a deleted document's alone
   const live = new Set([...d.sales.filter((x) => x.status !== 'void').map((x) => x.no), ...d.purchases.filter((x) => x.status !== 'void').map((x) => x.no)]);
   docs.forEach((doc) => {
     if (live.has(doc.no)) return;
-    const lines = leftOver(d, doc.no);
+    const lines = leftOver(d, doc.no, doc.saleId);
     if (!lines.length) return;
     const amount = lines.reduce((a, l) => a + (l.dr || 0), 0);
     fixes.push({ ref: doc.no, memo: 'Repair ' + doc.no + ' — what its delete left behind', lines });
@@ -2360,7 +2506,10 @@ export function refundsOnCreditors(d: DB): Array<{ pay: Payment; amount: number;
     if (pay.direction !== 'out' || have.has('jnl_ctl_' + pay.id)) return;
     if (d.parties.find((p) => p.id === pay.partyId)?.type !== 'customer') return;
     // only where this phone's own entry for it sits on creditors (one made on the computer never did)
-    const first = (d.journal || []).find((e) => e.ref === 'PAY' && e.ts === pay.ts && e.lines.some((l) => l.acc === 'n_ap' && (l.dr || 0) > 0));
+    /* its own entry: made at the same moment, to this party, for this amount (another payment saved in the same instant is not it) */
+    const name = d.parties.find((p) => p.id === pay.partyId)?.name || '';
+    const first = (d.journal || []).find((e) => e.ref === 'PAY' && e.ts === pay.ts && e.memo === 'Payment to ' + name
+      && e.lines.some((l) => l.acc === 'n_ap' && (l.dr || 0) > 0) && !e.lines.some((l) => l.acc === 'n_ar'));
     if (!first) return;
     // what sits on creditors for it now: the money and any tax kept back (an edit moved the money, never the tax)
     const amount = cents(pay.amount + (pay.taxDeducted || 0));
@@ -2454,10 +2603,10 @@ export function createCreditNote(d: DB, o: { saleId: string | null; partyId: str
   let cn!: CreditNote;
   d.counters.creditNote += 1;
   const when = new Date();
-  const gross = o.lines.reduce((s, l) => s + l.qty * l.price, 0);
-  const charges = Math.max(0, Math.min(Number(o.charges) || 0, gross));
+  const gross = cents(o.lines.reduce((s, l) => s + l.qty * l.price, 0));
+  const charges = cents(Math.max(0, Math.min(Number(o.charges) || 0, gross)));
   // the customer is made good for the goods less whatever is withheld
-  const total = gross - charges;
+  const total = cents(gross - charges);
   const refund = o.refund || (o.partyId ? 'account' : 'cash');
   cn = {
     id: uid('crn'), no: 'CN-' + String(100000 + d.counters.creditNote).slice(1), ts: iso(when),

@@ -96,8 +96,9 @@ export default function PartyLedgerScreen({ route, navigation }: Props) {
     db.entries.forEach((e) => {
       if (!e.offsetSaleId) return;
       const s = db.sales.find((x) => x.id === e.offsetSaleId);
-      if (!s || s.partyId !== pt.id) return;
-      out.push({ ts: e.ts, memo: 'Charged against — ' + e.category, ref: s.no, debit: 0, credit: e.amount });
+      // on the ledger of whoever settled it; only the part that came off the bill (the rest was paid from the till)
+      if (!s || (e.offsetPartyId || s.partyId) !== pt.id) return;
+      out.push({ ts: e.ts, memo: 'Charged against — ' + e.category, ref: s.no, debit: 0, credit: e.offset ?? e.amount });
     });
     return out.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
   }, [rangeBook, pt]);
