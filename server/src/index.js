@@ -26,6 +26,7 @@ import snapshotPartRoutes from './snapshotparts.js';
 import licensingRoutes from './licensing.js';
 import businessExtraRoutes from './businessextra.js';
 import businessRemoveRoutes from './businessremove.js';
+import schoolBookRoutes from './schoolbooks.js';
 
 const app = Fastify({
   logger: {
@@ -103,6 +104,7 @@ await app.register(numberRoutes);
 await app.register(transferRoutes);
 await app.register(snapshotPartRoutes);
 await app.register(businessRemoveRoutes);
+await app.register(schoolBookRoutes);
 
 
 /*
