@@ -14,6 +14,7 @@ import { ListPage, StatusChips, SummaryTiles, SortBar } from '../components/DocL
 import { Icon } from '../components/icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { vocab } from '../data/editions';
+import { partyTotals } from '../data/logic';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, any>;
@@ -47,20 +48,12 @@ export default function PartiesScreen({ navigation }: Props) {
         : (a, b) => Math.abs(b.bal) - Math.abs(a.bal));
   }, [db, q, type, sort, partyBalance]);
 
-  const totals = useMemo(() => {
-    let receivable = 0, payable = 0;
-    /* the totals follow the chip: All, only customers, or only suppliers */
-    all.filter((p) => type === 'all' || p.type === type).forEach((p) => {
-      /* one sign for everyone, as on the party's own page and the computer:
-         above nil they owe you, below nil you owe them — a supplier's bill
-         takes the balance down, so "you owe" is the negative side */
-      const bal = partyBalance(p.id);
-      if (bal > 0.005) receivable += bal;
-      else if (bal < -0.005) payable += -bal;
-    });
-    return { receivable, payable, net: receivable - payable };
-  }, [db, partyBalance, type]);
-
+  /* The same figures as Customer statements and Supplier statements: every
+     customer's balances added (those in credit taken off), and every
+     supplier's. Before, a customer in credit was counted in "you owe" and a
+     supplier paid ahead in "you are owed", so these cards showed figures the
+     statements never did. Tapping a card opens its statement. */
+  const totals = useMemo(() => (db ? { c: partyTotals(db, 'customer'), s: partyTotals(db, 'supplier') } : null), [db]);
   const customers = all.filter((p) => p.type === 'customer').length;
   const suppliers = all.filter((p) => p.type === 'supplier').length;
 
@@ -71,10 +64,14 @@ export default function PartiesScreen({ navigation }: Props) {
           <StatusChips value={type} onChange={setType} options={[
             { v: 'all', l: 'All ' + all.length }, { v: 'customer', l: V.customers + ' ' + customers }, { v: 'supplier', l: V.suppliers + ' ' + suppliers },
           ]} />
-          <SummaryTiles tiles={[
-            { label: 'You are owed', value: money(totals.receivable), tone: colors.good },
-            { label: 'You owe', value: money(totals.payable), tone: colors.danger },
-          ]} />
+          {totals ? <SummaryTiles tiles={[
+            ...(type !== 'supplier' ? [{ label: V.customers + ' owe you', value: money(totals.c.net), tone: colors.good,
+              sub: totals.c.credit > 0.5 ? money(totals.c.owed) + ' owed, ' + money(totals.c.credit) + ' in credit' : undefined,
+              onPress: () => (navigation as any).navigate('ReportDetail', { id: 'customer-balance-summary' }) }] : []),
+            ...(type !== 'customer' ? [{ label: 'You owe ' + V.suppliers.toLowerCase(), value: money(totals.s.net), tone: colors.danger,
+              sub: totals.s.credit > 0.5 ? money(totals.s.owed) + ' owed, ' + money(totals.s.credit) + ' paid ahead' : undefined,
+              onPress: () => (navigation as any).navigate('ReportDetail', { id: 'supplier-balance-summary' }) }] : []),
+          ]} /> : null}
         </>
       )}
       search={{ value: q, onChange: setQ, placeholder: 'Search by name or phone' }}

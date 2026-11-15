@@ -1,6 +1,7 @@
 // Pure, framework-free business-logic functions used by AppDataContext.
 // Kept separate (no React/AsyncStorage imports) so they can be unit-tested
 // directly against a plain DB object without rendering a component tree.
+import { saleById, docsOf } from './lookups';
 import { tsMs } from './helpers';
 import { BillReceipt, Entry, CreditNote, CreditNoteLine,
   DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, JournalLine, JournalEntry, PayMethod, Product, Movement,
@@ -776,7 +777,7 @@ export function offsetCredit(d: DB, e: Entry): { partyId: string; amount: number
   if (!e.offsetSaleId || !(e.offset && e.offset > 0)) return null;
   // the bill went to another customer after this was settled: all of it is the first one's credit
   if (e.offsetPartyId) return { partyId: e.offsetPartyId, amount: e.offset };
-  const s = d.sales.find((x) => x.id === e.offsetSaleId);
+  const s = saleById(d, e.offsetSaleId);
   if (!s || !s.partyId) return null;
   // the bill is deleted: all of it; the bill stands: only what no longer fits on it (it was edited below it)
   const amount = s.status === 'void' ? e.offset : e.offsetHeld || 0;
@@ -793,7 +794,7 @@ export function returnCredit(d: DB, c: CreditNote): number {
   if (c.onAccount) return c.total;
   let h = c.held || 0;
   if (c.appliedToSale && c.saleId) {
-    const s = d.sales.find((x) => x.id === c.saleId);
+    const s = saleById(d, c.saleId);
     if (s && s.status === 'void') h += c.appliedToSale;
   }
   return h;
@@ -808,10 +809,12 @@ function olderUnapplied(d: DB, id: string): number {
 export function partyBalance(d: DB, id: string): number {
   const pt = d.parties.find((p) => p.id === id); if (!pt) return 0;
   let b = (pt.openingBalance || 0) + olderUnapplied(d, id);
-  d.sales.forEach((s) => { if (s.partyId === id && s.status !== 'void') b += s.due; });
-  d.purchases.forEach((x) => { if (x.partyId === id && x.status !== 'void') b -= x.due; });
-  d.payments.forEach((p) => { if (p.partyId === id && p.unapplied) b += p.direction === 'in' ? -p.unapplied : p.unapplied; });
-  (d.creditNotes || []).forEach((c) => { if (c.partyId === id) b -= returnCredit(d, c); });
+  // only this party's own documents, from the index: not every sale in the book
+  const own = docsOf(d, id);
+  own.sales.forEach((s) => { if (s.status !== 'void') b += s.due; });
+  own.purchases.forEach((x) => { if (x.status !== 'void') b -= x.due; });
+  own.payments.forEach((p) => { if (p.unapplied) b += p.direction === 'in' ? -p.unapplied : p.unapplied; });
+  own.creditNotes.forEach((c) => { b -= returnCredit(d, c); });
   (d.entries || []).forEach((e) => { const c = offsetCredit(d, e); if (c && c.partyId === id) b -= c.amount; });
   return b;
 }
@@ -2974,4 +2977,24 @@ export function queueBacklog(d: DB): number {
   d.parties.forEach((x) => push('party', x.id, now));
 
   return added;
+}
+
+/**
+ * What customers owe you, or what you owe suppliers, as one set of figures
+ * every screen shows the same way: every customer (or supplier), active or
+ * not, by the same balance as their statement. `owed` adds those who owe (or
+ * whom you owe), `credit` those in credit (paid ahead), `net` the two
+ * together — the figure the statements and balance lists total to. The
+ * Parties cards once added a supplier paid ahead to "you are owed" and a
+ * customer in credit to "you owe", so the three places disagreed.
+ */
+export function partyTotals(d: DB, type: 'customer' | 'supplier'): { owed: number; credit: number; net: number; parties: number; inCredit: number } {
+  const all = allPartyBalances(d);
+  let owed = 0, credit = 0, parties = 0, inCredit = 0;
+  d.parties.forEach((p) => {
+    if (p.type !== type) return;
+    const b = (all.get(p.id) || 0) * (type === 'customer' ? 1 : -1);
+    if (b > 0.005) { owed += b; parties++; } else if (b < -0.005) { credit += -b; inCredit++; }
+  });
+  return { owed, credit, net: owed - credit, parties, inCredit };
 }

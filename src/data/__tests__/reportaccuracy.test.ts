@@ -109,7 +109,7 @@ describe('reports agree with each other and with the books', () => {
     const ss = rpt(d, 'stock-summary');
     const sm = rpt(d, 'stock-movement');
     for (const name of ['Widget A', 'Gadget B']) {
-      expect([name, num(row(sm, name)[col(sm, /Closing/)])]).toEqual([name, num(row(ss, name)[col(ss, /On hand/)])]);
+      expect([name, num(row(sm, name)[col(sm, /Closing/)])]).toEqual([name, num(row(ss, name)[col(ss, /^Qty/)])]);
       const r = row(sm, name);
       expect([name, 'opening + in − out', num(r[1]) + num(r[2]) - num(r[3])]).toEqual([name, 'opening + in − out', num(r[4])]);
     }

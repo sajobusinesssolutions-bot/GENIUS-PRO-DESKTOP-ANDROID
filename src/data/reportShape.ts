@@ -18,6 +18,8 @@ export interface ReportShape {
   key: number;
   /** Every other column, in the order they are shown when the row is open. */
   rest: number[];
+  /** A second figure beside the main one, when the report asks for it (-1: none). */
+  side?: number;
 }
 
 const NAMES = /^(item|product|customer|supplier|party|name|ledger|account|particulars|description|category|staff|user|cashier|waiter|table|line|section|group|dish|menu|batch)/i;
@@ -31,14 +33,19 @@ export function reportShape(cols: ReportCol[]): ReportShape {
   let title = text.find((i) => NAMES.test(cols[i].h));
   if (title === undefined) title = text.find((i) => !NOT_A_NAME.test(cols[i].h));
   if (title === undefined) title = text.length ? text[0] : 0;
-  let key = -1;
+  const side = cols.findIndex((c) => c.side);
+  let key = cols.findIndex((c) => c.main);
+  if (key >= 0) {
+    const rest = cols.map((c, i) => i).filter((i) => i !== title && i !== key && i !== side);
+    return { title, key, rest, side };
+  }
   for (const re of KEYS) {
     const hit = nums.filter((i) => i !== title && re.test(cols[i].h));
     if (hit.length) { key = hit[hit.length - 1]; break; }
   }
   if (key < 0) { const others = nums.filter((i) => i !== title); key = others.length ? others[others.length - 1] : -1; }
-  const rest = cols.map((c, i) => i).filter((i) => i !== title && i !== key);
-  return { title, key, rest };
+  const rest = cols.map((c, i) => i).filter((i) => i !== title && i !== key && i !== side);
+  return { title, key, rest, side };
 }
 
 const ZERO = /^-?0(\.0+)?$/;

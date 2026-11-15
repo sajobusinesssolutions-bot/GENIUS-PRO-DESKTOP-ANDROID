@@ -2,6 +2,7 @@
  * FINANCE — the live definition, reference `SCREENS.finance.body` line 12624
  * (which supersedes the earlier one at 5608), with the header from line 5608-5610.
  */
+import { useFocusedBook } from '../data/useFocusedBook';
 import React, { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
 import ScrollView from '../components/KeyScroll';
@@ -24,7 +25,8 @@ import type { IconName } from '../components/icons';
 export default function FinanceScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, money, partyBalance, accountBalance } = useAppData();
+  const { db: dbLive, money, partyBalance, accountBalance } = useAppData();
+  const db = useFocusedBook(dbLive);
   const [period, setPeriod] = useState('month');
   /* figures for the chosen period, read from disk when it starts before what is in memory */
   const { book: rangeBook } = useBookFrom(db, finRange(period).from);
@@ -43,8 +45,9 @@ export default function FinanceScreen() {
         if (db.accounts.some((a) => a.id === l.acc)) { inP += l.dr || 0; outP += l.cr || 0; }
       });
     });
+    // the same figures as Customer and Supplier statements
     let owed = 0, owe = 0;
-    db.parties.forEach((p) => { const b = partyBalance(p.id); if (b > 0) owed += b; else owe += -b; });
+    db.parties.forEach((p) => { const b = partyBalance(p.id); if (p.type === 'supplier') owe -= b; else owed += b; });
 
     const ss = db.sales.filter((s) => s.status !== 'void' && inRange(s.ts, R.from, R.to));
     const net = ss.reduce((a, s) => a + (s.total - s.tax), 0);

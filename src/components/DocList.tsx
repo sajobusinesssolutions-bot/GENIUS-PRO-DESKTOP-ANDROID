@@ -139,17 +139,24 @@ export function DocRow(p: DocRowProps) {
 
 /* --------------------------------------------------------- summary tiles */
 
-export function SummaryTiles({ tiles }: { tiles: { label: string; value: string; tone?: string }[] }) {
+export function SummaryTiles({ tiles }: { tiles: { label: string; value: string; tone?: string; sub?: string; onPress?: () => void }[] }) {
   const { colors } = useTheme();
   if (!tiles.length) return null;
   return (
     <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 8 }}>
-      {tiles.map((t) => (
-        <View key={t.label} style={{ flex: 1, borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, paddingVertical: 7, paddingHorizontal: 10 }}>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{t.label}</Text>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: t.tone || colors.ink, marginTop: 1 }}>{t.value}</Text>
-        </View>
-      ))}
+      {tiles.map((t) => {
+        const body = (
+          <>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: colors.faint }}>{t.label}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: t.tone || colors.ink, marginTop: 1 }}>{t.value}</Text>
+            {t.sub ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 10.5, color: colors.faint, marginTop: 1 }}>{t.sub}</Text> : null}
+          </>
+        );
+        const box = { flex: 1, borderRadius: 4, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, paddingVertical: 7, paddingHorizontal: 10 } as const;
+        return t.onPress
+          ? <Pressable key={t.label} onPress={t.onPress} accessibilityRole="button" accessibilityLabel={t.label + ' ' + t.value} style={box}>{body}</Pressable>
+          : <View key={t.label} style={box}>{body}</View>;
+      })}
     </View>
   );
 }

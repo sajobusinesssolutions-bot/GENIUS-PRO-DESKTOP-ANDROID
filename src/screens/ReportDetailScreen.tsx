@@ -10,7 +10,7 @@ import { groupNum } from '../data/helpers';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { withItemDetails, hasItemDetails } from '../data/reportItems';
 import DetailedStatement, { DetailedKind, detailedTotals } from '../components/DetailedStatement';
-import { View, Text, ActivityIndicator, Alert, FlatList, TextInput, RefreshControl } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, FlatList, TextInput, RefreshControl, Platform } from 'react-native';
 import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -27,7 +27,7 @@ import { listPeriod, ListPeriod } from '../components/DocList';
 import { TabChips, PeriodPill, MoreRow, ReportRow, TotalBar, useReportPalette } from '../components/ReportList';
 import { reportShape, plainCell, countLabel, shortRange } from '../data/reportShape';
 import {
-  runReport, reportById, sortRows, cellText, cellTone, stockMovementDrill, inventoryMetricDrill,
+  runReport, reportById, sortRows, cellText, cellTone, stockMovementDrill, inventoryMetricDrill, batchDrill, batchItemDrill,
   ledgerDrill, partyDrill, voucherDrill, voucherTypeDrill, DETAIL_VIEW,
   INVENTORY_METRIC_REPORTS, InventoryMetricReport,
   Cell, CellTone, ReportResult, RowRef, SortDir,
@@ -189,6 +189,9 @@ export default function ReportDetailScreen() {
           : top.kind === 'vouchertype' ? voucherTypeDrill(db, top.id, span.from, span.to)
             : voucherDrill(db, top.id);
     }
+    if (id === 'batch-movement' && drillProductId) {
+      return drillMonthKey ? batchDrill(db, drillProductId, drillMonthKey, span.from, span.to) : batchItemDrill(db, drillProductId);
+    }
     if (id === 'stock-movement' && drillProductId) {
       return stockMovementDrill(db, drillProductId, span.from, span.to, drillMonthKey || undefined);
     }
@@ -236,6 +239,7 @@ export default function ReportDetailScreen() {
   }, [result, sort]);
 
   const rowFilterOptions = useMemo(() => {
+    if (result && result.filterCol != null && result.filterOptions && result.filterOptions.length) return [{ v: 'all', l: 'All' }, ...result.filterOptions.map((o) => ({ v: 'col:' + o, l: o }))];
     const kinds = new Set<string>();
     (view?.rowRefs || []).forEach((ref) => { if (ref) kinds.add(ref.kind); });
     const options: { v: string; l: string }[] = [{ v: 'all', l: 'All rows' }];
@@ -255,13 +259,14 @@ export default function ReportDetailScreen() {
     const needle = search.trim().toLowerCase();
     const keep = view.rows.map((row, idx) => {
       const ref = view.rowRefs?.[idx];
-      if (rowFilter !== 'all' && ref?.kind !== rowFilter) return false;
+      if (rowFilter.startsWith('col:')) { if (result && result.filterCol != null && cellText(row[result.filterCol]) !== rowFilter.slice(4)) return false; }
+      else if (rowFilter !== 'all' && ref?.kind !== rowFilter) return false;
       return !needle || row.some((cell) => cellText(cell).toLowerCase().includes(needle));
     });
     const rows = view.rows.filter((_, idx) => keep[idx]);
     const rowRefs = (view.rowRefs || view.rows.map(() => null)).filter((_, idx) => keep[idx]);
     return { rows, rowRefs };
-  }, [view, rowFilter, search]);
+  }, [view, rowFilter, search, result]);
 
   const meta = useMemo(
     (): ExportMeta => ({
@@ -283,7 +288,7 @@ export default function ReportDetailScreen() {
   }, [id]);
   useEffect(() => { setSearch(''); setSort(null); }, [top]);
 
-  const isInventoryReport = id === 'stock-movement' || INVENTORY_METRIC_REPORTS.includes(id as InventoryMetricReport);
+  const isInventoryReport = id === 'stock-movement' || id === 'batch-movement' || INVENTORY_METRIC_REPORTS.includes(id as InventoryMetricReport);
 
   useEffect(() => nav.addListener('beforeRemove', (event: { preventDefault: () => void }) => {
     // the phone's back steps out of a drill-down before it leaves the report
@@ -335,6 +340,11 @@ export default function ReportDetailScreen() {
     });
   }, [viewKey]);
   useEffect(() => { setOpenRow(null); }, [search, rowFilter, sort]);
+  /* one unchanging "open this row" for every row, so a row that has not changed is not drawn again
+     (a new function per row each time defeated the row's memo: every visible row redrew on each tap and scroll) */
+  const openLatest = useRef<(ref: RowRef | null | undefined) => void>(() => {});
+  const refsLatest = useRef<(RowRef | null)[] | undefined>(undefined);
+  const openAt = useCallback((i: number) => { openLatest.current(refsLatest.current ? refsLatest.current[i] : null); }, []);
 
   const runExport = useCallback(async (what: ExportKind, result: ReportResult, meta: ExportMeta) => {
     if (!canExport && what !== 'preview') {
@@ -433,11 +443,12 @@ export default function ReportDetailScreen() {
     else if (ref.kind === 'entry') go('Money');
     else if (ref.kind === 'product') {
       if (!db) return;
+      if (!(id === 'stock-movement' || id === 'batch-movement' || INVENTORY_METRIC_REPORTS.includes(id as InventoryMetricReport))) { go('ItemDetail', { productId: ref.id }); return; }
       setDrillProductId(ref.id);
       setDrillMonthKey(null);
       setSort(null);
       setRowFilter('all');
-    } else if (ref.kind === 'month') {
+    } else if (ref.kind === 'month' || ref.kind === 'batch') {
       if (!drillProductId) return;
       setDrillMonthKey(ref.id);
       setSort(null);
@@ -545,6 +556,8 @@ export default function ReportDetailScreen() {
     });
   }
 
+  openLatest.current = openRef;
+  refsLatest.current = filteredView.rowRefs as (RowRef | null)[] | undefined;
   const actionFor = (ref: RowRef | null | undefined): string | undefined => {
     if (!ref) return undefined;
     switch (ref.kind) {
@@ -560,6 +573,7 @@ export default function ReportDetailScreen() {
       case 'vouchertype': return 'View vouchers';
       case 'product': return 'View movements';
       case 'month': return 'View this month';
+      case 'batch': return 'View movements';
       default: return 'Open';
     }
   };
@@ -665,8 +679,11 @@ export default function ReportDetailScreen() {
           refreshControl={pull}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          initialNumToRender={14}
-          windowSize={9}
+          initialNumToRender={18}
+          maxToRenderPerBatch={24}
+          updateCellsBatchingPeriod={30}
+          windowSize={21}
+          removeClippedSubviews={Platform.OS === 'android'}
           onScroll={(e) => { const k = kept.current.get(viewKey); kept.current.set(viewKey, { open: k ? k.open : openRow, y: e.nativeEvent.contentOffset.y }); }}
           scrollEventThrottle={64}
           renderItem={({ item, index }) => {
@@ -676,7 +693,7 @@ export default function ReportDetailScreen() {
                 row={item} cols={result.cols} shape={shape} sym={sym} index={index}
                 open={openRow === index} onToggle={toggleRow}
                 strong={cellText(item[1]) === 'Opening Balance'}
-                action={actionFor(ref)} onAction={ref ? () => openRef(ref) : undefined}
+                action={actionFor(ref)} onAction={ref ? openAt : undefined}
               />
             );
           }}

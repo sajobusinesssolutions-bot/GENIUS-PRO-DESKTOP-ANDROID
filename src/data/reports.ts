@@ -1,3 +1,5 @@
+import { groupNum } from './helpers';
+import { partyById, productById, saleById, salesByNo, purchasesByNo, creditNotesByNo, docsOf, movesOf, entriesByParty } from './lookups';
 import { booksJournal } from './branch';
 /**
  * The report engine — pure functions over a plain DB object, no React.
@@ -9,7 +11,7 @@ import { booksJournal } from './branch';
  */
 import { DB, Sale, SaleLine, Product, Offer, CreditNoteLine, Shift } from './types';
 import { money0, fmtDay, startOfDay, endOfDay, daysAgo, tsMs } from './helpers';
-import { shiftTotals, stockOfImpl, partyBalance, returnCredit, offsetCredit, shiftSales as logicShiftSales } from './logic';
+import { shiftTotals, stockOfImpl, partyBalance, allPartyBalances, partyTotals, returnCredit, offsetCredit, shiftSales as logicShiftSales } from './logic';
 import { isRestaurant } from './restaurant';
 import { restaurantReports, byMenuOf } from './reportsRestaurant';
 
@@ -198,12 +200,12 @@ export const REPORT_GROUPS: ReportGroup[] = [
     { id: 'purchase-summary', label: 'Summary' }, { id: 'bill-list', label: 'Bill list' }, { id: 'purchase-by-item', label: 'By product' }, { id: 'purchase-by-supplier', label: 'By supplier' }] },
   { key: 'payment-types', name: 'Payment types', sub: 'Cash, mobile money and bank — in total, by cashier, by customer', views: [
     { id: 'payment-types', label: 'Totals' }, { id: 'payment-types-by-user', label: 'By cashier' }, { id: 'payment-types-by-customer', label: 'By customer' }] },
-  { key: 'receivables', name: 'Customers who owe', sub: 'Balances, ageing and every unpaid sale', views: [
-    { id: 'ar-aging-summary', label: 'Ageing' }, { id: 'ar-aging-details', label: 'Ageing details' }, { id: 'customer-balance-summary', label: 'Balances' },
-    { id: 'receivable-summary', label: 'Debtors book' }, { id: 'receivable-details', label: 'Oldest first' }, { id: 'unpaid-sales', label: 'Unpaid sales' }] },
-  { key: 'payables', name: 'Suppliers you owe', sub: 'Balances, ageing and every unpaid supplier bill', views: [
-    { id: 'ap-aging-summary', label: 'Ageing' }, { id: 'ap-aging-details', label: 'Ageing details' }, { id: 'supplier-balance-summary', label: 'Balances' },
-    { id: 'payable-summary', label: 'Creditors book' }, { id: 'payable-details', label: 'Oldest first' }, { id: 'unpaid-purchases', label: 'Unpaid bills' }] },
+  /* what customers owe opens on their balances (what an owner looks for first), then how old it is, then each statement;
+     the debtors book, oldest-first, unpaid-sales and second ageing views showed the same figures again and are folded in */
+  { key: 'receivables', name: 'Customer statements', sub: 'What each customer owes, how old it is, and their statement', views: [
+    { id: 'customer-balance-summary', label: 'Balances' }, { id: 'ar-aging-summary', label: 'Ageing' }, { id: 'receivable-statement', label: 'Statement' }] },
+  { key: 'payables', name: 'Supplier statements', sub: 'What you owe each supplier, how old it is, and their statement', views: [
+    { id: 'supplier-balance-summary', label: 'Balances' }, { id: 'ap-aging-summary', label: 'Ageing' }, { id: 'payable-statement', label: 'Statement' }] },
   { key: 'stock-value', name: 'Stock on hand', sub: 'Quantity and value of every item, and by category', views: [
     { id: 'stock-summary', label: 'Items' }, { id: 'stock-valuation', label: 'Value by category' }] },
   { key: 'reorder', name: 'Low stock & reorder', sub: 'What is running out, and how much to buy', views: [
@@ -216,7 +218,9 @@ export const REPORT_GROUPS: ReportGroup[] = [
  * Reports left out of the list because another shows the same thing: the
  * expiry list is the batch balances in another order.
  */
-const HIDDEN = new Set(['expiry', 'sale-summary']);
+const HIDDEN = new Set(['expiry', 'sale-summary',
+  // inside Customer / Supplier statements now: the Ageing view carries the debtors (creditors) book's buckets
+  'ar-aging-details', 'receivable-summary', 'receivable-details', 'unpaid-sales', 'ap-aging-details', 'payable-summary', 'payable-details', 'unpaid-purchases']);
 
 const GROUP_OF = new Map<string, ReportGroup>();
 REPORT_GROUPS.forEach((g) => g.views.forEach((v) => GROUP_OF.set(v.id, g)));
@@ -225,7 +229,7 @@ export const groupOf = (id: string): ReportGroup | undefined => GROUP_OF.get(id)
 /** A row in the report list: a group standing in for its views, or a report on its own. */
 export interface ReportEntry extends ReportDef { group?: ReportGroup }
 
-/** The list as shown: each group once, where its first member sits; everything else as it is. */
+/** The list as shown: each group once, under its first view's category; everything else as it is; A–Z by name. */
 export function reportEntries(): ReportEntry[] {
   const seen = new Set<string>();
   const out: ReportEntry[] = [];
@@ -238,7 +242,7 @@ export function reportEntries(): ReportEntry[] {
     const first = REPORTS.find((x) => x.id === g.views[0].id) || r;
     out.push({ id: first.id, cat: first.cat, name: g.name, sub: g.sub, group: g });
   }
-  return out;
+  return out.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
 export function reportById(id: string): ReportDef | undefined {
@@ -256,12 +260,18 @@ export interface CellObj { text: string; n?: number; tone?: CellTone }
 export type Cell = string | number | CellObj;
 
 /** `r` right-aligns and marks the column numeric (reference tableCard's `c.r`, 2245). */
-export interface ReportCol { h: string; r?: boolean; key?: string }
+export interface ReportCol {
+  h: string; r?: boolean; key?: string;
+  /** On a phone: the figure on the right of the row (otherwise worked out from the headings). */
+  main?: boolean;
+  /** On a phone: a second figure shown beside the main one (quantity beside value, expiry beside quantity). */
+  side?: boolean;
+}
 
 export interface ReportStat { k: string; v: string; tone?: 'g' | 'w' | 'd' | 'a' }
 
 /** What a tapped row opens. */
-export type RowRefKind = 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month' | 'ledger' | 'party' | 'voucher' | 'vouchertype' | 'estimate' | 'user';
+export type RowRefKind = 'sale' | 'purchase' | 'payment' | 'entry' | 'creditNote' | 'product' | 'month' | 'batch' | 'ledger' | 'party' | 'voucher' | 'vouchertype' | 'estimate' | 'user';
 
 /** How a row of a statement is drawn: a section heading, an ordinary line, a subtotal, or the bottom line. */
 export type RowKind = 'head' | 'line' | 'sub' | 'total';
@@ -293,6 +303,9 @@ export interface ReportResult {
   rowKinds?: RowKind[];
   /** Offer a search box over the rows — for lists that run long. */
   searchable?: boolean;
+  /** Rows can be filtered by this column's value (e.g. an expiry band); the choices in order. */
+  filterCol?: number;
+  filterOptions?: string[];
 }
 
 export function cellText(c: Cell): string {
@@ -380,10 +393,8 @@ function inventoryMetricSnapshot(
   from: number,
   to: number,
 ): InventoryMetricSnapshot {
-  const all = db.movements
-    .filter((m) => m.productId === product.id)
-    .slice()
-    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
+  // the item's own movements, oldest first, from the index (not a pass over every movement in the book)
+  const all = movesOf(db, product.id);
   const periodTo = to || Date.now();
   const periodFrom = from || (all[0] ? startOfDay(new Date(all[0].ts)) : periodTo);
   const historicalOpening = stockOf(product) - all.reduce((sum, m) => sum + m.qty, 0);
@@ -725,7 +736,7 @@ function groupRows<T, G>(items: T[], keyFn: (x: T) => string, initFn: (x: T) => 
 
 function partyName(db: DB, id: string | null | undefined): string {
   if (!id) return 'Walk-in';
-  const p = db.parties.find((x) => x.id === id);
+  const p = partyById(db, id);
   return p ? p.name : 'Walk-in';
 }
 function userName(db: DB, id: string | undefined): string {
@@ -733,7 +744,7 @@ function userName(db: DB, id: string | undefined): string {
   return u ? u.name : '—';
 }
 function productOf(db: DB, id: string): Product | undefined {
-  return db.products.find((p) => p.id === id);
+  return productById(db, id);
 }
 function categoryOf(db: DB, productId: string): string {
   return productOf(db, productId)?.category || '—';
@@ -775,7 +786,7 @@ function stockOf(p: Product): number {
 }
 function supplierName(db: DB, id: string | null | undefined): string {
   if (!id) return '—';
-  return db.parties.find((x) => x.id === id)?.name || '—';
+  return partyById(db, id)?.name || '—';
 }
 function purchaseTotal(p: { lines: { qty: number; cost: number }[] }): number {
   return p.lines.reduce((a, l) => a + l.qty * l.cost, 0);
@@ -887,7 +898,9 @@ export function broughtForward(db: DB, partyId: string): { ts: string; debit: nu
 
 function partyLedgerRows(db: DB, id: string): LedgerRow[] {
   const rows: LedgerRow[] = [];
-  const p = db.parties.find((x) => x.id === id);
+  const p = partyById(db, id);
+  // this party's own documents only, from the index (not every sale in the book)
+  const own = docsOf(db, id);
   // the balance the party was set up with comes before everything else
   if (p && p.openingBalance) {
     rows.push({ ts: new Date(0).toISOString(), memo: 'Opening balance', debit: Math.max(0, p.openingBalance), credit: Math.max(0, -p.openingBalance), balance: 0 });
@@ -896,23 +909,23 @@ function partyLedgerRows(db: DB, id: string): LedgerRow[] {
      the same debits and credits the older sales, purchases and payments add. */
   const carried = broughtForward(db, id);
   if (carried) rows.push({ ...carried, memo: 'Brought forward', balance: 0 });
-  db.sales.forEach((s) => {
-    if (s.partyId === id && s.status !== 'void') {
+  own.sales.forEach((s) => {
+    if (s.status !== 'void') {
       rows.push({ ts: s.ts, memo: 'Sale ' + s.no, debit: s.total, credit: 0, balance: 0, ref: { kind: 'sale', id: s.id } });
       const paidThen = s.paidAtSale ?? (s.method === 'credit' ? 0 : s.total);
       if (paidThen > 0) rows.push({ ts: s.ts, memo: 'Paid at sale ' + s.no, debit: 0, credit: paidThen, balance: 0, ref: { kind: 'sale', id: s.id } });
     }
   });
-  db.purchases.forEach((x) => {
-    if (x.partyId === id && x.status !== 'void') {
+  own.purchases.forEach((x) => {
+    if (x.status !== 'void') {
       rows.push({ ts: x.ts, memo: 'Purchase ' + (x.ref || x.no), debit: 0, credit: x.total, balance: 0, ref: { kind: 'purchase', id: x.id } });
       // only what was paid on the day: later payments are their own lines
       const paidThen = x.method === 'credit' ? 0 : x.total;
       if (paidThen > 0) rows.push({ ts: x.ts, memo: 'Paid at purchase ' + (x.ref || x.no), debit: paidThen, credit: 0, balance: 0, ref: { kind: 'purchase', id: x.id } });
     }
   });
-  db.payments.forEach((x) => {
-    if (x.partyId === id) {
+  own.payments.forEach((x) => {
+    {
       // tax the customer kept back (withholding) settles the bill as much as the money does
       const settled = x.amount + (x.taxDeducted || 0);
       rows.push({
@@ -926,9 +939,9 @@ function partyLedgerRows(db: DB, id: string): LedgerRow[] {
     }
   });
   /* an expense the customer settled, set against their bill: it came off what they owe */
-  (db.entries || []).forEach((e) => {
+  (entriesByParty(db).get(id) || []).forEach((e) => {
     if (!e.offsetSaleId) return;
-    const s = db.sales.find((x) => x.id === e.offsetSaleId);
+    const s = saleById(db, e.offsetSaleId);
     // it is on the statement of whoever settled it, even if the bill has since gone to someone else
     if (!s || (e.offsetPartyId || s.partyId) !== id) return;
     const off = e.offset ?? Math.min(e.amount, s.total);
@@ -939,8 +952,7 @@ function partyLedgerRows(db: DB, id: string): LedgerRow[] {
      them is already inside the opening balance. Before, the ledger left
      returns out while the party's balance counted them, so the statement and
      the Parties list disagreed. */
-  (db.creditNotes || []).forEach((c) => {
-    if (c.partyId !== id) return;
+  own.creditNotes.forEach((c) => {
     const off = (c.appliedToSale || 0) + (c.onAccount ? c.total : c.held || 0);
     if (off > 0.005) rows.push({ ts: c.ts, memo: 'Return ' + c.no + (c.reason ? ' — ' + c.reason : ''), debit: 0, credit: off, balance: 0 });
   });
@@ -1514,7 +1526,7 @@ RPT['discounts-granted'] = (db, from, to) => {
 RPT['refunds'] = (db, from, to) => {
   const notes = (db.creditNotes || []).filter((c) => within(c.ts, from, to)).slice().reverse();
   const rows: Cell[][] = notes.map((c) => {
-    const against = c.saleId ? db.sales.find((s) => s.id === c.saleId)?.no || '—' : '—';
+    const against = c.saleId ? saleById(db, c.saleId)?.no || '—' : '—';
     return [c.no, against, partyName(db, c.partyId), c.reason || '—', mTone(c.total, 'danger')];
   });
   return {
@@ -1865,7 +1877,7 @@ function owedItems(db: DB, type: 'customer' | 'supplier'): OwedItem[] {
     (db.creditNotes || []).forEach((c) => { const h = returnCredit(db, c); add(c.partyId, c.ts, -h, c.no, 'Return credited', null); });
     // what they paid towards a bill since deleted (an expense set against it): their credit
     (db.entries || []).forEach((e) => {
-      const sv = e.offsetSaleId ? db.sales.find((x) => x.id === e.offsetSaleId) : undefined;
+      const sv = e.offsetSaleId ? saleById(db, e.offsetSaleId) : undefined;
       const oc = offsetCredit(db, e);
       if (oc) add(oc.partyId, e.ts, -oc.amount, sv ? sv.no : '', sv && sv.status === 'void' ? 'Paid towards a deleted bill' : 'Paid towards a bill since changed', { kind: 'entry', id: e.id });
     });
@@ -1945,10 +1957,16 @@ function bucketSummary(
   };
 }
 
-RPT['ar-aging-summary'] = (db) => withPartyRefs(db, {
-  ...agingSummary(db, owedItems(db, 'customer'), (x) => x.name, 'AR ageing summary', 'Customer'),
-  note: 'Each customer\'s balance by age: open bills by their date, the opening balance by the date the customer was added, and money paid in advance taken off.',
-});
+/* Each customer's balance by age, with the debtors book's totals per age band above it. */
+RPT['ar-aging-summary'] = (db, f, t, money) => {
+  const items = owedItems(db, 'customer');
+  return withPartyRefs(db, {
+    ...agingSummary(db, items, (x) => x.name, 'Customer ageing', 'Customer'),
+    stats: bucketSummary(items, '', '', money).stats,
+    searchable: true,
+    note: 'Each customer\'s balance by age: open bills by their date, the opening balance by the date the customer was added, and money paid in advance taken off. The total is the same as Balances.',
+  });
+};
 
 /** A list of parties by name: each row opens that party's statement. */
 function withPartyRefs(db: DB, r: ReportResult): ReportResult {
@@ -2011,26 +2029,43 @@ RPT['quote-details'] = (db, from, to) => {
 /* Opening + invoiced − paid and credited = owing, on every row: before, the
    opening balance had no column and money paid on account was not in "Paid",
    so a row did not add up and a customer with only an opening balance was left out. */
-RPT['customer-balance-summary'] = (db) => {
-  const rows: Cell[][] = db.parties.filter((p) => p.type === 'customer' && p.active)
-    .map((p) => {
-      const older = windowTotals(db, p.id);
-      let inv = older ? older.salesTotal || 0 : 0;
-      db.sales.forEach((s) => { if (s.partyId === p.id && s.status !== 'void') inv += s.total; });
-      const owing = partyBalance(db, p.id);
-      const open = p.openingBalance || 0;
-      return { p, open, inv, paid: open + inv - owing, owing };
-    })
-    .filter((x) => Math.abs(x.inv) > 0.005 || Math.abs(x.owing) > 0.005 || Math.abs(x.open) > 0.005)
-    .map((x) => [x.p.name, m(x.open), m(x.inv), m(x.paid), { text: money0(x.owing), n: x.owing, tone: x.owing > 0 ? 'good' as CellTone : x.owing < 0 ? 'accent' as CellTone : 'muted' as CellTone }]);
-  return withPartyRefs(db, {
-    title: 'Customer balance summary',
-    cols: [{ h: 'Customer' }, { h: 'Opening', r: true }, { h: 'Invoiced', r: true }, { h: 'Paid & credited', r: true }, { h: 'Owing', r: true }],
+/* Every customer, active or not (a customer switched off can still owe),
+   biggest balance first, by the same balance as their statement and the
+   Parties list: one figure everywhere (partyTotals). */
+RPT['customer-balance-summary'] = (db) => balancesReport(db, 'customer');
+function balancesReport(db: DB, type: 'customer' | 'supplier'): ReportResult {
+  const cust = type === 'customer';
+  const sign = cust ? 1 : -1;
+  const bal = allPartyBalances(db);
+  const list = db.parties.filter((p) => p.type === type).map((p) => {
+    const older = windowTotals(db, p.id);
+    const own = docsOf(db, p.id);
+    let inv = older ? (cust ? older.salesTotal : older.purTotal) || 0 : 0;
+    (cust ? own.sales : own.purchases).forEach((s) => { if (s.status !== 'void') inv += s.total; });
+    const owing = sign * (bal.get(p.id) || 0);
+    const open = sign * (p.openingBalance || 0);
+    return { p, open, inv, paid: open + inv - owing, owing };
+  }).filter((x) => Math.abs(x.inv) > 0.005 || Math.abs(x.owing) > 0.005 || Math.abs(x.open) > 0.005)
+    .sort((a, b) => b.owing - a.owing || a.p.name.localeCompare(b.p.name));
+  const rows: Cell[][] = list.map((x) => [x.p.name, m(x.open), m(x.inv), m(x.paid),
+    { text: money0(x.owing), n: x.owing, tone: x.owing > 0 ? (cust ? 'good' : 'danger') as CellTone : x.owing < 0 ? 'accent' as CellTone : 'muted' as CellTone }]);
+  const t = partyTotals(db, type);
+  return {
+    title: cust ? 'Customer balances' : 'Supplier balances',
+    stats: [
+      { k: cust ? 'Owed to you' : 'You owe', v: money0(t.net), tone: t.net > 0 ? (cust ? 'g' : 'd') : 'g' },
+      { k: cust ? 'Customers who owe' : 'Suppliers you owe', v: money0(t.owed) + ' · ' + t.parties },
+      { k: cust ? 'Paid ahead (in credit)' : 'You paid ahead', v: money0(t.credit) + ' · ' + t.inCredit },
+    ],
+    cols: [{ h: cust ? 'Customer' : 'Supplier' }, { h: cust ? 'Opening' : 'Opening (to pay)', r: true }, { h: cust ? 'Invoiced' : 'Billed', r: true }, { h: cust ? 'Paid & credited' : 'Paid & returned', r: true }, { h: 'Owing', r: true }],
     rows,
+    rowRefs: list.map((x) => ({ kind: 'party' as const, id: x.p.id })),
     foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4))],
-    note: 'Owing below nil: the customer has paid ahead.',
-  });
-};
+    searchable: true,
+    note: (cust ? 'Owing below nil: the customer has paid ahead. ' : 'Owing below nil: you have paid the supplier ahead. ')
+      + 'The total is the same figure as the statement and the Parties list. Tap a name for the statement.',
+  };
+}
 
 RPT['receivable-summary'] = (db, _f, _t, money) =>
   bucketSummary(owedItems(db, 'customer'), 'Receivable summary', 'Total owed to you', money);
@@ -2051,10 +2086,15 @@ function apRows(db: DB) {
     .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
 }
 
-RPT['ap-aging-summary'] = (db) => withPartyRefs(db, {
-  ...agingSummary(db, owedItems(db, 'supplier'), (x) => x.name, 'AP ageing summary', 'Supplier'),
-  note: 'What you owe each supplier by age: open bills, the opening balance (to pay), less payments made in advance.',
-});
+RPT['ap-aging-summary'] = (db, f, t, money) => {
+  const items = owedItems(db, 'supplier');
+  return withPartyRefs(db, {
+    ...agingSummary(db, items, (x) => x.name, 'Supplier ageing', 'Supplier'),
+    stats: bucketSummary(items, '', '', money).stats,
+    searchable: true,
+    note: 'What you owe each supplier by age: open bills, the opening balance (to pay), less payments made in advance. The total is the same as Balances.',
+  });
+};
 
 /* --- AP ageing details — reference 3906 --- */
 RPT['ap-aging-details'] = (db) => {
@@ -2073,24 +2113,7 @@ RPT['ap-aging-details'] = (db) => {
 };
 
 /* --- Supplier balance summary — reference 3912 --- */
-RPT['supplier-balance-summary'] = (db) => {
-  const rows: Cell[][] = db.parties.filter((p) => p.type === 'supplier' && p.active).map((p) => {
-    const older = windowTotals(db, p.id);
-    let billed = older ? older.purTotal || 0 : 0;
-    // deleted bills are not bills
-    db.purchases.forEach((x) => { if (x.partyId === p.id && x.status !== 'void') billed += x.total; });
-    const owing = -partyBalance(db, p.id);
-    const open = -(p.openingBalance || 0);
-    return [p.name, m(open), m(billed), m(open + billed - owing), { text: money0(owing), n: owing, tone: owing > 0 ? 'danger' as CellTone : owing < 0 ? 'accent' as CellTone : 'muted' as CellTone }];
-  }).filter((r) => [1, 2, 4].some((i) => Math.abs((r[i] as CellObj).n || 0) > 0.005));
-  return withPartyRefs(db, {
-    title: 'Supplier balance summary',
-    cols: [{ h: 'Supplier' }, { h: 'Opening (to pay)', r: true }, { h: 'Billed', r: true }, { h: 'Paid & returned', r: true }, { h: 'Owing', r: true }],
-    rows,
-    foot: ['Total', m(sumCol(rows, 1)), m(sumCol(rows, 2)), m(sumCol(rows, 3)), m(sumCol(rows, 4))],
-    note: 'Owing below nil: you have paid the supplier ahead.',
-  });
-};
+RPT['supplier-balance-summary'] = (db) => balancesReport(db, 'supplier');
 
 RPT['payable-summary'] = (db, _f, _t, money) =>
   bucketSummary(owedItems(db, 'supplier'), 'Payable summary', 'Total you owe', money);
@@ -2106,26 +2129,32 @@ RPT['payable-details'] = (db, from, to, money) => ({
 /* ------------------------------------------------------------------ */
 
 /* --- Stock summary — reference RPT['stock-summary'], 3937 --- */
+/* Stock on hand: what each item holds and what it cost — on a phone the
+   name, the quantity and its cost, with the cost of one under the name and
+   everything else when the row is opened. A–Z by name. */
 RPT['stock-summary'] = (db) => {
-  const rows: Cell[][] = db.products.filter((p) => p.active).map((p) => {
+  const ps = db.products.filter((p) => p.active && p.kind !== 'service').slice().sort((a, b) => a.name.localeCompare(b.name));
+  const rows: Cell[][] = ps.map((p) => {
     const q = stockOf(p);
-    return [p.name, { text: q + ' ' + p.unit, n: q }, m(q * p.cost), m(q * p.price)];
+    return [p.name, m(p.cost), { text: groupNum(q, 2) + ' ' + (p.unit || ''), n: q, tone: q <= 0 ? 'danger' as CellTone : undefined }, m(q * p.cost), m(q * p.price)];
   });
   return {
-    title: 'Stock summary',
-    cols: [{ h: 'Item' }, { h: 'On hand', r: true }, { h: 'At cost', r: true }, { h: 'At sale', r: true }],
+    title: 'Stock on hand',
+    cols: [{ h: 'Item' }, { h: 'Rate', r: true }, { h: 'Qty', r: true, side: true }, { h: 'Cost', r: true, main: true }, { h: 'At sale price', r: true }],
     rows,
-    foot: ['Total', '', m(sumCol(rows, 2)), m(sumCol(rows, 3))],
+    rowRefs: ps.map((p) => ({ kind: 'product' as const, id: p.id })),
+    foot: ['Total', '', '', m(sumCol(rows, 3)), m(sumCol(rows, 4))],
+    searchable: true,
+    note: 'Cost is the quantity at what each costs you. Tap an item for its rate and its value at the selling price.',
   };
 };
-
 /* --- Stock movement — all products first, with item drill-down into monthly movement --- */
 RPT['stock-movement'] = (db, from, to) => {
   const rows: Cell[][] = [];
   const rowRefs: RowRef[] = [];
 
   db.products.filter((p) => p.active).forEach((p) => {
-    const all = db.movements.filter((x) => x.productId === p.id);
+    const all = movesOf(db, p.id);
     const ms = all.filter((x) => within(x.ts, from, to));
     /* A sale deleted or edited puts its stock back with a 'void' movement:
        that undoes the sale's "out", it is not stock coming in (and a deleted
@@ -2156,105 +2185,110 @@ RPT['stock-movement'] = (db, from, to) => {
   };
 };
 
-/* --- Batch movement: every posting against a lot, with its running balance --- */
-RPT['batch-movement'] = (db, from, to) => {
-  const tracked = new Set(db.products.filter((p) => p.trackBatches).map((p) => p.id));
-
-  // the balance has to run from the beginning of the lot, not the start of the
-  // window, or the figure shown against the first row in range would be wrong
-  const running = new Map<string, number>();
-  const all = db.movements
-    .filter((m) => m.batchNo && tracked.has(m.productId))
-    .slice()
-    .sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
-
-  const withBalance = all.map((m) => {
-    const key = m.productId + '·' + m.batchNo;
-    const next = (running.get(key) || 0) + m.qty;
-    running.set(key, next);
-    return { m, balance: next };
+/* --- Batch movement: an item, then its lots, then a lot's ins and outs ---
+   Every item kept in batches, with what its lots hold; tap an item for its
+   lots (those still holding stock first); tap a lot for every movement in
+   and out of it with the balance after each. */
+function batchMoves(db: DB, productId: string, batchNo: string) {
+  let run = 0;
+  return movesOf(db, productId).filter((x) => x.batchNo === batchNo).map((x) => { run += x.qty; return { m: x, balance: run }; });
+}
+const daysToExpiry = (iso?: string) => (iso ? Math.floor((new Date(iso).getTime() - Date.now()) / 86400000) : null);
+RPT['batch-movement'] = (db) => {
+  const ps = db.products.filter((p) => p.trackBatches).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const rows: Cell[][] = ps.map((p) => {
+    const lots = p.batches || [];
+    const live = lots.filter((b) => b.qty > 0);
+    const q = live.reduce((t, b) => t + b.qty, 0);
+    return [p.name, { text: live.length + ' active of ' + lots.length + (lots.length === 1 ? ' lot' : ' lots'), tone: 'muted' as CellTone }, { text: groupNum(q, 2) + ' ' + (p.unit || ''), n: q }];
   });
-  const rows: Cell[][] = withBalance
-    .filter((x) => within(x.m.ts, from, to))
-    .reverse()
-    .slice(0, 200)
-    .map((x) => [
-      shortDay(x.m.ts),
-      'Batch',
-      x.m.ref || '—',
-      productOf(db, x.m.productId)?.name || '—',
-      x.m.batchNo || '—',
-      { text: (x.m.qty > 0 ? '+' : '') + x.m.qty, n: x.m.qty, tone: (x.m.qty > 0 ? 'good' : 'danger') as CellTone },
-      { text: String(x.balance), n: x.balance },
-    ]);
-
   return {
     title: 'Batch movement',
-    cols: [
-      { h: 'Date' }, { h: 'Vch Type' }, { h: 'Vch No' }, { h: 'Item' }, { h: 'Batch' },
-      { h: 'Qty', r: true }, { h: 'Balance', r: true },
-    ],
+    cols: [{ h: 'Item' }, { h: 'Lots' }, { h: 'In stock', r: true, main: true }],
     rows,
-    note: !tracked.size
-      ? 'No item has batch tracking switched on yet.'
-      : rows.length === 200
-        ? 'The 200 most recent batch movements in the range.'
-        : 'The balance runs from the day the lot was opened, not from the start of the range.',
+    rowRefs: ps.map((p) => ({ kind: 'product' as const, id: p.id })),
+    foot: ['Total', ps.length + (ps.length === 1 ? ' item' : ' items'), { text: groupNum(sumCol(rows, 2), 2), n: sumCol(rows, 2) }],
+    searchable: true,
+    note: ps.length ? 'Tap an item for its lots, then a lot for every movement in and out of it.' : 'No item has batch tracking switched on yet.',
   };
 };
-
-/* --- Batch balances: what each lot still holds --- */
-RPT['batch-balances'] = (db) => {
-  // each item once, its lots listed beneath it — soonest expiry first in both
-  const daysTo = (iso: string) => (iso ? Math.floor((new Date(iso).getTime() - Date.now()) / 86400000) : null);
-  const items = db.products
-    .filter((p) => p.trackBatches && (p.batches || []).some((b) => b.qty > 0))
-    .map((p) => {
-      const lots = (p.batches || []).filter((b) => b.qty > 0)
-        .map((b) => ({ b, days: daysTo(b.expiry) }))
-        .sort((x, y) => (x.days ?? 1e9) - (y.days ?? 1e9));
-      return { p, lots, soonest: lots[0]?.days ?? 1e9 };
-    })
-    .sort((x, y) => x.soonest - y.soonest);
-
-  const rows: Cell[][] = [];
-  let qty = 0;
-  let value = 0;
-  items.forEach(({ p, lots }) => {
-    const q = lots.reduce((t, l) => t + l.b.qty, 0);
-    qty += q;
-    value += q * p.cost;
-    rows.push([
-      { text: p.name, tone: 'accent' as CellTone },
-      { text: lots.length + (lots.length === 1 ? ' lot' : ' lots'), tone: 'muted' as CellTone },
-      '',
-      { text: String(q), n: q },
-      m(q * p.cost),
-    ]);
-    lots.forEach(({ b, days }) => {
-      const tone: CellTone = days === null ? 'muted' : days <= 7 ? 'danger' : days <= 90 ? 'warn' : 'good';
-      rows.push([
-        { text: '   ' + b.no, tone: 'muted' as CellTone },
-        { text: b.expiry ? shortDay(b.expiry) : 'No expiry', tone },
-        { text: days === null ? '—' : days < 0 ? 'Expired' : days + 'd', n: days ?? 0, tone },
-        { text: String(b.qty), n: b.qty },
-        m(b.qty * p.cost),
-      ]);
-    });
+/** One item's lots: still holding stock first (soonest expiry first), then the used-up ones. */
+export function batchItemDrill(db: DB, productId: string): ReportResult {
+  const p = productById(db, productId);
+  const lots = (p?.batches || []).map((b) => ({ b, days: daysToExpiry(b.expiry) }))
+    .sort((x, y) => (y.b.qty > 0 ? 1 : 0) - (x.b.qty > 0 ? 1 : 0) || (x.days ?? 1e9) - (y.days ?? 1e9));
+  const rows: Cell[][] = lots.map(({ b, days }) => {
+    const moves = batchMoves(db, productId, b.no);
+    const inQ = moves.reduce((t, x) => t + Math.max(0, x.m.qty), 0), outQ = moves.reduce((t, x) => t + Math.max(0, -x.m.qty), 0);
+    const tone: CellTone = days === null ? 'muted' : days < 0 ? 'danger' : days <= 90 ? 'warn' : 'good';
+    return [b.no, { text: b.expiry ? shortDay(b.expiry) + (days !== null && days < 0 ? ' · expired' : '') : 'No expiry', tone }, { text: groupNum(inQ, 2), n: inQ }, { text: groupNum(outQ, 2), n: outQ },
+      { text: b.qty > 0 ? groupNum(b.qty, 2) : 'Used up', n: b.qty, tone: b.qty > 0 ? undefined : 'muted' as CellTone }];
   });
+  return {
+    title: p ? p.name + ' · lots' : 'Lots',
+    cols: [{ h: 'Batch' }, { h: 'Expires', side: true }, { h: 'In', r: true }, { h: 'Out', r: true }, { h: 'Balance', r: true, main: true }],
+    rows,
+    rowRefs: lots.map(({ b }) => ({ kind: 'batch' as const, id: b.no })),
+    searchable: true,
+    note: 'Tap a lot for each movement in and out of it, with the balance after each.',
+  };
+}
+/** One lot: each movement in and out, with the balance after it (from the day the lot was opened). */
+export function batchDrill(db: DB, productId: string, batchNo: string, from: number, to: number): ReportResult {
+  const p = productById(db, productId);
+  const moves = batchMoves(db, productId, batchNo);
+  const opening = moves.filter((x) => from && tsMs(x.m.ts) < from).reduce((t, x) => t + x.m.qty, 0);
+  const shown = moves.filter((x) => within(x.m.ts, from, to));
+  const what = (t?: string) => ({ sale: 'Sold', purchase: 'Received', void: 'Sale undone', restore: 'Put back', adjust: 'Stock count', adjustment: 'Stock count', 'branch-out': 'Sent to branch', 'branch-in': 'From branch', return: 'Returned' } as Record<string, string>)[t || ''] || (t ? t[0].toUpperCase() + t.slice(1) : 'Movement');
+  const rows: Cell[][] = [
+    ...(from ? [[shortDay(new Date(from).toISOString()), 'Opening balance', '', '', { text: groupNum(opening, 2), n: opening }] as Cell[]] : []),
+    ...shown.map((x) => [shortDay(x.m.ts), what(x.m.type) + (x.m.ref ? ' ' + x.m.ref : ''),
+      x.m.qty > 0 ? { text: groupNum(x.m.qty, 2), n: x.m.qty, tone: 'good' as CellTone } : '', x.m.qty < 0 ? { text: groupNum(-x.m.qty, 2), n: -x.m.qty, tone: 'danger' as CellTone } : '',
+      { text: groupNum(x.balance, 2), n: x.balance }]),
+  ];
+  const inQ = shown.reduce((t, x) => t + Math.max(0, x.m.qty), 0), outQ = shown.reduce((t, x) => t + Math.max(0, -x.m.qty), 0);
+  return {
+    title: (p ? p.name + ' · ' : '') + 'lot ' + batchNo,
+    cols: [{ h: 'Date' }, { h: 'Particulars' }, { h: 'In', r: true }, { h: 'Out', r: true }, { h: 'Balance', r: true, main: true }],
+    rows,
+    rowRefs: [...(from ? [null] : []), ...shown.map((x) => { const s = x.m.ref ? salesByNo(db).get(x.m.ref) : undefined; return s ? { kind: 'sale' as const, id: s.id } : null; })],
+    foot: ['Total', '', { text: groupNum(inQ, 2), n: inQ }, { text: groupNum(outQ, 2), n: outQ }, { text: groupNum(opening + inQ - outQ, 2), n: opening + inQ - outQ }],
+    note: 'The balance runs from the day the lot was opened.',
+  };
+}
 
+/* --- Batches & expiry: every lot holding stock, under its item's name ---
+   Search by item or batch; filter by how soon it expires; sort by days left. */
+const EXPIRY_BANDS = ['Expired', 'Within 30 days', '31–90 days', '91–180 days', 'Over 180 days', 'No expiry'];
+const bandOf = (days: number | null) => (days === null ? 'No expiry' : days < 0 ? 'Expired' : days <= 30 ? 'Within 30 days' : days <= 90 ? '31–90 days' : days <= 180 ? '91–180 days' : 'Over 180 days');
+RPT['batch-balances'] = (db) => {
+  const lots: { p: Product; b: NonNullable<Product['batches']>[number]; days: number | null }[] = [];
+  db.products.filter((p) => p.trackBatches).forEach((p) => (p.batches || []).forEach((b) => { if (b.qty > 0) lots.push({ p, b, days: daysToExpiry(b.expiry) }); }));
+  lots.sort((x, y) => (x.days ?? 1e9) - (y.days ?? 1e9) || x.p.name.localeCompare(y.p.name));
+  const rows: Cell[][] = lots.map(({ p, b, days }) => {
+    const tone: CellTone = days === null ? 'muted' : days < 0 ? 'danger' : days <= 30 ? 'danger' : days <= 90 ? 'warn' : 'good';
+    return [p.name, 'Batch ' + b.no, { text: b.expiry ? shortDay(b.expiry) : 'No expiry', tone }, { text: days === null ? '—' : days < 0 ? Math.abs(days) + 'd ago' : days + 'd', n: days ?? 99999, tone },
+      { text: bandOf(days), tone }, { text: groupNum(b.qty, 2) + ' ' + (p.unit || ''), n: b.qty }, m(b.qty * p.cost)];
+  });
+  const count = (band: string) => lots.filter((l) => bandOf(l.days) === band);
+  const val = (ls: typeof lots) => ls.reduce((t, l) => t + l.b.qty * l.p.cost, 0);
   return {
     title: 'Batches & expiry',
-    cols: [
-      { h: 'Item / lot' }, { h: 'Expires' }, { h: 'Left', r: true },
-      { h: 'Qty', r: true }, { h: 'Value', r: true },
+    stats: [
+      { k: 'Expired', v: count('Expired').length + ' · ' + money0(val(count('Expired'))), tone: 'd' },
+      { k: 'Within 30 days', v: count('Within 30 days').length + ' · ' + money0(val(count('Within 30 days'))), tone: 'w' },
+      { k: '31–90 days', v: count('31–90 days').length + ' · ' + money0(val(count('31–90 days'))) },
     ],
+    cols: [{ h: 'Item' }, { h: 'Batch' }, { h: 'Expiry', side: true }, { h: 'Days left', r: true }, { h: 'Ageing' }, { h: 'Qty', r: true, main: true }, { h: 'Value', r: true }],
     rows,
-    foot: ['Total', '', '', { text: String(qty), n: qty }, m(value)],
-    note: rows.length ? 'Items whose lots expire soonest come first.' : 'No tracked lot is holding stock.',
+    rowRefs: lots.map(({ p }) => ({ kind: 'product' as const, id: p.id })),
+    foot: ['Total', lots.length + ' lots', '', '', '', { text: groupNum(lots.reduce((t, l) => t + l.b.qty, 0), 2), n: lots.reduce((t, l) => t + l.b.qty, 0) }, m(val(lots))],
+    searchable: true,
+    filterCol: 4,
+    filterOptions: EXPIRY_BANDS.filter((b) => count(b).length),
+    note: rows.length ? 'Soonest expiry first. Search by item or batch; filter by how soon it expires; sort by days left.' : 'No lot is holding stock.',
   };
 };
-
 /* --- Low stock — reference 3951 --- */
 RPT['low-stock'] = (db) => {
   const ps = db.products.filter((p) => p.active && stockOf(p) <= p.reorder);
@@ -2602,7 +2636,7 @@ RPT['party-statement'] = (db, from, to) => {
     // customers' and suppliers' balances netted against each other meant nothing as one figure
     stats: (() => {
       let owed = 0, owe = 0;
-      parties.forEach((p) => { const b = partyBalance(db, p.id); if (p.type === 'supplier') owe -= b; else owed += b; });
+      owed = partyTotals(db, 'customer').net; owe = partyTotals(db, 'supplier').net;
       return [{ k: 'Customers owe you', v: money0(owed), tone: 'g' as const }, { k: 'You owe suppliers', v: money0(owe), tone: 'd' as const }];
     })(),
     foot: ['Total', '', m(sumCol(rows, 2)), m(sumCol(rows, 3)), ''],
@@ -3071,7 +3105,7 @@ export function ledgerDrill(db: DB, accId: string, from: number, to: number): Re
   lines.forEach((l) => {
     run += l.dr - l.cr;
     rows.push([shortDay(l.ts), (l.ref ? l.ref + ' · ' : '') + l.memo, dash(l.dr, 'accent'), dash(l.cr, 'good'), bal(run)]);
-    const sale = l.ref ? db.sales.find((x) => x.no === l.ref) : undefined;
+    const sale = l.ref ? salesByNo(db).get(l.ref) : undefined;
     const pu = !sale && l.ref ? db.purchases.find((x) => x.no === l.ref) : undefined;
     rowRefs.push(sale ? { kind: 'sale', id: sale.id } : pu ? { kind: 'purchase', id: pu.id } : null);
   });
@@ -3165,15 +3199,15 @@ export function voucherTypeOf(db: DB, e: { ref?: string; memo?: string }): strin
   const ref = e.ref || '';
   const memo = e.memo || '';
   if (/^Transfer\b/.test(memo)) return 'Contra';
-  const sale = ref ? db.sales.find((x) => x.no === ref) : undefined;
+  const sale = ref ? salesByNo(db).get(ref) : undefined;
   if (sale) {
     if (/ — against /.test(memo)) return 'Expense';
     if (/^(Cost of sale|Reverse cost)/.test(memo)) return 'Cost of sales';
     if (/^Void/.test(memo)) return 'Sale void';
     return sale.method === 'credit' || (sale.paidAtSale ?? sale.total) < sale.total ? 'Sales invoice' : 'Cash sale';
   }
-  if (ref && db.purchases.some((x) => x.no === ref)) return /^Void/.test(memo) ? 'Purchase void' : 'Purchase';
-  if (ref && (db.creditNotes || []).some((x) => x.no === ref)) return 'Credit note';
+  if (ref && purchasesByNo(db).has(ref)) return /^Void/.test(memo) ? 'Purchase void' : 'Purchase';
+  if (ref && creditNotesByNo(db).has(ref)) return 'Credit note';
   if (ref === 'RCT') return 'Receipt';
   if (ref === 'PAY') return 'Payment';
   if (ref === 'EDIT' || ref === 'DEL') return /receipt/i.test(memo) ? 'Receipt' : /payment/i.test(memo) ? 'Payment' : 'Correction';

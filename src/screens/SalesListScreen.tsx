@@ -10,6 +10,7 @@
  *      Delete — kept apart, in red, with a confirm step.
  *  - Transactions / Parties switch sits in the header.
  */
+import { useFocusedBook } from '../data/useFocusedBook';
 import { deleteEffects } from '../data/logic';
 import { DeleteConfirm } from '../components/DeleteConfirm';
 import React, { useMemo, useState } from 'react';
@@ -113,7 +114,8 @@ function dayLabel(ts: string) {
 
 export default function SalesListScreen({ navigation }: Props) {
   const { colors } = useTheme();
-  const { db, money, party, deleteSale, deletePayment, deletePurchase, deleteCreditNote, deleteEntry, deleteJournal, voidEstimate, canEditSale, can, user, restoreDeleted } = useAppData();
+  const { db: dbLive, money, party, deleteSale, deletePayment, deletePurchase, deleteCreditNote, deleteEntry, deleteJournal, voidEstimate, canEditSale, can, user, restoreDeleted } = useAppData();
+  const db = useFocusedBook(dbLive);
   const { saleDoc, paymentDoc, purchaseDoc, creditNoteDoc, entryDoc } = useDocBuilder();
   /** A document being sent as a message, and to whom. */
   const [sending, setSending] = useState<{ doc: DocMeta; phone?: string; email?: string } | null>(null);

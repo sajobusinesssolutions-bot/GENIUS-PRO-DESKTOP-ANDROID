@@ -12,6 +12,7 @@
  * which a FlatList can't wrap its rows in anyway without every row but the
  * first ending up with no shadow under it.
  */
+import { useFocusedBook } from '../data/useFocusedBook';
 import { FAB_COLORS } from '../components/ui';
 import React, { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
@@ -40,7 +41,8 @@ import { editionOf } from '../data/editions';
 export default function ItemsScreen() {
   const { colors } = useTheme();
   const go = useGo();
-  const { db, money, stockOf } = useAppData();
+  const { db: dbLive, money, stockOf } = useAppData();
+  const db = useFocusedBook(dbLive);
   const V = vocab(db);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');

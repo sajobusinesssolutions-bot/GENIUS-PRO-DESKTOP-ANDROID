@@ -134,7 +134,8 @@ describe('batch reports', () => {
     const db = makeDb();
     const r = runReport(db, 'batch-movement', ALL.from, ALL.to);
     expect(r.error).toBeFalsy();
-    expect(r.cols.map((c) => c.h)).toContain('Balance');
+    // items first; an item's lots, then a lot's movements with the balance after each, open from it
+    expect(r.cols.map((c) => c.h)).toContain('In stock');
   });
 
   it('keeps the mandatory transaction fields in daily sales and adds cash/credit detail', () => {
@@ -242,7 +243,7 @@ describe('batch reports', () => {
     const db = makeDb();
     const r = runReport(db, 'batch-balances', ALL.from, ALL.to);
     expect(r.error).toBeFalsy();
-    expect(r.cols.map((c) => c.h)).toContain('Left');
+    expect(r.cols.map((c) => c.h)).toEqual(expect.arrayContaining(['Item', 'Batch', 'Expiry', 'Qty']));
   });
 
   it('reports both as implemented', () => {
@@ -538,10 +539,12 @@ describe('Stock — stock-summary and expiry', () => {
     const r = runReport(db, 'stock-summary', ALL.from, ALL.to);
     const a = r.rows.find((x) => cellText(x[0]) === 'Widget A')!;
     // 500 seeded − 3 sold + 10 purchased = 507
-    expect(cellNum(a[1])).toBe(507);
-    expect(cellNum(a[2])).toBe(507 * 100);
-    expect(cellNum(a[3])).toBe(507 * 200);
-    expect(cellNum(r.foot![2])).toBe(sumCol(r.rows, 2));
+    // Item | Rate | Qty | Cost | At sale price
+    expect(cellNum(a[1])).toBe(100);
+    expect(cellNum(a[2])).toBe(507);
+    expect(cellNum(a[3])).toBe(507 * 100);
+    expect(cellNum(a[4])).toBe(507 * 200);
+    expect(cellNum(r.foot![3])).toBe(sumCol(r.rows, 3));
   });
 
   it('lists a tracked batch with its days to expiry and value at cost', () => {
@@ -600,7 +603,7 @@ describe('the totals row', () => {
     check('cash-flow', 1);
     check('ar-aging-details', 5);
     check('ap-aging-details', 4);
-    check('stock-summary', 2);
+    check('stock-summary', 3);
     check('general-ledger', 1);
   });
 

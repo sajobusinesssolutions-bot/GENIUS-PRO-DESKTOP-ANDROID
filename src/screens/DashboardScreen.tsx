@@ -22,6 +22,7 @@
  * Reference: the live definition at lines 6289-6381 (alertCount 6384, todoBlock
  * 6392), reorganised rather than ported line for line.
  */
+import { useFocusedBook } from '../data/useFocusedBook';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
 import ScrollView from '../components/KeyScroll';
@@ -204,8 +205,10 @@ export default function DashboardScreen() {
   const { colors } = useTheme();
   const go = useGo();
   const {
-    db, money, me, stockOf, party, partyBalance, accountBalance, dueRecurring,
+    db: dbLive, money, me, stockOf, party, partyBalance, accountBalance, dueRecurring,
   } = useAppData();
+  // while another screen is in front, Home keeps its figures and works them out again only on coming back
+  const db = useFocusedBook(dbLive);
   const plan = db ? access(db) : 'paid';
   const daysLeft = db ? accessDaysLeft(db) : null;
   const [period, setPeriod] = useState<Period>('today');
@@ -241,15 +244,16 @@ export default function DashboardScreen() {
     const prevTotal = prev.reduce((a, s) => a + s.total, 0);
     const delta = prevTotal ? Math.round(((total - prevTotal) / prevTotal) * 100) : 0;
 
+    // the same figures as Customer and Supplier statements (customers in credit taken off, suppliers paid ahead too)
     let owed = 0;
-    db.parties.forEach((p) => { const b = partyBalance(p.id); if (b > 0) owed += b; });
+    db.parties.forEach((p) => { if (p.type !== 'supplier') owed += partyBalance(p.id); });
     const lateSales = db.sales.filter((s) => s.due > 0 && s.status !== 'void' && ageOfDays(s.ts) > 30);
     const overdue = lateSales.reduce((a, s) => a + s.due, 0);
     const cash = accountBalance('acc_cash');
     // the other places money sits, and what the shop itself owes
     const banked = (db.accounts || []).filter((a) => a.id !== 'acc_cash').reduce((t, a) => t + accountBalance(a.id), 0);
     let owing = 0;
-    (db.parties || []).forEach((p) => { const b = partyBalance(p.id); if (b < 0) owing += -b; });
+    (db.parties || []).forEach((p) => { if (p.type === 'supplier') owing -= partyBalance(p.id); });
 
     // did the period pay: what was sold, less what it cost and what was spent
     const revenue = ss.reduce((a, s) => a + (s.total - (s.tax || 0)), 0);

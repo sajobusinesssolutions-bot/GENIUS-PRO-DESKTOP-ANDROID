@@ -173,7 +173,8 @@ export const ReportRow = memo(function ReportRow({ row, cols, shape, sym, index,
   const title = plainCell(row[shape.title] ?? '', false, sym) || '—';
   const sub = subline(row, cols, shape, sym);
   const key = shape.key >= 0 ? plainCell(row[shape.key] ?? '', true, sym) : '';
-  const all = [shape.title, ...shape.rest, ...(shape.key >= 0 ? [shape.key] : [])].slice(1);
+  const side = shape.side != null && shape.side >= 0 ? plainCell(row[shape.side] ?? '', !!cols[shape.side].r, sym) : '';
+  const all = [shape.title, ...shape.rest, ...(shape.side != null && shape.side >= 0 ? [shape.side] : []), ...(shape.key >= 0 ? [shape.key] : [])].slice(1);
   return (
     <View style={{ backgroundColor: open ? p.open : p.card, borderBottomWidth: 1, borderBottomColor: p.row }}>
       <Pressable onPress={() => onToggle(index)} accessibilityRole="button" accessibilityState={{ expanded: open }}
@@ -182,6 +183,12 @@ export const ReportRow = memo(function ReportRow({ row, cols, shape, sym, index,
           <Text numberOfLines={2} style={{ fontFamily: strong ? fonts.uiBold : fonts.uiSemi, fontSize: 15, lineHeight: 20, color: ink }}>{title}</Text>
           {sub ? <Text numberOfLines={2} style={[{ fontFamily: fonts.ui, fontSize: 12, lineHeight: 16, color: zero ? p.faint : p.muted, marginTop: 2 }, NUM]}>{sub}</Text> : null}
         </View>
+        {shape.side != null && shape.side >= 0 ? (
+          <View style={{ alignItems: 'flex-end', flexShrink: 0, minWidth: 64 }}>
+            <Text numberOfLines={1} style={[{ fontFamily: fonts.ui, fontSize: 14, color: ink }, NUM]}>{side || '—'}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: p.faint, marginTop: 1 }}>{cols[shape.side].h}</Text>
+          </View>
+        ) : null}
         {shape.key >= 0 ? (
           <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
             <Text numberOfLines={1} style={[{ fontFamily: fonts.uiSemi, fontSize: 15, color: ink }, NUM]}>{key}</Text>
