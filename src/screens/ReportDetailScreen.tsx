@@ -7,10 +7,10 @@
  * tap-through — is driven generically off the `ReportResult`.
  */
 import { groupNum } from '../data/helpers';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { withItemDetails, hasItemDetails } from '../data/reportItems';
 import DetailedStatement, { DetailedKind } from '../components/DetailedStatement';
-import { View, Text, ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, FlatList, TextInput, RefreshControl } from 'react-native';
 import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -23,7 +23,9 @@ import { PLAY_BUILD } from '../data/store';
 import { canFor } from '../data/perms';
 import { mayCreate } from '../data/logic';
 import { isPremiumReport, groupOf, reportPermission, earliestRead } from '../data/reports';
-import { PeriodBar, listPeriod, ListPeriod } from '../components/DocList';
+import { listPeriod, ListPeriod } from '../components/DocList';
+import { TabChips, PeriodPill, MoreRow, ReportRow, TotalBar, useReportPalette } from '../components/ReportList';
+import { reportShape, plainCell, countLabel, shortRange } from '../data/reportShape';
 import {
   runReport, reportById, sortRows, cellText, cellTone, stockMovementDrill, inventoryMetricDrill,
   ledgerDrill, partyDrill, voucherDrill, voucherTypeDrill, DETAIL_VIEW,
@@ -32,7 +34,7 @@ import {
 } from '../data/reports';
 import { arrangeColumns, arrangedIndexes } from '../data/reportColumns';
 import { toPdf, preview, toExcel, shareTo, shareFile, fileNameFor, pickColumns, ExportMeta } from '../data/exporters';
-import { Card, Cap, Pad, EmptyState, Button, StatGrid, ListRow, InfoBanner } from '../components/ui';
+import { EmptyState, Button, ListRow, InfoBanner } from '../components/ui';
 import { Field, Checkbox } from '../components/form';
 import { Sheet } from '../components/Sheet';
 import { IconBtn } from '../components/AppBar';
@@ -105,10 +107,14 @@ const DEFAULT_HIDDEN: Record<string, { order: string[]; hidden: string[] }> = {
 
 export default function ReportDetailScreen() {
   const { colors } = useTheme();
+  const pal = useReportPalette();
   const nav = useNavigation<any>();
   const route = useRoute<Rt>();
   const go = useGo();
-  const { db, money, setSetting } = useAppData();
+  const { db, setSetting } = useAppData();
+  /* A report writes an amount as 12,500.00: two decimals and no currency in
+     front, on screen and in what is exported from it. */
+  const money = useCallback((n: number) => groupNum(n || 0, 2), []);
 
   const id = route.params?.id || 'invoice-list';
   const def = reportById(id);
@@ -125,11 +131,14 @@ export default function ReportDetailScreen() {
   /** The detailed form of a statement: every ledger under its group, with opening and closing. */
   const [detailed, setDetailed] = useState(!!(route.params as any)?.detailed);
   const top = drill[drill.length - 1];
-  const { width } = useWindowDimensions();
-  const [layout, setLayout] = useState<'cards' | 'table'>(width < 520 ? 'cards' : 'table');
   const [exportOpen, setExportOpen] = useState(false);
-  /** Which one-button dropdown is open: the report's view, its dates, or its rows. */
-  const [pick, setPick] = useState<'view' | 'rows' | null>(null);
+  /** Which sheet is open: More, the row filter, the sort, or every total. */
+  const [pick, setPick] = useState<'more' | 'rows' | 'sort' | 'totals' | null>(null);
+  /** The one row that is open, and where the list was, kept for each level so stepping back out of a ledger finds them. */
+  const [openRow, setOpenRow] = useState<number | null>(null);
+  const kept = useRef(new Map<string, { open: number | null; y: number }>());
+  const listRef = useRef<FlatList<Cell[]>>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [ask, setAsk] = useState<ExportKind | null>(null);
   const [keep, setKeep] = useState<boolean[]>([]);
@@ -290,13 +299,37 @@ export default function ReportDetailScreen() {
     }
   }), [nav, isInventoryReport, drillMonthKey, drillProductId, drill.length]);
 
-  /* header export button */
+  /* the bar: the report's name over a line saying what it is; Export, then More */
   useEffect(() => {
+    const title = group ? group.name : def ? def.name : 'Report';
     nav.setOptions({
-      title: group ? group.name : def ? def.name : 'Report',
-      headerRight: () => <IconBtn name="share" size={22} onPress={() => setExportOpen(true)} />,
+      title,
+      subtitle: def?.sub,
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <IconBtn name="share" size={22} color={pal.primary} onPress={() => setExportOpen(true)} />
+          <IconBtn name="dots" size={22} onPress={() => setPick('more')} />
+        </View>
+      ),
     });
-  }, [nav, def, group]);
+  }, [nav, def, group, pal.primary]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* each level of a report (the report, a ledger opened from it, a voucher under that) keeps its own open row and place */
+  const viewKey = id + '|' + (detailed ? 'd' : '') + '|' + drill.map((d) => d.kind + ':' + d.id).join('>') + '|' + (drillProductId || '') + '|' + (drillMonthKey || '');
+  useEffect(() => {
+    const k = kept.current.get(viewKey);
+    setOpenRow(k ? k.open : null);
+    const t = setTimeout(() => { try { listRef.current?.scrollToOffset({ offset: k ? k.y : 0, animated: false }); } catch { /* not drawn yet */ } }, 0);
+    return () => clearTimeout(t);
+  }, [viewKey]);
+  const toggleRow = useCallback((i: number) => {
+    setOpenRow((cur) => {
+      const next = cur === i ? null : i;
+      kept.current.set(viewKey, { open: next, y: kept.current.get(viewKey)?.y || 0 });
+      return next;
+    });
+  }, [viewKey]);
+  useEffect(() => { setOpenRow(null); }, [search, rowFilter, sort]);
 
   const runExport = useCallback(async (what: ExportKind, result: ReportResult, meta: ExportMeta) => {
     if (!canExport && what !== 'preview') {
@@ -410,10 +443,11 @@ export default function ReportDetailScreen() {
   if (!db) return null;
 
   /* Switching between the views of one report — shown on the report and on its locked page alike. */
-  const currentView = group?.views.find((v) => v.id === id);
-  const viewChips = group && group.views.length > 1 ? (
-    <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-      <DropBtn icon="doc" label={currentView?.label || 'View'} onPress={() => setPick('view')} />
+  const tabs = group && group.views.length > 1 ? group.views.map((v) => ({ id: v.id, label: v.label })) : [];
+  const pickTab = (v: string) => { if (v !== id) { setSort(null); setSearch(''); nav.setParams({ id: v }); } };
+  const viewChips = tabs.length ? (
+    <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: pal.card, borderBottomWidth: 1, borderBottomColor: pal.section }}>
+      <TabChips tabs={tabs} value={id} onPick={pickTab} />
     </View>
   ) : null;
 
@@ -466,236 +500,252 @@ export default function ReportDetailScreen() {
 
   if (!result || !view) return null;
 
-  // the table runs edge to edge, so it is sized to the whole width of the phone
-  const widths = fitWidths(result, width);
-  const tableWidth = widths.reduce((a, b) => a + b, 0);
   const drillProduct = drillProductId ? db.products.find((p) => p.id === drillProductId) : null;
   const isInventoryDrill = isInventoryReport && !!drillProduct;
-  const isAccountingLedger = true;
-  const toneColor = (t?: CellTone) =>
-    t === 'good' ? colors.good : t === 'warn' ? colors.warn : t === 'danger' ? colors.danger
-      : t === 'accent' ? colors.accent : t === 'muted' ? colors.faint : colors.ink;
+  const sym = db.settings.currency || 'Sh';
+  const shape = reportShape(result.cols);
+  const isStatement = !richDetail && !!result.rowKinds && result.rows.length > 0;
+  const asList = !richDetail && !isStatement;
+  const hasSearch = asList && (!!result.searchable || result.rows.length > 15 || !!search);
+  /* with more than three tabs the pill is the calendar alone, and the dates are on the line under the controls */
+  const crowded = tabs.length > 3;
+  const isFav = (db.settings.favReports || []).includes(id);
+  const sortable = asList && result.rows.length > 1;
 
-  const cellStyle = (i: number, bold?: boolean) => ({
-    width: widths[i],
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    textAlign: (result.cols[i].r ? 'right' : 'left') as 'right' | 'left',
-    fontFamily: result.cols[i].r ? (bold ? fonts.monoSemi : fonts.mono) : (bold ? fonts.uiSemi : fonts.ui),
-    fontSize: isAccountingLedger ? 11.5 : 12,
-  });
+  /* The totals, kept at the foot: the figure the report is read for in bold,
+     up to two more beside it, and every one of them a tap away. */
+  const footText = (i: number) => plainCell(result.foot?.[i] ?? '', true, sym);
+  const allTotals: { label: string; value: string }[] = [];
+  let mainTotal: { label: string; value: string } | null = null;
+  if (result.foot && !richDetail) {
+    const nums = result.cols.map((c, i) => i).filter((i) => i > 0 && footText(i) !== '—');
+    const main = isStatement ? nums[nums.length - 1] : shape.key >= 0 && footText(shape.key) !== '—' ? shape.key : nums[nums.length - 1];
+    if (main !== undefined) {
+      const lead = plainCell(result.foot[0] ?? '', false, sym);
+      mainTotal = { label: isStatement && lead ? lead : 'Total ' + result.cols[main].h.toLowerCase(), value: footText(main) };
+      nums.filter((i) => i !== main).forEach((i) => allTotals.push({ label: result.cols[i].h, value: footText(i) }));
+    }
+  }
+  if (!richDetail) {
+    (result.stats || []).forEach((st) => {
+      const v = plainCell(st.v, false, sym);
+      if (!mainTotal) mainTotal = { label: st.k, value: v };
+      else if (v !== mainTotal.value && !allTotals.some((x) => x.value === v && x.label === st.k)) allTotals.push({ label: st.k, value: v });
+    });
+  }
 
-  const renderCell = (c: Cell, i: number, bold?: boolean) => (
-    <Text
-      key={i}
-      numberOfLines={2}
-      style={[cellStyle(i, bold), { color: bold ? colors.ink : toneColor(cellTone(c)) }]}
-    >
-      {cellText(c)}
-    </Text>
+  const actionFor = (ref: RowRef | null | undefined): string | undefined => {
+    if (!ref) return undefined;
+    switch (ref.kind) {
+      case 'party': return 'View statement';
+      case 'ledger': return 'View ledger';
+      case 'sale': return 'View sale';
+      case 'purchase': return 'View purchase';
+      case 'payment': return 'View payment';
+      case 'estimate': return 'View quotation';
+      case 'creditNote': return 'View credit notes';
+      case 'entry': return 'Open Money';
+      case 'voucher': return 'View voucher';
+      case 'vouchertype': return 'View vouchers';
+      case 'product': return 'View movements';
+      case 'month': return 'View this month';
+      default: return 'Open';
+    }
+  };
+
+  const searchBox = (
+    <View style={{ flex: 1, height: 40, borderRadius: 20, backgroundColor: pal.chip, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14 }}>
+      <Icon name="search" size={16} color={pal.muted} />
+      <TextInput
+        value={search}
+        onChangeText={setSearch}
+        placeholder={top ? 'Search these postings' : 'Search this report'}
+        placeholderTextColor={pal.faint}
+        autoCorrect={false}
+        autoCapitalize="none"
+        returnKeyType="search"
+        accessibilityLabel="Search this report"
+        style={{ flex: 1, padding: 0, fontFamily: fonts.ui, fontSize: 15, color: pal.text }}
+      />
+      {search ? <Pressable onPress={() => setSearch('')} hitSlop={12} accessibilityLabel="Clear search"><Icon name="x" size={16} color={pal.muted} /></Pressable> : null}
+    </View>
   );
 
+  const banner = top ? (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: pal.card, borderBottomWidth: 1, borderBottomColor: pal.section }}>
+      <Pressable onPress={() => setDrill((d) => d.slice(0, -1))} hitSlop={8} accessibilityLabel="Back to the report" style={{ width: 44, height: 44, marginLeft: -10, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="back" size={18} color={pal.text} />
+      </Pressable>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: pal.muted }}>
+          {top.kind === 'ledger' ? 'Ledger' : top.kind === 'party' ? 'Statement' : top.kind === 'vouchertype' ? 'Vouchers' : 'Voucher'} · {top.kind === 'voucher' ? 'all lines' : shortRange(span.from, span.to)}
+        </Text>
+        <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: pal.text }}>{result.title}</Text>
+      </View>
+    </View>
+  ) : isInventoryDrill ? (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: pal.card, borderBottomWidth: 1, borderBottomColor: pal.section }}>
+      <Pressable onPress={() => { if (drillMonthKey) setDrillMonthKey(null); else setDrillProductId(null); setSort(null); }} hitSlop={8} accessibilityLabel="Back" style={{ width: 44, height: 44, marginLeft: -10, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="back" size={18} color={pal.text} />
+      </Pressable>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: pal.muted }}>{drillMonthKey ? drillMonthKey + ' · ' : ''}{shortRange(span.from, span.to)}</Text>
+        <Text numberOfLines={2} style={{ fontFamily: fonts.uiSemi, fontSize: 15, color: pal.text }}>{drillProduct?.name}</Text>
+      </View>
+    </View>
+  ) : null;
+
+  const metaLine = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8 }}>
+      <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: pal.muted }}>
+        {asList ? countLabel(filteredView.rows.length, result.cols, shape) + (search || rowFilter !== 'all' ? ' of ' + groupNum(result.rows.length, 0) : '') : result.title}
+        {sort ? '  ·  by ' + result.cols[sort.i].h.toLowerCase() + (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+      </Text>
+      {crowded ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: pal.muted }}>{shortRange(span.from, span.to)}</Text> : null}
+    </View>
+  );
+
+  const underList = result.note ? (
+    <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: pal.faint, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 }}>{result.note}</Text>
+  ) : <View style={{ height: 16 }} />;
+
+  const nothing = result.rows.length === 0 ? (
+    <EmptyState
+      icon={result.notImplemented ? 'clock' : result.error ? 'alert' : 'chart'}
+      title={result.notImplemented ? 'Not built yet' : result.error ? 'Could not build this report' : 'Nothing to show'}
+      subtitle={result.error || result.note || 'No data in this period. Try a wider date range.'}
+    />
+  ) : (
+    <View style={{ alignItems: 'center', paddingHorizontal: 24, paddingVertical: 36, gap: 14 }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: pal.muted, textAlign: 'center' }}>
+        {search ? 'No results for \u201C' + search + '\u201D' : 'Nothing matches this filter'}
+      </Text>
+      <Pressable onPress={() => { setSearch(''); setRowFilter('all'); }} accessibilityRole="button"
+        style={{ height: 44, paddingHorizontal: 18, borderRadius: 8, borderWidth: 1, borderColor: pal.section, backgroundColor: pal.card, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: pal.text }}>{search ? 'Clear search' : 'Show every row'}</Text>
+      </Pressable>
+    </View>
+  );
+
+  /* the books are on the phone, so a pull only draws the report again from them */
+  const pull = <RefreshControl refreshing={refreshing} colors={[pal.primary]} tintColor={pal.primary} onRefresh={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 350); }} />;
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <PeriodBar value={period} onChange={setPeriod} />
-      <ScrollView contentContainerStyle={{ paddingBottom: 18 }}>
-        <View style={{ paddingHorizontal: 16, paddingTop: 0, paddingBottom: 4 }}>
-          {/* the name is the title; export is the icon beside it. Here only the choices */}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {group && group.views.length > 1 ? (
-              <DropBtn icon="doc" label={currentView?.label || 'View'} onPress={() => setPick('view')} />
-            ) : null}
-            {DETAIL_VIEW[id] && !top ? (
-              <Pressable
-                onPress={() => { setDetailed((v) => !v); setSort(null); }}
-                accessibilityRole="switch"
-                accessibilityState={{ checked: detailed }}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 12, borderRadius: 4,
-                  borderWidth: 1.2, borderColor: detailed ? colors.accent : colors.line, backgroundColor: detailed ? colors.accent : colors.surface,
-                }}
-              >
-                <Icon name={detailed ? 'check' : 'doc'} size={14} color={detailed ? colors.accentInk : colors.accent} />
-                <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: detailed ? colors.accentInk : colors.ink }}>Detailed</Text>
-              </Pressable>
-            ) : null}
-            {raw && raw.cols.length > 2 ? (
-              <DropBtn icon="filter" label={colChoice ? 'Columns · ' + (result!.cols.length - 1) + ' of ' + (raw.cols.length - 1) : 'Columns'} onPress={openColumns} />
-            ) : null}
-            {rowFilterOptions.length > 1 ? (
-              <DropBtn icon="filter" label={rowFilterOptions.find((x) => x.v === rowFilter)?.l || 'All rows'} onPress={() => setPick('rows')} />
-            ) : null}
-          </View>
-
-          {top ? (
-            <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 4, backgroundColor: colors.accentSoft }}>
-              <Pressable onPress={() => setDrill((d) => d.slice(0, -1))} hitSlop={8} style={{ width: 32, height: 32, borderRadius: 4, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="back" size={16} color={colors.accent} />
-              </Pressable>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.soft }}>
-                  {top.kind === 'ledger' ? 'Ledger' : top.kind === 'party' ? 'Statement' : top.kind === 'vouchertype' ? 'Vouchers' : 'Voucher'} · {top.kind === 'voucher' ? 'all lines' : span.label}
-                </Text>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 13.5, color: colors.ink }} numberOfLines={1}>{result.title}</Text>
-              </View>
-            </View>
-          ) : null}
-
-          {result.searchable || result.rows.length > 15 ? (
-            <View style={{ marginTop: 6 }}>
-              <Field
-                icon="search"
-                label={top ? 'Search these postings' : 'Search this report'}
-                value={search}
-                onChangeText={setSearch}
-                autoCorrect={false}
-                style={{ marginBottom: 0 }}
-                trailing={search ? <Pressable onPress={() => setSearch('')} hitSlop={8}><Icon name="x" size={16} color={colors.faint} /></Pressable> : null}
-              />
-            </View>
-          ) : null}
-
-          {isInventoryDrill ? (
-            <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 4, backgroundColor: colors.accentSoft }}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: colors.ink }} numberOfLines={1}>{drillProduct?.name}</Text>
-                <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.soft, marginTop: 1 }}>
-                  {drillMonthKey ? drillMonthKey + ' · ' + span.label : 'Period · ' + span.label}
-                </Text>
-              </View>
-              {drillMonthKey ? (
-                <Pressable onPress={() => { setDrillMonthKey(null); setSort(null); }} hitSlop={8}>
-                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12.5, color: colors.accent }}>Back to months</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
+    <View style={{ flex: 1, backgroundColor: pal.bg }}>
+      {/* the tabs, with Period held at the right; a report with no tabs has its search here */}
+      <View style={{ backgroundColor: pal.card, borderBottomWidth: 1, borderBottomColor: pal.section }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 16, paddingRight: 12, paddingVertical: 8, minHeight: 52 }}>
+          {tabs.length ? <TabChips tabs={tabs} value={id} onPick={pickTab} /> : hasSearch ? searchBox : <View style={{ flex: 1 }} />}
+          <PeriodPill value={period} onChange={setPeriod} iconOnly={crowded} />
         </View>
-        {/* balance sheet, general ledger and profit & loss, detailed: grouped cards that open in place */}
-        {richDetail && book ? (
-          <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}>
-            <DetailedStatement kind={id as DetailedKind} db={book} from={span.from} to={span.to} focus={(route.params as any)?.focus}
-              onOpenLedger={(acc) => go('ReportDetail', { id: 'general-ledger', detailed: true, focus: acc } as any)} />
-          </View>
-        ) : null}
-        {!richDetail && result.stats && result.stats.length ? (
-          <Pad style={{ paddingTop: 8, paddingBottom: 6 }}>
-            <StatGrid
-              items={result.stats.map((s) => ({
-                label: s.k,
-                value: s.v,
-                tone: s.tone === 'g' ? 'good' : s.tone === 'w' ? 'warn' : s.tone === 'd' ? 'danger' : 'accent',
-                icon: s.tone === 'd' ? 'arrow' : s.tone === 'g' ? 'chart' : 'coins',
-              }))}
-            />
-          </Pad>
-        ) : null}
+        {tabs.length && hasSearch ? <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 8 }}>{searchBox}</View> : null}
+      </View>
+      {banner}
 
-        {richDetail ? null : result.rowKinds && result.rows.length ? (
-          <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 20 }}>
-            <Statement result={result} refs={result.rowRefs} onOpen={openRef} />
-          </View>
-        ) : result.rows.length === 0 ? (
-          <EmptyState
-            icon={result.notImplemented ? 'clock' : result.error ? 'alert' : 'chart'}
-            title={result.notImplemented ? 'Not built yet' : result.error ? 'Could not build this report' : 'Nothing to show'}
-            subtitle={result.error || result.note || 'No data in this period. Try a wider date range.'}
-          />
-        ) : (
-          <View style={{ paddingTop: 8, paddingBottom: 20 }}>
-            <View style={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line, backgroundColor: colors.surface }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={tableWidth > width + 1}>
-                <View style={{ width: Math.max(tableWidth, width) }}>
-                  <View style={{ flexDirection: 'row', backgroundColor: colors.accentSoft, borderBottomWidth: 1.4, borderBottomColor: colors.accent }}>
-                    {result.cols.map((c, i) => (
-                      <Pressable
-                        key={i}
-                        onPress={() => tapHeader(i)}
-                        style={{
-                          width: widths[i], paddingVertical: 10, paddingHorizontal: 8,
-                          flexDirection: 'row', alignItems: 'center', justifyContent: c.r ? 'flex-end' : 'flex-start', gap: 3,
-                        }}
-                      >
-                        <Text numberOfLines={2} style={{ fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.4, textTransform: 'uppercase', color: colors.accent, textAlign: c.r ? 'right' : 'left' }}>
-                          {c.h}
-                        </Text>
-                        {sort?.i === i ? <Icon name={sort.dir === 'asc' ? 'up' : 'down'} size={11} color={colors.accent} /> : null}
-                      </Pressable>
-                    ))}
-                  </View>
-
-                  {filteredView.rows.map((r, ri) => {
-                    const ref = filteredView.rowRefs ? filteredView.rowRefs[ri] : null;
-                    const isOpening = cellText(r[1]) === 'Opening Balance';
-                    const row = (
-                      <View style={{
-                        flexDirection: 'row', alignItems: 'center',
-                        backgroundColor: isOpening ? colors.sunk : ri % 2 ? colors.bg : colors.surface,
-                        borderBottomWidth: 1, borderBottomColor: colors.line,
-                      }}>
-                        {result.cols.map((_, i) => renderCell(r[i] ?? '', i, isOpening))}
-                        {ref ? <View style={{ position: 'absolute', left: 0, top: 6, bottom: 6, width: 2.5, borderRadius: 2, backgroundColor: colors.accent, opacity: 0.5 }} /> : null}
-                      </View>
-                    );
-                    if (!ref) return <View key={ri}>{row}</View>;
-                    return (
-                      <Pressable key={ri} onPress={() => openRef(ref)} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-                        {row}
-                      </Pressable>
-                    );
-                  })}
-
-                  {result.foot ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.accentSoft, borderTopWidth: 1.4, borderTopColor: colors.accent }}>
-                      {result.cols.map((_, i) => (
-                        <Text key={i} numberOfLines={2} style={[cellStyle(i, true), { color: colors.ink }]}>
-                          {cellText(result.foot![i] ?? '')}
-                        </Text>
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-              </ScrollView>
+      {asList ? (
+        <FlatList
+          ref={listRef}
+          data={filteredView.rows}
+          keyExtractor={(_r, i) => String(i)}
+          extraData={openRow}
+          ListHeaderComponent={metaLine}
+          ListFooterComponent={filteredView.rows.length ? underList : null}
+          ListEmptyComponent={nothing}
+          refreshControl={pull}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={14}
+          windowSize={9}
+          onScroll={(e) => { const k = kept.current.get(viewKey); kept.current.set(viewKey, { open: k ? k.open : openRow, y: e.nativeEvent.contentOffset.y }); }}
+          scrollEventThrottle={64}
+          renderItem={({ item, index }) => {
+            const ref = filteredView.rowRefs ? filteredView.rowRefs[index] : null;
+            return (
+              <ReportRow
+                row={item} cols={result.cols} shape={shape} sym={sym} index={index}
+                open={openRow === index} onToggle={toggleRow}
+                strong={cellText(item[1]) === 'Opening Balance'}
+                action={actionFor(ref)} onAction={ref ? () => openRef(ref) : undefined}
+              />
+            );
+          }}
+        />
+      ) : (
+        <ScrollView contentContainerStyle={{ paddingBottom: 18 }} showsVerticalScrollIndicator={false} refreshControl={pull}>
+          {metaLine}
+          {/* balance sheet, general ledger and profit & loss, detailed: grouped lines that open in place */}
+          {richDetail && book ? (
+            <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+              <DetailedStatement kind={id as DetailedKind} db={book} from={span.from} to={span.to} focus={(route.params as any)?.focus}
+                onOpenLedger={(acc) => go('ReportDetail', { id: 'general-ledger', detailed: true, focus: acc } as any)} />
             </View>
+          ) : (
+            <Statement result={result} refs={result.rowRefs} onOpen={openRef} sym={sym} />
+          )}
+        </ScrollView>
+      )}
 
-            {result.note ? (
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, lineHeight: 17, color: colors.faint, marginTop: 10, paddingHorizontal: 16 }}>
-                {result.note}
-              </Text>
-            ) : null}
-            {view.rowRefs && view.rowRefs.some(Boolean) ? (
-              <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint, marginTop: 6, paddingHorizontal: 16 }}>
-                Rows marked on the left open the transaction.
-              </Text>
-            ) : null}
+      {mainTotal ? (
+        <Pressable onPress={allTotals.length > 2 ? () => setPick('totals') : undefined} accessibilityLabel={(mainTotal as { label: string; value: string }).label + ' ' + (mainTotal as { label: string; value: string }).value}>
+          <TotalBar label={(mainTotal as { label: string; value: string }).label} value={(mainTotal as { label: string; value: string }).value} others={allTotals} />
+        </Pressable>
+      ) : null}
+
+      {/* More: what used to be buttons above the table */}
+      <Sheet visible={pick === 'more'} title="More" onClose={() => setPick(null)}>
+        {rowFilterOptions.length > 1 && asList ? (
+          <MoreRow icon="filter" label="Filter" sub={rowFilterOptions.find((x) => x.v === rowFilter)?.l} onPress={() => { setPick(null); setTimeout(() => setPick('rows'), 250); }} />
+        ) : null}
+        {sortable ? (
+          <MoreRow icon="up" label="Sort by" sub={sort ? result.cols[sort.i].h + (sort.dir === 'asc' ? ', smallest first' : ', largest first') : 'As the report lists them'} onPress={() => { setPick(null); setTimeout(() => setPick('sort'), 250); }} />
+        ) : null}
+        {raw && raw.cols.length > 2 && !richDetail ? (
+          <MoreRow icon="doc" label="Columns" sub={colChoice ? (result.cols.length - 1) + ' of ' + (raw.cols.length - 1) + ' shown' : undefined} onPress={() => { setPick(null); setTimeout(openColumns, 250); }} />
+        ) : null}
+        <MoreRow icon="chart" label="Export to Excel" onPress={() => { setPick(null); setTimeout(() => chooseColumns('excel'), 250); }} />
+        {DETAIL_VIEW[id] && !top ? (
+          <MoreRow icon="doc" label="Detailed" sub="Every ledger under its group, with opening and closing" checked={detailed} onCheck={(v) => { setDetailed(v); setSort(null); }} />
+        ) : null}
+        <MoreRow icon="star" last label={isFav ? 'Remove from favourites' : 'Add to favourites'}
+          onPress={() => { const cur = db.settings.favReports || []; setSetting({ favReports: isFav ? cur.filter((x) => x !== id) : [...cur, id] }); setPick(null); }} />
+      </Sheet>
+
+      {/* every total, when there are more than fit on the bar */}
+      <Sheet visible={pick === 'totals'} title="Totals" subtitle={shortRange(span.from, span.to)} onClose={() => setPick(null)}>
+        {[...(mainTotal ? [mainTotal as { label: string; value: string }] : []), ...allTotals].map((x, i, arr) => (
+          <View key={x.label + i} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: pal.row }}>
+            <Text style={{ flex: 1, fontFamily: fonts.ui, fontSize: 14, color: pal.muted }}>{x.label}</Text>
+            <Text style={{ fontFamily: i === 0 ? fonts.uiBold : fonts.ui, fontSize: 14, color: pal.text, fontVariant: ['tabular-nums'] }}>{x.value}</Text>
           </View>
-        )}
-      </ScrollView>
+        ))}
+      </Sheet>
 
       {/* the dropdowns' choices */}
       <Sheet
-        visible={!!pick}
-        title={pick === 'view' ? 'Show' : 'Rows'}
-        icon={pick === 'rows' ? 'filter' : 'doc'}
+        visible={pick === 'rows' || pick === 'sort'}
+        title={pick === 'sort' ? 'Sort by' : 'Filter'}
+        icon={pick === 'sort' ? 'up' : 'filter'}
         onClose={() => setPick(null)}
       >
-        {(pick === 'view' ? (group?.views || []).map((v) => ({ v: v.id, l: v.label }))
+        {(pick === 'sort'
+          ? [{ v: '-1', l: 'As the report lists them' }, ...result.cols.map((c, i) => ({ v: String(i), l: c.h }))]
           : rowFilterOptions
         ).map((o) => {
-          const on = pick === 'view' ? o.v === id : o.v === rowFilter;
+          const on = pick === 'sort' ? (sort ? String(sort.i) === o.v : o.v === '-1') : o.v === rowFilter;
           return (
             <Pressable
               key={o.v}
               onPress={() => {
-                const which = pick;
-                setPick(null);
-                if (which === 'view') { if (o.v !== id) { setSort(null); setSearch(''); nav.setParams({ id: o.v }); } }
-                else setRowFilter(o.v as typeof rowFilter);
+                if (pick === 'sort') {
+                  /* a second tap on the column in use turns it the other way round */
+                  if (o.v === '-1') { setSort(null); setPick(null); } else if (on) tapHeader(Number(o.v)); else { tapHeader(Number(o.v)); setPick(null); }
+                } else { setPick(null); setRowFilter(o.v as typeof rowFilter); }
               }}
-              style={{ flexDirection: 'row', alignItems: 'center', minHeight: 50, borderBottomWidth: 1, borderBottomColor: colors.line }}
+              style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, borderBottomWidth: 1, borderBottomColor: pal.row }}
             >
-              <Text style={{ flex: 1, fontFamily: on ? fonts.uiBold : fonts.ui, fontSize: 14, color: on ? colors.accent : colors.ink }}>{o.l}</Text>
-              {on ? <Icon name="check" size={17} color={colors.accent} /> : null}
+              <Text style={{ flex: 1, fontFamily: on ? fonts.uiSemi : fonts.ui, fontSize: 15, color: pal.text }}>{o.l}</Text>
+              {on && pick === 'sort' && sort ? <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: pal.muted, marginRight: 8 }}>{sort.dir === 'asc' ? 'smallest first' : 'largest first'}</Text> : null}
+              {on ? <Icon name="check" size={17} color={pal.primary} /> : null}
             </Pressable>
           );
         })}
@@ -847,96 +897,56 @@ export default function ReportDetailScreen() {
   );
 }
 
-/** A compact button that shows the current choice and opens the list of the others. */
-function DropBtn({ icon, label, onPress }: { icon: 'doc' | 'calendar' | 'filter'; label: string; onPress: () => void }) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 12,
-        borderRadius: 4, borderWidth: 1.2, borderColor: colors.line, backgroundColor: colors.surface, maxWidth: '100%',
-      }}
-    >
-      <Icon name={icon} size={14} color={colors.accent} />
-      <Text numberOfLines={1} style={{ flexShrink: 1, fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{label}</Text>
-      <Icon name="down" size={13} color={colors.faint} />
-    </Pressable>
-  );
-}
-
 /**
- * A financial statement: each section a card, its ledgers as lines that open
- * their postings, a subtotal at the foot of each card, and the bottom line in
- * a card of its own.
+ * A financial statement: each section under its heading, its ledgers as lines
+ * that open their postings, and a bold total with a rule above it at the end
+ * of each. No colour: the bottom line is on the totals bar at the foot.
  */
-function Statement({ result, refs, onOpen }: { result: ReportResult; refs?: (RowRef | null)[]; onOpen: (r: RowRef | null | undefined) => void }) {
-  const { colors } = useTheme();
+function Statement({ result, refs, onOpen, sym }: { result: ReportResult; refs?: (RowRef | null)[]; onOpen: (r: RowRef | null | undefined) => void; sym: string }) {
+  const pal = useReportPalette();
   const kinds = result.rowKinds || [];
   // the amount columns are everything after the label; a section column (the balance sheet's) is skipped
   const labelAt = result.cols.length > 2 && result.cols[0].h === 'Section' ? 1 : 0;
   const amountCols = result.cols.map((c, i) => i).filter((i) => i > labelAt);
-  const sections: { head?: Cell[]; items: { row: Cell[]; kind: string; ref: RowRef | null }[] }[] = [];
-  result.rows.forEach((row, i) => {
-    const kind = kinds[i] || 'line';
-    if (kind === 'head' || !sections.length) sections.push({ head: kind === 'head' ? row : undefined, items: [] });
-    if (kind !== 'head') sections[sections.length - 1].items.push({ row, kind, ref: refs?.[i] || null });
-  });
-  const amount = (c: Cell, strong?: boolean) => (
-    <Text style={{ minWidth: 86, textAlign: 'right', fontFamily: strong ? fonts.monoSemi : fonts.mono, fontSize: strong ? 14 : 13.5, color: strong ? colors.ink : cellTone(c) === 'muted' ? colors.soft : colors.ink }}>
-      {cellText(c)}
-    </Text>
-  );
+  const many = amountCols.length > 1;
   return (
-    <View style={{ gap: 12 }}>
-      {amountCols.length > 1 ? (
-        <View style={{ flexDirection: 'row', paddingHorizontal: 14 }}>
-          <View style={{ flex: 1 }} />
-          {amountCols.map((i) => (
-            <Text key={i} style={{ minWidth: 86, textAlign: 'right', fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.5, color: colors.faint, textTransform: 'uppercase' }}>{result.cols[i].h}</Text>
-          ))}
-        </View>
-      ) : null}
-      {sections.map((sec, si) => (
-        <View key={si} style={{ borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, overflow: 'hidden' }}>
-          {sec.head ? (
-            <Text style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6, fontFamily: fonts.uiBold, fontSize: 11.5, letterSpacing: 0.7, textTransform: 'uppercase', color: colors.accent }}>
-              {cellText(sec.head[labelAt])}
+    <View style={{ backgroundColor: pal.card, borderTopWidth: 1, borderBottomWidth: 1, borderColor: pal.section }}>
+      {result.rows.map((row, i) => {
+        const kind = kinds[i] || 'line';
+        const ref = refs?.[i] || null;
+        if (kind === 'head') {
+          return (
+            <Text key={i} style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6, fontFamily: fonts.uiSemi, fontSize: 12, letterSpacing: 0.7, textTransform: 'uppercase', color: pal.text }}>
+              {cellText(row[labelAt])}
             </Text>
-          ) : null}
-          {sec.items.map((it, ii) => {
-            const sub = it.kind === 'sub' || it.kind === 'total';
-            const body = (
-              <View style={{
-                flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: sub ? 12 : 10,
-                backgroundColor: sub ? colors.accentSoft : undefined,
-                borderTopWidth: ii === 0 && !sec.head ? 0 : 1, borderTopColor: colors.line,
-              }}>
-                <Text numberOfLines={2} style={{ flex: 1, fontFamily: sub ? fonts.uiBold : fonts.ui, fontSize: 14, color: colors.ink }}>
-                  {cellText(it.row[labelAt])}
+          );
+        }
+        const sub = kind === 'sub' || kind === 'total';
+        const vals = amountCols.map((c) => plainCell(row[c] ?? '', true, sym));
+        const zero = !sub && vals.every((v) => v === '—');
+        const ink = zero ? pal.faint : pal.text;
+        const body = (
+          <View style={{ minHeight: 48, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1, borderTopColor: sub ? pal.section : pal.row }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={2} style={{ fontFamily: sub ? fonts.uiBold : fonts.ui, fontSize: 15, lineHeight: 20, color: ink }}>{cellText(row[labelAt])}</Text>
+              {many ? (
+                <Text numberOfLines={2} style={{ fontFamily: fonts.ui, fontSize: 12, color: zero ? pal.faint : pal.muted, marginTop: 2, fontVariant: ['tabular-nums'] }}>
+                  {amountCols.slice(0, -1).map((c, k) => result.cols[c].h + ' ' + vals[k]).join(' · ')}
                 </Text>
-                {amountCols.map((i) => <React.Fragment key={i}>{amount(it.row[i] ?? '', sub)}</React.Fragment>)}
-                {it.ref ? <Icon name="chev" size={13} color={colors.faint} /> : <View style={{ width: 13 }} />}
-              </View>
-            );
-            return it.ref
-              ? <Pressable key={ii} onPress={() => onOpen(it.ref)} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>{body}</Pressable>
-              : <View key={ii}>{body}</View>;
-          })}
-        </View>
-      ))}
-      {result.foot ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 16, borderRadius: 4, backgroundColor: colors.accent }}>
-          <Text style={{ flex: 1, fontFamily: fonts.uiExtra, fontSize: 15, color: colors.accentInk }}>
-            {cellText(result.foot[0])}{labelAt && cellText(result.foot[labelAt]) ? ' · ' + cellText(result.foot[labelAt]) : ''}
-          </Text>
-          {amountCols.map((i) => (
-            <Text key={i} style={{ minWidth: 86, textAlign: 'right', fontFamily: fonts.monoSemi, fontSize: 15, color: colors.accentInk }}>{cellText(result.foot![i] ?? '')}</Text>
-          ))}
-          <View style={{ width: 13 }} />
-        </View>
-      ) : null}
-      {result.note ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{result.note}</Text> : null}
+              ) : null}
+            </View>
+            <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
+              <Text numberOfLines={1} style={{ fontFamily: sub ? fonts.uiBold : fonts.uiSemi, fontSize: 15, color: ink, fontVariant: ['tabular-nums'] }}>{vals[vals.length - 1]}</Text>
+              {many ? <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: pal.faint, marginTop: 1 }}>{result.cols[amountCols[amountCols.length - 1]].h}</Text> : null}
+            </View>
+            {ref ? <Icon name="chev" size={14} color={pal.faint} /> : <View style={{ width: 14 }} />}
+          </View>
+        );
+        return ref
+          ? <Pressable key={i} onPress={() => onOpen(ref)} style={({ pressed }) => ({ backgroundColor: pressed ? pal.open : pal.card })}>{body}</Pressable>
+          : <View key={i}>{body}</View>;
+      })}
+      {result.note ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: pal.faint, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: pal.row }}>{result.note}</Text> : null}
     </View>
   );
 }

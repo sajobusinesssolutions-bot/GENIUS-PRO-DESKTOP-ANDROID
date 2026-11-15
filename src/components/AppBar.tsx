@@ -82,9 +82,11 @@ export type AppBarProps = {
    * given is then a fallback for books not yet loaded.
    */
   brand?: boolean;
+  /** One line under the title saying what the screen is (a report's description); cut off when too long. */
+  subtitle?: string;
 };
 
-export function AppBar({ title, onBack, right, statusStrip = false, brand }: AppBarProps) {
+export function AppBar({ title, onBack, right, statusStrip = false, brand, subtitle }: AppBarProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const firm = useAppDataSafe()?.db?.firm;
@@ -98,12 +100,19 @@ export function AppBar({ title, onBack, right, statusStrip = false, brand }: App
         flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60,
       }}>
         {onBack ? <IconBtn name="back" size={23} onPress={onBack} /> : null}
-        <Text
-          numberOfLines={1}
-          style={{ flex: 1, minWidth: 0, fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, letterSpacing: -0.4 }}
-        >
-          {name}
-        </Text>
+        {subtitle ? (
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 17, color: colors.ink }}>{name}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint, marginTop: 1 }}>{subtitle}</Text>
+          </View>
+        ) : (
+          <Text
+            numberOfLines={1}
+            style={{ flex: 1, minWidth: 0, fontFamily: fonts.uiExtra, fontSize: 18, color: colors.ink, letterSpacing: -0.4 }}
+          >
+            {name}
+          </Text>
+        )}
         {right}
       </View>
     </View>
@@ -131,7 +140,9 @@ export function Foot({ children }: { children: React.ReactNode }) {
 export function NavHeader({ navigation, options, back, route }: NativeStackHeaderProps) {
   const title = options.title ?? route.name;
   const right = options.headerRight ? options.headerRight({ canGoBack: !!back, tintColor: undefined }) : null;
-  return <AppBar title={String(title)} onBack={back ? () => { if (!backToTab()) navigation.goBack(); } : null} right={right} />;
+  /* a screen may give a line for under its title: navigation.setOptions({ subtitle }) */
+  const subtitle = (options as { subtitle?: string }).subtitle;
+  return <AppBar title={String(title)} subtitle={subtitle} onBack={back ? () => { if (!backToTab()) navigation.goBack(); } : null} right={right} />;
 }
 
 export default AppBar;
