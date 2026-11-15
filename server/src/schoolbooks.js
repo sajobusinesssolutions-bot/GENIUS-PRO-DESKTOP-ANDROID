@@ -30,7 +30,7 @@ const fail = (reply, status, error, message) => reply.code(status).send({ error,
 
 async function ensureTables() {
   await q(`create table if not exists school_licences (
-    id bigserial primary key, account_id uuid not null, plan text not null default 'standard', schools int not null default 1,
+    id bigserial primary key, account_id uuid not null, plan text not null default 'premium', schools int not null default 1,
     status text not null default 'active', started_at timestamptz not null default now(), expires_at timestamptz,
     issued_by text, note text)`);
   await q('create index if not exists school_licences_account on school_licences(account_id)');
@@ -56,6 +56,27 @@ async function licenceOf(accountId) {
 }
 
 const meta = (b) => ({ id: b.id, name: b.name, version: b.version, size: b.size, hash: b.hash, updated_at: b.updated_at, updated_from: b.updated_from });
+
+const ADMIN_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>School Manager licences</title>
+<style>body{font:14px/1.5 Roboto,'Segoe UI',system-ui,sans-serif;background:#f1f3f6;color:#111;margin:0;padding:24px}main{max-width:980px;margin:0 auto}h1{font-weight:500;font-size:22px}
+.card{background:#fff;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.16);padding:16px 18px;margin-bottom:14px}input,select{font:inherit;padding:8px 10px;border:1px solid #d5d9e0;border-radius:4px;min-height:38px}
+button{font:inherit;font-weight:500;padding:8px 14px;border-radius:4px;border:1px solid #0e6655;background:#0e6655;color:#fff;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.18)}button.g{background:#fff;color:#b42318;border-color:#efc9c5;box-shadow:none}
+table{width:100%;border-collapse:collapse}th{font-size:11.5px;text-transform:uppercase;color:#6b7280;text-align:left;padding:8px;border-bottom:1px solid #e3e6ec}td{padding:8px;border-bottom:1px solid #eef0f4}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}#msg{color:#b42318}</style></head>
+<body><main><h1>School Manager licences</h1><div id="msg"></div>
+<div class="card" id="in"><div class="row"><input id="e" placeholder="Developer email"><input id="p" type="password" placeholder="Password"><button onclick="login()">Sign in</button></div></div>
+<div id="app" style="display:none"><div class="card"><b>Grant a licence</b><div class="row" style="margin-top:8px"><input id="ge" placeholder="School's account email" style="flex:1">
+<select id="gp"><option value="basic">Basic: students and fees</option><option value="standard">Standard: + academics, SMS, school life</option><option value="premium" selected>Premium: everything</option></select>
+<select id="gd"><option value="30">30 days</option><option value="120">One term (120 days)</option><option value="365" selected>One year</option><option value="lifetime">Lifetime</option></select>
+<input id="gs" type="number" value="1" min="1" style="width:80px" title="Schools"><input id="gn" placeholder="Note (receipt, amount)"><button onclick="grant()">Grant</button></div></div>
+<div class="card"><table><thead><tr><th>Account</th><th>Plan</th><th>Schools</th><th>Status</th><th>Until</th><th>By</th><th></th></tr></thead><tbody id="list"></tbody></table></div></div>
+<script>let t=sessionStorage.getItem('smadm')||'';const $=(i)=>document.getElementById(i);const say=(m)=>msg.textContent=m||'';
+async function api(m,u,b){const r=await fetch(u,{method:m,headers:{'content-type':'application/json',authorization:'Bearer '+t},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message||('Error '+r.status));return j}
+async function login(){try{const r=await fetch('/v1/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:e.value,password:p.value})});const j=await r.json();if(!r.ok)throw new Error(j.message||'Wrong email or password');t=j.access;sessionStorage.setItem('smadm',t);load()}catch(e){say(e.message)}}
+async function load(){try{const l=await api('GET','/v1/admin/school/licences');in.style.display='none';app.style.display='';say('');
+list.innerHTML=l.map(x=>'<tr><td>'+x.email+'</td><td>'+x.plan+'</td><td>'+x.schools+'</td><td>'+x.status+'</td><td>'+(x.expires_at?String(x.expires_at).slice(0,10):'lifetime')+'</td><td>'+(x.issued_by||'')+'</td><td>'+(x.status==='active'?'<button class=g onclick=revoke('+x.id+')>Revoke</button>':'')+'</td></tr>').join('')}catch(e){say(e.message)}}
+async function grant(){try{await api('POST','/v1/admin/school/licences',{email:ge.value,plan:gp.value,days:gd.value==='lifetime'?null:Number(gd.value),schools:Number(gs.value),note:gn.value});ge.value='';load()}catch(e){say(e.message)}}
+async function revoke(id){if(!confirm('Revoke this licence?'))return;try{await api('POST','/v1/admin/school/licences/'+id+'/revoke');load()}catch(e){say(e.message)}}
+if(t)load();</script></main></body></html>`;
 
 export default async function schoolBookRoutes(app) {
   await ensureTables();
@@ -133,7 +154,7 @@ export default async function schoolBookRoutes(app) {
     if (!acc) return fail(reply, 404, 'notFound', 'No account with that email.');
     const days = req.body?.days === null || req.body?.days === 'lifetime' ? null : Math.max(1, Math.min(3660, Number(req.body?.days) || 365));
     const schools = Math.max(1, Math.min(50, Number(req.body?.schools) || 1));
-    const plan = String(req.body?.plan || 'standard').slice(0, 40);
+    const plan = ['basic', 'standard', 'premium'].includes(req.body?.plan) ? req.body.plan : 'premium';
     const r = await q(`insert into school_licences (account_id, plan, schools, expires_at, issued_by, note)
       values ($1, $2, $3, case when $4::int is null then null else now() + ($4::int || ' days')::interval end, $5, $6) returning *`,
     [acc.id, plan, schools, days, dev.email, String(req.body?.note || '').slice(0, 300) || null]);
@@ -144,6 +165,9 @@ export default async function schoolBookRoutes(app) {
     await q(`update school_licences set status = 'revoked' where id = $1`, [Number(req.params.id)]);
     return { ok: true };
   });
+
+  /* The developer's page for School Manager licences: sign in with a developer account, grant, revoke. */
+  app.get('/v1/admin/school', async (req, reply) => reply.header('content-type', 'text/html; charset=utf-8').header('cache-control', 'no-store').send(ADMIN_PAGE));
 
   /* ── updates: latest.yml and the installer, as electron-updater's generic provider asks ── */
   app.get('/v1/school-desktop/:file', {
