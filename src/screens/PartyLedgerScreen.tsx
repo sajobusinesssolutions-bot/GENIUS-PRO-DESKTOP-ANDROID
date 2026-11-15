@@ -6,20 +6,24 @@
  * Debit is what increases what they owe you (a sale, money paid out to them);
  * credit is what reduces it (money received, a purchase from them). A positive
  * balance means they owe you, the same sign partyBalance uses.
+ *
+ * Laid out as the other reports are: search and Period under the bar, each
+ * entry a row (what it was, its date and number, the balance after it) that
+ * opens to its debit, credit and the items on the bill, and the closing
+ * balance on the bar at the foot.
  */
-import { tsMs, groupNum } from '../data/helpers';
+import { tsMs } from '../data/helpers';
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, Alert } from 'react-native';
+import { View, FlatList, Alert } from 'react-native';
 import * as Sharing from 'expo-sharing';
-import { Pressable } from '../components/Press';
-import { Icon } from '../components/icons';
+import { IconBtn } from '../components/AppBar';
 import { printPdfToCache } from '../data/docPrint';
-import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { useBookFrom } from '../data/useBookFrom';
 import { broughtForward } from '../data/reports';
-import { Empty } from '../components/ui';
-import { PeriodBar, listPeriod, ListPeriod } from '../components/DocList';
+import { listPeriod, ListPeriod } from '../components/DocList';
+import { ControlRow, SearchBox, PeriodPill, MetaLine, FactRow, TotalBar, NothingHere, amt, amtDrCr, useReportPalette } from '../components/ReportList';
+import { shortRange } from '../data/reportShape';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
@@ -30,8 +34,10 @@ interface Entry { ts: string; memo: string; ref: string; debit: number; credit: 
 interface Line extends Entry { balance: number }
 
 export default function PartyLedgerScreen({ route, navigation }: Props) {
-  const { colors } = useTheme();
+  const pal = useReportPalette();
   const { db, money, party } = useAppData();
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState<number | null>(null);
   const pt = party(route.params.partyId);
   const [period, setPeriod] = useState<ListPeriod>(() => listPeriod('month'));
   /* the period's entries read from disk when it starts before what is in memory */
@@ -41,13 +47,10 @@ export default function PartyLedgerScreen({ route, navigation }: Props) {
   useEffect(() => {
     if (!pt) return;
     navigation.setOptions({
-      title: pt.name + ' · Ledger',
-      headerRight: () => (
-        <Pressable onPress={() => askShare()} hitSlop={10} accessibilityLabel="Share the statement" style={{ padding: 6 }}>
-          <Icon name="share" size={20} color={colors.ink} />
-        </Pressable>
-      ),
-    });
+      title: pt.name,
+      subtitle: 'Ledger · every sale, purchase and payment',
+      headerRight: () => <IconBtn name="share" size={22} color={pal.primary} onPress={() => askShare()} />,
+    } as any);
   });   // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Every entry for the party, oldest first. */
@@ -160,79 +163,55 @@ export default function PartyLedgerScreen({ route, navigation }: Props) {
   if (!db || !pt) return null;
 
   const word = (b: number) => (b > 0.01 ? 'Owes you' : b < -0.01 ? (pt.type === 'supplier' ? 'You owe' : 'In credit') : 'Settled');
-  /* figures in the table without the currency, so the columns read cleanly */
-  const fig = (n: number) => groupNum(Math.abs(n), db.settings.decimals === 2 ? 2 : 0, true);
-  const bal = (b: number) => fig(b) + (b > 0.01 ? ' Dr' : b < -0.01 ? ' Cr' : '');
   const day = (ts: string) => new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
-  const head = { fontFamily: fonts.uiBold, fontSize: 11, letterSpacing: 0.5, color: colors.faint } as const;
-  const num = { width: 78, textAlign: 'right' as const, fontFamily: fonts.monoSemi, fontSize: 12.5 };
-
-  const boxRow = (label: string, b: number, strong?: boolean) => (
-    <View style={{
-      flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
-      backgroundColor: strong ? colors.accentSoft : colors.sunk,
-    }}>
-      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13, color: strong ? colors.accent : colors.ink }}>{label}</Text>
-      <Text style={{ fontFamily: fonts.uiExtra, fontSize: 14, color: b > 0.01 ? colors.danger : b < -0.01 ? colors.good : colors.ink }}>{bal(b)}</Text>
-    </View>
-  );
+  const needle = q.trim().toLowerCase();
+  const lines = view.lines.map((l, i) => ({ l, i })).filter(({ l }) => !needle || (l.memo + ' ' + l.ref + ' ' + day(l.ts)).toLowerCase().includes(needle));
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <PeriodBar value={period} onChange={setPeriod} />
+    <View style={{ flex: 1, backgroundColor: pal.bg }}>
+      <ControlRow>
+        <SearchBox value={q} onChange={(v) => { setQ(v); setOpen(null); }} placeholder="Search this ledger" />
+        <PeriodPill value={period} onChange={(p) => { setPeriod(p); setOpen(null); }} />
+      </ControlRow>
       <FlatList
-        data={view.lines}
-        keyExtractor={(_, i) => String(i)}
-        contentContainerStyle={{ paddingBottom: 24, flexGrow: 1 }}
+        data={lines}
+        keyExtractor={(x) => String(x.i)}
+        extraData={open}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={14}
+        windowSize={9}
         ListHeaderComponent={
           <View>
-            {/* the period at a glance */}
-            <View style={{ flexDirection: 'row', marginHorizontal: 16, marginBottom: 12, borderRadius: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
-              {[
-                { l: 'Opening', v: view.opening },
-                { l: 'Closing', v: view.closing },
-              ].map((x, i) => (
-                <View key={x.l} style={{ flex: 1, padding: 14, borderLeftWidth: i ? 1 : 0, borderLeftColor: colors.line }}>
-                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.faint }}>{x.l} balance</Text>
-                  <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: fonts.uiExtra, fontSize: 18, color: x.v > 0.01 ? colors.danger : x.v < -0.01 ? colors.good : colors.ink, marginTop: 4 }}>{money(Math.abs(x.v))}</Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{word(x.v)}</Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.surface, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line }}>
-              <Text style={[head, { flex: 1 }]}>DATE · DETAILS</Text>
-              <Text style={[head, { width: 78, textAlign: 'right' }]}>DEBIT</Text>
-              <Text style={[head, { width: 78, textAlign: 'right' }]}>CREDIT</Text>
-              <Text style={[head, { width: 86, textAlign: 'right' }]}>BALANCE</Text>
-            </View>
-            {boxRow('Opening balance · ' + new Date(period.from || entries[0]?.ts || Date.now()).toLocaleDateString('en-GB'), view.opening)}
+            <MetaLine left={lines.length + ' entr' + (lines.length === 1 ? 'y' : 'ies') + (needle ? ' of ' + view.lines.length : '') + (reading ? ' · reading older records…' : '')} right={shortRange(period.from, period.to)} />
+            {needle ? null : <FactRow strong title="Opening balance" sub={period.from > 0 ? new Date(period.from).toLocaleDateString('en-GB') : 'From the start'} value={amtDrCr(view.opening)} valueLabel={word(view.opening)} zero={Math.abs(view.opening) < 0.005} />}
           </View>
         }
-        ListEmptyComponent={<Empty title="Nothing in this period" subtitle="Choose another period above." />}
-        renderItem={({ item }) => (
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: colors.bg }}>
-            <View style={{ flex: 1, minWidth: 0, paddingRight: 6 }}>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.ink }}>{item.memo}</Text>
-              <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11.5, color: colors.faint, marginTop: 2 }}>{day(item.ts)}{item.ref ? ' · ' + item.ref : ''}</Text>
-            </View>
-            <Text style={[num, { color: item.debit ? colors.danger : colors.faint }]}>{item.debit ? fig(item.debit) : '—'}</Text>
-            <Text style={[num, { color: item.credit ? colors.good : colors.faint }]}>{item.credit ? fig(item.credit) : '—'}</Text>
-            <Text style={[num, { width: 86, fontFamily: fonts.monoSemi, color: colors.ink }]}>{bal(item.balance)}</Text>
-          </View>
+        ListFooterComponent={<View style={{ height: 16 }} />}
+        ListEmptyComponent={needle
+          ? <NothingHere text={'No results for \u201C' + q + '\u201D'} clear="Clear search" onClear={() => setQ('')} />
+          : <NothingHere text="Nothing in this period. Choose another period above." />}
+        renderItem={({ item: { l, i } }) => (
+          <FactRow
+            title={l.memo}
+            sub={day(l.ts) + (l.ref ? ' · ' + l.ref : '') + ' · ' + (l.debit ? 'Dr ' + amt(l.debit) : 'Cr ' + amt(l.credit))}
+            value={amtDrCr(l.balance)} valueLabel="Balance"
+            open={open === i} onToggle={() => setOpen((o) => (o === i ? null : i))}
+            lines={[
+              { label: 'Date', value: new Date(l.ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) },
+              ...(l.ref ? [{ label: 'Reference', value: l.ref }] : []),
+              { label: 'Debit', value: amt(l.debit) },
+              { label: 'Credit', value: amt(l.credit) },
+              ...(l.items || []).map((it) => ({ label: it.name, value: it.qty + (it.unit ? ' ' + it.unit : '') + ' × ' + amt(it.price) + ' = ' + amt(it.qty * it.price) })),
+              { label: 'Balance after', value: amtDrCr(l.balance), bold: true },
+            ]}
+          />
         )}
-        ListFooterComponent={
-          <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 11, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.line }}>
-              <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 13, color: colors.ink }}>Totals for the period</Text>
-              <Text style={[num, { color: colors.danger }]}>{fig(view.dr)}</Text>
-              <Text style={[num, { color: colors.good }]}>{fig(view.cr)}</Text>
-              <View style={{ width: 86 }} />
-            </View>
-            {boxRow('Closing balance · ' + new Date(Math.min(period.to, Date.now())).toLocaleDateString('en-GB'), view.closing, true)}
-          </View>
-        }
       />
+      <TotalBar label={'Closing balance · ' + word(view.closing)} value={amtDrCr(view.closing)} others={[
+        { label: 'Debit', value: amt(view.dr) },
+        { label: 'Credit', value: amt(view.cr) },
+      ]} />
     </View>
   );
 }

@@ -6,7 +6,8 @@
  * in front of an amount.
  */
 import React, { memo, useState } from 'react';
-import { View, Text, ScrollView, Platform, Switch } from 'react-native';
+import { View, Text, ScrollView, Platform, Switch, TextInput } from 'react-native';
+import { groupNum } from '../data/helpers';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pressable } from './Press';
@@ -230,6 +231,145 @@ export function TotalBar({ label, value, others }: { label: string; value: strin
         <Text numberOfLines={1} style={[{ fontFamily: fonts.ui, fontSize: 12, color: p.muted, marginTop: 3 }, NUM]}>
           {rest.map((x) => x.label + ' ' + x.value).join('  ·  ')}
         </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/* ── the same row, for reports that are not a table of cells ───────────── */
+
+/** 12,500.00, or a dash for nothing: an amount the way every report writes it. */
+export const amt = (n: number) => (Math.abs(Number(n) || 0) < 0.005 ? '—' : groupNum(n, 2));
+/** A balance with its side: 12,500.00 Dr, 800.00 Cr, or a dash. */
+export const amtDrCr = (n: number) => (Math.abs(Number(n) || 0) < 0.005 ? '—' : groupNum(Math.abs(n), 2) + (n > 0 ? ' Dr' : ' Cr'));
+
+export interface FactLine { label: string; value: string; bold?: boolean }
+
+/**
+ * A report row given its parts: a title, a line of context, the figure, and,
+ * when tapped, its lines (or anything else) in a white card on yellow.
+ */
+export function FactRow({ title, sub, value, valueLabel, open, onToggle, lines, children, action, onAction, zero, strong }: {
+  title: string; sub?: string; value?: string; valueLabel?: string;
+  open?: boolean; onToggle?: () => void;
+  lines?: FactLine[]; children?: React.ReactNode;
+  action?: string; onAction?: () => void;
+  zero?: boolean; strong?: boolean;
+}) {
+  const p = useReportPalette();
+  const ink = zero ? p.faint : p.text;
+  const head = (
+    <View style={{ minHeight: 48, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={2} style={{ fontFamily: strong ? fonts.uiBold : fonts.uiSemi, fontSize: 15, lineHeight: 20, color: ink }}>{title}</Text>
+        {sub ? <Text numberOfLines={2} style={[{ fontFamily: fonts.ui, fontSize: 12, lineHeight: 16, color: zero ? p.faint : p.muted, marginTop: 2 }, NUM]}>{sub}</Text> : null}
+      </View>
+      {value !== undefined ? (
+        <View style={{ alignItems: 'flex-end', flexShrink: 0, maxWidth: '50%' }}>
+          <Text numberOfLines={1} style={[{ fontFamily: strong ? fonts.uiBold : fonts.uiSemi, fontSize: 15, color: ink }, NUM]}>{value}</Text>
+          {valueLabel ? <Text numberOfLines={1} style={{ fontFamily: fonts.ui, fontSize: 11, color: p.faint, marginTop: 1 }}>{valueLabel}</Text> : null}
+        </View>
+      ) : null}
+      {onToggle ? (
+        <View style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}><Icon name="chev" size={14} color={p.faint} /></View>
+      ) : <View style={{ width: 14 }} />}
+    </View>
+  );
+  return (
+    <View style={{ backgroundColor: open ? p.open : p.card, borderBottomWidth: 1, borderBottomColor: p.row }}>
+      {onToggle ? <Pressable onPress={onToggle} accessibilityRole="button" accessibilityState={{ expanded: !!open }}>{head}</Pressable> : head}
+      {open && ((lines && lines.length) || children || action) ? (
+        <View style={{ marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: p.openLine, backgroundColor: p.card }}>
+          {(lines || []).map((l, i) => (
+            <View key={l.label + i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 5 }}>
+              <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: p.muted, flexShrink: 0, maxWidth: '55%' }}>{l.label}</Text>
+              <Text style={[{ flex: 1, textAlign: 'right', fontFamily: l.bold ? fonts.uiBold : fonts.ui, fontSize: 14, color: p.text }, NUM]}>{l.value}</Text>
+            </View>
+          ))}
+          {children}
+          {action && onAction ? (
+            <Pressable onPress={onAction} accessibilityRole="button"
+              style={{ marginTop: 10, height: 44, borderRadius: 8, borderWidth: 1, borderColor: p.section, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card }}>
+              <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: p.text }}>{action}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** ASSETS, LIABILITIES: a group's heading. No colour. */
+export function GroupHead({ label, right }: { label: string; right?: string }) {
+  const p = useReportPalette();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6, backgroundColor: p.card, borderBottomWidth: 1, borderBottomColor: p.row }}>
+      <Text style={{ flex: 1, fontFamily: fonts.uiSemi, fontSize: 12, letterSpacing: 0.7, textTransform: 'uppercase', color: p.text }}>{label}</Text>
+      {right ? <Text style={[{ fontFamily: fonts.ui, fontSize: 12, color: p.muted }, NUM]}>{right}</Text> : null}
+    </View>
+  );
+}
+
+/** "Total assets": the bold line, with a rule above it, that ends a group. */
+export function GroupTotal({ label, value, note }: { label: string; value: string; note?: string }) {
+  const p = useReportPalette();
+  return (
+    <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: p.card, borderTopWidth: 1, borderTopColor: p.section, borderBottomWidth: 1, borderBottomColor: p.row }}>
+      <Text style={{ flex: 1, fontFamily: fonts.uiBold, fontSize: 15, color: p.text }}>{label}</Text>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={[{ fontFamily: fonts.uiBold, fontSize: 15, color: p.text }, NUM]}>{value}</Text>
+        {note ? <Text style={{ fontFamily: fonts.ui, fontSize: 11, color: p.faint, marginTop: 1 }}>{note}</Text> : null}
+      </View>
+      <View style={{ width: 14 }} />
+    </View>
+  );
+}
+
+/** The rounded search field. */
+export function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  const p = useReportPalette();
+  return (
+    <View style={{ flex: 1, height: 40, borderRadius: 20, backgroundColor: p.chip, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14 }}>
+      <Icon name="search" size={16} color={p.muted} />
+      <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={p.faint} autoCorrect={false} autoCapitalize="none" returnKeyType="search"
+        accessibilityLabel={placeholder} style={{ flex: 1, padding: 0, fontFamily: fonts.ui, fontSize: 15, color: p.text }} />
+      {value ? <Pressable onPress={() => onChange('')} hitSlop={12} accessibilityLabel="Clear search"><Icon name="x" size={16} color={p.muted} /></Pressable> : null}
+    </View>
+  );
+}
+
+/** The white strip under the bar that holds the tabs or search, and Period. */
+export function ControlRow({ children, below }: { children: React.ReactNode; below?: React.ReactNode }) {
+  const p = useReportPalette();
+  return (
+    <View style={{ backgroundColor: p.card, borderBottomWidth: 1, borderBottomColor: p.section }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 16, paddingRight: 12, paddingVertical: 8, minHeight: 52 }}>{children}</View>
+      {below ? <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 8 }}>{below}</View> : null}
+    </View>
+  );
+}
+
+/** "14 customers" on the left, the dates on the right. */
+export function MetaLine({ left, right }: { left: string; right?: string }) {
+  const p = useReportPalette();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8 }}>
+      <Text style={[{ flex: 1, fontFamily: fonts.ui, fontSize: 12.5, color: p.muted }, NUM]}>{left}</Text>
+      {right ? <Text style={[{ fontFamily: fonts.ui, fontSize: 12.5, color: p.muted }, NUM]}>{right}</Text> : null}
+    </View>
+  );
+}
+
+/** One line of muted text and, when a search found nothing, a way out of it. */
+export function NothingHere({ text, clear, onClear }: { text: string; clear?: string; onClear?: () => void }) {
+  const p = useReportPalette();
+  return (
+    <View style={{ alignItems: 'center', paddingHorizontal: 24, paddingVertical: 36, gap: 14 }}>
+      <Text style={{ fontFamily: fonts.ui, fontSize: 14, color: p.muted, textAlign: 'center' }}>{text}</Text>
+      {clear && onClear ? (
+        <Pressable onPress={onClear} accessibilityRole="button" style={{ height: 44, paddingHorizontal: 18, borderRadius: 8, borderWidth: 1, borderColor: p.section, backgroundColor: p.card, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 14, color: p.text }}>{clear}</Text>
+        </Pressable>
       ) : null}
     </View>
   );

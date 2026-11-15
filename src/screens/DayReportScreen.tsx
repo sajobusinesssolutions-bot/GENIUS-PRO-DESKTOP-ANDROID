@@ -1,23 +1,27 @@
 /**
  * THE DAY ON ONE SCREEN. Sales by how they were paid, money in on debts,
- * what went out, the cash the drawer should hold, profit, what is owed both
- * ways, and what needs watching — for any day, with a button to send it on
- * WhatsApp. The text sent is the owner's day summary (daySummary.ts).
+ * what went out, the cash the drawer should hold, profit and what is owed both
+ * ways — for any day, with a button to send it on WhatsApp. The text sent is
+ * the owner's day summary (daySummary.ts).
+ *
+ * Laid out as the other reports are: the day chosen on the strip under the
+ * bar, the figures in plain groups, and the day's sales on the bar at the foot.
  */
-import React, { useMemo, useState } from 'react';
-import { View, Text } from 'react-native';
-import ScrollView from '../components/KeyScroll';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Pressable } from '../components/Press';
-import { useTheme, fonts } from '../theme';
+import { fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
 import { Icon } from '../components/icons';
-import { Button } from '../components/ui';
-import { Panel, DetailRow, SectionLabel } from '../components/kit';
+import { IconBtn } from '../components/AppBar';
 import { daySummary } from '../data/daySummary';
 import { sendVia } from '../data/messages';
+import { ControlRow, GroupHead, FactRow, TotalBar, amt, useReportPalette } from '../components/ReportList';
 
 export default function DayReportScreen() {
-  const { colors } = useTheme();
+  const pal = useReportPalette();
+  const nav = useNavigation<any>();
   const { db, money, accountBalance } = useAppData();
   const [day, setDay] = useState(() => { const t = new Date(); t.setHours(0, 0, 0, 0); return t; });
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -50,66 +54,68 @@ export default function DayReportScreen() {
     };
   }, [db, day]);
 
+  const send = () => {
+    if (!db) return;
+    const end = new Date(day); end.setHours(23, 59, 59, 999);
+    void sendVia('whatsapp', { text: daySummary(db, money, isToday ? new Date() : end), phone: db.settings.ownerSummary?.whatsapp || db.firm?.phone });
+  };
+  /* the bar: what the screen is, and Send (the day on WhatsApp) where Export sits on the other reports */
+  useEffect(() => {
+    nav.setOptions({
+      subtitle: 'Sales, money in and out, and the cash drawer',
+      headerRight: () => <IconBtn name="share" size={22} color={pal.primary} onPress={send} />,
+    });
+  });   // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!db || !f) return null;
   const owedToYou = db.parties.filter((p) => p.type === 'customer').length ? db.sales.reduce((n, s) => n + (s.status !== 'void' ? s.due : 0), 0) : 0;
   const youOwe = db.purchases.reduce((n, x) => n + (x.status !== 'void' ? x.due : 0), 0);
   const step = (n: number) => { const d = new Date(day); d.setDate(d.getDate() + n); if (d.getTime() <= today.getTime()) setDay(d); };
-  const send = () => {
-    const end = new Date(day); end.setHours(23, 59, 59, 999);
-    void sendVia('whatsapp', { text: daySummary(db, money, isToday ? new Date() : end), phone: db.settings.ownerSummary?.whatsapp || db.firm?.phone });
-  };
+  const line = (label: string, n: number, strong?: boolean) => <FactRow key={label} title={label} value={amt(n)} zero={Math.abs(n) < 0.005} strong={strong} />;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 110, gap: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Pressable onPress={() => step(-1)} hitSlop={10} accessibilityLabel="Day before"><Icon name="left" size={20} color={colors.ink} /></Pressable>
-          <Text style={{ fontFamily: fonts.uiBold, fontSize: 15, color: colors.ink }}>
-            {isToday ? 'Today' : day.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-          </Text>
-          <Pressable onPress={() => step(1)} hitSlop={10} disabled={isToday} accessibilityLabel="Next day"><Icon name="chev" size={20} color={isToday ? colors.line : colors.ink} /></Pressable>
-        </View>
+    <View style={{ flex: 1, backgroundColor: pal.bg }}>
+      <ControlRow>
+        <Pressable onPress={() => step(-1)} accessibilityLabel="Day before" style={{ width: 44, height: 44, marginLeft: -10, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="left" size={20} color={pal.text} />
+        </Pressable>
+        <Text style={{ flex: 1, textAlign: 'center', fontFamily: fonts.uiSemi, fontSize: 15, color: pal.text }}>
+          {isToday ? 'Today' : day.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+        </Text>
+        <Pressable onPress={() => step(1)} disabled={isToday} accessibilityLabel="Next day" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="chev" size={20} color={isToday ? pal.section : pal.text} />
+        </Pressable>
+      </ControlRow>
 
-        <Panel>
-          <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Sales · {f.bills} bill{f.bills === 1 ? '' : 's'}</Text>
-          <Text style={{ fontFamily: fonts.uiExtra, fontSize: 26, color: colors.ink, marginVertical: 4 }}>{money(f.total)}</Text>
-          <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: f.profit >= 0 ? colors.good : colors.danger }}>Gross profit {money(f.profit)}</Text>
-        </Panel>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+        <GroupHead label="How it was paid" />
+        {line('Cash', f.cash)}
+        {line('Mobile money', f.momo)}
+        {line('Bank', f.bank)}
+        {line('On credit', f.onCredit)}
 
-        <SectionLabel>How it was paid</SectionLabel>
-        <Panel>
-          <DetailRow label="Cash" value={money(f.cash)} />
-          <DetailRow label="Mobile money" value={money(f.momo)} />
-          <DetailRow label="Bank" value={money(f.bank)} />
-          <DetailRow label="On credit" value={money(f.onCredit)} tone={f.onCredit > 0 ? colors.warn : undefined} last />
-        </Panel>
+        <GroupHead label="Other money" />
+        {line('Received on debts', f.received)}
+        {line('Other money in', f.moneyIn)}
+        {line('Expenses', f.expenses)}
+        {line('Paid to suppliers', f.paidSuppliers)}
+        {line('Bought', f.bought)}
 
-        <SectionLabel>Other money</SectionLabel>
-        <Panel>
-          <DetailRow label="Received on debts" value={money(f.received)} tone={colors.good} />
-          <DetailRow label="Other money in" value={money(f.moneyIn)} tone={colors.good} />
-          <DetailRow label="Expenses" value={money(f.expenses)} tone={colors.danger} />
-          <DetailRow label="Paid to suppliers" value={money(f.paidSuppliers)} tone={colors.danger} />
-          <DetailRow label="Bought" value={money(f.bought)} last />
-        </Panel>
+        <GroupHead label="Cash drawer" />
+        {line('Cash in', f.cashIn)}
+        {line('Cash out', f.cashOut)}
+        {line('Net cash for the day', f.cashIn - f.cashOut, true)}
+        {line('Cash held now', accountBalance('acc_cash'), true)}
 
-        <SectionLabel>Cash drawer</SectionLabel>
-        <Panel>
-          <DetailRow label="Cash in" value={money(f.cashIn)} tone={colors.good} />
-          <DetailRow label="Cash out" value={money(f.cashOut)} tone={colors.danger} />
-          <DetailRow label="Net cash for the day" value={money(f.cashIn - f.cashOut)} bold />
-          <DetailRow label="Cash held now" value={money(accountBalance('acc_cash'))} bold last />
-        </Panel>
-
-        <SectionLabel>Owed now</SectionLabel>
-        <Panel>
-          <DetailRow label="Customers owe you" value={money(owedToYou)} tone={colors.warn} />
-          <DetailRow label="You owe suppliers" value={money(youOwe)} tone={colors.danger} last />
-        </Panel>
+        <GroupHead label="Owed now" />
+        {line('Customers owe you', owedToYou)}
+        {line('You owe suppliers', youOwe)}
       </ScrollView>
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 14, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line }}>
-        <Button label="Send on WhatsApp" variant="pri" icon={<Icon name="share" size={16} color={colors.accentInk} />} onPress={send} />
-      </View>
+
+      <TotalBar label={'Sales · ' + f.bills + ' bill' + (f.bills === 1 ? '' : 's')} value={amt(f.total)} others={[
+        { label: 'Gross profit', value: amt(f.profit) },
+        { label: 'Net cash', value: amt(f.cashIn - f.cashOut) },
+      ]} />
     </View>
   );
 }

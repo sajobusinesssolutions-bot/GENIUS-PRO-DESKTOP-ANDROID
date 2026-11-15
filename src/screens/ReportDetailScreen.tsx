@@ -9,7 +9,7 @@
 import { groupNum } from '../data/helpers';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { withItemDetails, hasItemDetails } from '../data/reportItems';
-import DetailedStatement, { DetailedKind } from '../components/DetailedStatement';
+import DetailedStatement, { DetailedKind, detailedTotals } from '../components/DetailedStatement';
 import { View, Text, ActivityIndicator, Alert, FlatList, TextInput, RefreshControl } from 'react-native';
 import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
@@ -139,6 +139,8 @@ export default function ReportDetailScreen() {
   const kept = useRef(new Map<string, { open: number | null; y: number }>());
   const listRef = useRef<FlatList<Cell[]>>(null);
   const [refreshing, setRefreshing] = useState(false);
+  /** Detailed statements: accounts with nothing on them left out. */
+  const [hideZero, setHideZero] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [ask, setAsk] = useState<ExportKind | null>(null);
   const [keep, setKeep] = useState<boolean[]>([]);
@@ -270,11 +272,14 @@ export default function ReportDetailScreen() {
   );
 
   useEffect(() => { setSort(null); }, [id]);
+  /* another view of the report starts at its top; the first one keeps what it was opened with (a balance sheet account opened in the detailed general ledger) */
+  const firstId = useRef(id);
   useEffect(() => {
     setDrillProductId(null);
     setDrillMonthKey(null);
     setDrill([]);
-    setDetailed(false);
+    if (firstId.current !== id) setDetailed(false);
+    firstId.current = '';
   }, [id]);
   useEffect(() => { setSearch(''); setSort(null); }, [top]);
 
@@ -526,6 +531,12 @@ export default function ReportDetailScreen() {
       nums.filter((i) => i !== main).forEach((i) => allTotals.push({ label: result.cols[i].h, value: footText(i) }));
     }
   }
+  if (richDetail && book) {
+    /* a detailed statement's bottom line */
+    const t = detailedTotals(id as DetailedKind, book, span.from, span.to);
+    mainTotal = { label: t.label, value: t.value };
+    allTotals.push(...t.others);
+  }
   if (!richDetail) {
     (result.stats || []).forEach((st) => {
       const v = plainCell(st.v, false, sym);
@@ -675,10 +686,8 @@ export default function ReportDetailScreen() {
           {metaLine}
           {/* balance sheet, general ledger and profit & loss, detailed: grouped lines that open in place */}
           {richDetail && book ? (
-            <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-              <DetailedStatement kind={id as DetailedKind} db={book} from={span.from} to={span.to} focus={(route.params as any)?.focus}
-                onOpenLedger={(acc) => go('ReportDetail', { id: 'general-ledger', detailed: true, focus: acc } as any)} />
-            </View>
+            <DetailedStatement kind={id as DetailedKind} db={book} from={span.from} to={span.to} focus={(route.params as any)?.focus} hideZero={hideZero}
+              onOpenLedger={(acc) => go('ReportDetail', { id: 'general-ledger', detailed: true, focus: acc } as any)} />
           ) : (
             <Statement result={result} refs={result.rowRefs} onOpen={openRef} sym={sym} />
           )}
@@ -705,6 +714,9 @@ export default function ReportDetailScreen() {
         <MoreRow icon="chart" label="Export to Excel" onPress={() => { setPick(null); setTimeout(() => chooseColumns('excel'), 250); }} />
         {DETAIL_VIEW[id] && !top ? (
           <MoreRow icon="doc" label="Detailed" sub="Every ledger under its group, with opening and closing" checked={detailed} onCheck={(v) => { setDetailed(v); setSort(null); }} />
+        ) : null}
+        {richDetail ? (
+          <MoreRow icon="filter" label="Hide zero balances" sub="Leave out accounts with nothing on them" checked={hideZero} onCheck={setHideZero} />
         ) : null}
         <MoreRow icon="star" last label={isFav ? 'Remove from favourites' : 'Add to favourites'}
           onPress={() => { const cur = db.settings.favReports || []; setSetting({ favReports: isFav ? cur.filter((x) => x !== id) : [...cur, id] }); setPick(null); }} />
