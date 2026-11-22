@@ -429,7 +429,8 @@ export default function DataToolsScreen({ navigation }: { navigation?: any } = {
           {(db.archivedFinancialYears?.length || 0) + ' year' + ((db.archivedFinancialYears?.length || 0) === 1 ? '' : 's') + ' archived · '}
           {counts.map(([l, n]) => n + ' ' + l.toLowerCase()).join(' · ')}
         </Text>
-        {row('calendar', 'Start a new financial year', () => Alert.alert(
+        {row('calendar', 'Close the year and start new books', () => navigation?.navigate('CloseYear'))}
+        {row('calendar', 'Start a new financial year today (clears this book only)', () => Alert.alert(
           'Start a new financial year?',
           'Current sales, purchases, payments and journals will be closed into opening balances. Products, stock, customers, suppliers, users and settings stay. Take a backup first.',
           [

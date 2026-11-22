@@ -15,6 +15,7 @@ import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import DateRow from '../components/DateRow';
 import { Button, Field, SelectField, InfoBanner, StickyBar, Badge } from '../components/ui';
 import { Icon } from '../components/icons';
 import { Foot } from '../components/AppBar';
@@ -54,6 +55,7 @@ export function EntryNewScreen({ route, navigation }: any) {
   const [ledgerId, setLedgerId] = useState(editing?.ledgerId || (direction === 'out' ? 'n_expense' : 'n_income'));
   const [accountId, setAccountId] = useState(editing?.accountId || db?.accounts[0]?.id || '');
   const [note, setNote] = useState(editing?.note || '');
+  const [at, setAt] = useState(() => new Date());   // the day it happened (DateRow; an earlier day needs "Date entries in the past")
   const [offsetSaleId, setOffsetSaleId] = useState<string | null>(editing?.offsetSaleId || null);
   const [picking, setPicking] = useState<'account' | 'bill' | null>(null);
   const allowLeave = useConfirmLeave(navigation, num(amount) > 0, direction === 'out' ? 'this expense' : 'this entry');
@@ -91,6 +93,7 @@ export function EntryNewScreen({ route, navigation }: any) {
         direction, accountId, category: ledger.name, ledgerId: ledger.id, amount: n, note,
         userId: server.userId,
         offsetSaleId: out ? offsetSaleId || undefined : undefined,
+        at: at.toISOString(),
       });
       allowLeave();
       navigation.goBack();
@@ -153,6 +156,7 @@ export function EntryNewScreen({ route, navigation }: any) {
           ) : null}
         </RowGroup>
 
+        <DateRow value={at} onChange={setAt} />
         <NoteBox value={note} onChange={setNote} />
 
         {offsetBill ? (
@@ -221,6 +225,7 @@ export function TransferScreen({ navigation }: any) {
   const [to, setTo] = useState(db?.accounts[1]?.id || db?.accounts[0]?.id || '');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [at, setAt] = useState(() => new Date());   // the day it happened (DateRow; an earlier day needs "Date entries in the past")
 
   if (!db) return null;
 
@@ -233,8 +238,8 @@ export function TransferScreen({ navigation }: any) {
   function save() {
     if (!n) { Alert.alert('Amount', 'Enter an amount first.'); return; }
     if (from === to) { Alert.alert('Accounts', 'Pick two different accounts.'); return; }
-    recordEntry({ direction: 'out', accountId: from, category: 'Transfer', amount: n, note: note || 'To ' + (toAcc?.name || '') });
-    recordEntry({ direction: 'in', accountId: to, category: 'Transfer', amount: n, note: note || 'From ' + (fromAcc?.name || '') });
+    recordEntry({ direction: 'out', accountId: from, category: 'Transfer', amount: n, note: note || 'To ' + (toAcc?.name || ''), at: at.toISOString() });
+    recordEntry({ direction: 'in', accountId: to, category: 'Transfer', amount: n, note: note || 'From ' + (fromAcc?.name || ''), at: at.toISOString() });
     navigation.goBack();
   }
 
@@ -257,6 +262,7 @@ export function TransferScreen({ navigation }: any) {
           <SelectField icon="down" label="To" value={to} options={options} onChange={setTo} style={{ marginBottom: 0 }} />
         </View>
 
+        <DateRow value={at} onChange={setAt} />
         <Field icon="doc" label="Note (optional)" value={note} onChangeText={setNote} placeholder="Banked the day's takings" style={{ marginBottom: 12 }} />
 
         {from === to ? (

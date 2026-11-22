@@ -55,7 +55,7 @@ export const DOC_KINDS_TPL: [DocKind, string][] = [
 ];
 
 /** The mark on every printed thing. Not a setting — reference line 19212. */
-export const POWERED_BY = 'Powered by SALJO TECH';
+export const POWERED_BY = 'Powered by SALJOE TECH';
 
 export function defaultPrinterSettings(): PrinterSettings {
   return {

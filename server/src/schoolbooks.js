@@ -22,7 +22,7 @@ import { developer } from './admin.js';
 
 const RELEASES_DIR = process.env.RELEASES_DIR || '/opt/genius/releases';
 const SCHOOL_DIR = path.join(RELEASES_DIR, 'school');
-const SCHOOL_FILE = /^(latest\.yml|School-Manager-Setup-[0-9.]+\.exe(\.blockmap)?)$/;
+const SCHOOL_FILE = /^(latest\.yml|(School-Manager|Tallix)-Setup-[0-9.]+\.exe(\.blockmap)?)$/;
 const TRIAL_DAYS = 30;
 const MAX_BOOK = 150 * 1024 * 1024;
 
@@ -34,6 +34,8 @@ async function ensureTables() {
     status text not null default 'active', started_at timestamptz not null default now(), expires_at timestamptz,
     issued_by text, note text)`);
   await q('create index if not exists school_licences_account on school_licences(account_id)');
+  /* Tallix 0.12: a licence covers finance, academics, or both */
+  await q(`alter table school_licences add column if not exists edition text not null default 'both'`);
   await q(`create table if not exists school_trials (account_id uuid primary key, started_at timestamptz not null default now())`);
   await q(`create table if not exists school_books (
     id uuid primary key, account_id uuid not null, name text not null, version int not null default 0,
@@ -46,12 +48,12 @@ async function ensureTables() {
 async function licenceOf(accountId) {
   const l = (await q(`select * from school_licences where account_id = $1 and status = 'active'
     and (expires_at is null or expires_at > now()) order by expires_at desc nulls first limit 1`, [accountId])).rows[0];
-  if (l) return { state: 'licensed', plan: l.plan, schools: l.schools, expires_at: l.expires_at };
+  if (l) return { state: 'licensed', plan: l.plan, edition: l.edition || 'both', schools: l.schools, expires_at: l.expires_at };
   await q('insert into school_trials (account_id) values ($1) on conflict do nothing', [accountId]);
   const t = (await q('select started_at from school_trials where account_id = $1', [accountId])).rows[0];
   const ends = new Date(new Date(t.started_at).getTime() + TRIAL_DAYS * 864e5);
   const last = (await q(`select expires_at from school_licences where account_id = $1 order by started_at desc limit 1`, [accountId])).rows[0];
-  if (ends > new Date()) return { state: 'trial', plan: 'trial', schools: 1, expires_at: ends.toISOString() };
+  if (ends > new Date()) return { state: 'trial', plan: 'trial', edition: 'both', schools: 1, expires_at: ends.toISOString() };
   return { state: 'expired', plan: null, schools: 0, expires_at: last ? last.expires_at : ends.toISOString() };
 }
 
@@ -66,15 +68,16 @@ table{width:100%;border-collapse:collapse}th{font-size:11.5px;text-transform:upp
 <div class="card" id="in"><div class="row"><input id="e" placeholder="Developer email"><input id="p" type="password" placeholder="Password"><button onclick="login()">Sign in</button></div></div>
 <div id="app" style="display:none"><div class="card"><b>Grant a licence</b><div class="row" style="margin-top:8px"><input id="ge" placeholder="School's account email" style="flex:1">
 <select id="gp"><option value="basic">Basic: students and fees</option><option value="standard">Standard: + academics, SMS, school life</option><option value="premium" selected>Premium: everything</option></select>
+<select id="ged"><option value="both" selected>Finance and academics</option><option value="finance">Finance only</option><option value="academics">Academics only</option></select>
 <select id="gd"><option value="30">30 days</option><option value="120">One term (120 days)</option><option value="365" selected>One year</option><option value="lifetime">Lifetime</option></select>
 <input id="gs" type="number" value="1" min="1" style="width:80px" title="Schools"><input id="gn" placeholder="Note (receipt, amount)"><button onclick="grant()">Grant</button></div></div>
-<div class="card"><table><thead><tr><th>Account</th><th>Plan</th><th>Schools</th><th>Status</th><th>Until</th><th>By</th><th></th></tr></thead><tbody id="list"></tbody></table></div></div>
+<div class="card"><table><thead><tr><th>Account</th><th>Plan</th><th>Covers</th><th>Schools</th><th>Status</th><th>Until</th><th>By</th><th></th></tr></thead><tbody id="list"></tbody></table></div></div>
 <script>let t=sessionStorage.getItem('smadm')||'';const $=(i)=>document.getElementById(i);const say=(m)=>msg.textContent=m||'';
 async function api(m,u,b){const r=await fetch(u,{method:m,headers:{'content-type':'application/json',authorization:'Bearer '+t},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.message||('Error '+r.status));return j}
 async function login(){try{const r=await fetch('/v1/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:e.value,password:p.value})});const j=await r.json();if(!r.ok)throw new Error(j.message||'Wrong email or password');t=j.access;sessionStorage.setItem('smadm',t);load()}catch(e){say(e.message)}}
 async function load(){try{const l=await api('GET','/v1/admin/school/licences');in.style.display='none';app.style.display='';say('');
-list.innerHTML=l.map(x=>'<tr><td>'+x.email+'</td><td>'+x.plan+'</td><td>'+x.schools+'</td><td>'+x.status+'</td><td>'+(x.expires_at?String(x.expires_at).slice(0,10):'lifetime')+'</td><td>'+(x.issued_by||'')+'</td><td>'+(x.status==='active'?'<button class=g onclick=revoke('+x.id+')>Revoke</button>':'')+'</td></tr>').join('')}catch(e){say(e.message)}}
-async function grant(){try{await api('POST','/v1/admin/school/licences',{email:ge.value,plan:gp.value,days:gd.value==='lifetime'?null:Number(gd.value),schools:Number(gs.value),note:gn.value});ge.value='';load()}catch(e){say(e.message)}}
+list.innerHTML=l.map(x=>'<tr><td>'+x.email+'</td><td>'+x.plan+'</td><td>'+(x.edition||'both')+'</td><td>'+x.schools+'</td><td>'+x.status+'</td><td>'+(x.expires_at?String(x.expires_at).slice(0,10):'lifetime')+'</td><td>'+(x.issued_by||'')+'</td><td>'+(x.status==='active'?'<button class=g onclick=revoke('+x.id+')>Revoke</button>':'')+'</td></tr>').join('')}catch(e){say(e.message)}}
+async function grant(){try{await api('POST','/v1/admin/school/licences',{email:ge.value,plan:gp.value,edition:ged.value,days:gd.value==='lifetime'?null:Number(gd.value),schools:Number(gs.value),note:gn.value});ge.value='';load()}catch(e){say(e.message)}}
 async function revoke(id){if(!confirm('Revoke this licence?'))return;try{await api('POST','/v1/admin/school/licences/'+id+'/revoke');load()}catch(e){say(e.message)}}
 if(t)load();</script></main></body></html>`;
 
@@ -155,10 +158,17 @@ export default async function schoolBookRoutes(app) {
     const days = req.body?.days === null || req.body?.days === 'lifetime' ? null : Math.max(1, Math.min(3660, Number(req.body?.days) || 365));
     const schools = Math.max(1, Math.min(50, Number(req.body?.schools) || 1));
     const plan = ['basic', 'standard', 'premium'].includes(req.body?.plan) ? req.body.plan : 'premium';
-    const r = await q(`insert into school_licences (account_id, plan, schools, expires_at, issued_by, note)
-      values ($1, $2, $3, case when $4::int is null then null else now() + ($4::int || ' days')::interval end, $5, $6) returning *`,
-    [acc.id, plan, schools, days, dev.email, String(req.body?.note || '').slice(0, 300) || null]);
+    const edition = ['finance', 'academics', 'both'].includes(req.body?.edition) ? req.body.edition : 'both';
+    const r = await q(`insert into school_licences (account_id, plan, schools, expires_at, issued_by, note, edition)
+      values ($1, $2, $3, case when $4::int is null then null else now() + ($4::int || ' days')::interval end, $5, $6, $7) returning *`,
+    [acc.id, plan, schools, days, dev.email, String(req.body?.note || '').slice(0, 300) || null, edition]);
     return r.rows[0];
+  });
+  /* every school book kept here, with its account and size: the developer console's list of schools */
+  app.get('/v1/admin/school/books', async (req, reply) => {
+    if (!(await developer(req, reply))) return reply;
+    return (await q(`select b.id, b.name, b.version, b.size, b.updated_at, b.updated_from, b.created_at, a.email
+      from school_books b join accounts a on a.id = b.account_id where b.status = 'active' order by b.updated_at desc limit 500`)).rows;
   });
   app.post('/v1/admin/school/licences/:id/revoke', async (req, reply) => {
     if (!(await developer(req, reply))) return reply;

@@ -48,7 +48,8 @@ async function accountLicence(accountId) {
     `select plan, edition, max_businesses from licences where account_id = $1 order by started_at desc limit 1`,
     [accountId],
   );
-  const owned = await q(`select count(*)::int as n from businesses where account_id = $1 and status = 'active'`, [accountId]);
+  /* a closed year kept for reference is not a business being run: it does not count */
+  const owned = await q(`select count(*)::int as n from businesses where account_id = $1 and status = 'active' and archive_of is null`, [accountId]);
   const l = lic.rows[0];
   return {
     plan: l?.plan || null,
@@ -196,6 +197,13 @@ function wakeWaiters(businessId, seq, fromDevice) {
 export default async function syncRoutes(app) {
   // the small facts' columns, filled once for copies already saved
   await migrateSnapshots();
+  /* Closing a financial year: the closed year becomes a business of its own
+     (archive_of names the business it came from, closed_to its last day), and
+     the business carries on with closed_to and a year_epoch every device
+     compares with its own, so each one closes its copy at the same day. */
+  await q(`alter table businesses add column if not exists archive_of uuid`);
+  await q(`alter table businesses add column if not exists closed_to date`);
+  await q(`alter table businesses add column if not exists year_epoch int not null default 0`);
   /* ---------------------------------------------------------- devices */
 
   /*
@@ -359,7 +367,7 @@ export default async function syncRoutes(app) {
     const me = await whoami(req, reply);
     if (!me) return;
     const { rows } = await q(
-      `select b.id, b.name, b.tin, b.local_id, b.created_at, b.status,
+      `select b.id, b.name, b.tin, b.local_id, b.created_at, b.status, b.archive_of, to_char(b.closed_to, 'YYYY-MM-DD') as closed_to, b.year_epoch,
               case when b.account_id = $1 then 'owner'
                    else coalesce(bm.role, 'staff') end as role,
               s.updated_at as snapshot_at, s.bytes as snapshot_bytes,
@@ -442,10 +450,27 @@ export default async function syncRoutes(app) {
     // identified by the id the books carry, never by its name.
     if (req.body?.localId) {
       const had = await q(
-        'select id, name, local_id from businesses where account_id = $1 and local_id = $2 limit 1',
+        'select id, name, local_id, status from businesses where account_id = $1 and local_id = $2 order by created_at limit 1',
         [me.id, String(req.body.localId)],
       );
-      if (had.rows[0]) return had.rows[0];
+      const b = had.rows[0];
+      if (b) {
+        /* Books of a business that was deactivated, asking to sync again (a
+           backup restored on a phone, say): the owner wants it back, so it is
+           made active again, as long as the plan has room for it. Before, it
+           was handed back still inactive, every sync was refused as "not on
+           this account", and switching sync on again changed nothing. */
+        if (b.status !== 'active') {
+          const lim = await accountLicence(me.id);
+          if (lim.owned >= lim.maxBusinesses) {
+            return fail(reply, 409, 'businessLimit',
+              '"' + b.name + '" was deactivated on your account, and your plan allows ' + lim.maxBusinesses + ' active business'
+              + (lim.maxBusinesses === 1 ? '' : 'es') + '. Deactivate one you no longer use, or ask Genius Pro for a quote.');
+          }
+          await q("update businesses set status = 'active' where id = $1", [b.id]);
+        }
+        return { id: b.id, name: b.name, local_id: b.local_id };
+      }
     }
     // a new business: only as many as the licence allows
     const lim = await accountLicence(me.id);
@@ -465,11 +490,52 @@ export default async function syncRoutes(app) {
   app.patch('/v1/businesses/:id', async (req, reply) => {
     const me = await whoami(req, reply);
     if (!me) return;
-    const biz = await businessFor(me.id, req.params.id);
+    /* Looked up whatever its status: businessFor sees only active businesses,
+       so an inactive one could never be made active again from here. */
+    const found = await q(
+      `select b.id, b.status, b.account_id = $1 as owner from businesses b
+         left join business_members bm on bm.business_id = b.id and bm.account_id = $1
+        where b.id = $2::uuid and (b.account_id = $1 or bm.account_id is not null)`,
+      [me.id, req.params.id],
+    ).catch(() => ({ rows: [] }));
+    const biz = found.rows[0];
     if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
     if (typeof req.body?.active !== 'boolean') return fail(reply, 400, 'malformed', 'Choose whether the business is active.');
+    if (req.body.active && biz.status !== 'active') {
+      if (!biz.owner) return fail(reply, 403, 'forbidden', 'Only the business owner can make it active again.');
+      const lim = await accountLicence(me.id);
+      if (lim.owned >= lim.maxBusinesses) {
+        return fail(reply, 409, 'businessLimit', 'Your plan allows ' + lim.maxBusinesses + ' active business' + (lim.maxBusinesses === 1 ? '' : 'es') + '. Deactivate one first.');
+      }
+    }
     await q('update businesses set status = $2 where id = $1', [biz.id, req.body.active ? 'active' : 'inactive']);
     return { active: req.body.active };
+  });
+
+  /*
+   * Close a financial year (the owner only): the business is closed to the day
+   * given, and the closed year gets a business of its own on the account, to
+   * keep its books for reference. The device closing it then sends the closed
+   * year's whole book to that business and the new year's book to this one;
+   * every other device sees year_epoch move and closes its copy at the same day.
+   */
+  app.post('/v1/businesses/:id/close-year', async (req, reply) => {
+    const me = await whoami(req, reply);
+    if (!me) return;
+    const found = await q('select id, name, account_id, closed_to, year_epoch, archive_of from businesses where id = $1::uuid and status = $2', [req.params.id, 'active']).catch(() => ({ rows: [] }));
+    const biz = found.rows[0];
+    if (!biz) return fail(reply, 404, 'unknownBusiness', 'That business is not on this account.');
+    if (biz.account_id !== me.id) return fail(reply, 403, 'forbidden', 'Only the business owner can close a year.');
+    if (biz.archive_of) return fail(reply, 409, 'archive', 'This is a closed year kept for reference: it cannot be closed again.');
+    const to = String(req.body?.closedTo || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(to) || Number.isNaN(Date.parse(to))) return fail(reply, 400, 'malformed', 'Choose the last day of the year.');
+    if (to >= new Date().toISOString().slice(0, 10)) return fail(reply, 400, 'malformed', 'A year can only be closed once it has ended.');
+    const had = biz.closed_to ? new Date(biz.closed_to).toISOString().slice(0, 10) : null;
+    if (had && had >= to) return fail(reply, 409, 'alreadyClosed', 'The books are already closed to ' + had + '.');
+    const name = String(req.body?.archiveName || (biz.name + ' · to ' + to)).slice(0, 200);
+    const arch = await q(`insert into businesses (account_id, name, tin, local_id, archive_of, closed_to) values ($1, $2, null, null, $3, $4) returning id`, [me.id, name, biz.id, to]);
+    const up = await q(`update businesses set closed_to = $2, year_epoch = year_epoch + 1 where id = $1 returning year_epoch`, [biz.id, to]);
+    return { archiveId: arch.rows[0].id, archiveName: name, closedTo: to, epoch: up.rows[0].year_epoch };
   });
 
   app.get('/v1/businesses/:id/members', async (req, reply) => {

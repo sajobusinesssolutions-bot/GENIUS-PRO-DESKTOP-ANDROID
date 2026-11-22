@@ -8,6 +8,7 @@ import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import DateRow from '../components/DateRow';
 import { Card, Cap, Button, Chip, SearchBar, Field, EmptyState, IconTile, Grid, Stat } from '../components/ui';
 import { Icon } from '../components/icons';
 import { fmtDay } from '../data/helpers';
@@ -24,6 +25,7 @@ export function StockAdjustScreen() {
   // For a batch-tracked item the count can be one batch's: the shelf holds lots,
   // and "we found 3 more of lot A12" is what a count actually turns up.
   const [batchNo, setBatchNo] = useState<string | undefined>(undefined);
+  const [at, setAt] = useState(() => new Date());   // the day it happened (DateRow; an earlier day needs "Date entries in the past")
 
   if (!db) return null;
   const wh = db.session.warehouse;
@@ -32,12 +34,13 @@ export function StockAdjustScreen() {
   const apply = (id: string) => {
     const n = Number(value);
     if (Number.isNaN(n)) { Alert.alert('Count', 'Enter a number.'); return; }
-    adjustStock(id, wh, n, batchNo ? 'Batch count' : 'Manual stock count', batchNo);
+    adjustStock(id, wh, n, batchNo ? 'Batch count' : 'Manual stock count', batchNo, undefined, at.toISOString());
     setEditing(null); setValue(''); setBatchNo(undefined);
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 10 }}><DateRow value={at} onChange={setAt} label="Counted on" /></View>
       <SearchBar value={q} onChange={setQ} placeholder="Search product or code" />
       <FlatList
         data={list}

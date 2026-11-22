@@ -6,6 +6,7 @@ import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import DateRow from '../components/DateRow';
 import { useBookFrom } from '../data/useBookFrom';
 import {
   Empty, Button, Cap, Chip, DocCard, Panel, Badge, SectionLabel, EmptyBlock, InfoBanner,
@@ -99,6 +100,7 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
   const [q, setQ] = useState('');
   const [qty, setQty] = useState<Record<string, string>>(() => (editing ? Object.fromEntries(editing.lines.map((l) => [l.productId, String(l.qty)])) : {}));
   const [reason, setReason] = useState(editing?.reason || '');
+  const [at, setAt] = useState(() => (editing ? new Date(editing.ts) : new Date()));
   const [charges, setCharges] = useState(editing?.charges ? String(editing.charges) : '');
   /** A return with no bill behind it: the customer and the goods entered as on a new sale. */
   const [free, setFree] = useState(!!route.params?.free || (!!editing && !editing.saleId));
@@ -166,6 +168,7 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
         refund,
         charges: fee,
         userId: server.userId,
+        at: at.toISOString(),
       });
       success((editing ? editing.no + ' corrected' : 'Return recorded') + ' by ' + server.userName);
       navigation.goBack();
@@ -347,6 +350,7 @@ export function CreditNoteNewScreen({ route, navigation }: NativeStackScreenProp
 
         <View style={{ height: 20 }} />
         <SectionLabel>Details</SectionLabel>
+        <DateRow value={at} onChange={setAt} />
         <Field icon="doc" label="Reason" value={reason} onChangeText={setReason} placeholder="Damaged, wrong item, changed mind…" />
         <Field
           icon="tag"
@@ -418,6 +422,7 @@ function FreeReturn({ navigation, editing }: { navigation: any; editing?: import
   const [lines, setLines] = useState<CartLine[]>(() => (editing ? editing.lines.map((l) => ({ productId: l.productId, name: l.name, qty: l.qty, price: l.price })) : []));
   const [refund, setRefund] = useState<'cash' | 'bank' | 'momo' | 'account'>(editing?.refund || 'account');
   const [reason, setReason] = useState(editing?.reason || '');
+  const [at, setAt] = useState(() => (editing ? new Date(editing.ts) : new Date()));
   if (!db) return null;
   const how = !partyId && refund === 'account' ? 'cash' : refund;
   return (
@@ -442,7 +447,7 @@ function FreeReturn({ navigation, editing }: { navigation: any; editing?: import
             const p = db.products.find((x) => x.id === l.productId);
             return { productId: l.productId, name: l.name, qty: l.qty * (l.unitFactor || 1), price: l.price / (l.unitFactor || 1), cost: p?.cost || 0, taxRate: p?.taxExempt ? 0 : p?.taxRate || 0 };
           }),
-          reason: reason.trim() || 'Goods returned', refund: how, userId: server.userId,
+          reason: reason.trim() || 'Goods returned', refund: how, userId: server.userId, at: at.toISOString(),
         });
         success((editing ? editing.no + ' corrected' : 'Return recorded') + ' by ' + server.userName);
         navigation.goBack();
@@ -457,7 +462,8 @@ function FreeReturn({ navigation, editing }: { navigation: any; editing?: import
           </Pressable>
         ))}
       </View>
-      <Field icon="doc" label="Reason" value={reason} onChangeText={setReason} placeholder="Damaged, wrong item, changed mind…" />
+      <DateRow value={at} onChange={setAt} />
+        <Field icon="doc" label="Reason" value={reason} onChangeText={setReason} placeholder="Damaged, wrong item, changed mind…" />
     </DocEntry>
   );
 }

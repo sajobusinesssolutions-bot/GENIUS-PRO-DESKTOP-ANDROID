@@ -122,6 +122,7 @@ export const ROUTE_PERMS: Record<string, RouteRule> = {
   PrintingReceipt: 'settings.printing',
   PrintingInvoice: 'settings.printing',
   DataTools: 'settings.backup',
+  CloseYear: 'finance.manage_accounts',
   VyaparImport: 'settings.backup',
   ReminderSettings: 'settings.manage',
   Firms: 'settings.manage',

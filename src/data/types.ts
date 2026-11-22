@@ -674,6 +674,13 @@ export interface Settings {
    * before it can be edited, deleted or backdated until the owner reopens it.
    */
   closedThrough?: string;
+  /** The financial year closed to this day (YYYY-MM-DD): its records live in the closed year's own business; nothing may be dated on or before it. */
+  yearClosedTo?: string;
+  /** This book is a closed year kept for reference (yearSplit.ts): the business it came from, and its last day. Nothing new goes in. */
+  yearArchiveOf?: string;
+  yearArchiveTo?: string;
+  /** How many times the account says this business has closed a year; a higher count there means another device closed one. */
+  yearEpoch?: number;
   /** Cash control: refuse anything that would take a cash drawer below zero. */
   blockNegativeCash?: boolean;
   // stock

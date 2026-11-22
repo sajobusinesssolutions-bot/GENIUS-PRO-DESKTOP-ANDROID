@@ -3,6 +3,7 @@ import { View, Text } from 'react-native';
 import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import DateRow from '../components/DateRow';
 import { useToast } from '../components/Toast';
 import {
   Button, SectionLabel, SegPill, OptionTiles, Field, Panel, DetailRow, InfoBanner,
@@ -36,6 +37,7 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
   const [accountId, setAccountId] = useState(db?.accounts[0]?.id || 'acc_cash');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [at, setAt] = useState(() => new Date());   // the day it happened (DateRow; an earlier day needs "Date entries in the past")
   /** Withholding tax the customer kept back, or we keep back from the supplier. */
   const [wht, setWht] = useState('');
   const whtOn = !!db?.settings.withholding;
@@ -69,7 +71,7 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
     if (!partyId || !amt) return;
     if (settle === 'choose' && openBills.length > 0) { setShowAllocation(true); return; }
     who.ask((server) => {
-      recordPayment({ partyId, amount: amt, direction, accountId, note, userId: server.userId, taxDeducted: whtAmt, onAccount: settle === 'account' });
+      recordPayment({ partyId, amount: amt, direction, accountId, note, userId: server.userId, taxDeducted: whtAmt, onAccount: settle === 'account', at: at.toISOString() });
       success('Recorded by ' + server.userName);
       setAmount(''); setNote('');
       navigation.goBack();
@@ -80,7 +82,7 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
     const total = amt;
     setShowAllocation(false);
     who.ask((server) => {
-      recordPayment({ partyId: partyId!, amount: total, direction, accountId, note, allocations, userId: server.userId, taxDeducted: whtAmt });
+      recordPayment({ partyId: partyId!, amount: total, direction, accountId, note, allocations, userId: server.userId, taxDeducted: whtAmt, at: at.toISOString() });
       const applied = allocations.reduce((s, a) => s + a.amount, 0);
       success(money(applied) + ' applied' + (total - applied > 0.5 ? ', ' + money(total - applied) + ' on account' : '') + ' · ' + server.userName);
       setAmount(''); setNote('');
@@ -193,6 +195,7 @@ export default function PaymentNewScreen({ route, navigation }: Props) {
         <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13, color: colors.soft, marginBottom: -4, paddingHorizontal: 4 }}>{inbound ? 'Paid into' : 'Paid from'}</Text>
         <AccountTiles accounts={db.accounts || []} value={accountId} onChange={setAccountId} tone={tone} />
 
+        <DateRow value={at} onChange={setAt} />
         <NoteBox value={note} onChange={setNote} />
 
         {chosen && amt ? (

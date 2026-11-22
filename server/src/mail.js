@@ -146,3 +146,15 @@ export async function verifyMail() {
     return { ok: false, why: e.message };
   }
 }
+
+/** A message from the website's live chat, either way: to SALJOE TECH, or the reply to a visitor. */
+export async function sendChatMail({ to, subject, text, html, replyTo }) {
+  if (!mailConfigured()) {
+    const e = new Error('mail_not_configured');
+    e.expose = true;
+    throw e;
+  }
+  /* the same verified address, under the company's name rather than the app's */
+  const addr = (/<([^>]+)>/.exec(process.env.MAIL_FROM || '') || [])[1] || process.env.MAIL_FROM;
+  await get().sendMail({ from: process.env.SITE_CHAT_FROM || `SALJOE TECH <${addr}>`, to, subject, text, html, ...(replyTo ? { replyTo } : {}) });
+}

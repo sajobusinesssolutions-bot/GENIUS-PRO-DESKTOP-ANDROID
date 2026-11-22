@@ -100,6 +100,7 @@ import {
 } from '../screens/AdminScreens';
 import PrintingScreen, { ReceiptSettingsScreen, InvoiceSettingsScreen } from '../screens/PrintingScreen';
 import LegalScreen from '../screens/LegalScreen';
+import CloseYearScreen from '../screens/CloseYearScreen';
 import HelpScreen, { FaqScreen } from '../screens/HelpScreen';
 import { InstalmentsScreen, PlanDetailScreen, PlanNewScreen } from '../screens/InstalmentScreens';
 import { BulkChangeScreen, BulkPreviewScreen } from '../screens/BulkScreens';
@@ -331,6 +332,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Faq" component={FaqScreen} options={{ title: 'FAQs & help' }} />
         <Stack.Screen name="Legal" component={LegalScreen} options={({ route }: any) => ({ title: route.params?.doc === 'privacy' ? 'Privacy policy' : route.params?.doc === 'terms' ? 'Terms and conditions' : 'Legal' })} />
         <Stack.Screen name="DataTools" component={DataToolsScreen} options={{ title: 'Data tools' }} />
+        <Stack.Screen name="CloseYear" component={CloseYearScreen} options={{ title: 'Close a financial year' }} />
         <Stack.Screen name="VyaparImport" component={VyaparImportScreen} options={{ title: 'Move from Vyapar' }} />
         <Stack.Screen name="ReminderSettings" component={ReminderSettingsScreen} options={{ title: 'Payment reminders' }} />
         <Stack.Screen name="Business" component={BusinessScreen} options={{ title: 'Business & branches' }} />

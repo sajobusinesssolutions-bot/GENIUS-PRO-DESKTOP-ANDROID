@@ -1732,7 +1732,14 @@ export function shiftSales(d: DB, shift: Shift): Sale[] {
 /** Whether a record dated `ts` falls in a day that has been closed. */
 export function inClosedDay(d: DB, ts: string | undefined): boolean {
   const c = d.settings.closedThrough;
-  return !!c && !!ts && new Date(ts).getTime() <= new Date(c).getTime();
+  if (!!c && !!ts && new Date(ts).getTime() <= new Date(c).getTime()) return true;
+  /* a closed financial year (yearSplit.ts): every day up to its last */
+  const y = d.settings.yearClosedTo;
+  if (!y || !ts) return false;
+  const t = new Date(ts);
+  if (isNaN(t.getTime())) return false;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}` <= y;
 }
 
 /** Refuses to change anything in a closed day. */
@@ -2553,9 +2560,8 @@ export function repairBooks(d: DB, when = new Date()): BookIssue[] {
    ============================================================ */
 
 /** An expense, or money in: the entry, its ledger lines, and a bill it is set against. */
-export function recordEntry(d: DB, o: { direction: 'in' | 'out' | 'transfer'; accountId: string; category: string; amount: number; note?: string; ledgerId?: string; userId?: string; offsetSaleId?: string; toId?: string }): Entry {
+export function recordEntry(d: DB, o: { direction: 'in' | 'out' | 'transfer'; accountId: string; category: string; amount: number; note?: string; ledgerId?: string; userId?: string; offsetSaleId?: string; toId?: string }, when = new Date()): Entry {
   let e!: Entry;
-  const when = new Date();
   const sale = o.offsetSaleId ? d.sales.find((x) => x.id === o.offsetSaleId) : undefined;
   // only a bill with a balance can absorb one, and only up to what is left
   const split = sale && o.direction === 'out'
@@ -2602,10 +2608,10 @@ export function recordEntry(d: DB, o: { direction: 'in' | 'out' | 'transfer'; ac
 }
 
 /** A return: the goods back on the shelf, the sale reversed, and the customer made good. */
-export function createCreditNote(d: DB, o: { saleId: string | null; partyId: string | null; lines: CreditNoteLine[]; reason: string; refund?: 'cash' | 'bank' | 'momo' | 'account'; charges?: number; userId?: string }): CreditNote {
+export function createCreditNote(d: DB, o: { saleId: string | null; partyId: string | null; lines: CreditNoteLine[]; reason: string; refund?: 'cash' | 'bank' | 'momo' | 'account'; charges?: number; userId?: string }, when0?: Date): CreditNote {
   let cn!: CreditNote;
   d.counters.creditNote += 1;
-  const when = new Date();
+  const when = when0 || new Date();
   const gross = cents(o.lines.reduce((s, l) => s + l.qty * l.price, 0));
   const charges = cents(Math.max(0, Math.min(Number(o.charges) || 0, gross)));
   // the customer is made good for the goods less whatever is withheld

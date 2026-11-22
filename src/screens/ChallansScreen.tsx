@@ -5,6 +5,7 @@ import { Icon } from '../components/icons';
 import ScrollView from '../components/KeyScroll';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import DateRow from '../components/DateRow';
 import { Empty, Button, Cap, Chip, DocCard, Badge, FAB, Field, InfoBanner } from '../components/ui';
 import DocEntry from '../components/DocEntry';
 import { ListPage, DocRow, StatusChips, SummaryTiles } from '../components/DocList';
@@ -72,6 +73,7 @@ export function ChallanNewScreen({ navigation, route }: NativeStackScreenProps<R
       productId: l.productId, name: l.name, qty: l.qty, price: l.price, unit: l.unit, ...(l.unitFactor ? { unitFactor: l.unitFactor } : {}),
     })) : []));
   const [driver, setDriver] = useState(editing?.driver || '');
+  const [at, setAt] = useState(() => new Date());   // the day it happened (DateRow; an earlier day needs "Date entries in the past")
   const [vehicle, setVehicle] = useState(editing?.vehicle || '');
 
   return (
@@ -107,10 +109,11 @@ export function ChallanNewScreen({ navigation, route }: NativeStackScreenProps<R
           }),
         };
         if (editing) updateChallan(editing.id, out);
-        else createChallan({ saleId: fromSale?.id || null, ...out });
+        else createChallan({ saleId: fromSale?.id || null, ...out, at: at.toISOString() });
         navigation.goBack();
       }}
     >
+      {!editing ? <DateRow value={at} onChange={setAt} /> : null}
       <Field icon="user" label="Driver" value={driver} onChangeText={setDriver} placeholder="Who is carrying it" />
       <Field icon="taxi" label="Vehicle / plate" value={vehicle} onChangeText={setVehicle} placeholder="Optional" />
     </DocEntry>

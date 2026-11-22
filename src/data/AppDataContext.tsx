@@ -18,6 +18,7 @@ import { loadDB, saveDB, clearDB, scheduleSave, flushSave, migrate, trackedChang
 import { defaultSync } from './defaults';
 import { uid, iso } from './uid';
 import * as logic from './logic';
+import { splitYear as splitYearImpl, dayOf, type YearSplitResult } from './yearSplit';
 import { importVyapar } from './vyapar';
 import { deviceTillName, isDefaultTillName } from './deviceName';
 import { addStarterLedgers } from './coa';
@@ -70,7 +71,8 @@ export interface Ctx {
   commitSale: (o: { lines: SaleLine[]; partyId: string | null; method: PayMethod; discount: number; additionalCharges?: number; description?: string; terms?: string; redeem?: number; methods?: Array<{ method: PayMethod; amount: number }>; no?: string; ts?: string; received?: number; receivedVia?: 'cash' | 'momo' | 'bank'; momoNetwork?: 'mtn' | 'airtel'; momoRef?: string; userId?: string; ticketName?: string; orderType?: OrderType; priceListId?: string; rx?: import('./types').RxRecord; wht?: number; taxOnTop?: boolean; showPayment?: boolean }) => Sale;
   voidSale: (saleId: string, reason?: string) => void;
   createPurchase: (partyId: string, lines: PurchaseLine[], method: PayMethod, userId?: string, no?: string, when?: string) => Purchase;
-  recordPayment: (o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; allocations?: Array<{ saleId: string; amount: number }>; userId?: string; taxDeducted?: number; onAccount?: boolean }) => Payment;
+  /* at: the day (and time) chosen on the screen, ISO; now when left out (pickWhen checks it) */
+  recordPayment: (o: { partyId: string; amount: number; direction: 'in' | 'out'; accountId: string; note?: string; allocations?: Array<{ saleId: string; amount: number }>; userId?: string; taxDeducted?: number; onAccount?: boolean; at?: string }) => Payment;
   /** Brings one business from a Vyapar backup into these books. Owner only. */
   importFromVyapar: (tables: import('./vyapar').VyTables, firmId: number) => import('./vyapar').ImportReport;
   recordEntry: (o: {
@@ -80,9 +82,10 @@ export interface Ctx {
     ledgerId?: string;
     /** Charge it against a credit sale instead of an account. */
     offsetSaleId?: string;
+    at?: string;
   }) => Entry;
   updateProduct: (id: string, patch: Partial<Product>) => void;
-  adjustStock: (productId: string, warehouse: string, count: number, note?: string, batchNo?: string, userId?: string) => void;
+  adjustStock: (productId: string, warehouse: string, count: number, note?: string, batchNo?: string, userId?: string, at?: string) => void;
   /** Delete a stock adjustment: its stock and money are taken back; the pair waits in Deleted transactions. */
   reverseAdjustment: (moveId: string, reason?: string, userId?: string) => void;
   /** Change an adjustment's quantity (taken back and posted again, in one step). */
@@ -97,6 +100,8 @@ export interface Ctx {
   addParty: (p: Omit<Party, 'id'>) => Party;
   resetAll: () => Promise<void>;
   startFinancialYear: (when?: Date) => logic.FinancialYearStart;
+  /** Close the year to this day and split the book there (yearSplit.ts); epoch: the account's count, when it came from there. */
+  splitYear: (to: string, epoch?: number) => YearSplitResult;
   /** Puts right what older deletes left in the books (logic.checkBooks); returns what was done. */
   repairBooks: () => logic.BookIssue[];
   importBankStatement: (accountId: string, lines: StatementInput[]) => BankStatementLine[];
@@ -118,7 +123,7 @@ export interface Ctx {
   addUser: (u: Omit<User, 'id'>) => User;
 
   // Estimates
-  createEstimate: (o: { partyId: string | null; lines: SaleLine[]; discount: number; validUntil?: string; note?: string; terms?: string }) => Estimate;
+  createEstimate: (o: { partyId: string | null; lines: SaleLine[]; discount: number; validUntil?: string; note?: string; terms?: string; at?: string }) => Estimate;
   convertEstimate: (estimateId: string, method: PayMethod) => Sale | null;
   voidEstimate: (estimateId: string) => void;
   /** After a sale made from a quotation is saved: the quotation is closed and points at it. */
@@ -127,7 +132,7 @@ export interface Ctx {
   updateEstimate: (estimateId: string, o: { partyId: string | null; lines: SaleLine[]; discount: number; note?: string; terms?: string }) => boolean;
 
   // Delivery challans
-  createChallan: (o: { saleId: string | null; partyId: string | null; lines: ChallanLine[]; driver?: string; vehicle?: string }) => Challan;
+  createChallan: (o: { saleId: string | null; partyId: string | null; lines: ChallanLine[]; driver?: string; vehicle?: string; at?: string }) => Challan;
   /** A delivery note still out: its customer, goods, driver or vehicle changed. It moves no stock, so nothing else changes. */
   updateChallan: (challanId: string, o: { partyId: string | null; lines: ChallanLine[]; driver?: string; vehicle?: string }) => boolean;
   markChallanDelivered: (challanId: string) => void;
@@ -135,7 +140,7 @@ export interface Ctx {
   // Credit notes / returns
   createCreditNote: (o: {
     saleId: string | null; partyId: string | null; lines: CreditNoteLine[]; reason: string;
-    refund?: 'cash' | 'bank' | 'momo' | 'account'; charges?: number; userId?: string;
+    refund?: 'cash' | 'bank' | 'momo' | 'account'; charges?: number; userId?: string; at?: string;
   }) => CreditNote;
 
   // Offers
@@ -146,7 +151,7 @@ export interface Ctx {
   bestOfferFor: (p: Product) => Offer | null;
 
   // Stock-takes
-  startStockTake: (warehouse: string) => StockTake;
+  startStockTake: (warehouse: string, at?: string) => StockTake;
   setStockTakeCount: (stockTakeId: string, productId: string, counted: number) => void;
   setStockTakeBatchCount: (stockTakeId: string, productId: string, batchNo: string, counted: number) => void;
   postStockTake: (stockTakeId: string, userId?: string) => void;
@@ -318,7 +323,7 @@ const GATED_ACTIONS = [
   'startStockTake', 'setStockTakeCount', 'setStockTakeBatchCount', 'receivePurchaseOrder', 'scheduleRecurring', 'updateRecurring',
   'runRecurring', 'openShift', 'addUnit', 'removeUnit', 'addCategory', 'removeCategory', 'saveModifierGroup', 'removeModifierGroup',
   'saveTicket', 'saveMenuGroup', 'removeMenuGroup', 'moveMenuGroup', 'saveMenu', 'removeMenu', 'voidTicket', 'purgeDeleted',
-  'addLedger', 'updateLedger', 'payInstalment', 'applyBulkPlan', 'addWarehouse', 'removeWarehouse', 'startFinancialYear', 'repairBooks',
+  'addLedger', 'updateLedger', 'payInstalment', 'applyBulkPlan', 'addWarehouse', 'removeWarehouse', 'startFinancialYear', 'splitYear', 'repairBooks',
   'matchBankStatementLine', 'completeBankReconciliation', 'addFirm', 'savePriceList',
 ];
 
@@ -521,6 +526,29 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const d = dbRef.current;
     if (d) logic.guardOpenDay(d, ts);
   }, []);
+  /**
+   * The day an entry is recorded on, as chosen on its screen (or now). Never
+   * after now; an earlier day only for a role with "Date entries in the past"
+   * (sales.backdate); never into a closed day or a closed year.
+   */
+  const pickWhen = useCallback((at?: string | Date | null): Date => {
+    if (!at) return new Date();
+    const t = at instanceof Date ? at : new Date(at);
+    if (isNaN(t.getTime())) throw new Refusal('That date is not right');
+    const now = new Date();
+    if (t.getTime() > now.getTime() + 5 * 60e3) throw new Refusal('That date is in the future', 'An entry is recorded on the day it happened: today or earlier.');
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const d = dbRef.current;
+    if (t.getTime() < startOfToday && d && !canWith(d.roles, d.session.role, 'sales.backdate')) {
+      throw new Refusal('Not allowed for your role', 'Dating an entry on an earlier day needs "Date entries in the past". Ask the owner (Settings → Roles).');
+    }
+    if (d) {
+      logic.guardOpenDay(d, t.toISOString());
+      const closed = d.settings.yearClosedTo;
+      if (closed && t.toISOString().slice(0, 10) <= closed) throw new Refusal('That year is closed', 'The books were closed to ' + closed + '. Its entries are kept in the closed year\'s own business.');
+    }
+    return t;
+  }, []);
   const tsOf = (coll: 'sales' | 'purchases' | 'payments', id: string) => (dbRef.current?.[coll] as Array<{ id: string; ts: string }> | undefined)?.find((x) => x.id === id)?.ts;
 
   const requirePerm = useCallback((key: string) => {
@@ -691,7 +719,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     commitSale: (o) => {
       requireRecordable();
-      if (o.ts) requireOpenDay(o.ts);
+      if (o.ts) { requireOpenDay(o.ts); pickWhen(o.ts); }
       const d0 = dbRef.current;
       // Settings → "A shift must be open to sell"
       if (d0 && d0.settings.requireShift && !d0.shifts.some((sh) => !sh.closedAt)) {
@@ -714,13 +742,15 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       requireRecordable();
       requirePerm('purchases.receive');
       let pu!: Purchase;
-      commit((d) => { pu = logic.createPurchase(d, partyId, lines, method, when ? new Date(when) : new Date(), userId, no); });
+      const at = pickWhen(when);
+      commit((d) => { pu = logic.createPurchase(d, partyId, lines, method, at, userId, no); });
       return pu;
     },
     recordPayment: (o) => {
       requireRecordable(); requirePerm('finance.create');
+      const at = pickWhen(o.at);
       let pay!: Payment;
-      commit((d) => { pay = logic.recordPayment(d, o); });
+      commit((d) => { pay = logic.recordPayment(d, o, at); });
       return pay;
     },
     importFromVyapar: (tables, firmId) => {
@@ -740,8 +770,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     recordEntry: (o) => {
       requireRecordable(); requirePerm('expenses.create');
       if (o.direction === 'out' && !o.offsetSaleId && dbRef.current) logic.guardCash(dbRef.current, [{ acc: o.accountId, amount: o.amount }]);
+      const at = pickWhen(o.at);
       let e!: Entry;
-      commit((d) => { e = logic.recordEntry(d, o); });
+      commit((d) => { e = logic.recordEntry(d, o, at); });
       return e;
     },
     updateProduct: (id, patch) => {
@@ -764,10 +795,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       requireRecordable(); requirePerm('inventory.stock_adjustment'); requireReachable('a stock adjustment');
       commit((d) => { logic.changeAdjustment(d, moveId, qty, reason, new Date(), userId); });
     },
-    adjustStock: (productId, warehouse, count, note, batchNo, userId) => {
+    adjustStock: (productId, warehouse, count, note, batchNo, userId, at) => {
       requireRecordable(); requirePerm('inventory.stock_adjustment');
+      const when = pickWhen(at);
       commit((d) => {
-        logic.adjustStock(d, productId, warehouse, count, note || 'Stock adjustment', new Date(), batchNo, userId);
+        logic.adjustStock(d, productId, warehouse, count, note || 'Stock adjustment', when, batchNo, userId);
       });
     },
     branchSendOut: (lines, ref, toName) => {
@@ -827,6 +859,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       let done: logic.BookIssue[] = [];
       commit((d) => { done = logic.repairBooks(d); });
       return done;
+    },
+    splitYear: (to, epoch) => {
+      let result!: YearSplitResult;
+      commit((d) => {
+        result = splitYearImpl(d, to);
+        if (epoch != null) d.settings.yearEpoch = epoch;
+        /* the new year's book goes up whole at the next sync */
+        if (d.sync) d.sync = { ...d.sync, snapshotDue: true };
+      });
+      return result;
     },
     startFinancialYear: (when) => {
       let result!: logic.FinancialYearStart;
@@ -947,11 +989,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     createEstimate: (o) => {
       requireCreate();
       requirePerm('quotes.create');
+      const at = pickWhen(o.at);
       let est!: Estimate;
       commit((d) => {
         d.counters.estimate += 1;
         const t = saleTotals(o.lines, o.discount, logic.pricesIncludeTax(d));
-        est = { id: uid('est'), no: 'EST-' + String(100000 + d.counters.estimate).slice(1), ts: iso(new Date()), partyId: o.partyId, lines: o.lines, discount: t.discount, total: t.total, status: 'open', convertedSaleId: null, ...(o.validUntil ? { validUntil: o.validUntil } : {}),
+        est = { id: uid('est'), no: 'EST-' + String(100000 + d.counters.estimate).slice(1), ts: iso(at), partyId: o.partyId, lines: o.lines, discount: t.discount, total: t.total, status: 'open', convertedSaleId: null, ...(o.validUntil ? { validUntil: o.validUntil } : {}),
           ...(o.note ? { note: o.note } : {}), ...(o.terms ? { terms: o.terms } : {}) };
         d.estimates.push(est);
         audit(d, 'Estimate created', est.no);
@@ -1009,10 +1052,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     createChallan: (o) => {
       requireCreate();
       requirePerm('challans.create');
+      const at = pickWhen(o.at);
       let ch!: Challan;
       commit((d) => {
         d.counters.challan += 1;
-        ch = { id: uid('chl'), no: 'DC-' + String(100000 + d.counters.challan).slice(1), ts: iso(new Date()), saleId: o.saleId, partyId: o.partyId, lines: o.lines, status: 'dispatched', ...(o.driver ? { driver: o.driver } : {}), ...(o.vehicle ? { vehicle: o.vehicle } : {}) };
+        ch = { id: uid('chl'), no: 'DC-' + String(100000 + d.counters.challan).slice(1), ts: iso(at), saleId: o.saleId, partyId: o.partyId, lines: o.lines, status: 'dispatched', ...(o.driver ? { driver: o.driver } : {}), ...(o.vehicle ? { vehicle: o.vehicle } : {}) };
         d.challans.push(ch);
         audit(d, 'Delivery challan created', ch.no);
         logic.enqueue(d, 'challan', ch.id);
@@ -1043,8 +1087,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     // --- Credit notes / returns ---
     createCreditNote: (o) => {
       requireRecordable(); requirePerm('sales.refund');
+      const at = pickWhen(o.at);
       let cn!: CreditNote;
-      commit((d) => { cn = logic.createCreditNote(d, o); });
+      commit((d) => { cn = logic.createCreditNote(d, o, at); });
       return cn;
     },
 
@@ -1065,7 +1110,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
 
     // --- Stock-takes ---
-    startStockTake: (warehouse) => {
+    startStockTake: (warehouse, at) => {
+      const when = pickWhen(at);
       let st!: StockTake;
       commit((d) => {
         const lines = d.products.filter((p) => p.active).map((p) => ({
@@ -1081,7 +1127,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             }
             : {}),
         }));
-        st = { id: uid('stk'), ts: iso(new Date()), warehouse, lines, status: 'open' };
+        st = { id: uid('stk'), ts: iso(when), warehouse, lines, status: 'open' };
         d.stockTakes.push(st);
         audit(d, 'Stock-take started', warehouse);
       });
@@ -1102,7 +1148,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const seen = line.batches!.filter((b) => b.counted != null);
       line.counted = seen.length ? line.batches!.reduce((s, b) => s + (b.counted ?? 0), 0) : null;
     }),
-    postStockTake: (stockTakeId, userId) => { requireRecordable(); requirePerm('inventory.stock_take'); commit((d) => logic.postStockTake(d, stockTakeId, new Date(), userId)); },
+    /* posted on the stock take's own day (the day the shelves were counted) */
+    postStockTake: (stockTakeId, userId) => { requireRecordable(); requirePerm('inventory.stock_take');
+      const st = (dbRef.current?.stockTakes || []).find((x) => x.id === stockTakeId);
+      const when = st && st.ts && new Date(st.ts).toDateString() !== new Date().toDateString() ? pickWhen(st.ts) : new Date();
+      commit((d) => logic.postStockTake(d, stockTakeId, when, userId)); },
 
     // --- Purchase orders ---
     createPurchaseOrder: (o) => {
@@ -1419,6 +1469,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }); },
     postJournal: (o) => {
       requireRecordable(); requirePerm('finance.manage_accounts');
+      if (o.ts) pickWhen(o.ts);
       if (dbRef.current) logic.guardCash(dbRef.current, o.lines.map((l) => ({ acc: l.acc, amount: (l.cr || 0) - (l.dr || 0) })));
       let ok = false;
       commit((d) => {
@@ -1609,8 +1660,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           applied++;
           return list.splice(i, 1)[0];
         };
+        /* a closed year (yearSplit.ts): another device's work dated in it belongs to the closed year's own business */
+        const yearClosed = d.settings.yearClosedTo;
         ops.forEach((op) => {
           const p: any = op.payload;
+          if (yearClosed && op.kind !== 'record.upsert' && p?.ts && dayOf(p.ts) <= yearClosed) return;
           if (p?.voided && p.id && (op.kind === 'payment.record' || op.kind === 'entry.record' || op.kind === 'creditnote.create')) {
             if (op.kind === 'payment.record') {
               const gone = drop(d.payments, p.id);

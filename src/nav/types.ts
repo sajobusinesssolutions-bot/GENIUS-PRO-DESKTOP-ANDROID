@@ -113,6 +113,7 @@ export type RootStackParamList = {
   Help: undefined;
   Faq: undefined;
   DataTools: { backup?: boolean } | undefined;
+  CloseYear: undefined;
   VyaparImport: undefined;
   ReminderSettings: undefined;
   Business: undefined;

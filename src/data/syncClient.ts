@@ -177,6 +177,11 @@ export interface RemoteBusiness {
   business_type?: string | null;
   role?: 'owner' | 'manager' | 'staff';
   active?: boolean;
+  /** A closed year kept for reference: the business it came from, and its last day. */
+  archive_of?: string | null;
+  /** The last day of the latest year closed (YYYY-MM-DD), and how many have been closed. */
+  closed_to?: string | null;
+  year_epoch?: number;
 }
 
 export async function createBusiness(access: string, input: { name: string; tin?: string; phone?: string; localId: string }): Promise<Result<{ id: string; name: string; local_id: string }>> {
@@ -194,6 +199,15 @@ export async function listBusinesses(access: string, includeInactive = false): P
   const r = await call<{ businesses: RemoteBusiness[]; licence?: AccountLicence }>('/v1/businesses' + (includeInactive ? '?all=true' : ''), access, undefined, 'GET');
   if (r.ok && r.value.licence) accountLicence = r.value.licence;
   return r.ok ? { ok: true, value: r.value.businesses || [] } : r;
+}
+
+/**
+ * Close a financial year (the owner): the account gives the closed year a
+ * business of its own and marks this one closed to the day, so every other
+ * device closes its copy at the same day when it next syncs.
+ */
+export async function closeYearOnServer(access: string, businessId: string, closedTo: string): Promise<Result<{ archiveId: string; archiveName: string; closedTo: string; epoch: number }>> {
+  return call<{ archiveId: string; archiveName: string; closedTo: string; epoch: number }>('/v1/businesses/' + businessId + '/close-year', access, { closedTo });
 }
 
 export async function setBusinessStatus(access: string, businessId: string, active: boolean): Promise<Result<{ active: boolean }>> {
@@ -529,17 +543,20 @@ export const transfersApi = {
  * the server cannot be reached in time — the voucher is then saved with a
  * temporary number and given its real one on the next sync.
  */
+/** Why the last request for a number was refused (the server's failure code), or '' — so a sync can tell "the business is not on this account" from "no signal". */
+export let lastNumberFailure = '';
 export async function nextVoucherNumber(access: string, o: { business: string; series: string; ref: string; floor: number; device?: string }, timeoutMs = 3000): Promise<number | null> {
   if (!serverConfigured()) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  lastNumberFailure = '';
   try {
     const res = await fetch(SERVER_URL.replace(/[/]$/, '') + '/v1/numbers/next', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + access, 'x-app-version': APP_VERSION },
       body: JSON.stringify(o), signal: controller.signal,
     });
-    if (!res.ok) return null;
+    if (!res.ok) { lastNumberFailure = String((await res.json().catch(() => null))?.error || res.status); return null; }
     const j = await res.json();
     const n = Number(j?.n);
     return Number.isFinite(n) && n > 0 ? n : null;

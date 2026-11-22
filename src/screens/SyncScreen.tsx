@@ -141,8 +141,18 @@ export default function SyncScreen() {
     }
   }
 
-  function restoreCopy() {
+  async function restoreCopy() {
     if (!copy || !db) return;
+    /* The cloud copy is the books as they were last saved there (the computer's,
+       when it was the last to save). Changes made on this phone and not yet sent
+       are not in it: send them first, so restoring loses nothing. */
+    if ((db.queue || []).length) {
+      setBusy('backup');
+      try {
+        const r = await run('manual');
+        if (!r.ok) { error('Send this phone’s waiting changes first: ' + r.message); return; }
+      } finally { setBusy(null); }
+    }
     Alert.alert(
       'Restore the cloud backup?',
       'This replaces the books on this phone with the copy from ' + fmtDate(copy.updatedAt)

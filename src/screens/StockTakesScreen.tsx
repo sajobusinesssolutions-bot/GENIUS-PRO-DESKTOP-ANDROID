@@ -4,6 +4,7 @@ import { View, Text, FlatList, TextInput, Alert } from 'react-native';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import DateRow from '../components/DateRow';
 import { Empty, Button, Cap, DocCard, Badge, StatGrid, SectionLabel, StickyBar, Search } from '../components/ui';
 import { Field } from '../components/form';
 import { Icon } from '../components/icons';
@@ -18,10 +19,11 @@ export default function StockTakesScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { db, startStockTake } = useAppData();
   const [filter, setFilter] = React.useState<'all' | 'open' | 'posted'>('all');
+  const [at, setAt] = React.useState(() => new Date());   // the day the new count is for
   const all = [...(db?.stockTakes || [])].reverse();
   const list = all.filter((t) => filter === 'all' || t.status === filter);
   const whName = (id: string) => db?.warehouses.find((w) => w.id === id)?.name || id;
-  const start = (id: string) => { const st = startStockTake(id); navigation.navigate('StockTakeDetail', { stockTakeId: st.id }); };
+  const start = (id: string) => { const st = startStockTake(id, at.toISOString()); navigation.navigate('StockTakeDetail', { stockTakeId: st.id }); };
   const startCount = () => {
     const whs = (db?.warehouses || []).filter((w) => w.active !== false);
     if (whs.length <= 1) { if (whs[0]) start(whs[0].id); return; }
@@ -34,6 +36,7 @@ export default function StockTakesScreen({ navigation }: Props) {
     <ListPage
       top={(
         <>
+          <DateRow value={at} onChange={setAt} label="Date of a new count" withTime={false} />
           <StatusChips value={filter} onChange={setFilter} options={[{ v: 'all', l: 'All' }, { v: 'open', l: 'Open' }, { v: 'posted', l: 'Posted' }]} />
           <SummaryTiles tiles={[
             { label: 'In progress', value: String(all.filter((t) => t.status === 'open').length), tone: colors.warn },

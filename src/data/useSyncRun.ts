@@ -15,7 +15,10 @@ import { wholeBook, isPartialBook } from './storage';
 import { useAppData } from './AppDataContext';
 import { useAuth } from './AuthContext';
 import { refreshSession } from './authApi';
-import { ensureWiring, pushQueue, pullOps, uploadSnapshot, nextVoucherNumber, cancelVoucherNumber, newOpId, waitForChange } from './syncClient';
+import { ensureWiring, pushQueue, pullOps, uploadSnapshot, nextVoucherNumber, lastNumberFailure, cancelVoucherNumber, newOpId, waitForChange, listBusinesses, closeYearOnServer } from './syncClient';
+import { closedYearCopy } from './yearSplit';
+import { parkBook } from './parkedBooks';
+import { uid } from './uid';
 import { saleSeries, saleFloor, formatSaleNo, saleWidth } from './logic';
 import { plural } from './helpers';
 import { needsNewerApp } from './appVersion';
@@ -48,6 +51,8 @@ export interface RunOutcome {
   sent: number;
   message: string;
   seq?: number;
+  /** The link to the business was dead and has been dropped: run again at once to link the books afresh. */
+  relink?: boolean;
 }
 
 /**
@@ -78,9 +83,12 @@ const SNAPSHOT_AFTER_CHANGES = 300;
 const SNAPSHOT_GAP_MS = 30 * 60 * 1000;
 const SNAPSHOT_MANUAL_GAP_MS = 10 * 60 * 1000;
 let lastSnapshotAt = 0;
+/* how often an automatic run asks the account whether another device closed a year */
+const YEAR_CHECK_MS = 10 * 60 * 1000;
+let lastYearCheck = 0;
 
 export function useSyncRun() {
-  const { db, setSync, dropQueued, applyRemoteOps, logAudit, licFeature, shareFirm, setSaleNumber } = useAppData();
+  const { db, setSync, dropQueued, applyRemoteOps, logAudit, licFeature, shareFirm, setSaleNumber, splitYear } = useAppData();
   const { account } = useAuth();
   const dbRef = useRef(db);
   dbRef.current = db;
@@ -112,11 +120,12 @@ export function useSyncRun() {
     if (needsNewerApp(d)) return { ok: false, sent: 0, message: 'Update the app to keep syncing.' };
 
     syncRunning = true;
+    let relink = false;
     try {
       const token = await accessToken();
       if (!token) return { ok: false, sent: 0, message: 'Your session has expired. Sign out and in again.' };
 
-      const wiring = await ensureWiring(d, token, account.deviceId);
+      const wiring = await ensureWiring(dbRef.current || d, token, account.deviceId);
       if (!wiring.ok) return { ok: false, sent: 0, message: wiring.error.message };
       // written only when it changes: every write re-renders the whole app and re-saves the books
       if (d.sync.businessId !== wiring.value.businessId || d.sync.deviceId !== wiring.value.deviceId) {
@@ -129,9 +138,19 @@ export function useSyncRun() {
            to one that is not on it): sync stops and drops the dead link, rather
            than showing "connected" while every change is refused. Switching sync
            on again links the books afresh. */
+        /* The link these books carry points at a business the server does not
+           have for this account (a backup restored on this phone, a business
+           deactivated or removed). Sync used to switch itself off here and ask
+           for a trip to Settings. Now the dead link is dropped and the run goes
+           again at once: the books find their business by their own id (the
+           server makes a deactivated one active again), or are sent up as a new
+           one, and the whole copy goes with them, so other devices can open it. */
         if (String(e.failure) === 'unknownBusiness') {
-          setSync({ on: false, businessId: undefined, cursor: 0, snapshotDue: true } as any);
-          e.message = 'This business is no longer on your account, so sync has been switched off. Turn it on again in Settings → Cloud sync to send these books up as a business on your account.';
+          const fresh = { businessId: undefined, cursor: 0, snapshotDue: true, snapshotVersion: 0, snapshotCursor: 0 } as any;
+          setSync(fresh);
+          if (dbRef.current) dbRef.current.sync = { ...dbRef.current.sync, ...fresh };
+          relink = true;
+          e.message = 'These books were linked to a business that is not on your account. Linking them to your account again…';
           return;
         }
         if (String(e.failure) !== 'updateRequired') return;
@@ -147,12 +166,17 @@ export function useSyncRun() {
       for (const s of pend) {
         const series = saleSeries(d, s.warehouse);
         const n = await nextVoucherNumber(token, { business: wiring.value.businessId, series, ref: s.id, floor: saleFloor(d, series), device: wiring.value.deviceId });
+        if (!n && lastNumberFailure === 'unknownBusiness') {
+          const e = { failure: 'unknownBusiness', message: '' };
+          stopIfOld(e);
+          return { ok: false, sent: 0, message: e.message, relink };
+        }
         if (!n) return { ok: false, sent: 0, message: 'Waiting for the server to number ' + pend.length + ' sale' + (pend.length === 1 ? '' : 's') + ' saved offline.' };
         setSaleNumber(s.id, formatSaleNo(series, n, saleWidth(d, series)));
       }
 
       const r = await pushQueue(d, token, wiring.value);
-      if (!r.ok) { stopIfOld(r.error); return { ok: false, sent: 0, message: r.error.message }; }
+      if (!r.ok) { stopIfOld(r.error); return { ok: false, sent: 0, message: r.error.message, relink }; }
       dropQueued([...new Set(r.value.done)]);
 
       let down = 0;
@@ -160,7 +184,7 @@ export function useSyncRun() {
       let more = true;
       while (more) {
         const pulled = await pullOps(token, wiring.value.businessId, cursor);
-        if (!pulled.ok) { stopIfOld(pulled.error); return { ok: false, sent: r.value.sent, message: pulled.error.message }; }
+        if (!pulled.ok) { stopIfOld(pulled.error); return { ok: false, sent: r.value.sent, message: pulled.error.message, relink }; }
         if (pulled.value.ops.length) {
           down += applyRemoteOps(pulled.value.ops);
           cursor = Math.max(cursor, pulled.value.seq);
@@ -168,6 +192,19 @@ export function useSyncRun() {
         more = pulled.value.more;
       }
       markServerOk();
+
+      /* another device closed the year (the account says so): this copy closes at the same day */
+      let yearSplit = '';
+      if (how === 'manual' || Date.now() - lastYearCheck > YEAR_CHECK_MS) {
+        lastYearCheck = Date.now();
+        const list = await listBusinesses(token);
+        const me = list.ok ? list.value.find((b) => b.id === wiring.value.businessId) : undefined;
+        const had = (dbRef.current || d).settings.yearClosedTo || '';
+        if (me && me.closed_to && me.closed_to > had) {
+          try { splitYear(me.closed_to, me.year_epoch); yearSplit = me.closed_to; logAudit('Year closed on another device', 'This copy closed to ' + me.closed_to); }
+          catch { /* tried again at the next check */ lastYearCheck = 0; }
+        }
+      }
 
       // the copy goes after the push, from the books as they are now — when asked
       // for, or when the last one is old; the changes themselves already went up
@@ -179,7 +216,8 @@ export function useSyncRun() {
         || (how === 'manual' && age > SNAPSHOT_MANUAL_GAP_MS)
         || (changes >= SNAPSHOT_AFTER_CHANGES && age > SNAPSHOT_GAP_MS);
       const keptVersion = (dbRef.current || d).sync.snapshotVersion || 0;
-      let snap = snapDue
+      /* just split: the book in hand is the one before it, so no copy goes up from it this time */
+      let snap = snapDue && !yearSplit
         ? await uploadSnapshot((isPartialBook(dbRef.current || d) ? await wholeBook(dbRef.current || d) : dbRef.current || d), token, wiring.value, cursor)
         : { ok: true as const, value: { bytes: 0, version: keptVersion } };
       // Another phone sent a newer copy. This phone's changes already went up
@@ -246,7 +284,7 @@ export function useSyncRun() {
     } finally {
       syncRunning = false;
     }
-  }, [account, accessToken, setSync, dropQueued, applyRemoteOps, logAudit, licFeature]);
+  }, [account, accessToken, setSync, dropQueued, applyRemoteOps, logAudit, licFeature, splitYear]);
 
   /**
    * A run, with any failure written to the sync log. Failures used to vanish:
@@ -256,7 +294,10 @@ export function useSyncRun() {
    * A failure is logged once until something changes, not every retry.
    */
   const run = useCallback(async (how: 'manual' | 'auto'): Promise<RunOutcome> => {
-    const outcome = await runOnce(how);
+    let outcome = await runOnce(how);
+    // the books were linked to a business the account does not have: linked again
+    // (found by their own id, made active again, or sent up as a new one) and synced, in one go
+    if (!outcome.ok && outcome.relink) outcome = await runOnce(how);
     if (!outcome.ok && !outcome.busy) {
       const s = dbRef.current?.sync;
       const last = s?.log?.[s.log.length - 1];
@@ -341,5 +382,53 @@ export function useSyncRun() {
     return /not ?found/i.test(why) && !/business/i.test(why) ? 'unsupported' : 'failed';
   }, [account, accessToken, licFeature]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { run, pull, accessToken, takeSaleNumber, waitChange };
+  /**
+   * Close a financial year to `to` (YYYY-MM-DD) and split the books there
+   * (yearSplit.ts). On the account: everything goes up first, the account
+   * gives the closed year a business of its own and this phone sends it the
+   * closed year's book; every other device closes its copy at its next sync.
+   * The closed year is also kept on this phone (Businesses), to open offline.
+   */
+  const closeYear = useCallback(async (to: string): Promise<{ ok: boolean; message: string; archiveName?: string }> => {
+    const d0 = dbRef.current;
+    if (!d0) return { ok: false, message: 'The books are not loaded yet.' };
+    if (d0.session.role !== 'owner') return { ok: false, message: 'Only the owner can close a year.' };
+    const online = !!(d0.sync.on && d0.sync.businessId && account && !account.localOnly);
+    let archiveName = (d0.firm.name || 'Business') + ' · to ' + to;
+    let archiveId: string | undefined;
+    let epoch: number | undefined;
+    let token: string | null = null;
+    let note = '';
+    if (online) {
+      const r = await run('manual');
+      if (!r.ok) return { ok: false, message: 'Sync first: ' + r.message };
+      if ((dbRef.current || d0).queue.length) return { ok: false, message: 'Some changes are still waiting to go up. Sync again, then close the year.' };
+      token = await accessToken();
+      if (!token) return { ok: false, message: 'Your session has expired. Sign out and in again.' };
+      const c = await closeYearOnServer(token, d0.sync.businessId!, to);
+      if (!c.ok) return { ok: false, message: c.error.message };
+      archiveId = c.value.archiveId; epoch = c.value.epoch; archiveName = c.value.archiveName;
+    }
+    const cur = dbRef.current || d0;
+    const whole = isPartialBook(cur) ? await wholeBook(cur) : cur;
+    const copy = closedYearCopy(whole, to);
+    copy.firm = { ...copy.firm, id: uid('frm'), name: archiveName };
+    copy.firms = [copy.firm];
+    copy.activeFirmId = copy.firm.id;
+    copy.settings = { ...copy.settings, yearArchiveOf: d0.sync.businessId || d0.firm.id };
+    copy.sync = { ...copy.sync, on: online, businessId: archiveId, cursor: 0, snapshotVersion: 0, snapshotDue: false, pending: [], log: [] } as any;
+    if (online && token && archiveId) {
+      const up = await uploadSnapshot(copy, token, { businessId: archiveId, deviceId: d0.sync.deviceId || '' }, 0);
+      if (!up.ok) note = ' The closed year is on this phone; it did not go up to the account (' + up.error.message + ').';
+    }
+    try { await parkBook(copy); } catch { /* the account keeps it */ }
+    try { splitYear(to, epoch); }
+    catch (e: any) { return { ok: false, message: e?.message || 'The year could not be closed' }; }
+    logAudit('Year closed and split', 'To ' + to + ' · kept as ' + archiveName);
+    /* the new year's book goes up once the screen has the split book in hand */
+    if (online) setTimeout(() => { void run('manual'); }, 800);
+    return { ok: true, archiveName, message: 'New books from the day after ' + to + '. The closed year is kept as ' + archiveName + '.' + note };
+  }, [account, accessToken, run, splitYear, logAudit]);
+
+  return { run, pull, accessToken, takeSaleNumber, waitChange, closeYear };
 }

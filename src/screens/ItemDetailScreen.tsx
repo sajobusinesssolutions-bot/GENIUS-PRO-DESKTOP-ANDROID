@@ -11,6 +11,7 @@ import ScrollView from '../components/KeyScroll';
 import { Pressable } from '../components/Press';
 import { useTheme, fonts, radius } from '../theme';
 import { useAppData } from '../data/AppDataContext';
+import DateRow from '../components/DateRow';
 import { useOlderRows, withOlder } from '../data/useOnDisk';
 import type { Movement } from '../data/types';
 import { itemHistory, type HistoryRow } from '../data/itemHistory';
@@ -56,6 +57,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [counted, setCounted] = useState('');
   const [note, setNote] = useState('');
+  const [at, setAt] = useState(() => new Date());   // the day it happened (DateRow; an earlier day needs "Date entries in the past")
   /** Empty means the whole warehouse; otherwise the batch being corrected. */
   const [adjustBatch, setAdjustBatch] = useState('');
 
@@ -168,6 +170,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
         (note.trim() || 'Counted on the item page') + ' — ' + server.userName,
         adjustBatch || undefined,
         server.userId,
+        at.toISOString(),
       );
       success(
         (adjustBatch ? 'Batch ' + adjustBatch + ' set to ' + n : 'Stock set to ' + n + ' ' + p!.unit)
@@ -437,6 +440,7 @@ export default function ItemDetailScreen({ route, navigation }: Props) {
           decimal
           keepZero
         />
+        <DateRow value={at} onChange={setAt} label="Counted on" />
         <Field icon="doc" label="Reason" value={note} onChangeText={setNote} placeholder="Breakage, recount, theft…" />
 
         <Panel>

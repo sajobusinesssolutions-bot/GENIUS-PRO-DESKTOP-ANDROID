@@ -24,6 +24,7 @@ export const PERM_MATRIX: PermGroup[] = [
     ['void', 'Void a sale'], ['discount', 'Give discounts'], ['price_edit', 'Change prices at the till'],
     ['view_all', "See other staff's sales"], ['view_totals', 'See total sales'], ['view_balances', 'See balance due'],
     ['offers', 'Set up offers'], ['recurring', 'Recurring bills'],
+    ['backdate', 'Date entries in the past (any entry: sales, payments, expenses, stock)'],
     ['edit_offline', 'Edit offline'], ['delete_offline', 'Delete offline'], ['toggle_offline', 'Toggle offline'],
   ] },
   // a restaurant's own switches: who may charge, cancel, see every table, sell any menu

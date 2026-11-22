@@ -18,7 +18,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../nav/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PartyDetail'>;
-type Kind = 'all' | 'sale' | 'purchase' | 'payment' | 'return';
+type Kind = 'all' | 'sale' | 'purchase' | 'payment' | 'return' | 'quote';
 
 interface Row {
   id: string;
@@ -34,12 +34,14 @@ interface Row {
   /** Positive increases what they owe you. */
   signed: number;
   due?: number;
+  /** A quotation says where it stands (open, converted, deleted) instead of paid or due: it is not owed. */
+  status?: { text: string; tone: 'good' | 'accent' | 'faint' };
   open: () => void;
   doc: () => ReturnType<ReturnType<typeof useDocBuilder>['saleDoc']>;
 }
 
 const KIND_ICON: Record<Exclude<Kind, 'all'>, IconName> = {
-  sale: 'receipt', purchase: 'cart', payment: 'cash', return: 'swap',
+  sale: 'receipt', purchase: 'cart', payment: 'cash', return: 'swap', quote: 'doc',
 };
 
 export default function PartyDetailScreen({ route, navigation }: Props) {
@@ -134,6 +136,29 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
       });
     });
 
+    /* quotations given to them: shown with where each stands, never counted in
+       what they owe (it is a price offered, not a sale) */
+    (db.estimates || []).forEach((e) => {
+      if (e.partyId !== pt.id) return;
+      const gross = e.lines.reduce((t, l) => t + l.qty * l.price, 0);
+      const expired = e.status === 'open' && e.validUntil && tsMs(e.validUntil) < Date.now();
+      out.push({
+        id: e.id, kind: 'quote', ts: e.ts,
+        title: e.no,
+        type: 'Quotation', tone: 'neutral',
+        void: e.status === 'void',
+        sub: e.lines.length + ' item' + (e.lines.length === 1 ? '' : 's'),
+        amount: e.total,
+        signed: 0,
+        status: e.status === 'converted' ? { text: 'Converted to a sale', tone: 'good' }
+          : e.status === 'void' ? { text: 'Deleted', tone: 'faint' }
+            : expired ? { text: 'Expired', tone: 'faint' }
+              : { text: e.validUntil ? 'Open · valid to ' + new Date(e.validUntil).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Open', tone: 'accent' },
+        open: () => navigation.navigate('EstimateDetail', { estimateId: e.id }),
+        doc: () => saleDoc({ ...(e as any), gross, tax: 0, additionalCharges: 0, paid: undefined, due: 0, method: '', userId: db.session.userId } as any, 'Quotation'),
+      });
+    });
+
     out.sort((a, b) => tsMs(b.ts) - tsMs(a.ts));
     return kind === 'all' ? out : out.filter((r) => r.kind === kind);
   }, [db, pt, kind, navigation, saleDoc, purchaseDoc, paymentDoc, older]);
@@ -182,13 +207,14 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
                 { v: 'purchase', l: 'Purchases' },
                 { v: 'payment', l: 'Payments' },
                 { v: 'return', l: 'Returns' },
+                { v: 'quote', l: 'Quotations' },
               ]}
             />
             <View style={{ height: 8 }} />
           </View>
         }
         ListEmptyComponent={
-          <EmptyBlock icon="doc" title="Nothing recorded yet" hint="Sales and payments will appear here." />
+          <EmptyBlock icon="doc" title="Nothing recorded yet" hint="Sales, payments and quotations will appear here." />
         }
         renderItem={({ item }) => {
           const tint = item.tone === 'good' ? { fg: colors.good, bg: colors.goodSoft }
@@ -210,7 +236,9 @@ export default function PartyDetailScreen({ route, navigation }: Props) {
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={{ fontFamily: fonts.uiExtra, fontSize: 15, color: colors.ink, textDecorationLine: item.void ? 'line-through' : 'none' }}>{money(item.amount)}</Text>
-                  {item.due && item.due > 0.01 && !item.void ? (
+                  {item.status ? (
+                    <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: item.status.tone === 'good' ? colors.good : item.status.tone === 'accent' ? colors.accent : colors.faint, marginTop: 2 }}>{item.status.text}</Text>
+                  ) : item.due && item.due > 0.01 && !item.void ? (
                     <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.danger, marginTop: 2 }}>{money(item.due)} due</Text>
                   ) : item.kind !== 'payment' && !item.void ? (
                     <Text style={{ fontFamily: fonts.uiSemi, fontSize: 12, color: colors.good, marginTop: 2 }}>Paid</Text>
