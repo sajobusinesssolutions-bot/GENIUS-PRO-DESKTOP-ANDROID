@@ -12,12 +12,18 @@
  * which the app checks offline with the public half.
  */
 import fs from 'node:fs';
+import path from 'node:path';
 import crypto from 'node:crypto';
 import { SignJWT, importPKCS8 } from 'jose';
 import { q } from './db.js';
 import { whoami } from './sync.js';
 import { developer } from './admin.js';
 import * as momopay from './momopay.js';
+import { sendRanged } from './sendranged.js';
+
+/* SACCO Manager's updates: latest.yml, the installer and its blockmap (scripts/publish-sacco.sh in the app uploads them) */
+const SACCO_DIR = path.join(process.env.RELEASES_DIR || '/opt/genius/releases', 'sacco');
+const SACCO_FILE = /^(latest\.yml|SACCOManager-Setup-[0-9.]+\.exe(\.blockmap)?)$/;
 
 const TRIAL_DAYS = 30;
 const OFFLINE_DAYS = Number(process.env.SACCO_OFFLINE_DAYS || 90);
@@ -197,5 +203,22 @@ export default async function saccoLicenceRoutes(app) {
         term: lic.term || null, expires_at: lic.expires_at || null });
     }
     return out.sort((a, b) => String(b.last_seen || '').localeCompare(String(a.last_seen || '')));
+  });
+
+  /* ── updates, as electron-updater's generic provider asks; ranges are served, so a
+     computer downloads only the blocks that changed (sendranged.js). Public, like any
+     software download, but only these shapes of name, from one folder. ── */
+  app.get('/v1/sacco-desktop/:file', {
+    config: { rateLimit: { max: 240, timeWindow: '1 hour' } },
+  }, async (req, reply) => {
+    const name = String(req.params.file || '');
+    if (!SACCO_FILE.test(name)) return reply.code(404).send({ error: 'notFound' });
+    const full = path.join(SACCO_DIR, name);
+    let st;
+    try { st = fs.statSync(full); } catch { return reply.code(404).send({ error: 'notFound' }); }
+    return sendRanged(req, reply, full, st.size, {
+      'content-type': name.endsWith('.yml') ? 'text/yaml; charset=utf-8' : 'application/octet-stream',
+      'cache-control': name.endsWith('.yml') ? 'no-cache' : 'public, max-age=86400',
+    });
   });
 }

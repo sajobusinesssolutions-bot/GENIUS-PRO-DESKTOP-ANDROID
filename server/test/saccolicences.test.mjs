@@ -18,6 +18,11 @@ const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
 const keyFile = path.join(os.tmpdir(), `sacco-test-key-${process.pid}.pem`);
 fs.writeFileSync(keyFile, privateKey.export({ type: 'pkcs8', format: 'pem' }));
 process.env.LICENCE_PRIVATE_KEY_PATH = keyFile;
+const rel = fs.mkdtempSync(path.join(os.tmpdir(), 'sacco-rel-'));   // a releases folder with one SACCO build in it
+process.env.RELEASES_DIR = rel;
+fs.mkdirSync(path.join(rel, 'sacco'));
+fs.writeFileSync(path.join(rel, 'sacco', 'latest.yml'), 'version: 1.10.0\n');
+fs.writeFileSync(path.join(rel, 'sacco', 'SACCOManager-Setup-1.10.0.exe'), Buffer.alloc(5000, 7));
 
 const mem = newDb();
 const { Pool } = mem.adapters.createPg();
@@ -74,6 +79,17 @@ test('Basic with its member limit; Professional for three years runs on from it;
 
 test('buying is closed without SALJOE TECH\'s keys', async () => {
   assert.equal((await call('POST', '/v1/sacco/buy', { tier: 'basic', term: '1y', phone: '0772123456' })).status, 503);
+});
+
+test('updates: latest.yml and the installer, a part of it when a part is asked for, and nothing else', async () => {
+  const y = await app.inject({ method: 'GET', url: '/v1/sacco-desktop/latest.yml' });
+  assert.equal(y.statusCode, 200);
+  assert.match(y.body, /version: 1.10.0/);
+  const part = await app.inject({ method: 'GET', url: '/v1/sacco-desktop/SACCOManager-Setup-1.10.0.exe', headers: { range: 'bytes=100-199' } });
+  assert.equal(part.statusCode, 206);
+  assert.equal(part.rawPayload.length, 100);
+  for (const bad of ['..%2F..%2Fetc%2Fpasswd', 'Tallix-Setup-1.0.0.exe', 'SACCOManager-Setup-9.9.9.exe'])
+    assert.equal((await app.inject({ method: 'GET', url: '/v1/sacco-desktop/' + bad })).statusCode, 404, bad);
 });
 
 test.after(() => { try { fs.unlinkSync(keyFile); } catch { /* gone */ } });
