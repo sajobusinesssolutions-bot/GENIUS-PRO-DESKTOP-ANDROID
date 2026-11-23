@@ -10,6 +10,7 @@
  *   { "versionCode": 6, "versionName": "1.5.1", "file": "genius-pro-1.5.1-6.apk", "size": 1, "notes": "" }
  */
 import fs from 'node:fs';
+import { sendRanged } from './sendranged.js';
 import path from 'node:path';
 import { whoami } from './sync.js';
 
@@ -38,18 +39,18 @@ const DESKTOP_FILE = /^(latest\.yml|Genius-POS-Setup-[0-9.]+\.exe(\.blockmap)?)$
 
 export default async function updateRoutes(app) {
   app.get('/v1/desktop/:file', {
-    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+    config: { rateLimit: { max: 240, timeWindow: '1 hour' } },
   }, async (req, reply) => {
     const name = String(req.params.file || '');
     if (!DESKTOP_FILE.test(name)) return reply.code(404).send({ error: 'notFound' });
     const full = path.join(DESKTOP_DIR, name);
     let st;
     try { st = fs.statSync(full); } catch { return reply.code(404).send({ error: 'notFound' }); }
-    reply
-      .header('content-type', name.endsWith('.yml') ? 'text/yaml; charset=utf-8' : 'application/octet-stream')
-      .header('content-length', st.size)
-      .header('cache-control', name.endsWith('.yml') ? 'no-cache' : 'public, max-age=86400');
-    return reply.send(fs.createReadStream(full));
+    /* the parts asked for, so a till downloads only the blocks that changed (sendranged.js) */
+    return sendRanged(req, reply, full, st.size, {
+      'content-type': name.endsWith('.yml') ? 'text/yaml; charset=utf-8' : 'application/octet-stream',
+      'cache-control': name.endsWith('.yml') ? 'no-cache' : 'public, max-age=86400',
+    });
   });
 
   app.get('/v1/app/latest', {

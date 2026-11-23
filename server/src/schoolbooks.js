@@ -29,6 +29,7 @@ import { whoami } from './sync.js';
 import { developer } from './admin.js';
 import { SignJWT, importPKCS8 } from 'jose';
 import * as momopay from './momopay.js';
+import { sendRanged } from './sendranged.js';
 
 const RELEASES_DIR = process.env.RELEASES_DIR || '/opt/genius/releases';
 const SCHOOL_DIR = path.join(RELEASES_DIR, 'school');
@@ -420,17 +421,17 @@ export default async function schoolBookRoutes(app) {
 
   /* ── updates: latest.yml and the installer, as electron-updater's generic provider asks ── */
   app.get('/v1/school-desktop/:file', {
-    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+    config: { rateLimit: { max: 240, timeWindow: '1 hour' } },
   }, async (req, reply) => {
     const name = String(req.params.file || '');
     if (!SCHOOL_FILE.test(name)) return reply.code(404).send({ error: 'notFound' });
     const full = path.join(SCHOOL_DIR, name);
     let st;
     try { st = fs.statSync(full); } catch { return reply.code(404).send({ error: 'notFound' }); }
-    reply
-      .header('content-type', name.endsWith('.yml') ? 'text/yaml; charset=utf-8' : 'application/octet-stream')
-      .header('content-length', st.size)
-      .header('cache-control', name.endsWith('.yml') ? 'no-cache' : 'public, max-age=86400');
-    return reply.send(fs.createReadStream(full));
+    /* the parts asked for, so a school's computer downloads only the blocks that changed (sendranged.js) */
+    return sendRanged(req, reply, full, st.size, {
+      'content-type': name.endsWith('.yml') ? 'text/yaml; charset=utf-8' : 'application/octet-stream',
+      'cache-control': name.endsWith('.yml') ? 'no-cache' : 'public, max-age=86400',
+    });
   });
 }
