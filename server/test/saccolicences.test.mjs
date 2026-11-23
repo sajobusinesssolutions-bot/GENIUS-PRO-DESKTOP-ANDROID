@@ -81,6 +81,27 @@ test('buying is closed without SALJOE TECH\'s keys', async () => {
   assert.equal((await call('POST', '/v1/sacco/buy', { tier: 'basic', term: '1y', phone: '0772123456' })).status, 503);
 });
 
+test('the books in the cloud: a whole copy, then only changes; another computer behind is refused, then catches up', async () => {
+  const b = (await call('POST', '/v1/sacco/books', { name: 'Kasese SACCO' })).body;
+  assert.ok(b.id && b.version === 0);
+  const gz = (o) => Buffer.from(JSON.stringify(o)).toString('base64');
+  assert.equal((await call('POST', `/v1/sacco/books/${b.id}/ops`, { base_version: 0, data: gz([1]) })).body.error, 'snapshot', 'changes before any whole copy are refused');
+  const whole = Buffer.alloc(4096, 3).toString('base64');
+  const p = await call('PUT', `/v1/sacco/books/${b.id}`, { base_version: 0, data: whole, device: 'TELLER-1' });
+  assert.deepEqual([p.status, p.body.version, p.body.snapshot_version], [200, 1, 1]);
+  const o1 = await call('POST', `/v1/sacco/books/${b.id}/ops`, { base_version: 1, data: gz([{ t: 'loans' }]), count: 1 });
+  assert.deepEqual([o1.body.version, o1.body.ops_since_snapshot], [2, 1]);
+  assert.equal((await call('POST', `/v1/sacco/books/${b.id}/ops`, { base_version: 1, data: gz([2]) })).status, 409, 'a computer still at version 1 is refused');
+  const take = await call('GET', `/v1/sacco/books/${b.id}/ops?since=1`);
+  assert.deepEqual([take.body.version, take.body.ops.map((x) => x.version)], [2, [2]]);
+  assert.equal((await call('GET', `/v1/sacco/books/${b.id}/ops?since=0`)).status, 410, 'behind the whole copy: take it whole');
+  assert.equal((await call('GET', `/v1/sacco/books/${b.id}?meta=1`)).body.version, 2);
+  const again = await call('PUT', `/v1/sacco/books/${b.id}`, { base_version: 2, data: whole });
+  assert.equal(again.body.snapshot_version, 3);
+  assert.equal((await call('GET', `/v1/sacco/books/${b.id}/ops?since=3`)).body.ops.length, 0, 'the whole copy holds the changes before it');
+  assert.equal((await call('GET', `/v1/sacco/books/${b.id}?meta=1`, null, dev)).status, 404, 'another account cannot see them');
+});
+
 test('updates: latest.yml and the installer, a part of it when a part is asked for, and nothing else', async () => {
   const y = await app.inject({ method: 'GET', url: '/v1/sacco-desktop/latest.yml' });
   assert.equal(y.statusCode, 200);

@@ -63,7 +63,20 @@ async function ensureTables() {
   await q(`create table if not exists sacco_purchases (id bigserial primary key, account_id uuid not null, tier text not null, term text not null, amount bigint not null,
     phone text not null, network text not null, ref text not null unique, status text not null default 'pending', reason text, licence_id bigint,
     at timestamptz not null default now(), done_at timestamptz)`);
+  /* the SACCO's books in the cloud (as Tallix's): a whole copy, and the changes sent since it */
+  await q(`create table if not exists sacco_books (
+    id uuid primary key, account_id uuid not null, name text not null, version int not null default 0, snapshot_version int not null default 0,
+    data bytea, size int not null default 0, hash text, updated_at timestamptz not null default now(), updated_from text,
+    created_at timestamptz not null default now(), status text not null default 'active')`);
+  await q('create index if not exists sacco_books_account on sacco_books(account_id)');
+  await q(`create table if not exists sacco_book_ops (book_id uuid not null, version int not null, data bytea not null, count int not null default 0,
+    device text, at timestamptz not null default now(), primary key (book_id, version))`);
 }
+
+const MAX_BOOK = 250 * 1024 * 1024;
+const BOOKS_PER_ACCOUNT = 3;   // a SACCO and up to two branches kept as their own books
+const bookMeta = (b) => ({ id: b.id, name: b.name, version: b.version, snapshot_version: b.snapshot_version, size: b.size, hash: b.hash, updated_at: b.updated_at, updated_from: b.updated_from });
+const CONFLICT = 'Another computer saved the SACCO\'s books since this one last took them.';
 
 /** Where this account stands: a licence in force, a trial, or neither. */
 async function licenceOf(accountId) {
@@ -203,6 +216,83 @@ export default async function saccoLicenceRoutes(app) {
         term: lic.term || null, expires_at: lic.expires_at || null });
     }
     return out.sort((a, b) => String(b.last_seen || '').localeCompare(String(a.last_seen || '')));
+  });
+
+  /* ── the SACCO's books in the cloud: as Tallix's, kept apart from them ──
+     A whole copy (gzipped SQLite) at a version, and the changes sent since, each
+     the next version. A computer sends from the version it has (base_version):
+     anything else is a 409, and the SACCO chooses which copy to keep. */
+  const ownBook = async (req, me, cols = '*') => (await q(`select ${cols} from sacco_books where id = $1 and account_id = $2 and status = 'active'`, [String(req.params.id), me.id]).catch(() => ({ rows: [] }))).rows[0];
+  const lapsed = async (me) => (await licenceOf(me.id)).state === 'expired';
+  app.get('/v1/sacco/books', async (req, reply) => {
+    const me = await whoami(req, reply); if (!me) return reply;
+    return { books: (await q(`select id, name, version, snapshot_version, size, hash, updated_at, updated_from from sacco_books where account_id = $1 and status = 'active' order by created_at`, [me.id])).rows.map(bookMeta) };
+  });
+  app.post('/v1/sacco/books', async (req, reply) => {
+    const me = await whoami(req, reply); if (!me) return reply;
+    if (await lapsed(me)) return fail(reply, 402, 'licence', 'The SACCO Manager licence has run out. Renew it to keep the books in the cloud.');
+    const have = Number((await q(`select count(*) n from sacco_books where account_id = $1 and status = 'active'`, [me.id])).rows[0].n);
+    if (have >= BOOKS_PER_ACCOUNT) return fail(reply, 409, 'limit', `An account keeps up to ${BOOKS_PER_ACCOUNT} sets of books in the cloud.`);
+    const name = String(req.body?.name || '').trim().slice(0, 120);
+    if (!name) return fail(reply, 400, 'name', 'Name the SACCO.');
+    const id = crypto.randomUUID();
+    await q('insert into sacco_books (id, account_id, name) values ($1, $2, $3)', [id, me.id, name]);
+    return bookMeta((await q('select * from sacco_books where id = $1', [id])).rows[0]);
+  });
+  /* ?meta=1: only the version (a computer checking whether anything changed) */
+  app.get('/v1/sacco/books/:id', { config: { rateLimit: { max: 240, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const me = await whoami(req, reply); if (!me) return reply;
+    const b = await ownBook(req, me);
+    if (!b) return fail(reply, 404, 'notFound', 'No such books on this account.');
+    if (req.query?.meta) return bookMeta(b);
+    return { ...bookMeta(b), data: b.data ? Buffer.from(b.data).toString('base64') : null };
+  });
+  app.put('/v1/sacco/books/:id', { bodyLimit: MAX_BOOK * 1.4, config: { rateLimit: { max: 120, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const me = await whoami(req, reply); if (!me) return reply;
+    if (await lapsed(me)) return fail(reply, 402, 'licence', 'The SACCO Manager licence has run out. Renew it to keep the books in the cloud.');
+    const b = await ownBook(req, me, 'id, version');
+    if (!b) return fail(reply, 404, 'notFound', 'No such books on this account.');
+    const base = Number(req.body?.base_version);
+    if (!Number.isInteger(base) || base !== b.version) return reply.code(409).send({ error: 'conflict', message: CONFLICT, version: b.version });
+    let data;
+    try { data = Buffer.from(String(req.body?.data || ''), 'base64'); } catch { data = null; }
+    if (!data || data.length < 32 || data.length > MAX_BOOK) return fail(reply, 400, 'data', 'The books did not arrive whole.');
+    const hash = crypto.createHash('sha256').update(data).digest('hex');
+    if (req.body?.hash && req.body.hash !== hash) return fail(reply, 400, 'data', 'The books did not arrive whole.');
+    const r = await q(`update sacco_books set data = $1, size = $2, hash = $3, version = version + 1, snapshot_version = version + 1, updated_at = now(), updated_from = $4
+      where id = $5 and version = $6 returning *`, [data, data.length, hash, String(req.body?.device || '').slice(0, 80) || null, b.id, base]);
+    if (!r.rows[0]) return reply.code(409).send({ error: 'conflict', message: CONFLICT });
+    await q('delete from sacco_book_ops where book_id = $1 and version <= $2', [b.id, r.rows[0].version]);   // the whole copy holds them
+    return bookMeta(r.rows[0]);
+  });
+  app.post('/v1/sacco/books/:id/ops', { bodyLimit: 20 * 1024 * 1024, config: { rateLimit: { max: 600, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const me = await whoami(req, reply); if (!me) return reply;
+    if (await lapsed(me)) return fail(reply, 402, 'licence', 'The SACCO Manager licence has run out. Renew it to keep the books in the cloud.');
+    const b = await ownBook(req, me, 'id, version, snapshot_version, data is not null as has_data');
+    if (!b) return fail(reply, 404, 'notFound', 'No such books on this account.');
+    if (!b.has_data) return fail(reply, 409, 'snapshot', 'No whole copy is kept here yet: send the whole books first.');
+    const base = Number(req.body?.base_version);
+    if (!Number.isInteger(base) || base !== b.version) return reply.code(409).send({ error: 'conflict', message: CONFLICT, version: b.version });
+    let data;
+    try { data = Buffer.from(String(req.body?.data || ''), 'base64'); } catch { data = null; }
+    if (!data || data.length < 10) return fail(reply, 400, 'data', 'The changes did not arrive whole.');
+    const next = b.version + 1, dev = String(req.body?.device || '').slice(0, 80) || null;
+    const up = await q('update sacco_books set version = $1, updated_at = now(), updated_from = $2 where id = $3 and version = $4 returning version', [next, dev, b.id, base]);
+    if (!up.rows[0]) return reply.code(409).send({ error: 'conflict', message: CONFLICT });
+    await q('insert into sacco_book_ops (book_id, version, data, count, device) values ($1, $2, $3, $4, $5)', [b.id, next, data, Math.max(0, Number(req.body?.count) || 0), dev]);
+    const n = Number((await q('select count(*) n from sacco_book_ops where book_id = $1', [b.id])).rows[0].n);
+    return { version: next, snapshot_version: b.snapshot_version, ops_since_snapshot: n };
+  });
+  /* the changes after a version (410 when the whole copy is newer than that: take it whole) */
+  app.get('/v1/sacco/books/:id/ops', { config: { rateLimit: { max: 600, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const me = await whoami(req, reply); if (!me) return reply;
+    const b = await ownBook(req, me, 'id, version, snapshot_version, data is not null as has_data');
+    if (!b) return fail(reply, 404, 'notFound', 'No such books on this account.');
+    if (!b.has_data) return fail(reply, 410, 'snapshot', 'Nothing is kept here yet: send the whole books first.');
+    const since = Number(req.query?.since);
+    if (!Number.isInteger(since) || since < b.snapshot_version) return fail(reply, 410, 'snapshot', 'Take the whole books: this computer is behind the last whole copy.');
+    const rows = (await q('select version, data from sacco_book_ops where book_id = $1 and version > $2 order by version', [b.id, since])).rows;
+    return { version: b.version, ops: rows.map((r) => ({ version: r.version, data: Buffer.from(r.data).toString('base64') })) };
   });
 
   /* ── updates, as electron-updater's generic provider asks; ranges are served, so a
