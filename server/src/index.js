@@ -27,6 +27,7 @@ import licensingRoutes from './licensing.js';
 import businessExtraRoutes from './businessextra.js';
 import businessRemoveRoutes from './businessremove.js';
 import schoolBookRoutes from './schoolbooks.js';
+import saccoLicenceRoutes from './saccolicences.js';
 import siteChatRoutes from './sitechat.js';
 
 const app = Fastify({
@@ -106,6 +107,7 @@ await app.register(transferRoutes);
 await app.register(snapshotPartRoutes);
 await app.register(businessRemoveRoutes);
 await app.register(schoolBookRoutes);
+await app.register(saccoLicenceRoutes);
 // the live chat on saljoe.tech: visitors write, SALJOE TECH replies by the emailed link (sitechat.js)
 await app.register(siteChatRoutes);
 
