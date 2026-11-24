@@ -71,7 +71,13 @@ async function ensureTables() {
   await q('create index if not exists sacco_books_account on sacco_books(account_id)');
   await q(`create table if not exists sacco_book_ops (book_id uuid not null, version int not null, data bytea not null, count int not null default 0,
     device text, at timestamptz not null default now(), primary key (book_id, version))`);
+  /* member photos and scanned documents: files, not in the books (SACCO Manager 1.10.5) */
+  await q(`create table if not exists sacco_book_files (book_id uuid not null, path text not null, size int not null, hash text, data bytea not null,
+    device text, at timestamptz not null default now(), primary key (book_id, path))`);
 }
+const MAX_FILE = 8 * 1024 * 1024;
+const FILES_PER_BOOK = 4 * 1024 * 1024 * 1024;   // 4 GB of photos and documents per set of books
+const okPath = (p) => typeof p === 'string' && p.length < 300 && /^private\/[A-Za-z0-9_./-]+$/.test(p) && !p.includes('..');
 
 const MAX_BOOK = 250 * 1024 * 1024;
 const BOOKS_PER_ACCOUNT = 3;   // a SACCO and up to two branches kept as their own books
@@ -293,6 +299,38 @@ export default async function saccoLicenceRoutes(app) {
     if (!Number.isInteger(since) || since < b.snapshot_version) return fail(reply, 410, 'snapshot', 'Take the whole books: this computer is behind the last whole copy.');
     const rows = (await q('select version, data from sacco_book_ops where book_id = $1 and version > $2 order by version', [b.id, since])).rows;
     return { version: b.version, ops: rows.map((r) => ({ version: r.version, data: Buffer.from(r.data).toString('base64') })) };
+  });
+
+  /* ── the photos and documents that go with the books (1.10.5): listed, sent one at a time, taken one at a time ── */
+  app.get('/v1/sacco/books/:id/files', async (req, reply) => {
+    const me = await whoami(req, reply); if (!me) return reply;
+    const b = await ownBook(req, me, 'id'); if (!b) return fail(reply, 404, 'notFound', 'No such books on this account.');
+    const rows = (await q('select path, size, hash from sacco_book_files where book_id = $1 order by path', [b.id])).rows;
+    return { files: rows.map((r) => ({ path: r.path, size: Number(r.size), hash: r.hash })) };
+  });
+  app.put('/v1/sacco/books/:id/files', { bodyLimit: Math.ceil(MAX_FILE * 1.4), config: { rateLimit: { max: 3000, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const me = await whoami(req, reply); if (!me) return reply;
+    if (await lapsed(me)) return fail(reply, 402, 'licence', 'The SACCO Manager licence has run out. Renew it to keep the books in the cloud.');
+    const b = await ownBook(req, me, 'id'); if (!b) return fail(reply, 404, 'notFound', 'No such books on this account.');
+    const p = String(req.body?.path || '');
+    if (!okPath(p)) return fail(reply, 400, 'path', 'Not a photo or document path.');
+    let data; try { data = Buffer.from(String(req.body?.data || ''), 'base64'); } catch { data = null; }
+    if (!data || !data.length || data.length > MAX_FILE) return fail(reply, 400, 'data', 'The file did not arrive whole, or is over 8 MB.');
+    const used = Number((await q('select coalesce(sum(size),0) n from sacco_book_files where book_id = $1', [b.id])).rows[0].n);
+    if (used + data.length > FILES_PER_BOOK) return fail(reply, 507, 'full', 'The cloud copy holds 4 GB of photos and documents, and it is full.');
+    const hash = crypto.createHash('sha256').update(data).digest('hex');
+    await q(`insert into sacco_book_files (book_id, path, size, hash, data, device) values ($1,$2,$3,$4,$5,$6)
+      on conflict (book_id, path) do update set size = $3, hash = $4, data = $5, device = $6, at = now()`, [b.id, p, data.length, hash, data, String(req.body?.device || '').slice(0, 80) || null]);
+    return { path: p, size: data.length, hash };
+  });
+  app.get('/v1/sacco/books/:id/file', { config: { rateLimit: { max: 3000, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const me = await whoami(req, reply); if (!me) return reply;
+    const b = await ownBook(req, me, 'id'); if (!b) return fail(reply, 404, 'notFound', 'No such books on this account.');
+    const p = String(req.query?.path || '');
+    if (!okPath(p)) return fail(reply, 400, 'path', 'Not a photo or document path.');
+    const f = (await q('select data, hash from sacco_book_files where book_id = $1 and path = $2', [b.id, p])).rows[0];
+    if (!f) return fail(reply, 404, 'notFound', 'No such file in the cloud copy.');
+    return { path: p, hash: f.hash, data: Buffer.from(f.data).toString('base64') };
   });
 
   /* ── updates, as electron-updater's generic provider asks; ranges are served, so a

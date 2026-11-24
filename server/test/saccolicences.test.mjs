@@ -102,6 +102,20 @@ test('the books in the cloud: a whole copy, then only changes; another computer 
   assert.equal((await call('GET', `/v1/sacco/books/${b.id}?meta=1`, null, dev)).status, 404, 'another account cannot see them');
 });
 
+test('photos and documents with the books: sent, listed, taken back; nothing outside private/', async () => {
+  const b = (await call('GET', '/v1/sacco/books')).body.books[0];
+  const img = Buffer.from('fake-jpeg-bytes').toString('base64');
+  const put = await call('PUT', `/v1/sacco/books/${b.id}/files`, { path: 'private/customers/7/photo-1.jpg', data: img, device: 'TELLER-1' });
+  assert.deepEqual([put.status, put.body.size], [200, 15]);
+  const list = await call('GET', `/v1/sacco/books/${b.id}/files`);
+  assert.deepEqual(list.body.files.map((f) => f.path), ['private/customers/7/photo-1.jpg']);
+  const got = await call('GET', `/v1/sacco/books/${b.id}/file?path=${encodeURIComponent('private/customers/7/photo-1.jpg')}`);
+  assert.equal(Buffer.from(got.body.data, 'base64').toString(), 'fake-jpeg-bytes');
+  for (const bad of ['../etc/passwd', 'private/../x', 'public/a.jpg', '/private/a.jpg'])
+    assert.equal((await call('PUT', `/v1/sacco/books/${b.id}/files`, { path: bad, data: img })).status, 400, bad);
+  assert.equal((await call('GET', `/v1/sacco/books/${b.id}/files`, null, dev)).status, 404, 'another account cannot see them');
+});
+
 test('updates: latest.yml and the installer, a part of it when a part is asked for, and nothing else', async () => {
   const y = await app.inject({ method: 'GET', url: '/v1/sacco-desktop/latest.yml' });
   assert.equal(y.statusCode, 200);
