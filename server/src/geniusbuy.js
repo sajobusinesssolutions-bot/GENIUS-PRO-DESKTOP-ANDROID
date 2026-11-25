@@ -87,7 +87,7 @@ async function priceFor(accountId, plan, term) {
   return Math.round(full * (1 - (await dealOf(plan)) / 100));
 }
 
-const shape = (p) => ({ id: Number(p.id), plan: p.plan, term: p.term, edition: p.edition, amount: Number(p.amount), phone: p.phone, network: p.network,
+const shape = (p) => ({ id: Number(p.id), txnId: 'GP-' + String(p.id).padStart(6, '0'), ref: p.ref || null, plan: p.plan, term: p.term, edition: p.edition, amount: Number(p.amount), phone: p.phone, network: p.network,
   status: p.status, reason: p.reason || null, txn: p.txn || null, expiresAt: p.expires_at || null, at: p.created_at, doneAt: p.done_at || null });
 
 export default async function geniusBuyRoutes(app) {

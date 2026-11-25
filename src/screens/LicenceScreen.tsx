@@ -31,7 +31,7 @@ import { access, accessDaysLeft, TRIAL_DAYS } from '../data/logic';
 import { EDITIONS, EDITION_LIST, Edition, editionOf, businessAllowance } from '../data/editions';
 import { lastAccountLicence } from '../data/syncClient';
 import { emailUrl, whatsappUrl, open as openLink } from '../data/support';
-import BuyPlanSheet, { Purchase } from '../components/BuyPlanSheet';
+import BuyPlanSheet, { Purchase, txnIdOf } from '../components/BuyPlanSheet';
 
 type Term = 'month' | 'quarter' | 'year';
 const TERM_WORD: Record<Term, string> = { month: '/ month', quarter: '/ 3 months', year: '/ year' };
@@ -492,7 +492,7 @@ export default function LicenceScreen() {
               <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderTopWidth: i ? 1 : 0, borderTopColor: colors.line }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{b.plan === 'pro' ? 'Pro' : 'Starter'} · {b.term === 'month' ? '1 month' : b.term === 'quarter' ? '3 months' : '1 year'}</Text>
-                  <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{b.at ? fmtDay(b.at) : ''} · UGX {Number(b.amount).toLocaleString('en-US')}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{txnIdOf(b)} · {b.at ? fmtDay(b.at) : ''} · UGX {Number(b.amount).toLocaleString('en-US')}</Text>
                 </View>
                 {b.status === 'pending' ? (
                   <Pressable onPress={() => setBuying({ plan: b.plan === 'pro' ? 'pro' : 'starter', term: (b.term as Term) || 'month', amount: b.amount, label: (b.plan === 'pro' ? 'Pro' : 'Starter') + ' payment', existing: b })}
