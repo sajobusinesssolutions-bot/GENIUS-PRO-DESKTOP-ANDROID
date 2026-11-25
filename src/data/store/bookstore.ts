@@ -243,6 +243,11 @@ export async function loadBook(opts: LoadOptions = {}): Promise<Record<string, u
               SUM(CASE WHEN json_extract(doc,'$.direction') = 'in' THEN COALESCE(json_extract(doc,'$.unapplied'),0) ELSE 0 END) ui,
               SUM(CASE WHEN json_extract(doc,'$.direction') = 'out' THEN COALESCE(json_extract(doc,'$.unapplied'),0) ELSE 0 END) uo
          FROM docs WHERE coll = 'payments' AND day < ? AND party IS NOT NULL GROUP BY party`, [since])) { add(r.party, 'payIn', r.i); add(r.party, 'payOut', r.o); add(r.party, 'payUnIn', r.ui); add(r.party, 'payUnOut', r.uo); }
+    /* journal lines on a party's own account (made on the PC), older than the window */
+    for (const r of await d.all<{ party: string; dr: number; cr: number }>(
+      `SELECT json_extract(l.value,'$.partyId') party, SUM(COALESCE(json_extract(l.value,'$.dr'),0)) dr, SUM(COALESCE(json_extract(l.value,'$.cr'),0)) cr
+         FROM docs e, json_each(json_extract(e.doc,'$.lines')) l
+        WHERE e.coll = 'journal' AND e.day < ? AND json_extract(l.value,'$.partyId') IS NOT NULL GROUP BY party`, [since])) { add(r.party, 'jnlDr', r.dr); add(r.party, 'jnlCr', r.cr); }
     /* Items that moved before the window: their stock at the window start is
        history, not a first delivery (reports.ts stock-out days). */
     const movedBefore = (await d.all<{ item: string }>("SELECT DISTINCT item FROM docs WHERE coll = 'movements' AND day < ? AND item IS NOT NULL", [since])).map((r) => r.item);

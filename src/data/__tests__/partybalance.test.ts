@@ -52,3 +52,30 @@ describe('deleting a bill that was paid later', () => {
     expect(Math.round(cashOf())).toBe(Math.round(cash));
   });
 });
+
+describe('a journal made on the PC on a customer\'s or supplier\'s own account', () => {
+  it('moves what they owe on the list, the statement and the ageing alike', () => {
+    const d: DB = seed();
+    d.settings.requireShift = false;
+    const cust = d.parties.find((p) => p.type === 'customer')!;
+    const sup = d.parties.find((p) => p.type === 'supplier')!;
+    const before = logic.partyBalance(d, cust.id), beforeS = logic.partyBalance(d, sup.id);
+    // the customer's 15,000 set against an expense; the supplier's 7,000 off what we owe them
+    d.journal.push({ id: 'jpc1', ts: new Date().toISOString(), memo: 'Offset against transport', ref: 'JV-0001', balanced: true,
+      lines: [{ acc: 'exp', dr: 15000 }, { acc: 'ar', cr: 15000, partyId: cust.id }] } as any);
+    d.journal.push({ id: 'jpc2', ts: new Date().toISOString(), memo: 'Discount from supplier', ref: 'JV-0002', balanced: true,
+      lines: [{ acc: 'ap', dr: 7000, partyId: sup.id }, { acc: 'inc', cr: 7000 }] } as any);
+    expect(Math.round(logic.partyBalance(d, cust.id) - before)).toBe(-15000);
+    expect(Math.round(logic.partyBalance(d, sup.id) - beforeS)).toBe(7000);
+    const all = logic.allPartyBalances(d);
+    for (const pt of [cust, sup]) {
+      expect(Math.round(all.get(pt.id)!)).toBe(Math.round(logic.partyBalance(d, pt.id)));
+      expect(Math.round(closingOf(d, pt.id))).toBe(Math.round(logic.partyBalance(d, pt.id)));
+    }
+    // older journals left on disk in a big book count the same
+    (d as any).__window = { sinceDay: '2020-01-01', parties: { [cust.id]: { jnlCr: 5000 } } };
+    const b2 = logic.partyBalance(d, cust.id);
+    expect(Math.round(b2 - logic.allPartyBalances({ ...d }).get(cust.id)!)).toBe(0);
+    expect(Math.round(closingOf(d, cust.id))).toBe(Math.round(b2));
+  });
+});

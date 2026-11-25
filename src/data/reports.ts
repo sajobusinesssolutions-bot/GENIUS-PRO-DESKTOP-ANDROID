@@ -1,5 +1,5 @@
 import { groupNum } from './helpers';
-import { partyById, productById, saleById, salesByNo, purchasesByNo, creditNotesByNo, docsOf, movesOf, entriesByParty } from './lookups';
+import { partyById, productById, saleById, salesByNo, purchasesByNo, creditNotesByNo, docsOf, movesOf, entriesByParty, journalByParty } from './lookups';
 import { booksJournal } from './branch';
 /**
  * The report engine — pure functions over a plain DB object, no React.
@@ -890,8 +890,8 @@ function windowStart(db: DB): string {
 export function broughtForward(db: DB, partyId: string): { ts: string; debit: number; credit: number } | null {
   const c = windowTotals(db, partyId);
   if (!c) return null;
-  const debit = (c.salesTotal || 0) + (c.purPaidThen || 0) + (c.payOut || 0);
-  const credit = (c.salesPaidThen || 0) + (c.purTotal || 0) + (c.payIn || 0);
+  const debit = (c.salesTotal || 0) + (c.purPaidThen || 0) + (c.payOut || 0) + (c.jnlDr || 0);
+  const credit = (c.salesPaidThen || 0) + (c.purTotal || 0) + (c.payIn || 0) + (c.jnlCr || 0);
   if (!debit && !credit) return null;
   return { ts: new Date(Date.parse(windowStart(db) + 'T00:00:00') - 1).toISOString(), debit, credit };
 }
@@ -946,6 +946,10 @@ function partyLedgerRows(db: DB, id: string): LedgerRow[] {
     if (!s || (e.offsetPartyId || s.partyId) !== id) return;
     const off = e.offset ?? Math.min(e.amount, s.total);
     if (off > 0.005) rows.push({ ts: e.ts, memo: e.category + ' — set against ' + s.no, debit: 0, credit: off, balance: 0, ref: { kind: 'entry', id: e.id } });
+  });
+  /* journal lines on their own account, made on the PC */
+  (journalByParty(db).get(id) || []).forEach((j) => {
+    rows.push({ ts: j.ts, memo: 'Journal' + (j.ref && j.ref !== 'JNL' ? ' ' + j.ref : '') + (j.memo ? ' — ' + j.memo : ''), debit: j.dr, credit: j.cr, balance: 0 });
   });
   /* returns: what a credit note took off a bill or left on the account. Cash
      handed back changes nothing owed; a return from before the account kept
@@ -1895,7 +1899,13 @@ function owedItems(db: DB, type: 'customer' | 'supplier'): OwedItem[] {
     if (!w) return;
     const older = type === 'customer' ? (w.payUnOut || 0) - (w.payUnIn || 0) : (w.payUnOut || 0) - (w.payUnIn || 0);
     add(p.id, windowStart(db) + 'T00:00:00.000Z', sign * older, 'Older', 'Older advances', null);
+    const jOld = (w.jnlDr || 0) - (w.jnlCr || 0);
+    if (Math.abs(jOld) > 0.005) add(p.id, windowStart(db) + 'T00:00:00.000Z', sign * jOld, 'Older', 'Older journals', null);
   });
+  // journal lines on a party's own account (made on the PC)
+  journalByParty(db).forEach((list, pid) => list.forEach((j) => {
+    if (Math.abs(j.dr - j.cr) > 0.005) add(pid, j.ts, sign * (j.dr - j.cr), j.ref || 'Journal', 'Journal', null);
+  }));
   return out.sort((a, b) => tsMs(a.ts) - tsMs(b.ts));
 }
 

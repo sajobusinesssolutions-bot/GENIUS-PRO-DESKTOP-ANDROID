@@ -1,7 +1,7 @@
 // Pure, framework-free business-logic functions used by AppDataContext.
 // Kept separate (no React/AsyncStorage imports) so they can be unit-tested
 // directly against a plain DB object without rendering a component tree.
-import { saleById, docsOf } from './lookups';
+import { saleById, docsOf, journalByParty } from './lookups';
 import { tsMs } from './helpers';
 import { BillReceipt, Entry, CreditNote, CreditNoteLine,
   DB, Sale, SaleLine, Purchase, PurchaseLine, Payment, JournalLine, JournalEntry, PayMethod, Product, Movement,
@@ -753,6 +753,8 @@ export function allPartyBalances(d: DB): Map<string, number> {
   d.sales.forEach((s) => { if (s.partyId && s.status !== 'void' && map.has(s.partyId)) map.set(s.partyId, map.get(s.partyId)! + s.due); });
   d.payments.forEach((p) => { if (p.unapplied && map.has(p.partyId)) map.set(p.partyId, map.get(p.partyId)! + (p.direction === 'in' ? -p.unapplied : p.unapplied)); });
   (d.creditNotes || []).forEach((c) => { const h = returnCredit(d, c); if (h && c.partyId && map.has(c.partyId)) map.set(c.partyId, map.get(c.partyId)! - h); });
+  // journal lines on their own account (made on the PC): a debit is more they owe, a credit less
+  journalByParty(d).forEach((list, pid) => { if (map.has(pid)) map.set(pid, map.get(pid)! + list.reduce((a, j) => a + j.dr - j.cr, 0)); });
   d.purchases.forEach((x) => { if (x.partyId && x.status !== 'void' && map.has(x.partyId)) map.set(x.partyId, map.get(x.partyId)! - x.due); });
   map.forEach((v, id) => map.set(id, v + olderUnapplied(d, id)));
   // an expense the customer paid towards a bill since deleted: theirs, as credit
@@ -803,7 +805,7 @@ export function returnCredit(d: DB, c: CreditNote): number {
 function olderUnapplied(d: DB, id: string): number {
   const w = (d as any).__window;
   const c = w && w.parties && w.parties[id];
-  return c ? (c.payUnOut || 0) - (c.payUnIn || 0) : 0;
+  return c ? (c.payUnOut || 0) - (c.payUnIn || 0) + (c.jnlDr || 0) - (c.jnlCr || 0) : 0;
 }
 
 export function partyBalance(d: DB, id: string): number {
@@ -815,6 +817,7 @@ export function partyBalance(d: DB, id: string): number {
   own.purchases.forEach((x) => { if (x.status !== 'void') b -= x.due; });
   own.payments.forEach((p) => { if (p.unapplied) b += p.direction === 'in' ? -p.unapplied : p.unapplied; });
   own.creditNotes.forEach((c) => { b -= returnCredit(d, c); });
+  (journalByParty(d).get(id) || []).forEach((j) => { b += j.dr - j.cr; });
   (d.entries || []).forEach((e) => { const c = offsetCredit(d, e); if (c && c.partyId === id) b -= c.amount; });
   return b;
 }

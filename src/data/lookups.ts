@@ -119,6 +119,28 @@ export function entriesBySale(d: DB): Map<string, NonNullable<DB['entries']>> {
 }
 
 /** Expenses a customer settled towards a bill, by the customer they belong to (who settled it, even if the bill moved since). */
+/** Journal lines on a party's own account, by party: each voucher once, its net for them. */
+export interface PartyJournal { id: string; ts: string; memo: string; ref: string; dr: number; cr: number }
+export function journalByParty(d: DB): Map<string, PartyJournal[]> {
+  return memo(d, 'journal.party', () => {
+    const out = new Map<string, PartyJournal[]>();
+    (d.journal || []).forEach((e) => {
+      if ((e as { carried?: boolean }).carried) return;
+      const per = new Map<string, { dr: number; cr: number }>();
+      (e.lines || []).forEach((l) => {
+        if (!l.partyId) return;
+        const t = per.get(l.partyId) || { dr: 0, cr: 0 };
+        t.dr += l.dr || 0; t.cr += l.cr || 0; per.set(l.partyId, t);
+      });
+      per.forEach((t, pid) => {
+        let l = out.get(pid); if (!l) { l = []; out.set(pid, l); }
+        l.push({ id: e.id, ts: e.ts, memo: e.memo || 'Journal', ref: e.ref || '', dr: t.dr, cr: t.cr });
+      });
+    });
+    return out;
+  });
+}
+
 export function entriesByParty(d: DB): Map<string, NonNullable<DB['entries']>> {
   return memo(d, 'entries.party', () => {
     const out = new Map<string, NonNullable<DB['entries']>>();

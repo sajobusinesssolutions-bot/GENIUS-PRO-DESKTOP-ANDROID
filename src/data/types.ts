@@ -387,7 +387,8 @@ export interface Entry {
   offsetPartyId?: string;
 }
 
-export interface JournalLine { acc: string; dr?: number; cr?: number; }
+/** partyId: a line on a customer's or supplier's own account (a journal made on the PC, 1.85.16): what they owe moves with it */
+export interface JournalLine { acc: string; dr?: number; cr?: number; partyId?: string; }
 export type DeletedPayment = Payment & { deletedAt: string; deletedBy?: string; deleteReason?: string; purgedAt?: string };
 
 export interface JournalEntry {
