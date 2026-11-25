@@ -278,7 +278,7 @@ function licenceTerms(body, reply) {
  * of what an owner has held — and who granted it — survives.
  * Returns when it runs out, or null for lifetime.
  */
-async function grant(accountId, t, by) {
+export async function grant(accountId, t, by) {
   const status = t.plan === 'trial' ? 'trial' : 'active';
   /* the subscription held now: a recharge counts from its end, a change keeps it */
   const { rows: cur } = await q(

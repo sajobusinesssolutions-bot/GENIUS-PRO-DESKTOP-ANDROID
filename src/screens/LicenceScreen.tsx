@@ -31,6 +31,7 @@ import { access, accessDaysLeft, TRIAL_DAYS } from '../data/logic';
 import { EDITIONS, EDITION_LIST, Edition, editionOf, businessAllowance } from '../data/editions';
 import { lastAccountLicence } from '../data/syncClient';
 import { emailUrl, whatsappUrl, open as openLink } from '../data/support';
+import BuyPlanSheet, { Purchase } from '../components/BuyPlanSheet';
 
 type Term = 'month' | 'quarter' | 'year';
 const TERM_WORD: Record<Term, string> = { month: '/ month', quarter: '/ 3 months', year: '/ year' };
@@ -49,6 +50,15 @@ export default function LicenceScreen() {
   /** Fees set for this client (Developer → Subscription): shown in place of the standard prices. */
   const [fees, setFees] = useState<{ licenceFee: number | null; renewalFee: number | null; currency: string; note: string | null } | null>(null);
   const [paid, setPaid] = useState(0);
+  /* Prices from the account server (Developer → Prices), and whether paying by Mobile Money is open there */
+  const [srv, setSrv] = useState<{ buy: boolean; prices: Record<string, Record<string, number>>; deals?: Record<string, number>; renewing?: boolean } | null>(null);
+  const [buys, setBuys] = useState<Purchase[]>([]);
+  const [buying, setBuying] = useState<{ plan: 'starter' | 'pro'; term: Term; amount: number; label: string; existing?: Purchase | null } | null>(null);
+  const getAccess = useCallback(async () => {
+    if (!account?.refresh) return null;
+    const r = await refreshSession(account.refresh);
+    return r.ok ? r.value.access : null;
+  }, [account?.refresh]);
 
   const checkAccount = useCallback(async (quiet = false) => {
     if (!account?.refresh) return;
@@ -69,6 +79,14 @@ export default function LicenceScreen() {
         const res = await fetch(SERVER_URL + '/v1/account/fees', { headers: { authorization: 'Bearer ' + r.value.access } });
         if (res.ok) { const j = await res.json(); setFees(j.fees || null); setPaid(Number(j.paid) || 0); }
       } catch { /* the standard prices show */ }
+      try {
+        const res = await fetch(SERVER_URL + '/v1/genius/prices', { headers: { authorization: 'Bearer ' + r.value.access } });
+        if (res.ok) setSrv(await res.json());
+      } catch { /* the prices in the app show */ }
+      try {
+        const res = await fetch(SERVER_URL + '/v1/genius/buys', { headers: { authorization: 'Bearer ' + r.value.access } });
+        if (res.ok) setBuys(((await res.json()).purchases || []) as Purchase[]);
+      } catch { /* no list */ }
     } finally {
       setBusy(false);
     }
@@ -116,7 +134,16 @@ export default function LicenceScreen() {
   const contactSales = (planName?: string) => contactUs('I would like pricing for Genius Pro POS ' + ed.name + ' edition'
     + (planName ? ', ' + planName + ' plan' : '') + ', including setup fees and data migration.');
 
-  const choose = (id: 'starter' | 'pro') => Alert.alert(
+  /* paying in the app: open on the server, and never on the Play Store build (Google's own billing rules) */
+  const canBuy = !!(srv && srv.buy) && !PLAY_BUILD;
+  const priceOf = (id: 'starter' | 'pro', t: Term) => {
+    const list = srv && srv.prices && srv.prices[id] ? srv.prices[id] : ed.plans[id].prices;
+    const pct = srv && srv.deals ? Number(srv.deals[id] || 0) : deal[id];
+    return { full: Number(list[t]) || 0, pct, price: Math.round((Number(list[t]) || 0) * (1 - pct / 100)) };
+  };
+  const choose = (id: 'starter' | 'pro') => canBuy
+    ? setBuying({ plan: id, term, amount: priceOf(id, term).price, label: ed.plans[id].name + ' · ' + (term === 'month' ? 'Monthly' : term === 'quarter' ? '3 months' : 'Yearly') })
+    : Alert.alert(
     ed.plans[id].name + ' · ' + money(ed.plans[id].prices[term]) + ' ' + TERM_WORD[term],
     'Pay Genius Pro for ' + ed.plans[id].name + ' and it is switched on for ' + (account?.email || 'your account')
       + '. It reaches every phone by itself — there is nothing to type in.',
@@ -258,7 +285,16 @@ export default function LicenceScreen() {
             ) : null}
             {paid > 0 ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.good }}>Received so far: {fees.currency} {paid.toLocaleString('en-US')}</Text> : null}
             {fees.note ? <Text style={{ fontFamily: fonts.ui, fontSize: 12.5, color: colors.faint }}>{fees.note}</Text> : null}
-            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Agreed for your business. To renew or change, contact us.</Text>
+            {canBuy ? (() => {
+              const amt = srv?.renewing ? (fees.renewalFee ?? fees.licenceFee) : (fees.licenceFee ?? fees.renewalFee);
+              return amt && amt > 0 ? (
+                <Pressable onPress={() => setBuying({ plan: planId, term: 'year', amount: amt, label: (srv?.renewing ? 'Renew' : 'Licence') + ' · 1 year' })}
+                  style={{ height: 48, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFCC00' }}>
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 14.5, color: '#111' }}>Pay {fees.currency} {Number(amt).toLocaleString('en-US')} by Mobile Money</Text>
+                </Pressable>
+              ) : null;
+            })() : null}
+            <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>Agreed for your business.{canBuy ? ' Pay here, or contact us to change it.' : ' To renew or change, contact us.'}</Text>
           </View>
         </>
       ) : null}
@@ -281,8 +317,7 @@ export default function LicenceScreen() {
         const mine = a === 'paid' && planId === id;
         const pro = id === 'pro';
         const off = saving(p.prices);
-        const pct = deal[id];
-        const price = Math.round(p.prices[term] * (1 - pct / 100));
+        const { pct, price, full } = priceOf(id, term);
         return (
           <View key={id} style={{
             borderRadius: 4, padding: 18, marginBottom: 12,
@@ -313,7 +348,7 @@ export default function LicenceScreen() {
             )}
             {pct && !PLAY_BUILD && !quoted(edition) ? (
               <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.accent, marginTop: 4 }}>
-                <Text style={{ textDecorationLine: 'line-through', fontFamily: fonts.ui, color: pro ? colors.line : colors.faint }}>{money(p.prices[term])}</Text>
+                <Text style={{ textDecorationLine: 'line-through', fontFamily: fonts.ui, color: pro ? colors.line : colors.faint }}>{money(full)}</Text>
                 {'  ' + pct + '% off' + (deal.until ? ' until ' + fmtDay(deal.until) : '')}
               </Text>
             ) : null}
@@ -327,12 +362,12 @@ export default function LicenceScreen() {
             </View>
             {PLAY_BUILD ? null : (
               <Pressable
-                disabled={mine}
+                disabled={mine && !canBuy}
                 onPress={() => (quoted(edition) && !mine ? contactSales(p.name) : choose(id))}
                 style={{ height: 48, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: mine ? 'transparent' : pro ? colors.bg : colors.ink, borderWidth: mine ? 1.4 : 0, borderColor: pro ? colors.bg : colors.line }}
               >
                 <Text style={{ fontFamily: fonts.uiBold, fontSize: 14, color: mine ? (pro ? colors.bg : colors.faint) : pro ? colors.ink : colors.bg }}>
-                  {mine ? 'Your current plan' : quoted(edition) ? 'Contact us' : (a === 'paid' ? 'Switch to ' : 'Get ') + p.name}
+                  {mine && canBuy && !quoted(edition) ? 'Renew ' + p.name + ' · ' + money(price) : mine ? 'Your current plan' : quoted(edition) ? 'Contact us' : canBuy ? 'Buy ' + p.name + ' · ' + money(price) : (a === 'paid' ? 'Switch to ' : 'Get ') + p.name}
                 </Text>
               </Pressable>
             )}
@@ -447,6 +482,37 @@ export default function LicenceScreen() {
           </View>
         );
       })}
+
+      {/* ---------- payments made in the app; one still waiting can be checked ---------- */}
+      {buys.length ? (
+        <>
+          {cap('Your Mobile Money payments')}
+          <View style={{ backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: colors.line }}>
+            {buys.slice(0, 8).map((b, i) => (
+              <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderTopWidth: i ? 1 : 0, borderTopColor: colors.line }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: fonts.uiSemi, fontSize: 13.5, color: colors.ink }}>{b.plan === 'pro' ? 'Pro' : 'Starter'} · {b.term === 'month' ? '1 month' : b.term === 'quarter' ? '3 months' : '1 year'}</Text>
+                  <Text style={{ fontFamily: fonts.ui, fontSize: 12, color: colors.faint }}>{b.at ? fmtDay(b.at) : ''} · UGX {Number(b.amount).toLocaleString('en-US')}</Text>
+                </View>
+                {b.status === 'pending' ? (
+                  <Pressable onPress={() => setBuying({ plan: b.plan === 'pro' ? 'pro' : 'starter', term: (b.term as Term) || 'month', amount: b.amount, label: (b.plan === 'pro' ? 'Pro' : 'Starter') + ' payment', existing: b })}
+                    style={{ paddingHorizontal: 12, height: 36, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.sunk }}>
+                    <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: colors.ink }}>Check payment</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={{ fontFamily: fonts.uiBold, fontSize: 12.5, color: b.status === 'paid' ? colors.good : '#C62828' }}>{b.status === 'paid' ? 'Paid' : 'Not paid'}</Text>
+                )}
+              </View>
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {buying ? (
+        <BuyPlanSheet visible plan={buying.plan} term={buying.term} amount={buying.amount} label={buying.label} edition={edition}
+          existing={buying.existing || null} getAccess={getAccess}
+          onClose={(done) => { setBuying(null); void checkAccount(true); if (done) Alert.alert('Thank you', 'Your plan is on. It reaches your other devices by itself.'); }} />
+      ) : null}
 
       {/* ---------- check ---------- */}
       <Pressable
