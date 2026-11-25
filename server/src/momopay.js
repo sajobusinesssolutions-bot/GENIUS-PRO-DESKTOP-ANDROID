@@ -31,7 +31,7 @@ async function mtnToken(c) {
   const r = await fetch(`${MTN_BASE[c.env] || MTN_BASE.live}/collection/token/`, { method: "POST",
     headers: { Authorization: "Basic " + Buffer.from(`${c.user}:${c.secret}`).toString("base64"), "Ocp-Apim-Subscription-Key": c.key } });
   const b = await j(r);
-  if (!r.ok || !b.access_token) fail(`MTN did not let Tallix in (${r.status}${b.message ? ": " + b.message : ""}). Check the MTN keys.`);
+  if (!r.ok || !b.access_token) fail(`MTN did not accept the SALJOE keys (${r.status}${b.message ? ": " + b.message : ""}). Check the MTN keys.`);
   tokens.set(k, { token: b.access_token, until: Date.now() + (Number(b.expires_in || 3600) - 60) * 1000 });
   return b.access_token;
 }
@@ -63,7 +63,7 @@ async function airtelToken(c) {
   const r = await fetch(`${AIRTEL_BASE[c.env] || AIRTEL_BASE.live}/auth/oauth2/token`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "*/*" },
     body: JSON.stringify({ client_id: c.id, client_secret: c.secret, grant_type: "client_credentials" }) });
   const b = await j(r);
-  if (!r.ok || !b.access_token) fail(`Airtel did not let Tallix in (${r.status}). Check the Airtel keys.`);
+  if (!r.ok || !b.access_token) fail(`Airtel did not accept the SALJOE keys (${r.status}). Check the Airtel keys.`);
   tokens.set(k, { token: b.access_token, until: Date.now() + (Number(b.expires_in || 180) - 20) * 1000 });
   return b.access_token;
 }

@@ -22,6 +22,7 @@ import updateRoutes from './updates.js';
 import privateLinkRoutes from './privatelinks.js';
 import numberRoutes from './numbers.js';
 import transferRoutes from './transfers.js';
+import posMomoRoutes from './posmomo.js';
 import snapshotPartRoutes from './snapshotparts.js';
 import licensingRoutes from './licensing.js';
 import businessExtraRoutes from './businessextra.js';
@@ -104,6 +105,7 @@ await app.register(privateLinkRoutes);
 // one running number per voucher series for every device (numbers.js); the phones wait on it before syncing
 await app.register(numberRoutes);
 await app.register(transferRoutes);
+await app.register(posMomoRoutes);
 await app.register(snapshotPartRoutes);
 await app.register(businessRemoveRoutes);
 await app.register(schoolBookRoutes);
