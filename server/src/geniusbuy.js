@@ -100,7 +100,8 @@ export default async function geniusBuyRoutes(app) {
       const me = await whoami(req, { code: () => ({ send: () => null }) }).catch(() => null);
       if (me) { mine = await mineOf(me.id); renewing = await renewingOf(me.id); }
     }
-    return { buy: !!(k.mtn || k.airtel), networks: { mtn: !!k.mtn, airtel: !!k.airtel }, prices: await priceTable(),
+    const open = !!(k.mtn || k.airtel) && !(await momopay.testOnly(req, developer));
+    return { buy: open, test: momopay.sandboxed(), networks: { mtn: !!k.mtn, airtel: !!k.airtel }, prices: await priceTable(),
       deals: Object.fromEntries(await Promise.all(Object.keys(PLANS).map(async (p) => [p, await dealOf(p)]))),
       plans: Object.fromEntries(Object.entries(PLANS).map(([id, p]) => [id, { label: p.label, devices: p.seats }])),
       terms: Object.fromEntries(Object.entries(TERMS).map(([id, t]) => [id, { label: t.label, days: t.days }])), mine, renewing };
@@ -122,6 +123,7 @@ export default async function geniusBuyRoutes(app) {
     const me = await whoami(req, reply); if (!me) return;
     const k = sellKeys();
     if (!k.mtn && !k.airtel) return fail(reply, 503, 'closed', 'Paying in the app is not open yet. Buy or renew on WhatsApp with SALJOE TECH.');
+    if (await momopay.testOnly(req, developer)) return fail(reply, 503, 'closed', 'Paying in the app is not open yet. Buy or renew on WhatsApp with SALJOE TECH.');
     const plan = PLANS[req.body?.plan] ? req.body.plan : null, term = TERMS[req.body?.term] ? req.body.term : null;
     if (!plan || !term) return fail(reply, 400, 'malformed', 'Choose the plan and how long.');
     const amount = await priceFor(me.id, plan, term);

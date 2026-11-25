@@ -212,6 +212,7 @@ export default async function schoolBookRoutes(app) {
     const me = await whoami(req, reply); if (!me) return reply;
     const keys = sellKeys();
     if (!keys.mtn && !keys.airtel) return fail(reply, 503, 'closed', 'Paying in the app is not open yet. Buy or renew on WhatsApp with SALJOE TECH.');
+    if (await momopay.testOnly(req, developer)) return fail(reply, 503, 'closed', 'Paying in the app is not open yet. Buy or renew on WhatsApp with SALJOE TECH.');
     const plan = PLANS[req.body?.plan] ? req.body.plan : null, term = TERMS[req.body?.term] ? req.body.term : null;
     if (!plan || !term) return fail(reply, 400, 'malformed', 'Choose the plan and how long.');
     const price = (await q('select price from school_prices where plan = $1 and term = $2', [plan, term])).rows[0];
@@ -251,7 +252,7 @@ export default async function schoolBookRoutes(app) {
   });
 
   /* what each plan costs, for the school's Plan & licence page (no sign-in needed) */
-  app.get('/v1/school/prices', async () => ({ buy: !!(sellKeys().mtn || sellKeys().airtel), plans: PLANS, terms: Object.fromEntries(Object.entries(TERMS).map(([k, v]) => [k, v.label])),
+  app.get('/v1/school/prices', async (req) => ({ buy: !!(sellKeys().mtn || sellKeys().airtel) && !(await momopay.testOnly(req, developer)), plans: PLANS, terms: Object.fromEntries(Object.entries(TERMS).map(([k, v]) => [k, v.label])),
     prices: (await q('select plan, term, price, currency from school_prices order by plan, term')).rows.map((r) => ({ ...r, price: Number(r.price) })),
     offline_days: OFFLINE_DAYS, trial_days: TRIAL_DAYS }));
 

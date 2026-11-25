@@ -19,6 +19,7 @@
 import { q } from './db.js';
 import { whoami } from './sync.js';
 import * as momopay from './momopay.js';
+import { developer } from './admin.js';
 
 const fail = (reply, status, error, message) => reply.code(status).send({ error, message });
 
@@ -75,6 +76,7 @@ export default async function posMomoRoutes(app) {
     const net = momopay.networkOf(b.phone);
     if (!net) return fail(reply, 400, 'badPhone', 'That is not an MTN or Airtel number.');
     const k = keys();
+    if (await momopay.testOnly(req, developer)) return fail(reply, 503, 'notConnected', 'Mobile Money is in test mode on the account server — take the money another way for now.');
     if (net === 'mtn' && !k.mtn) return fail(reply, 503, 'notConnected', 'MTN Mobile Money is not connected on the account server yet.');
     if (net === 'airtel' && !k.airtel) return fail(reply, 400, 'notConnected', 'Airtel Money is not taken yet — use an MTN number, or take the money another way.');
     try {

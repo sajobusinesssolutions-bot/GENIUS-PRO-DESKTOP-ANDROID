@@ -131,7 +131,7 @@ export default async function saccoLicenceRoutes(app) {
     try { token = await signLicence(me, { ...lic, institution: String(req.query?.institution || '').slice(0, 160) || null }); } catch (e) { req.log.error({ err: e.message }, 'sacco licence not signed'); }
     return { ...lic, now: new Date().toISOString(), email: me.email, token, offline_days: OFFLINE_DAYS };
   });
-  app.get('/v1/sacco/prices', async () => ({ buy: !!(sellKeys().mtn || sellKeys().airtel), tiers: Object.fromEntries(Object.entries(TIERS).map(([k, v]) => [k, { label: v.label, about: v.about }])),
+  app.get('/v1/sacco/prices', async (req) => ({ buy: !!(sellKeys().mtn || sellKeys().airtel) && !(await momopay.testOnly(req, developer)), tiers: Object.fromEntries(Object.entries(TIERS).map(([k, v]) => [k, { label: v.label, about: v.about }])),
     terms: Object.fromEntries(Object.entries(TERMS).map(([k, v]) => [k, v.label])), prices: await prices(), offline_days: OFFLINE_DAYS, trial_days: TRIAL_DAYS }));
 
   /* buying in the app: a prompt for the price to the phone given; paid → the licence granted once */
@@ -139,6 +139,7 @@ export default async function saccoLicenceRoutes(app) {
     const me = await whoami(req, reply); if (!me) return reply;
     const keys = sellKeys();
     if (!keys.mtn && !keys.airtel) return fail(reply, 503, 'closed', 'Paying in the app is not open yet. Buy or renew on WhatsApp with SALJOE TECH.');
+    if (await momopay.testOnly(req, developer)) return fail(reply, 503, 'closed', 'Paying in the app is not open yet. Buy or renew on WhatsApp with SALJOE TECH.');
     const tier = TIERS[req.body?.tier] ? req.body.tier : null, term = TERMS[req.body?.term] ? req.body.term : null;
     if (!tier || !term) return fail(reply, 400, 'malformed', 'Choose the tier and how long.');
     const price = (await q('select price from sacco_prices where tier = $1 and term = $2', [tier, term])).rows[0];

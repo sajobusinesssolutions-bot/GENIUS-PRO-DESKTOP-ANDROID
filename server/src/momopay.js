@@ -99,4 +99,17 @@ async function status(keys, network, ref) {
   return network === "mtn" ? mtnStatus(keys.mtn, ref) : airtelStatus(keys.airtel, ref);
 }
 
-export { networkOf, msisdn, request, status };
+/**
+ * Test keys (MTN_MOMO_ENV=sandbox) answer "paid" by themselves with no money
+ * moving. While they are in, paying is for the developer only (to try it out);
+ * everyone else is told it is not open, or a licence would be given away.
+ * `developer` is admin.js developer(), passed in to keep this file free of it.
+ */
+const sandboxed = () => (process.env.MTN_MOMO_ENV || 'live') === 'sandbox';
+async function testOnly(req, developer) {
+  if (!sandboxed()) return false;
+  const quiet = { code: () => ({ send: () => null }) };
+  try { return !(await developer(req, quiet)); } catch { return true; }
+}
+
+export { networkOf, msisdn, request, status, sandboxed, testOnly };

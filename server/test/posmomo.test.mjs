@@ -25,6 +25,7 @@ await q("create table businesses (id uuid primary key, account_id uuid, name tex
 await q('create table business_members (business_id uuid, account_id uuid, role text)');
 await q("insert into businesses (id, account_id, name) values ($1, $2, 'Shop'), ($3, $4, 'Someone else')", [SHOP, OWNER, ELSE, OTHER]);
 mock.module('../src/db.js', { namedExports: { pool, q } });
+mock.module('../src/admin.js', { namedExports: { developer: async () => null } });
 mock.module('../src/sync.js', { namedExports: { whoami: async (req) => ({ id: req.headers['x-who'] === 'other' ? OTHER : OWNER }) } });
 
 /* MTN: token, request to pay (202), and the state of each request */

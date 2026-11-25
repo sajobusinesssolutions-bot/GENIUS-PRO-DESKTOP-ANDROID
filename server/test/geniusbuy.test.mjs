@@ -10,7 +10,7 @@ import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { newDb } from 'pg-mem';
 
-process.env.MTN_MOMO_KEY = 'k'; process.env.MTN_MOMO_USER = 'u'; process.env.MTN_MOMO_SECRET = 's'; process.env.MTN_MOMO_ENV = 'sandbox';
+process.env.MTN_MOMO_KEY = 'k'; process.env.MTN_MOMO_USER = 'u'; process.env.MTN_MOMO_SECRET = 's'; process.env.MTN_MOMO_ENV = 'live';
 delete process.env.AIRTEL_CLIENT_ID;
 const mem = newDb();
 const { Pool } = mem.adapters.createPg();
@@ -51,6 +51,16 @@ const app = Fastify();
 await app.register((await import('../src/geniusbuy.js')).default);
 await app.ready();
 const call = async (method, url, payload, headers = {}) => { const r = await app.inject({ method, url, payload, headers }); return { status: r.statusCode, body: r.json() }; };
+
+test('with test (sandbox) keys only the developer may pay: a licence is not given away for test money', async () => {
+  process.env.MTN_MOMO_ENV = 'sandbox';
+  try {
+    assert.equal((await call('GET', '/v1/genius/prices', null, { authorization: 'Bearer x' })).body.buy, false);
+    const r = await call('POST', '/v1/genius/buy', { plan: 'pro', term: 'month', phone: '0772123456' });
+    assert.deepEqual([r.status, r.body.error], [503, 'closed']);
+    assert.equal((await call('GET', '/v1/genius/prices', null, { 'x-who': 'dev' })).body.buy, true, 'the developer can try it');
+  } finally { process.env.MTN_MOMO_ENV = 'live'; }
+});
 
 test('prices: the standard ones, changed in the console only by the developer', async () => {
   const p = await call('GET', '/v1/genius/prices');

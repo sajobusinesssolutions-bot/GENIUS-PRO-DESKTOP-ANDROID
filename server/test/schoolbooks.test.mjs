@@ -136,7 +136,7 @@ test("only the changes: a parcel after the whole copy; a computer behind takes t
 
 test("a school buys its licence: a prompt for the price; paid → granted once; not open without SALJOE TECH's keys", async () => {
   assert.equal((await call("POST", "/v1/school/buy", { plan: "pro", term: "1y", phone: "0772123456" })).status, 503, "closed without the keys");
-  process.env.MTN_MOMO_KEY = "k"; process.env.MTN_MOMO_USER = "u"; process.env.MTN_MOMO_SECRET = "s"; process.env.MTN_MOMO_ENV = "sandbox";
+  process.env.MTN_MOMO_KEY = "k"; process.env.MTN_MOMO_USER = "u"; process.env.MTN_MOMO_SECRET = "s"; process.env.MTN_MOMO_ENV = "live"; process.env.MTN_MOMO_TARGET = "mtnuganda";
   const real = global.fetch; let state = "PENDING"; let asked = null;
   global.fetch = async (url, o = {}) => {
     const r = (status, j) => ({ ok: status < 300, status, text: async () => JSON.stringify(j), json: async () => j });
