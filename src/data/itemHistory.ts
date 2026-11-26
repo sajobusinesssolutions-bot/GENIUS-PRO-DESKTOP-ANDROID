@@ -49,11 +49,12 @@ export function itemHistory(d: Pick<DB, 'sales' | 'purchases'>, productId: strin
       if (doc.status === 'void' || (doc as { deletedAt?: string }).deletedAt) continue;
       const key = (sale ? 'sale:' : 'purchase:') + doc.id;
       const g = groups.get(key);
+      /* dated by the document: a sale moved to another day by an edit shows on that day
+         (its first movement kept the old day, so the change seemed not to take) */
       if (g) {
         g.qty += m.qty;
-        if (m.ts < g.ts) g.ts = m.ts;
       } else {
-        groups.set(key, { id: m.id, ts: m.ts, qty: m.qty, type: sale ? 'sale' : 'purchase', ref: doc.no, doc: { kind: sale ? 'sale' : 'purchase', id: doc.id } });
+        groups.set(key, { id: m.id, ts: doc.ts || m.ts, qty: m.qty, type: sale ? 'sale' : 'purchase', ref: doc.no, doc: { kind: sale ? 'sale' : 'purchase', id: doc.id } });
       }
       continue;
     }

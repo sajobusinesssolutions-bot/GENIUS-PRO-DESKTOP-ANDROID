@@ -304,7 +304,7 @@ export default function PurchaseNewScreen({ navigation, route }: Props) {
         const how: PayMethod = full ? payVia : 'credit';
         let pu: { id: string; no: string } | null = null;
         if (editingPurchase) {
-          const out = editPurchase(editingPurchase.id, { partyId, lines: bought, method: how, ref: invoiceNo.trim() }, 'Edited on the purchase');
+          const out = editPurchase(editingPurchase.id, { partyId, lines: bought, method: how, ref: invoiceNo.trim(), ts: invoiceAt.toISOString() }, 'Edited on the purchase');
           if (!out) { error('That purchase can no longer be changed.'); return; }
         } else {
           pu = createPurchase(partyId, bought, how, server.userId, invoiceNo.trim() || undefined, invoiceAt.toISOString());

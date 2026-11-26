@@ -1958,7 +1958,7 @@ function allOrNothing<T>(d: DB, fn: () => T): T {
 export function editSale(
   d: DB,
   saleId: string,
-  o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string; pay?: EditPay },
+  o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string; pay?: EditPay; ts?: string },
   reason = 'Replaced by an edit',
   when = new Date(),
 ): Sale | null {
@@ -1971,7 +1971,7 @@ export function editSale(
 function editSaleSteps(
   d: DB,
   saleId: string,
-  o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string; pay?: EditPay },
+  o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string; pay?: EditPay; ts?: string },
   reason: string,
   when: Date,
 ): Sale | null {
@@ -2013,7 +2013,8 @@ function editSaleSteps(
        while posting the whole new total to cash: an increase showed a balance
        the books did not have. The person who made the sale stays its seller,
        so it stays in their list (an edit by someone else used to move it). */
-    fresh = commitSale(d, { ...(o.pay || {}), lines: o.lines, partyId: o.partyId, method: o.pay?.method || oldMethod, discount: o.discount, userId: oldUser }, new Date(oldTs));
+    /* the date chosen on the edit screen (it used to be dropped: the sale always kept its old day) */
+    fresh = commitSale(d, { ...(o.pay || {}), lines: o.lines, partyId: o.partyId, method: o.pay?.method || oldMethod, discount: o.discount, userId: oldUser }, new Date(o.ts || oldTs));
   } finally {
     d.session.warehouse = prevWh;
     d.session.till = prevTill;
@@ -2022,7 +2023,7 @@ function editSaleSteps(
   /* keep the original number, date and history */
   d.counters.sale -= 1;
   renumber(d, fresh.no, oldNo);
-  fresh.no = oldNo; fresh.ts = oldTs;
+  fresh.no = oldNo; fresh.ts = o.ts || oldTs;
   // an edit keeps the number it had: real stays real, a temporary one still waits for the server
   if (s.numberPending) fresh.numberPending = true; else delete fresh.numberPending;
   fresh.ref = o.ref || ''; fresh.note = o.note || '';
@@ -2145,7 +2146,7 @@ export function voidPurchase(d: DB, purchaseId: string, reason = '', when = new 
 export function editPurchase(
   d: DB,
   purchaseId: string,
-  o: { partyId: string; lines: PurchaseLine[]; method: PayMethod; ref?: string; note?: string },
+  o: { partyId: string; lines: PurchaseLine[]; method: PayMethod; ref?: string; note?: string; ts?: string },
   reason = 'Replaced by an edit',
   when = new Date(),
 ): Purchase | null {
@@ -2158,7 +2159,7 @@ export function editPurchase(
 function editPurchaseSteps(
   d: DB,
   purchaseId: string,
-  o: { partyId: string; lines: PurchaseLine[]; method: PayMethod; ref?: string; note?: string },
+  o: { partyId: string; lines: PurchaseLine[]; method: PayMethod; ref?: string; note?: string; ts?: string },
   reason: string,
   when: Date,
 ): Purchase | null {
@@ -2170,10 +2171,11 @@ function editPurchaseSteps(
   /* payments made on the bill afterwards come off it first and go back against the changed bill, as far as it owes (the rest stays as an advance) */
   releaseLaterReceipts(d, x);
   voidPurchase(d, x.id, reason, when);
-  const fresh = createPurchase(d, o.partyId, o.lines, o.method, new Date(oldTs));
+  /* the date chosen on the edit screen (it used to be dropped) */
+  const fresh = createPurchase(d, o.partyId, o.lines, o.method, new Date(o.ts || oldTs));
   d.counters.purchase -= 1;
   renumber(d, fresh.no, oldNo);
-  fresh.no = oldNo; fresh.ts = oldTs;
+  fresh.no = oldNo; fresh.ts = o.ts || oldTs;
   fresh.ref = o.ref || ''; fresh.note = o.note || '';
   fresh.editedFrom = x.id; fresh.editedAt = iso(when);
   fresh.editedBy = d.session.userId; fresh.editCount = (x.editCount || 0) + 1;

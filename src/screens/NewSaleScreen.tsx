@@ -193,12 +193,18 @@ export default function NewSaleScreen({ navigation, route }: Props) {
    * What is left of an item for this line: the stock limit less what the
    * other lines of this bill already take, all in the item's main unit.
    */
+  /** Editing a saved sale: what it took when it was saved is back on the shelf for this edit
+      (20 sold of 30, edited to 15: 30 to choose from, not the 10 left). */
+  function tookBefore(p: Product, batchNo?: string) {
+    if (!editingSale) return 0;
+    return editingSale.lines.reduce((s, l) => (l.productId === p.id && (!batchNo || l.batchNo === batchNo) ? s + l.qty * (l.unitFactor || 1) : s), 0);
+  }
   function maxFor(p: Product, batchNo?: string) {
     const others = cart.reduce((s, l, i) => (i !== entryIndex && l.productId === p.id && (!batchNo || l.batchNo === batchNo)
       ? s + l.qty * (l.unitFactor || 1) : s), 0);
     const base = batchNo
-      ? (p.batches || []).find((b) => b.no === batchNo)?.qty ?? 0
-      : db ? sellLimit(db, p, stockOf(p)) : stockOf(p);
+      ? ((p.batches || []).find((b) => b.no === batchNo)?.qty ?? 0) + tookBefore(p, batchNo)
+      : db ? sellLimit(db, p, stockOf(p) + tookBefore(p)) : stockOf(p) + tookBefore(p);
     return base - others;
   }
 
@@ -273,7 +279,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
     // anything needing a batch, an IMEI or another unit goes through the full entry
     if (p.trackBatches || p.trackSerials) { openEntry(p); return; }
     const inCart = cart.filter((l) => l.productId === p.id).reduce((s, l) => s + l.qty * (l.unitFactor || 1), 0);
-    const limit = db ? sellLimit(db, p, stockOf(p)) : Infinity;
+    const limit = db ? sellLimit(db, p, stockOf(p) + tookBefore(p)) : Infinity;
     if (inCart + 1 > limit) { error(p.name + ' — only ' + Math.max(0, limit) + ' ' + p.unit + ' left.'); return; }
     const price = priceFor(priceList, p);
     setCart((prev) => {
@@ -368,6 +374,7 @@ export default function NewSaleScreen({ navigation, route }: Props) {
         const out = editSaleTransaction(editingSale.id, {
           lines: taxedLines,
           partyId,
+          ts: invoiceAt.toISOString(),
           discount: discount + Math.max(0, grandTotal - roundedE),
           note: description,
           pay: {

@@ -218,9 +218,9 @@ export interface Ctx {
   canEditSale: (id: string) => { ok: boolean; why: string };
   canEditPurchase: (id: string) => { ok: boolean; why: string };
   canEditPayment: (id: string) => { ok: boolean; why: string };
-  editSale: (saleId: string, o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string; pay?: logic.EditPay }, reason?: string) => Sale | null;
+  editSale: (saleId: string, o: { lines: SaleLine[]; partyId: string | null; discount: number; ref?: string; note?: string; pay?: logic.EditPay; ts?: string }, reason?: string) => Sale | null;
   deleteSale: (saleId: string, reason?: string) => boolean;
-  editPurchase: (purchaseId: string, o: { partyId: string; lines: PurchaseLine[]; method: PayMethod; ref?: string; note?: string }, reason?: string) => Purchase | null;
+  editPurchase: (purchaseId: string, o: { partyId: string; lines: PurchaseLine[]; method: PayMethod; ref?: string; note?: string; ts?: string }, reason?: string) => Purchase | null;
   deletePurchase: (purchaseId: string, reason?: string) => boolean;
   editPayment: (payId: string, patch: { amount: number; accountId?: string; note?: string }) => Payment | null;
   deletePayment: (payId: string, reason?: string) => boolean;
@@ -1355,8 +1355,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     canEditPayment: (id) => { const d = dbRef.current; return d ? logic.canEditPayment(d, id) : { ok: false, why: '' }; },
     editSale: (saleId, o, reason) => {
       requireRecordable(); requirePerm('sales.edit'); requireOpenDay(tsOf('sales', saleId)); requireReachable('a sale');
+      /* a new date is checked as a new sale's is (not later than now, earlier only with the right, not in a closed day or year) */
+      const was = tsOf('sales', saleId);
+      const moved = o.ts && was && Math.abs(new Date(o.ts).getTime() - new Date(was).getTime()) > 60e3;
+      const o2 = moved ? { ...o, ts: pickWhen(o.ts).toISOString() } : { ...o, ts: undefined };
       let out: Sale | null = null;
-      commit((d) => { out = logic.editSale(d, saleId, o, reason); });
+      commit((d) => { out = logic.editSale(d, saleId, o2, reason); });
       return out;
     },
     deleteSale: (saleId, reason) => {
@@ -1368,8 +1372,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     },
     editPurchase: (purchaseId, o, reason) => {
       requireRecordable(); requirePerm('purchases.edit'); requireOpenDay(tsOf('purchases', purchaseId)); requireReachable('a purchase');
+      const was = tsOf('purchases', purchaseId);
+      const moved = o.ts && was && Math.abs(new Date(o.ts).getTime() - new Date(was).getTime()) > 60e3;
+      const o2 = moved ? { ...o, ts: pickWhen(o.ts).toISOString() } : { ...o, ts: undefined };
       let out: Purchase | null = null;
-      commit((d) => { out = logic.editPurchase(d, purchaseId, o, reason); });
+      commit((d) => { out = logic.editPurchase(d, purchaseId, o2, reason); });
       return out;
     },
     // restaurant, kitchen, approvals and price lists — see actions/restaurant.ts

@@ -22,6 +22,41 @@ function book(): { d: DB; pid: string; line: (qty: number) => SaleLine } {
 }
 const net = (d: DB, acc: string) => d.journal.reduce((n, e) => n + e.lines.filter((l) => l.acc === acc).reduce((x, l) => x + (l.dr || 0) - (l.cr || 0), 0), 0);
 
+describe('editing a sale: its own stock counts, its new date sticks, one row', () => {
+  it('20 of 30 sold, edited to 15 on another day: allowed, one row of 15 on the new day, 15 left', () => {
+    const { d, pid, line } = book();
+    const p = d.products.find((x) => x.id === pid)!;
+    p.stock = { w1: 30 };
+    d.settings.blockNegativeStock = true as any;
+    const s = logic.commitSale(d, { lines: [line(20)], partyId: null, method: 'cash', discount: 0 });
+    expect(p.stock.w1).toBe(10);
+    const day = new Date(Date.now() - 3 * 864e5).toISOString();
+    const out = logic.editSale(d, s.id, { lines: [line(15)], partyId: null, discount: 0, pay: { method: 'cash' }, ts: day });
+    expect(out).not.toBeNull();
+    expect(out!.ts).toBe(day);
+    expect(d.sales.find((x) => x.id === s.id)!.ts).toBe(day);
+    expect(p.stock.w1).toBe(15);
+    const rows = itemHistory(d, pid, d.movements).filter((r) => r.ref === s.no);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].qty).toBe(-15);
+    expect(rows[0].ts).toBe(day);
+    // and all 30 may be taken by the edit
+    logic.editSale(d, s.id, { lines: [line(30)], partyId: null, discount: 0, pay: { method: 'cash' } });
+    expect(p.stock.w1).toBe(0);
+  });
+
+  it('a PC edit arriving as a reversal under the sale number nets into the sale', () => {
+    const { d, pid, line } = book();
+    const s = logic.commitSale(d, { lines: [line(20)], partyId: null, method: 'cash', discount: 0 });
+    d.movements.push({ id: 'pc-edit', ts: new Date().toISOString(), productId: pid, warehouse: 'w1', qty: 20, type: 'void', ref: s.no } as any);
+    d.movements.push({ id: 'pc-new', ts: new Date().toISOString(), productId: pid, warehouse: 'w1', qty: -15, type: 'sale', ref: s.no } as any);
+    const rows = itemHistory(d, pid, d.movements);
+    expect(rows.filter((r) => r.ref === s.no)).toHaveLength(1);
+    expect(rows.find((r) => r.ref === s.no)!.qty).toBe(-15);
+    expect(rows.some((r) => r.type === 'void' || r.type === 'edit')).toBe(false);
+  });
+});
+
 describe('item history, one row per document', () => {
   it('shows an edited sale once, with its final quantity', () => {
     const { d, pid, line } = book();
